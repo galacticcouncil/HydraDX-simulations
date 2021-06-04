@@ -227,7 +227,7 @@ def actionDecoder(params, step, history, prev_state):
     if params['exo_liq'] == 'test_remove':
         print(prev_state['uni_agents']['s_i'][agent2_id])
         #print(removal)
-        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.1
+        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
 
         action['purchased_asset_id'] = 'N/A'
 
@@ -242,7 +242,7 @@ def actionDecoder(params, step, history, prev_state):
         if action['asset_id'] == 'j':
             # print('remove j',step,action['asset_id'])
             action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.1
+            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
             action['purchased_asset_id'] = 'N/A'
 
     ###############################################
