@@ -382,9 +382,9 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     # delta_R = (Wq / Wi) * (delta_S / Sq) * R
     # delta_W = Wq * delta_S / Sq
     # print('POOL REMOVE LIQUIDITY Timestep === ', prev_state['timestep'],'delta W ', delta_W, 'delta S ', delta_S)
-    print(f"POOL REMOVE LIQUIDITY share fraction of pool = {delta_S / Sq}")
-    print(f"POOL REMOVE LIQUIDITY share fraction of reserve = {delta_R / R}")
-    print(f"POOL REMOVE LIQUIDITY weight fraction of pool = {delta_W / Wi}")
+    # print(f"POOL REMOVE LIQUIDITY share fraction of pool = {delta_S / Sq}")
+    # print(f"POOL REMOVE LIQUIDITY share fraction of reserve = {delta_R / R}")
+    # print(f"POOL REMOVE LIQUIDITY weight fraction of pool = {delta_W / Wi}")
     
     pool.remove_liquidity_pool(asset_id, delta_R, delta_S, delta_W)
 
@@ -819,8 +819,8 @@ def r_to_r_swap_Qh_discrete(params, substep, state_history, prev_state, policy_i
         delta_Q = delta_Sq / Sq * Q
 ###############################################################################################
 ########### Hydra Mechanism Design, Trade/Swap 3-18-21 #######################################
-        print("Q Swap")
-        print("delta Q", delta_Q)
+        # print("Q Swap")
+        # print("delta Q", delta_Q)
         return ('Q', Q + delta_Q)
 
 def r_to_r_swap_Qh_temp(params, substep, state_history, prev_state, policy_input):
@@ -939,9 +939,9 @@ def r_to_r_swap_H_temp(params, substep, state_history, prev_state, policy_input)
         delta_Q = delta_Sq / Sq * Q
 ###############################################################################################
 ########### Hydra Mechanism Design, Trade/Swap 3-18-21 #######################################
-        print("H Swap")
-        print('H', H)
-        print("delta Q", delta_Q)
+        # print("H Swap")
+        # print('H', H)
+        # print("delta Q", delta_Q)
         return ('H', H + delta_Q)
 
 def r_to_r_swap_Sq_discrete(params, substep, state_history, prev_state, policy_input):

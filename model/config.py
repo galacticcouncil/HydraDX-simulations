@@ -47,7 +47,7 @@ def liquidity_randomizer(fake_mc_runs, starting_L_mu, starting_L_sigma, distribu
     return array_random
 
 fake_mc_runs = 100
-block_one_mean_std_ratio = 3
+block_one_mean_std_ratio = 50
 starting_L_mu = 100000
 starting_L_sigma = starting_L_mu / block_one_mean_std_ratio 
 #starting sigma should be zero for block2 experiments

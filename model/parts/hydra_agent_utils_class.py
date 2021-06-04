@@ -131,10 +131,10 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
             delta_Ri = Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
 
         
-        print('delta_Ri = ',delta_Ri)
+        # print('delta_Ri = ',delta_Ri)
         agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values + delta_Ri
         agents.at[agent_id, 'h'] = H_chosen_agent['h'].values - delta_Q
-        print('H_agent r out = ', H_chosen_agent['r_' + asset_id + '_out'].values[0])
+        # print('H_agent r out = ', H_chosen_agent['r_' + asset_id + '_out'].values[0])
         return ('hydra_agents', agents)
 
 def H_agent_q_to_r_trade_discrete(params, substep, state_history, prev_state, policy_input):

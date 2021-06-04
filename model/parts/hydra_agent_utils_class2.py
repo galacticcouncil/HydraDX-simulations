@@ -20,7 +20,7 @@ If symmetric liquidity add is enabled additional calculations are made.
     Wq = prev_state['Wq']
 
     delta_R = policy_input['ri_deposit']
-    print(f"Hydra Agent adding liquidity amount {delta_R}")
+    # print(f"Hydra Agent adding liquidity amount {delta_R}")
     # R = pool.get_reserve(asset_id)
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
