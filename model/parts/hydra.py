@@ -6,7 +6,6 @@ from .hydra_agent_utils_class import *
 from .hydra_mechs import * # newer mechanisms
 from .hydra_weights import * # weight to share mechanisms
 
-
 # Mechanisms
 def mechanismHub_pool(params, substep, state_history, prev_state, policy_input):
     """
@@ -141,7 +140,7 @@ def H_agenthub(params, substep, state_history, prev_state, policy_input):
     elif action == 'Q_Purchase':
         if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
             return H_agent_r_to_q_trade_discrete(params, substep, state_history, prev_state, policy_input)
-        if params['CHANGE_LOG'] == '4-04-21': #no actual in change in H
+        if params['CHANGE_LOG'] == '4-01-21': #no actual in change in H
             return H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
             return H_agent_r_to_q_trade(params, substep, state_history, prev_state, policy_input)

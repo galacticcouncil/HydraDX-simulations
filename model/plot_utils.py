@@ -1062,3 +1062,65 @@ def impermanent_loss_fan_plot(swept_var, sweep_dict, il_kpis, market_information
             axs[i].fill_between(p.index, p10, p90, alpha = 0.25, color=colors[i])
         plt.close()
         display(fig)
+
+def param_pool_simulation_plot(experiments, config_ids, swept_variable, asset_id, y_variable, *args):
+    """
+    experiments is the simulation result dataframe.
+    config_ids is the list configs executed upon in the simulation.
+    swept_variable is the key (string) in config_ids that was being tested against.
+    asset_id is the asset identifier in the pool (string) e.g i,j,k 
+    y_variable is the state_variable (string) to be plotted against default timestep.
+
+    *args for plotting more state_variables (string).
+    """
+    experiments = experiments.sort_values(by =['subset']).reset_index(drop=True)
+    cols = 1
+    rows = 1
+    cc_idx = 0
+    while cc_idx<len(experiments):
+        cc = experiments.iloc[cc_idx]['subset']
+
+        cc_label = experiments.iloc[cc_idx]['subset']
+
+        secondary_label = [item['M'][swept_variable] for item in config_ids if  item["subset_id"]== cc_label]
+        sub_experiments = experiments[experiments['subset']==cc]
+        cc_idx += len(sub_experiments)
+        fig, axs = plt.subplots(ncols=cols, nrows=rows, figsize=(15*cols,7*rows))
+
+        df = sub_experiments.copy()
+
+        df_label = y_variable + asset_id
+        df[df_label] = df.pool.apply(lambda x: np.array(x.pool[asset_id][y_variable]))
+        colors = ['orange', 'g', 'magenta', 'r', 'k' ]
+        df = df.groupby('timestep').agg({df_label: ['min', 'mean', 'max']}).reset_index()
+        ax = axs
+        title = swept_variable + ' Effect on Pool Asset ' + asset_id + '\n' + 'Scenario: ' + str(secondary_label[0]) + ' ' + swept_variable
+        # + 'Scenario: ' + str(cc_label)  + ' rules_price'
+        ax.set_title(title)
+        ax.set_ylabel('Funds')
+
+        df.plot(x='timestep', y=(df_label,'mean'), label=df_label, ax=ax, legend=True, kind ='scatter')
+        ax.fill_between(df.timestep, df[(df_label,'min')], df[(df_label,'max')], alpha=0.3)    
+        for count, arg in enumerate(args):
+            df = sub_experiments.copy()
+            
+            df_arg_label = arg + asset_id
+            df[df_arg_label] = df.pool.apply(lambda x: np.array(x.pool[asset_id][arg]))
+            df = df.groupby('timestep').agg({df_arg_label: ['min', 'mean', 'max']}).reset_index()
+
+            df.plot(x='timestep', y=(df_arg_label,'mean'), label=df_arg_label, ax=ax, legend=True, color = colors[count], kind ='scatter')
+            ax.fill_between(df.timestep, df[(df_arg_label,'min')], df[(df_arg_label,'max')], alpha=0.3)    
+
+        ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+
+        ax.set_xlabel('Timesteps')
+        ax.grid(color='0.9', linestyle='-', linewidth=1)
+
+        plt.tight_layout()
+            
+    fig.tight_layout(rect=[0, 0, 1, .97])
+    fig.patch.set_alpha(1)
+    plt.close()
+    return display(fig)
+
+

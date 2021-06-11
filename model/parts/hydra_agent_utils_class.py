@@ -57,7 +57,7 @@ If symmetric liquidity add is enabled additional calculations are made.
     H_chosen_agent = agents[agents['m']==agent_id]
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
     # Q = prev_state['Q']
     Sq = prev_state['Sq']
     Wq = prev_state['Wq']
@@ -146,7 +146,7 @@ This function updates Hydra agent states when a 'q to r' trade is performed
     H_chosen_agent = agents[agents['m']==agent_id]
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
 
     Q = prev_state['Q']
     Sq = prev_state['Sq']
@@ -183,7 +183,7 @@ This function updates Hydra agent states when a 'q to r' trade is performed
     H_chosen_agent = agents[agents['m']==agent_id]
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
 
     Q = prev_state['Q']
     Sq = prev_state['Sq']
@@ -219,7 +219,7 @@ This function updates Hydra agent states when a 'r to q' trade is performed
     agents =  copy.deepcopy(prev_state['hydra_agents'])
     H_chosen_agent = agents[agents['m']==agent_id]
 
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     Q = prev_state['Q']
@@ -288,7 +288,7 @@ This function updates Hydra agent states when a 'r to r' swap is performed
     agents =  copy.deepcopy(prev_state['hydra_agents'])
     H_chosen_agent = agents[agents['m']==agent_id]
 
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
@@ -331,7 +331,7 @@ def H_agent_r_to_r_swap_discrete(params, substep, state_history, prev_state, pol
     # H_chosen_agent = copy.deepcopy(agents[agents['m']==agent_id])
     # H_chosen_agent_df = pd.DataFrame(H_chosen_agent, index=[int(H_chosen_agent['m'])])
 
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
@@ -371,6 +371,7 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
     This function updates Hydra agent states when a 'r to r' swap is performed
     Deepcopy fixes double resolution error
     """
+    print(' R to R swap called ')
     agent_id = policy_input['agent_id']
     agents =  copy.deepcopy(prev_state['hydra_agents'])
     # agents =  prev_state['hydra_agents']
@@ -378,7 +379,7 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
     # H_chosen_agent = copy.deepcopy(agents[agents['m']==agent_id])
     # H_chosen_agent_df = pd.DataFrame(H_chosen_agent, index=[int(H_chosen_agent['m'])])
 
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
@@ -417,7 +418,7 @@ def H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, polic
     H_chosen_agent = agents[agents['m']==agent_id]
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
 
     Q = prev_state['Q']
     Sq = prev_state['Sq']

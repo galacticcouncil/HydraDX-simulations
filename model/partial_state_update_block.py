@@ -12,29 +12,44 @@ from .parts.uniswap import *
 from .parts.metrics import *
 from .parts.hydra import *
 # from .parts.action import *
-from .parts.action_list import *
+# from .parts.action_list import *
+from .parts.action_swap_test import *
 
 from .parts.resolve import *
 
 partial_state_update_block = [
     {
-        # uniswap.py asset i AND j
+    #     # Resolve H and Weights
         'policies': {
-            'user_action': actionDecoder
+    #         # 'external_action': exogoneous_process
         },
         'variables': {
-            # UNISWAP WORLD
-            'UNI_Ri': mechanismHub_Ri,
-            'UNI_Qi': mechanismHub_Q,
-            'UNI_Si': mechanismHub_Si,
-            'uni_agents': agenthub,
-            'UNI_Rj': mechanismHub_Ri,
-            'UNI_Qj': mechanismHub_Q,
-            'UNI_Sj': mechanismHub_Si,
-            'UNI_ij': mechanismHub_ij,
-            'UNI_ji': mechanismHub_ji,
+    #         # UNISWAP WORLD
+            # 'H': s_resolve_H,
+            # 'asset' : s_asset_weight,
+            'asset_random_choice': s_asset_random,
+            'trade_random_size': s_trade_random,
+            'trade_random_direction': s_direction_random,
         }
     },
+    # {
+        # uniswap.py asset i AND j
+    #     'policies': {
+    #         'user_action': actionDecoder
+    #     },
+    #     'variables': {
+    #         # UNISWAP WORLD
+    #         'UNI_Ri': mechanismHub_Ri,
+    #         'UNI_Qi': mechanismHub_Q,
+    #         'UNI_Si': mechanismHub_Si,
+    #         'uni_agents': agenthub,
+    #         'UNI_Rj': mechanismHub_Ri,
+    #         'UNI_Qj': mechanismHub_Q,
+    #         'UNI_Sj': mechanismHub_Si,
+    #         'UNI_ij': mechanismHub_ij,
+    #         'UNI_ji': mechanismHub_ji,
+    #     }
+    # },
     {
         # hydra.py 
         'policies': {

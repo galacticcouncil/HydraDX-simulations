@@ -139,7 +139,7 @@ def agent_r_to_r_swap(params, substep, state_history, prev_state, policy_input):
     U_agents =  prev_state['uni_agents']
     chosen_agent = U_agents[U_agents['m']==agent_id]
 
-    delta_Ri = int(policy_input['ri_sold']) #amount of Ri being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Ri being sold by the user
     
     if delta_Ri == 0:
         return ('uni_agents', U_agents) 

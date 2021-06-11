@@ -4,7 +4,7 @@ def q_to_r_Wq(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns Q after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
     """
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     Q = prev_state['Q']
     Wq = prev_state['Wq']
 
@@ -72,7 +72,7 @@ def removeLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
     The delta_Wq is taken prom the policy_input as the amount 'UNI_burn'
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
     Wq = prev_state['Wq']
     Sq = prev_state['Sq']
     delta_Wq = Wq / Sq * delta_S
@@ -84,7 +84,7 @@ def r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the quantity Q after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']

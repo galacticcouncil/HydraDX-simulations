@@ -80,7 +80,7 @@ def r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input):
     Sq = prev_state['Sq']
 
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Ki = params['Ki']
@@ -148,7 +148,7 @@ def removeLiquidity_Sq(params, substep, state_history, prev_state, policy_input)
     The delta_Sq is taken prom the policy_input as the amount 'UNI_burn'
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
     Sq = prev_state['Sq']
     
     return ('Sq', Sq - delta_S)
@@ -182,7 +182,7 @@ def r_to_q_Sq_discrete(params, substep, state_history, prev_state, policy_input)
 
 def r_to_q_Sq(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Sq = prev_state['Sq']
 
@@ -208,7 +208,7 @@ def r_to_r_swap_Sq(params, substep, state_history, prev_state, policy_input):
 ########### YELLOW BOX HYDRA SPEC SWAP RISK ASSETS 3-3-21 #####################################    
     asset_id = policy_input['asset_id'] # defines asset subscript
     Sq = prev_state['Sq']
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
 
@@ -272,7 +272,7 @@ def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
     Sq = prev_state['Sq']
 
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Ki = params['Ki']
@@ -310,7 +310,7 @@ def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
 
 def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
 
     pool = prev_state['pool']
     Q = prev_state['Q']
@@ -338,7 +338,7 @@ def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     Q = Q - delta_Q
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
 
     pool = prev_state['pool']
     Q = prev_state['Q']
@@ -363,7 +363,7 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     This function updates and returns the pool variable after a liquidity removal.
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = int(policy_input['UNI_burn'])
+    delta_S = policy_input['UNI_burn']
     pool = prev_state['pool']
    
     R = pool.get_reserve(asset_id)
@@ -396,7 +396,7 @@ def q_to_r_Qh_discrete(params, substep, state_history, prev_state, policy_input)
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
 
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     pool = prev_state['pool']
@@ -450,7 +450,7 @@ def q_to_r_Qh(params, substep, state_history, prev_state, policy_input):
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
 
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     pool = prev_state['pool']
@@ -480,7 +480,7 @@ def q_to_r_Qh(params, substep, state_history, prev_state, policy_input):
 def q_to_r_Sq_discrete(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
 
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     pool = prev_state['pool']
@@ -505,7 +505,7 @@ def q_to_r_Sq_discrete(params, substep, state_history, prev_state, policy_input)
 def q_to_r_Sq(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
     Sq = prev_state['Sq']
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     Wq = prev_state['Wq']
@@ -538,7 +538,7 @@ def q_to_r_pool_discrete(params, substep, state_history, prev_state, policy_inpu
     This function calculates and returns the pool variable after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     Wq = prev_state['Wq']
@@ -569,7 +569,7 @@ def q_to_r_pool(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the pool variable after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     Wq = prev_state['Wq']
@@ -639,7 +639,7 @@ def r_to_q_pool(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the pool variable after a trade between a risk asset and the base asset where delta_R is the amount being sold according to the specification from 3-3-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
 
     Ri = pool.get_reserve(asset_id)
@@ -704,7 +704,7 @@ def r_to_r_pool_discrete(params, substep, state_history, prev_state, policy_inpu
     This function calculates and returns the pool variable after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
 
@@ -748,7 +748,7 @@ def r_to_r_pool_temp(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the pool variable after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
 
@@ -788,7 +788,7 @@ def r_to_r_swap_Qh_discrete(params, substep, state_history, prev_state, policy_i
     This function calculates and returns the quantity Q after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -828,7 +828,7 @@ def r_to_r_swap_Qh_temp(params, substep, state_history, prev_state, policy_input
     This function calculates and returns the quantity Q after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -867,7 +867,7 @@ def r_to_r_swap_H_discrete(params, substep, state_history, prev_state, policy_in
     This function calculates and returns the quantity H after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -909,7 +909,7 @@ def r_to_r_swap_H_temp(params, substep, state_history, prev_state, policy_input)
     This function calculates and returns the quantity H after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -949,7 +949,7 @@ def r_to_r_swap_Sq_discrete(params, substep, state_history, prev_state, policy_i
     This function calculates and returns the quantity Sq after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -987,7 +987,7 @@ def r_to_r_swap_Sq_temp(params, substep, state_history, prev_state, policy_input
     This function calculates and returns the quantity Sq after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
     Q = prev_state['Q']
@@ -1025,7 +1025,7 @@ def r_to_q_Qh(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the quantity Q after a trade between a risk asset and the base asset where delta_Ri is the amount being sold according to the specification from 3-3-21
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     Wq = prev_state['Wq']
@@ -1061,7 +1061,7 @@ def r_to_q_H_discrete(params, substep, state_history, prev_state, policy_input):
     This function calculates and returns the quantity H after a trade between a risk asset and the base asset where delta_Ri is the amount being sold according to the specification from 3-3-21
     """
     H = prev_state['H']
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
 
     if delta_Ri == 0:
         return ('H', H)
@@ -1075,7 +1075,7 @@ def r_to_q_H(params, substep, state_history, prev_state, policy_input):
     H = prev_state['H']
 
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = int(policy_input['ri_sold']) #amount of Q being sold by the user
+    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
     pool = prev_state['pool']
     Q = prev_state['Q']
     Wq = prev_state['Wq']
@@ -1120,7 +1120,7 @@ def q_to_r_H(params, substep, state_history, prev_state, policy_input):
 
     asset_id = policy_input['asset_id'] # defines asset subscript
 
-    delta_Q = int(policy_input['q_sold']) #amount of Q being sold by the user
+    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     Q = prev_state['Q']
     pool = prev_state['pool']
     Wq = prev_state['Wq']
