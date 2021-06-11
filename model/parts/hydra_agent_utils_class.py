@@ -107,6 +107,7 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
+    print('delta_Q', delta_Q)
 
     Q = prev_state['Q']
     Sq = prev_state['Sq']
@@ -123,12 +124,12 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
         return ('hydra_agents', agents)
     else:
 
-        delta_Ri =- Ri * ((Q / (Q + delta_Q))**(Wq / Wi) - 1) # blue box force negative because sebtracted from pool
+        delta_Ri = Ri * ((Q / (Q + delta_Q))**(Wq / Wi) - 1) # blue box force negative because sebtracted from pool
         if params['a'] != 1:
             first = 1 /(1 - a)
             second = (Wq**a) / Wi
             third = Q**(1 - a) - (Q + delta_Q)**(1 - a)
-            delta_Ri = Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
+            delta_Ri =  Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
 
         
         # print('delta_Ri = ',delta_Ri)

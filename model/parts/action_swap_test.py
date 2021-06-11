@@ -51,6 +51,7 @@ def actionDecoder(params, step, history, prev_state):
     agent3_id = 3
     agent4_id = 4
     agent5_id = 5
+    agent6_id = 6
     agent7_id = 7
     
     ############# CREATE AGENT ID's ################
@@ -71,106 +72,90 @@ def actionDecoder(params, step, history, prev_state):
         else:
             action['asset_id'] = random.choice(['i','j'])
             action['purchased_asset_id'] = 'N/A'
-    ####### AGENT 0 ######################
-    if params['exo_trade'] == 'test_q_for_r':
-        action['action_id'] = 'Ri_Purchase'
-        action['purchased_asset_id'] = 'i'
-        P = pool.get_price(action['purchased_asset_id']) 
-        action['q_sold'] = prev_state['trade_random_size'] * 2
 
+    if params['exo_random_sequence'] == 'q_to_i_i_q':
+        if timestep == 1:
+            action['asset_id'] = random.choice(['i'])
 
-        # temp choose first agent
-        action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
-        if action['asset_id'] == 'j':
-            action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
-            action['purchased_asset_id'] = 'j'
-            P = pool.get_price(action['purchased_asset_id']) 
-            action['q_sold'] = prev_state['trade_random_size'] * 2
-    ###############################################
-
-########## TEMP TEST SELL R FOR Q ############
-    ####### AGENT 1 ######################
-    if params['exo_trade'] == 'test_r_for_q':
-        action['ri_sold'] = prev_state['trade_random_size']
-        action['action_id'] = 'Q_Purchase'
-        action['purchased_asset_id'] = 'q'
-        P = pool.get_price('i') 
-        action['ri_sold'] = prev_state['trade_random_size'] 
-        # temp choose first agent
-        action['agent_id'] = prev_state['uni_agents']['m'][agent1_id]
-        if action['asset_id'] == 'j':
-            P = pool.get_price(action['asset_id']) 
-            # print('ACTION LIST PRICE ===== ', P)
-            action['agent_id'] = prev_state['uni_agents']['m'][agent1_id] 
-            action['ri_sold'] = prev_state['trade_random_size'] 
-            action['purchased_asset_id'] = 'q'
-
-    ###############################################
-
-    ########## TEMP TEST ADD LIQ ############
-    ####### AGENT 2 ######################
-    if params['exo_liq'] == 'test_add':
-        action['ri_deposit'] = 5000
-        action['action_id'] = 'AddLiquidity'
-        action['purchased_asset_id'] = 'N/A'
-
-        # temp choose first agent
-        if timestep == 10:
-            action['ri_deposit'] = 50000
-
-            action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
-        else:
-            action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-
-        if action['asset_id'] == 'j':
-            action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-            action['ri_deposit'] = 5000
-            action['purchased_asset_id'] = 'N/A'
-
-    ###############################################
-
-    ########## TEMP TEST REMOVE LIQ ############
-    ####### AGENT 3 ######################
-    if params['exo_liq'] == 'test_remove':
-        print(prev_state['uni_agents']['s_i'][agent2_id])
-        #print(removal)
-        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
-
-        action['purchased_asset_id'] = 'N/A'
-
-        action['action_id'] = 'RemoveLiquidity'
-        if timestep == 490:
-            action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
-            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
-
-        else:
-            action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-
-        if action['asset_id'] == 'j':
-            # print('remove j',step,action['asset_id'])
-            action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
-            action['purchased_asset_id'] = 'N/A'
-
-    ###############################################
-
-    ########## TEMP TEST SELL R FOR R ############
-    ####### AGENT 7 ######################
-    if params['exo_trade'] == 'test_r_for_r':
-        # print("I want to trade:")
-        action['ri_sold'] = hydra_agents['r_i_out'][agent7_id]
-        action['action_id'] = 'R_Swap'
-        action['purchased_asset_id'] = 'j'
-        action['direction'] = 'ij'
-
-        # temp choose first agent
-        action['agent_id'] = hydra_agents['m'][agent7_id]
-        # print('prev_state hydra_agents -->', prev_state['hydra_agents']['r_i_out'][agent7_id])
-        if action['asset_id'] == 'j':
-            action['agent_id'] = hydra_agents['m'][agent7_id]
-            action['ri_sold'] = hydra_agents['r_j_out'][agent7_id]
+            action['action_id'] = 'Ri_Purchase'
             action['purchased_asset_id'] = 'i'
-            action['direction'] = 'ji'           
+            action['agent_id'] = hydra_agents['m'][agent6_id]
+            action['q_sold'] = hydra_agents['h'][agent6_id]
+        elif timestep == 2:
+            action['asset_id'] = random.choice(['i'])
+
+            action['ri_sold'] = hydra_agents['r_i_out'][agent6_id] * 0.1
+            action['action_id'] = 'Q_Purchase'
+            action['purchased_asset_id'] = 'q'
+            action['agent_id'] = hydra_agents['m'][agent6_id]
+
+
+    # ###############################################
+
+    # ########## TEMP TEST ADD LIQ ############
+    # ####### AGENT 2 ######################
+    # if params['exo_liq'] == 'test_add':
+    #     action['ri_deposit'] = 5000
+    #     action['action_id'] = 'AddLiquidity'
+    #     action['purchased_asset_id'] = 'N/A'
+
+    #     # temp choose first agent
+    #     if timestep == 10:
+    #         action['ri_deposit'] = 50000
+
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
+    #     else:
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
+
+    #     if action['asset_id'] == 'j':
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
+    #         action['ri_deposit'] = 5000
+    #         action['purchased_asset_id'] = 'N/A'
+
+    # ###############################################
+
+    # ########## TEMP TEST REMOVE LIQ ############
+    # ####### AGENT 3 ######################
+    # if params['exo_liq'] == 'test_remove':
+    #     print(prev_state['uni_agents']['s_i'][agent2_id])
+    #     #print(removal)
+    #     action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
+
+    #     action['purchased_asset_id'] = 'N/A'
+
+    #     action['action_id'] = 'RemoveLiquidity'
+    #     if timestep == 490:
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
+    #         action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
+
+    #     else:
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
+
+    #     if action['asset_id'] == 'j':
+    #         # print('remove j',step,action['asset_id'])
+    #         action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
+    #         action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
+    #         action['purchased_asset_id'] = 'N/A'
+
+    # ###############################################
+
+    # ########## TEMP TEST SELL R FOR R ############
+    # ####### AGENT 7 ######################
+    # if params['exo_trade'] == 'test_r_for_r':
+    #     # print("I want to trade:")
+    #     action['ri_sold'] = hydra_agents['r_i_out'][agent7_id]
+    #     action['action_id'] = 'R_Swap'
+    #     action['purchased_asset_id'] = 'j'
+    #     action['direction'] = 'ij'
+
+    #     # temp choose first agent
+    #     action['agent_id'] = hydra_agents['m'][agent7_id]
+    #     # print('prev_state hydra_agents -->', prev_state['hydra_agents']['r_i_out'][agent7_id])
+    #     if action['asset_id'] == 'j':
+    #         action['agent_id'] = hydra_agents['m'][agent7_id]
+    #         action['ri_sold'] = hydra_agents['r_j_out'][agent7_id]
+    #         action['purchased_asset_id'] = 'i'
+    #         action['direction'] = 'ji'           
     print("action['ri_sold']",action['ri_sold'], ' of ', action['asset_id'])
     return action
 
