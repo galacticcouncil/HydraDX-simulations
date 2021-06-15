@@ -20,14 +20,17 @@ def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
     if delta_Ri == 0:
         return ('pool', pool)
     else:
-        delta_Wi = - (delta_Ri / Ri) * Wi
+        delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
 
+        Wi = Wi + delta_Wi
         Wi_ratio = delta_Wi / Wi
         delta_Wk = - Wi_ratio * Wk
-
+        Wk = Wk + delta_Wk
         # CHECKED SIGN because it is being subtracted, made negative, to make positive
         delta_Rk = - Rk * ((Ri / (Ri + delta_Ri))**(Wi / Wk) - 1) # blue box force negative because sebtracted from pool
-        print(' R added to pool = ', delta_Ri)
+        print(' R added to pool of ',asset_id,' = ', delta_Ri)
+        print(' R removed from pool of ',purchased_asset_id,' = ', delta_Rk)
+
         pool.r_to_q_pool(asset_id, delta_Ri) # adds Ri to pool
         pool.q_to_r_pool(purchased_asset_id, delta_Rk) # SUBTRACTS removes Rk from pool
 
@@ -60,7 +63,7 @@ def r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, polic
         return ('Q', Q)
 
     else:
-        delta_Wi = - (delta_Ri / Ri) * Wi
+        delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
 
         Wi_ratio = delta_Wi / Wi
         delta_Wk = - Wi_ratio * Wk
@@ -99,7 +102,7 @@ def r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy
         return ('H', H)
 
     else:
-        delta_Wi = - (delta_Ri / Ri) * Wi
+        delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
 
         Wi_ratio = delta_Wi / Wi
         delta_Wk = - Wi_ratio * Wk
@@ -136,7 +139,9 @@ def r_to_r_swap_Sq_reserve_one(params, substep, state_history, prev_state, polic
         return ('Sq', Sq)
 
     else:
-        delta_Si = - (delta_Ri / Ri) * Si
+        # FROM REORDERING
+        # delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
+        delta_Si = - (delta_Ri / (Ri + delta_Ri)) * Si
 
         Si_ratio = delta_Si / Si
         delta_Sk = - Si_ratio * Sk

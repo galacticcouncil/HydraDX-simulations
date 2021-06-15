@@ -397,10 +397,12 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
         return ('hydra_agents', agents)
 
     else:
-        delta_Wi = - (delta_Ri / Ri) * Wi
+        delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
 
+        Wi = Wi + delta_Wi
         Wi_ratio = delta_Wi / Wi
         delta_Wk = - Wi_ratio * Wk
+        Wk = Wk + delta_Wk
 
         # CHECKED SIGN because it is being subtracted, made negative, to make positive
         delta_Rk = - Rk * ((Ri / (Ri + delta_Ri))**(Wi / Wk) - 1) # blue box force negative because sebtracted from pool
