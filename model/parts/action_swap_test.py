@@ -73,21 +73,21 @@ def actionDecoder(params, step, history, prev_state):
             action['asset_id'] = random.choice(['i','j'])
             action['purchased_asset_id'] = 'N/A'
 
-    if params['exo_random_sequence'] == 'q_to_i_i_q':
-        if timestep == 1:
-            action['asset_id'] = random.choice(['i'])
+    # if params['exo_random_sequence'] == 'q_to_i_i_q':
+    #     if timestep == 1:
+    #         action['asset_id'] = random.choice(['i'])
 
-            action['action_id'] = 'Ri_Purchase'
-            action['purchased_asset_id'] = 'i'
-            action['agent_id'] = hydra_agents['m'][agent6_id]
-            action['q_sold'] = hydra_agents['h'][agent6_id]
-        elif timestep == 2:
-            action['asset_id'] = random.choice(['i'])
+    #         action['action_id'] = 'Ri_Purchase'
+    #         action['purchased_asset_id'] = 'i'
+    #         action['agent_id'] = hydra_agents['m'][agent6_id]
+    #         action['q_sold'] = hydra_agents['h'][agent6_id]
+    #     elif timestep == 2:
+    #         action['asset_id'] = random.choice(['i'])
 
-            action['ri_sold'] = hydra_agents['r_i_out'][agent6_id] * 0.1
-            action['action_id'] = 'Q_Purchase'
-            action['purchased_asset_id'] = 'q'
-            action['agent_id'] = hydra_agents['m'][agent6_id]
+    #         action['ri_sold'] = hydra_agents['r_i_out'][agent6_id] * 0.1
+    #         action['action_id'] = 'Q_Purchase'
+    #         action['purchased_asset_id'] = 'q'
+    #         action['agent_id'] = hydra_agents['m'][agent6_id]
 
 
     # ###############################################
@@ -141,20 +141,20 @@ def actionDecoder(params, step, history, prev_state):
 
     # ########## TEMP TEST SELL R FOR R ############
     # ####### AGENT 7 ######################
-    # if params['exo_trade'] == 'test_r_for_r':
-    #     # print("I want to trade:")
-    #     action['ri_sold'] = hydra_agents['r_i_out'][agent7_id]
-    #     action['action_id'] = 'R_Swap'
-    #     action['purchased_asset_id'] = 'j'
-    #     action['direction'] = 'ij'
+    if params['exo_trade'] == 'test_r_for_r':
+        # print("I want to trade:")
+        action['ri_sold'] = hydra_agents['r_i_out'][agent7_id]
+        action['action_id'] = 'R_Swap'
+        action['purchased_asset_id'] = 'j'
+        action['direction'] = 'ij'
 
-    #     # temp choose first agent
-    #     action['agent_id'] = hydra_agents['m'][agent7_id]
-    #     # print('prev_state hydra_agents -->', prev_state['hydra_agents']['r_i_out'][agent7_id])
-    #     if action['asset_id'] == 'j':
-    #         action['agent_id'] = hydra_agents['m'][agent7_id]
-    #         action['ri_sold'] = hydra_agents['r_j_out'][agent7_id]
-    #         action['purchased_asset_id'] = 'i'
+        # temp choose first agent
+        action['agent_id'] = hydra_agents['m'][agent7_id]
+        # print('prev_state hydra_agents -->', prev_state['hydra_agents']['r_i_out'][agent7_id])
+        if action['asset_id'] == 'j':
+            action['agent_id'] = hydra_agents['m'][agent7_id]
+            action['ri_sold'] = hydra_agents['r_j_out'][agent7_id]
+            action['purchased_asset_id'] = 'i'
     #         action['direction'] = 'ji'           
     print("action['ri_sold']",action['ri_sold'], ' of ', action['asset_id'])
     return action

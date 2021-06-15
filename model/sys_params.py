@@ -34,8 +34,8 @@ sigma = [500]
 
 ############### RANDOM SEQUENCE - add -swap -remove #####################
 #exo_random_sequence = ['off'] 
-# exo_random_sequence = ['on'] 
-exo_random_sequence = ['q_to_i_i_q'] 
+exo_random_sequence = ['on'] 
+# exo_random_sequence = ['q_to_i_i_q'] 
 
 ################## LIQUIDITY ######################################################
 # exo_liq = ['test_add']  # agent 2
