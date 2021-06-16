@@ -232,7 +232,7 @@ def actionDecoder(params, step, history, prev_state):
         action['purchased_asset_id'] = 'N/A'
 
         action['action_id'] = 'RemoveLiquidity'
-        if timestep == 490:
+        if timestep == 90:
             action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
             action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
 
