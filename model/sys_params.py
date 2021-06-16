@@ -30,7 +30,7 @@ exo_trade = ['test_r_for_r'] # agent 1
 # exo_trade_size = ['fix_size']  # agent 5?
 exo_trade_size = ['vary_size'] # agent 5?
 mu = [1000]
-sigma = [500]
+sigma = [0]
 
 ############### RANDOM SEQUENCE - add -swap -remove #####################
 #exo_random_sequence = ['off'] 
@@ -90,10 +90,10 @@ BTR = Sq / Q
 C = asset_initial_values['i']['S'] * asset_initial_values['j']['S']**2 # squared for same as asset k 
 
 ##########  reserve invariance function #1
-# a = [0.5, 1, 1.5]
+a = [0.5, 1, 1.5]
 #a = [0.5]
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
-a = [0.9, 1, 1.1]
+# a = [0.9, 1, 1.1]
 
 #a = [1]
 ENABLE_BALANCER_PRICING = [True] 

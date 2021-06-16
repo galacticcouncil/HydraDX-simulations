@@ -71,7 +71,7 @@ def actionDecoder(params, step, history, prev_state):
            # removal = prev_state['uni_agents']['s_i'][agent2_id] - 150000
            # print("Assigned removal")
            # print(removal)
-        elif timestep == 490:
+        elif timestep == 90:
             # print('getting in-for remove', params['exo_random_sequence'], timestep)
             params['exo_liq'] = 'test_remove'
             params['exo_trade'] = 'pass'
@@ -301,8 +301,9 @@ def s_direction_random(params, step, history, prev_state, policy_input):
         # there are no trades to be made this timestep
         return 'trade_random_direction', 'no_trade'
     else:
-        direction_random_choice = random.choice(['test_q_for_r', 'test_r_for_q', 'test_r_for_r', 'test_add', 'test_remove'])
+        # direction_random_choice = random.choice(['test_q_for_r', 'test_r_for_q', 'test_r_for_r', 'test_add', 'test_remove'])
         # direction_random_choice = random.choice(['test_q_for_r', 'test_r_for_q', 'test_r_for_r'])
+        direction_random_choice = random.choice(['test_r_for_r'])
 
         return 'trade_random_direction', direction_random_choice
 
