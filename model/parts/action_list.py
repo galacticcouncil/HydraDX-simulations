@@ -86,8 +86,8 @@ def actionDecoder(params, step, history, prev_state):
             params['exo_trade'] = prev_state['trade_random_direction']
             #action['asset_id'] = random.choice(['i', 'j'])
             action['asset_id'] = prev_state['asset_random_choice']
-            # params['exo_liq'] = 'pass' #prev_state['trade_random_direction']
-            params['exo_liq'] = prev_state['trade_random_direction']
+            params['exo_liq'] = 'pass' #prev_state['trade_random_direction']
+            # params['exo_liq'] = prev_state['trade_random_direction']
          
                     
     if params['exo_random_sequence'] == 'on':
@@ -233,6 +233,7 @@ def actionDecoder(params, step, history, prev_state):
 
         action['action_id'] = 'RemoveLiquidity'
         if timestep == 90:
+            print('removing at timestep 90: ', prev_state['uni_agents']['s_i'][agent2_id])
             action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
             action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
 
