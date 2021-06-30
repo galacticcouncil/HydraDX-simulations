@@ -1,6 +1,6 @@
 print("running file: sim_setup.py")
 # T
-SIMULATION_TIME_STEPS = 100
+SIMULATION_TIME_STEPS = 12
 
 # N monte carlo runs
 MONTE_CARLO_RUNS = 1
