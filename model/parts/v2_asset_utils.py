@@ -3,7 +3,7 @@ import numpy as np
 
 class V2_Asset(): #args
     """
-    Asset class is tracking risk assets ina hydra omipool. 
+    Asset class is tracking risk assets in a hydra omipool. 
     This includes the shares and weights of those assets.
     Method for adding new asset yet not in existence in the pool
     """  
@@ -118,6 +118,15 @@ class V2_Asset(): #args
             if key == asset_id:
                 return(self.pool[key]['W'])
 
+    def get_coefficient(self, asset_id):
+        """
+        returns coefficient C of one specific asset from the pool variable
+        """
+        for key in self.pool.keys():
+            # print(self.pool.items()) 
+            if key == asset_id:
+                return(self.pool[key]['C'])
+
     def update_price(self, Q, Wq):
         """
         updates price P of one specific asset from the pool variable and change in price dP for a Q and Sq according to
@@ -194,8 +203,8 @@ class V2_Asset(): #args
     
     def swap_weight_pool(self, asset_id, delta_W):
         """
-        updates share of specific asset from the pool variable for a swap according to
-        S = S + delta_S
+        updates weight of specific asset from the pool variable for a swap according to
+        W = W + delta_W
         """ 
         for key in self.pool.keys():
             # print(self.pool.items()) 
