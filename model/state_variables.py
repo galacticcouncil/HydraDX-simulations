@@ -18,7 +18,7 @@ In addition to that, we initialize:
 # Dependences
 from .parts.utils import *
 from .initialize_liquidity import C, initial_values
-from .parts.asset_utils import Asset
+# from .parts.asset_utils import Asset
 from .parts.v2_asset_utils import V2_Asset
 import pandas as pd
 ########## AGENT INITIALIZATION ##########
@@ -52,7 +52,11 @@ agents_df['r_j_in'] =  130000, 130000.0, 130000, 130000, 130000, 130000, 0.0, 0.
 agents_df['q_j'] =  180000, 180000.0, 180000, 180000, 180000, 180000, 0.0, 0.0
 ##################### ASSET TYPES ###################################
 ############
-pool = Asset('i', initial_values['Ri'], initial_values['Si'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Ri']/initial_values['Si']))
+#pool = Asset('i', initial_values['Ri'], initial_values['Si'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Ri']/initial_values['Si']))
+#pool.add_new_asset('j', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
+#pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
+
+pool = V2_Asset('i', initial_values['Ri'], initial_values['Si'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Ri']/initial_values['Si']))
 pool.add_new_asset('j', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
 pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
 
@@ -61,9 +65,7 @@ UNI_P_RQi = initial_values['UNI_Qi'] / initial_values['UNI_Ri']
 UNI_P_RQj = initial_values['UNI_Qj'] / initial_values['UNI_Rj']
 UNI_P_ij = initial_values['UNI_ij'] / initial_values['UNI_ji']
 
-v2_pool = V2_Asset('i', initial_values['Ri'], initial_values['Si'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Ri']/initial_values['Si']))
-v2_pool.add_new_asset('j', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
-v2_pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
+
 
 ## Initial state object
 initial_state = {
@@ -86,7 +88,6 @@ initial_state = {
     # assets
     # 'asset' : asset_df,
     'pool' : pool, 
-    'v2_pool': v2_pool,
     # Hydra
     'Q': initial_values['Q'],
     'H': initial_values['H'],
@@ -94,7 +95,6 @@ initial_state = {
     'Sq': initial_values['Sq'],
     # Hydra Local Vars
     'hydra_agents': agents_df,
-    'v2_hydra_agents': agents_df,
     'C': C,
     'asset_random_choice': 'i',
     'trade_random_size': 1000,
