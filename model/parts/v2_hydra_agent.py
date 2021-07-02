@@ -98,7 +98,7 @@ def getInputPrice(input_amount, input_reserve, output_reserve, params):
 
 def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates Hydra agent states when a 'q to r' trade is performed
+    This function updates Hydra agent states when the pool asset Q is traded into the pool in return for a risk asset Ri
     """
     agent_id = policy_input['agent_id']
     agents =  copy.deepcopy(prev_state['hydra_agents'])
@@ -110,13 +110,15 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
     print('delta_Q', delta_Q)
 
     Q = prev_state['Q']
-    Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
+    Y = prev_state['Y']
+    #Sq = prev_state['Sq']
+    #Wq = prev_state['Wq']
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id) 
-    Si = pool.get_share(asset_id) 
-    Pi = pool.get_price(asset_id) 
+    Ci = pool.get_coefficient(asset_id)
+    #Wi = pool.get_weight(asset_id) 
+    #Si = pool.get_share(asset_id) 
+    #Pi = pool.get_price(asset_id) 
 
     a = params['a']
 
@@ -124,14 +126,8 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
         return ('hydra_agents', agents)
     else:
 
-        delta_Ri = Ri * ((Q / (Q + delta_Q))**(Wq / Wi) - 1) # blue box force negative because sebtracted from pool
-        if params['a'] != 1:
-            first = 1 /(1 - a)
-            second = (Wq**a) / Wi
-            third = Q**(1 - a) - (Q + delta_Q)**(1 - a)
-            delta_Ri =  Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
+        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(1/a) - Ri
 
-        
         # print('delta_Ri = ',delta_Ri)
         agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values + delta_Ri
         agents.at[agent_id, 'h'] = H_chosen_agent['h'].values - delta_Q
@@ -369,7 +365,7 @@ def H_agent_r_to_r_swap_discrete(params, substep, state_history, prev_state, pol
 
 def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates Hydra agent states when a 'r to r' swap is performed
+    This function updates Hydra agent states when one risk asset is traded for another risk asset
     Deepcopy fixes double resolution error
     """
     print(' R to R swap called ')
@@ -386,27 +382,27 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
     purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
-    Si = pool.get_share(asset_id)
+    #Wi = pool.get_weight(asset_id)
+    Ci = pool.get_coefficient(asset_id)
+    #Si = pool.get_share(asset_id)
 
     Rk = pool.get_reserve(purchased_asset_id)
-    Wk = pool.get_weight(purchased_asset_id)
-    Sk = pool.get_share(purchased_asset_id) 
+    #Wk = pool.get_weight(purchased_asset_id)
+    Ck = pool.get_coefficient(purchased_asset_id)
+    #Sk = pool.get_share(purchased_asset_id)
+
+    a = params['a']
  
     if delta_Ri == 0:
         return ('hydra_agents', agents)
 
     else:
-        delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
+        # The swap out value delta_Rk is always negative
+        delta_Rk = ( (Ci/Ck)*Ri**(-a) - (Ci/Ck)*(Ri + delta_Ri)**(-a) + Rk**(-a) )**(-1/a) - Rk
 
-        Wi = Wi + delta_Wi
-        Wi_ratio = delta_Wi / Wi
-        delta_Wk = - Wi_ratio * Wk
-        Wk = Wk + delta_Wk
+        # Make the delta_Rk value positive for readability in agent balance update below
+        delta_Rk = - delta_Rk
 
-        # CHECKED SIGN because it is being subtracted, made negative, to make positive
-        delta_Rk = - Rk * ((Ri / (Ri + delta_Ri))**(Wi / Wk) - 1) # blue box force negative because sebtracted from pool
- 
         agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values - delta_Ri
         agents.at[agent_id, 'r_' + purchased_asset_id + '_out'] = H_chosen_agent['r_' + purchased_asset_id + '_out'].values + delta_Rk
         
@@ -414,7 +410,7 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
 
 def H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates Hydra agent states when a 'q to r' trade is performed
+    This function updates Hydra agent states when a risk asset Ri is traded into the pool in return for the pool asset Q  
     """
     agent_id = policy_input['agent_id']
     agents =  copy.deepcopy(prev_state['hydra_agents'])
@@ -424,26 +420,23 @@ def H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, polic
     delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
 
     Q = prev_state['Q']
-    Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
+    Y = prev_state['Y']
+    #Sq = prev_state['Sq']
+    #Wq = prev_state['Wq']
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id) 
-    Si = pool.get_share(asset_id) 
-    Pi = pool.get_price(asset_id) 
+    #Wi = pool.get_weight(asset_id)
+    Ci = pool.get_coefficient(asset_id)
+    #Si = pool.get_share(asset_id) 
+    #Pi = pool.get_price(asset_id) 
 
     a = params['a']
 
     if delta_Ri == 0:
         return ('hydra_agents', agents)
     else:
-        delta_Q = Q * ((Ri / (Ri + delta_Ri))**(Wi / Wq) - 1) 
-        if params['a'] != 1:
-            first = Q**(1 - a)
-            second = Wi * (1 -a) / Wq**a
-            third = np.log(1 + delta_Ri / Ri)
-            delta_Q = (first - second * third)**(1/(1 - a)) - Q
-
+        delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q
+    
         agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values - delta_Ri
         agents.at[agent_id, 'h'] = H_chosen_agent['h'].values + delta_Q
         

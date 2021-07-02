@@ -4,6 +4,7 @@ from .v2_hydra_utils import * # original mechanisms
 # from .hydra_agent_utils import *
 from .v2_hydra_agent import *
 from .v2_hydra_mechs import * # newer mechanisms
+from .v2_hydra_coeffs import * # new mechanism 28 June 2021
 # from .hydra_weights import * # weight to share mechanisms
 
 # Mechanisms
@@ -155,7 +156,7 @@ def H_agenthub(params, substep, state_history, prev_state, policy_input):
 
 def mechanismHub_H_Hydra(params, substep, state_history, prev_state, policy_input):
     """
-This mechanism returns the approprate hydra (H=total supply) function to a given policy input.
+This mechanism returns the approprate Hydra (H=total supply) function to a given policy input.
 
 For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
     """
@@ -209,3 +210,4 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     elif action == 'R_Swap':
         return r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input)
     return('Wq', prev_state['Wq'])
+

@@ -566,36 +566,30 @@ def q_to_r_pool_discrete(params, substep, state_history, prev_state, policy_inpu
 
 def q_to_r_pool(params, substep, state_history, prev_state, policy_input):
     """
-    This function calculates and returns the pool variable after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
+    This function calculates and returns the pool variable after a trade where 
+    delta_Q is the amount being sold.
     """
+
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
+    delta_Q  = policy_input['q_sold'] #amount of Q being sold by the user
+
     pool = prev_state['pool']
-    Q = prev_state['Q']
-    Wq = prev_state['Wq']
+    Q    = prev_state['Q']
+    Y    = prev_state['Y']
+    #Wq = prev_state['Wq']
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
+    Ci = pool.get_coefficient(asset_id)
+    #Wi = pool.get_weight(asset_id)
+
+    a = params['a']
 
     if delta_Q == 0:
         return ('pool', pool)
     else:
-        W_ratio = Wq / Wi
-        inner_term = Q /(Q+ delta_Q*(params['fee_numerator']/params['fee_denominator']))
-        power = inner_term**W_ratio
-        delta_Ri = Ri * (1 - power)
+        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(1/a) - Ri
     
         pool.q_to_r_pool(asset_id, delta_Ri)
-
-###############################################################################################
-########### YELLOW BOX HYDRA SPEC SWAP RISK ASSETS 3-3-21 #####################################
-        Si = pool.get_share(asset_id)
-        delta_Si = - delta_Ri / Ri * Si  # making negative
-        
-        pool.swap_share_pool(asset_id, delta_Si) #adds
-
-########### YELLOW BOX HYDRA SPEC SWAP RISK ASSETS 3-3-21 #####################################
-###############################################################################################
 
         return ('pool', pool)
 
