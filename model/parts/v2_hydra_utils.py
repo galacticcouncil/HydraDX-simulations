@@ -250,9 +250,12 @@ def resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_in
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
+    a = params['a']
+    delta_R = policy_input['ri_deposit']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
-    H = prev_state['H']
-
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
     # R = pool.get_reserve(asset_id)
@@ -260,12 +263,13 @@ def resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_in
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
    
-    delta_R = policy_input['ri_deposit']
+    Ri_plus = Ri + delta_R
+    Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    BTR = Sq / Q
-    delta_Q = delta_R * P
+    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
-    return ('H', H + delta_Q)
+    return ('H', Q_plus)
 
 
 def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
@@ -317,27 +321,30 @@ def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
 
 def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
-
     pool = prev_state['pool']
+    a = params['a']
+    delta_S = policy_input['UNI_burn']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
-    H = prev_state['H']
-
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
-    R = pool.get_reserve(asset_id)
+    # R = pool.get_reserve(asset_id)
     # W = pool.get_weight(asset_id) 
-    S = pool.get_share(asset_id) 
+    # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
+    
 
-    delta_R = delta_S / S * R
-    # ---------------------------------- #
-    # BTR = Sq / Q
-    delta_Q = delta_R * P
-    # delta_Sq = delta_Q * BTR
-    delta_Q = delta_S * Q / Sq
+    delta_R = (delta_S / Sq) * (Q / P)
+   
+    Ri_plus = Ri - delta_R
+    Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
-    return ('H', (H - delta_Q))
+    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+
+    return ('H', (Q_plus))
 
 def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     """
