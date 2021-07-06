@@ -35,7 +35,7 @@ class V2_Asset(): #args
                         'P': price}})
         # else calc price
 
-    def add_liquidity_pool(self, asset_id, delta_R, delta_Sq, delta_W):
+    def add_liquidity_pool(self, asset_id, delta_R):
         """
         Liquidity added to the pool for one specific risk asset; spec 6-28-21
         - R increased by delta_R
@@ -57,7 +57,7 @@ class V2_Asset(): #args
                 #self.pool[key]['W'] += delta_W
                 self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    def remove_liquidity_pool(self, asset_id, delta_R, delta_S, delta_W):
+    def remove_liquidity_pool(self, asset_id, delta_R):
         """
         Liquidity removed from the pool for one specific risk asset; spec 6-28-21; 
         same as add_liquidity pool; BUT delta_R is still assumed as positive, therefore the sign changes
