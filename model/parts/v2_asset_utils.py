@@ -46,8 +46,9 @@ class V2_Asset(): #args
         
         Si = pool.get_share(asset_id) 
         Ci = pool.get_coefficient(asset_id)
-        Ri = self.pool[key]['R']
+        Ri = self.pool[asset_id]['R']
         Y = prev_state['Y']
+        a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
@@ -66,8 +67,9 @@ class V2_Asset(): #args
         """
         Si = pool.get_share(asset_id) 
         Ci = pool.get_coefficient(asset_id)
-        Ri = self.pool[key]['R']
+        Ri = self.pool[asset_id]['R']
         Y = prev_state['Y']
+        a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
