@@ -93,6 +93,8 @@ initial_state = {
     'H': initial_values['H'],
     'Wq': initial_values['Sq'],
     'Sq': initial_values['Sq'],
+    # Hydra Y coefficient
+    'Y': initial_values['Y']
     # Hydra Local Vars
     'hydra_agents': agents_df,
     'C': C,

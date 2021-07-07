@@ -118,6 +118,9 @@ initial_values = {
     # 'Sq': 5*Q,
     'Q':  asset_initial_values['i']['Q'] + asset_initial_values['j']['Q'],
     'H':  asset_initial_values['i']['Q'] + asset_initial_values['j']['Q'],
+    # Hydra initial Y value
+    'Y': 200 #placeholder, to be defined correctly
+    # Y = (Ci / (Ri ** (a)) + Cj / (Rj ** (a))) ** (- 1 / a)
 }
 # print(initial_values['Q'])
 #################################################################################################################

@@ -211,3 +211,14 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
         return r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input)
     return('Wq', prev_state['Wq'])
 
+def mechanismHub_Y(params, substep, state_history, prev_state, policy_input):
+    """
+This mechanism returns the approprate Y update function for liquidity events
+    """
+    action = policy_input['action_id']
+    if action == 'AddLiquidity':
+        return addLiquidity_Y(params, substep, state_history, prev_state, policy_input)
+    elif action == 'RemoveLiquidity':
+        return removeLiquidity_Y(params, substep, state_history, prev_state, policy_input)
+    return('Y', prev_state['Y'])
+
