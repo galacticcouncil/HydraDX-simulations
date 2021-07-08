@@ -35,7 +35,7 @@ class V2_Asset(): #args
                         'P': price}})
         # else calc price
 
-    def add_liquidity_pool(self, asset_id, delta_R):
+    def add_liquidity_pool(self, asset_id, delta_R, a):
         """
         Liquidity added to the pool for one specific risk asset; spec 6-28-21
         - R increased by delta_R
@@ -43,41 +43,46 @@ class V2_Asset(): #args
         - no weight changes
         - Y increased acc to spec
         """ 
-        
-        Si = pool.get_share(asset_id) 
-        Ci = pool.get_coefficient(asset_id)
-        Ri = self.pool[asset_id]['R']
-        Y = prev_state['Y']
-        a = params['a']
+        # JS July 8, 2021: corrected references to 'pool' attribute
+        Si = self.get_share(asset_id) 
+        Ci = self.get_coefficient(asset_id)
+        Ri = self.get_reserve(asset_id)
+        #Y = prev_state['Y']
+        #a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
                 self.pool[key]['R'] += delta_R
                 self.pool[key]['S'] = Si * (Ri + delta_R) / Ri
-                Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
+                self.pool[key]['C'] = Ci * ((Ri + delta_R) / Ri) ** (a+1)
                 #self.pool[key]['W'] += delta_W
-                self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
+                # JS July 8, 2021: 'Y' is a pool constant and is not part of any individual asset
+                # The 'Y' pool constant is updated via a mechanism hub
+                #self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    def remove_liquidity_pool(self, asset_id, delta_R):
+    def remove_liquidity_pool(self, asset_id, delta_R, a):
         """
         Liquidity removed from the pool for one specific risk asset; spec 6-28-21; 
         same as add_liquidity pool; BUT delta_R is still assumed as positive, therefore the sign changes
         - R decreased by delta_R
         - S decreased to Si * (Ri - delta_R) / Ri
         """
-        Si = pool.get_share(asset_id) 
-        Ci = pool.get_coefficient(asset_id)
-        Ri = self.pool[asset_id]['R']
-        Y = prev_state['Y']
-        a = params['a']
+        # JS July 8, 2021: corrected references to 'pool' attribute
+        Si = self.get_share(asset_id) 
+        Ci = self.get_coefficient(asset_id)
+        Ri = self.get_reserve(asset_id)
+        # Y = prev_state['Y']
+        # a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
                 self.pool[key]['R'] -= delta_R
                 self.pool[key]['S'] = Si * (Ri - delta_R) / Ri
-                Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+                self.pool[key]['C'] = Ci * ((Ri - delta_R) / Ri) ** (a+1)
                 #self.pool[key]['W'] += delta_W
-                self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
+                # JS July 8, 2021: 'Y' is a pool constant and is not part of any individual asset
+                # The 'Y' pool constant is updated via a mechanism hub
+                # self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
 
     def q_to_r_pool(self, asset_id, delta_R):

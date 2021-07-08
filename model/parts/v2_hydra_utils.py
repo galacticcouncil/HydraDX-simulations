@@ -129,6 +129,7 @@ def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     #Wq = prev_state['Wq']
     # print('Timestep === ', prev_state['timestep'], prev_state['Wq'])
     delta_R = policy_input['ri_deposit']
+    a = params['a']
 
     #P = pool.get_price(asset_id)
     #BTR = Sq / Q
@@ -142,7 +143,7 @@ def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     # print('delta S', delta_Sq)
     # print('POOL ADD LIQUIDITY Timestep === ', prev_state['timestep'],'delta W ', delta_W)
     #a = params['a']
-    pool.add_liquidity_pool(asset_id, delta_R)
+    pool.add_liquidity_pool(asset_id, delta_R, a)
     # pool.update_price_a(a,Q, Wq)
 
     return ('pool', pool)
@@ -397,6 +398,8 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     Q = prev_state['Q']
     P = pool.get_price(asset_id)
     delta_R = (delta_S / Sq) * (Q / P)
+
+    a = params['a']
     #delta_W = (delta_R / R) * Wi
     # delta_R = (Wq / Wi) * (delta_S / Sq) * R
     # delta_W = Wq * delta_S / Sq
@@ -405,7 +408,7 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     # print(f"POOL REMOVE LIQUIDITY share fraction of reserve = {delta_R / R}")
     # print(f"POOL REMOVE LIQUIDITY weight fraction of pool = {delta_W / Wi}")
     
-    pool.remove_liquidity_pool(asset_id, delta_R)
+    pool.remove_liquidity_pool(asset_id, delta_R, a)
 
     return ('pool', pool)
 
