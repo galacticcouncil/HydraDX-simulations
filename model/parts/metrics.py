@@ -65,19 +65,21 @@ def s_asset_price(params, substep, state_history, prev_state, policy_input):
 
 def s_pool_price(params, substep, state_history, prev_state, policy_input):
     """
-    Calculates the pool price using update_price and returns the pool variable according to the specification from 3-3-21
+    Calculates the pool price using update_price and returns the pool variable
+    JS July 8, 2021: updated method call signature according to V2 Spec
     """
     pool = copy.deepcopy(prev_state['pool'])
     # print('pool price here 1')
 
     Q = prev_state['Q']
+    Y = prev_state['Y']
     Sq = prev_state['Sq']
     Wq = prev_state['Wq']
 
     a = params['a']
 
     # pool.update_price(Q, Sq)
-    pool.update_price_a(a,Q, Wq)
+    pool.update_price_a(Q, Y, a,)
     # print('pool price here 2')
 
     return ('pool', pool)
