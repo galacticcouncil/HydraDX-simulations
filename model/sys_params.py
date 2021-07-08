@@ -82,20 +82,34 @@ asset_initial_values = {
         'S': 10000},
 }
 
-######################### Initialize Shares in Omnipool Differently #############
-Q = asset_initial_values['i']['Q'] + asset_initial_values['j']['Q']
-Sq = Q
-BTR = Sq / Q
-
-C = asset_initial_values['i']['S'] * asset_initial_values['j']['S']**2 # squared for same as asset k 
-
-##########  reserve invariance function #1
+##########  Risk Asset Pool Constant Curvature (cf. V2 Spec)
 a = [0.5, 1, 1.5]
 #a = [0.5]
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 # a = [0.9, 1, 1.1]
 
 #a = [1]
+
+######################### Initialize Shares in Omnipool Differently #############
+Q = asset_initial_values['i']['Q'] + asset_initial_values['j']['Q']
+Sq = Q
+BTR = Sq / Q
+
+# V2 Spec June 28th 2021: Initialization of coefficients based upon adding new asset to pool
+
+# Assume asset 'i' is added first
+Ci = 1
+# Next add asset 'j' according to price invariance (cf. V2 Spec)
+initial_price_j = asset_initial_values['j']['Q']/asset_initial_values['j']['R']
+Cj = ( initial_price_j * (asset_initial_values['j']['R'])**(a+1) ) / ( asset_initial_values['i']['Q']*asset_initial_values['i']['R'] )
+
+# V2 Spec June 28th 2021: Initialization of Risk Asset Pool Constant Y
+Y = ( Ci * asset_initial_values['i']['R']**(-a) + Cj * asset_initial_values['j']['R']**(-a) )**(-1/a)
+
+# JS July 8th 2021: This constant is no longer used in V2, and can be removed where it occurs elsewhere in the code
+C = asset_initial_values['i']['S'] * asset_initial_values['j']['S']**2 # squared for same as asset k 
+
+
 ENABLE_BALANCER_PRICING = [True] 
 
 initial_values = {
@@ -109,9 +123,11 @@ initial_values = {
     'UNI_ji': asset_initial_values['j']['R'],
     'UNI_Sij': asset_initial_values['j']['R']*asset_initial_values['i']['R'],
     'Ri': asset_initial_values['i']['R'],
+    'Ci': Ci,
     # 'Si': 5*asset_initial_values['i']['R'],
     'Si': asset_initial_values['i']['S'],
     'Rj': asset_initial_values['j']['R'],
+    'Cj': Cj,
     # 'Sj': 5*asset_initial_values['j']['R'],
     'Sj': asset_initial_values['j']['S'],
     'Sq': asset_initial_values['i']['S'] + asset_initial_values['j']['S'],
@@ -119,8 +135,7 @@ initial_values = {
     'Q':  asset_initial_values['i']['Q'] + asset_initial_values['j']['Q'],
     'H':  asset_initial_values['i']['Q'] + asset_initial_values['j']['Q'],
     # Hydra initial Y value
-    'Y': 200 #placeholder, to be defined correctly
-    # Y = (Ci / (Ri ** (a)) + Cj / (Rj ** (a))) ** (- 1 / a)
+    'Y': Y
 }
 # print(initial_values['Q'])
 #################################################################################################################
