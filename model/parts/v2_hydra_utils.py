@@ -2,35 +2,37 @@ import numpy as np
 
 def addLiquidity_Sq(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates and returns shares Sq of a risk asset after a liquidity add.
+    This function updates and returns shares Sq of the pool after a liquidity add.
     Sq = Sq + delta_Sq
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     # asset = prev_state['asset']
-    Q = prev_state['Q']
+    # Q = prev_state['Q']
     Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
+    #Wq = prev_state['Wq']
 
     delta_R = policy_input['ri_deposit']
     pool = prev_state['pool']
-#     P = asset.loc[asset['id']==asset_id]['P']
-    P = pool.get_price(asset_id) 
-    # Si = pool.get_share(asset_id) 
+    #     P = asset.loc[asset['id']==asset_id]['P']
+    #P = pool.get_price(asset_id) 
+    R = pool.get_reserve(asset_id)
+    S = pool.get_share(asset_id) 
 
     # if policy_input['ri_deposit'] == 0:
     #     token_amount = 0
     # else:
     #     token_amount = int(policy_input['ri_deposit'])
-    BTR = Sq / Q
-    delta_Q = delta_R * P
-    delta_Sq = delta_Q * BTR
+    # BTR = Sq / Q
+    # delta_Q = delta_R * P
+    # delta_Sq = delta_Q * BTR
     # print('addliq - Sq delta Sq', delta_Sq)
 
-    delta_W = delta_Q * Wq / Q
-    delta_S = delta_W * Sq / Wq
+    # delta_W = delta_Q * Wq / Q
+    # delta_S = delta_W * Sq / Wq
     # print('addliq - Sq delta S', delta_S)
     
-
+    delta_S = S * (delta_R / R )
+    
     return ('Sq', Sq + delta_S)
 
 def addLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
