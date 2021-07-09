@@ -16,7 +16,7 @@ class V2_Asset(): #args
                         # 'asset_id' : asset_id,
                         asset_id :{
                         'R': reserve,
-                        'S': coefficient,
+                        'S': reserve,
                         'C': coefficient,
                         'P': price,
                         'dP': 0,   # delta price
@@ -31,36 +31,38 @@ class V2_Asset(): #args
                         # 'asset_id' : asset_id,
                         asset_id :{
                         'R': reserve,
-                        'S': coefficient,
+                        'S': reserve,
                         'C': coefficient,
                         'P': price}})
         # else calc price
 
-    def add_liquidity_pool(self, asset_id, delta_R, delta_Sq, delta_W):
+    def add_liquidity_pool(self, asset_id, delta_R, delta_S, delta_C):
         """
         Liquidity added to the pool for one specific risk asset:
-        - R increased by delta_R
-        - S increased by delta_Sq
+        - R increased by delta_R>0
+        - S increased by delta_S>0
+        - C increased by delta_C>0
         """ 
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
                 self.pool[key]['R'] += delta_R
-                self.pool[key]['S'] += delta_Sq
-                self.pool[key]['W'] += delta_W
+                self.pool[key]['S'] += delta_S
+                self.pool[key]['C'] += delta_C
 
-    def remove_liquidity_pool(self, asset_id, delta_R, delta_S, delta_W):
+    def remove_liquidity_pool(self, asset_id, delta_R, delta_S, delta_C):
         """
         Liquidity removed from the pool for one specific risk asset:
-        - R decreased by delta_R
-        - S decreased by delta_Sq
+        - R decreased by delta_R>0
+        - S decreased by delta_S>0
+        - C decreased by delta_C>0
         """
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
                 self.pool[key]['R'] -= delta_R
                 self.pool[key]['S'] -= delta_S
-                self.pool[key]['W'] -= delta_W
+                self.pool[key]['C'] -= delta_C
 
 
     def q_to_r_pool(self, asset_id, delta_R):
