@@ -57,7 +57,7 @@ def addLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
     Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
     return ('Q', Q_plus)
 
@@ -268,7 +268,7 @@ def resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_in
     Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
     Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
     return ('H', Q_plus)
 
@@ -343,7 +343,7 @@ def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, polic
     Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
     Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
-    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
     return ('H', (Q_plus))
 
@@ -374,7 +374,7 @@ def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
     Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
-    Q_plus = (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
     return ('Q', Q_plus)
 
