@@ -2,44 +2,51 @@ import numpy as np
 
 def addLiquidity_Sq(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates and returns shares Sq of a risk asset after a liquidity add.
+    This function updates and returns shares Sq of the pool after a liquidity add.
     Sq = Sq + delta_Sq
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     # asset = prev_state['asset']
-    Q = prev_state['Q']
+    # Q = prev_state['Q']
     Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
+    #Wq = prev_state['Wq']
 
     delta_R = policy_input['ri_deposit']
     pool = prev_state['pool']
-#     P = asset.loc[asset['id']==asset_id]['P']
-    P = pool.get_price(asset_id) 
-    # Si = pool.get_share(asset_id) 
+    #     P = asset.loc[asset['id']==asset_id]['P']
+    #P = pool.get_price(asset_id) 
+    R = pool.get_reserve(asset_id)
+    S = pool.get_share(asset_id) 
 
     # if policy_input['ri_deposit'] == 0:
     #     token_amount = 0
     # else:
     #     token_amount = int(policy_input['ri_deposit'])
-    BTR = Sq / Q
-    delta_Q = delta_R * P
-    delta_Sq = delta_Q * BTR
+    # BTR = Sq / Q
+    # delta_Q = delta_R * P
+    # delta_Sq = delta_Q * BTR
     # print('addliq - Sq delta Sq', delta_Sq)
 
-    delta_W = delta_Q * Wq / Q
-    delta_S = delta_W * Sq / Wq
+    # delta_W = delta_Q * Wq / Q
+    # delta_S = delta_W * Sq / Wq
     # print('addliq - Sq delta S', delta_S)
     
-
+    delta_S = S * (delta_R / R )
+    
     return ('Sq', Sq + delta_S)
 
 def addLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates and returns quantity Q after a deposit in a risk asset.
-    Q = Q + delta_Q
+    This function updates and returns quantity Q after a deposit in a risk asset; spec 6-28-21
+    
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
+    a = params['a']
+    delta_R = policy_input['ri_deposit']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
@@ -48,12 +55,13 @@ def addLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
    
-    delta_R = policy_input['ri_deposit']
+    Ri_plus = Ri + delta_R
+    Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    BTR = Sq / Q
-    delta_Q = delta_R * P
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
-    return ('Q', Q + delta_Q)
+    return ('Q', Q_plus)
 
 
 def calc_price_q_i(Ki, Ri, Q, Si, Sq):
@@ -117,25 +125,27 @@ def r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input):
 def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    Q = prev_state['Q']
-    Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
+    # KP: can remove most code for spec 6-28-21
+    #Q = prev_state['Q']
+    #Sq = prev_state['Sq']
+    #Wq = prev_state['Wq']
     # print('Timestep === ', prev_state['timestep'], prev_state['Wq'])
     delta_R = policy_input['ri_deposit']
+    a = params['a']
 
-    P = pool.get_price(asset_id)
-    BTR = Sq / Q
-    delta_Q = delta_R * P
-    delta_Sq = delta_Q * BTR
+    #P = pool.get_price(asset_id)
+    #BTR = Sq / Q
+    #delta_Q = delta_R * P
+    #delta_Sq = delta_Q * BTR
     #delta_W = delta_Q * Wq / Q
     # JS May 19: weight adjustment for price invariance, a neq 1
-    a = params['a']
-    delta_W = delta_Q * (Wq / Q)**a
+    #a = params['a']
+    #delta_W = delta_Q * (Wq / Q)**a
     
     # print('delta S', delta_Sq)
     # print('POOL ADD LIQUIDITY Timestep === ', prev_state['timestep'],'delta W ', delta_W)
-    a = params['a']
-    pool.add_liquidity_pool(asset_id, delta_R, delta_Sq, delta_W)
+    #a = params['a']
+    pool.add_liquidity_pool(asset_id, delta_R, a)
     # pool.update_price_a(a,Q, Wq)
 
     return ('pool', pool)
@@ -243,9 +253,12 @@ def resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_in
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
+    a = params['a']
+    delta_R = policy_input['ri_deposit']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
-    H = prev_state['H']
-
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
     # R = pool.get_reserve(asset_id)
@@ -253,12 +266,13 @@ def resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_in
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
    
-    delta_R = policy_input['ri_deposit']
+    Ri_plus = Ri + delta_R
+    Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
 
-    BTR = Sq / Q
-    delta_Q = delta_R * P
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
 
-    return ('H', H + delta_Q)
+    return ('H', Q_plus)
 
 
 def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
@@ -310,53 +324,61 @@ def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
 
 def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
-
     pool = prev_state['pool']
+    a = params['a']
+    delta_S = policy_input['UNI_burn']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
-    H = prev_state['H']
-
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
-    R = pool.get_reserve(asset_id)
+    # R = pool.get_reserve(asset_id)
     # W = pool.get_weight(asset_id) 
-    S = pool.get_share(asset_id) 
+    # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
+    
 
-    delta_R = delta_S / S * R
-    # ---------------------------------- #
-    # BTR = Sq / Q
-    delta_Q = delta_R * P
-    # delta_Sq = delta_Q * BTR
-    delta_Q = delta_S * Q / Sq
+    delta_R = (delta_S / Sq) * (Q / P)
+   
+    Ri_plus = Ri - delta_R
+    Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
-    return ('H', (H - delta_Q))
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+
+    return ('H', (Q_plus))
 
 def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates and returns the amount Q after a liquidity removal in a specific risk asset.
-    Q = Q - delta_Q
+    This function updates and returns the amount Q after a liquidity removal in a specific risk asset; spec 6-28-21
+    as delta R is assumed to be positive, the signs are reversed
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
-
     pool = prev_state['pool']
+    a = params['a']
+    delta_S = policy_input['UNI_burn']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
     # Wq = prev_state['Wq']
     Sq = prev_state['Sq']
-    R = pool.get_reserve(asset_id)
+    # R = pool.get_reserve(asset_id)
     # W = pool.get_weight(asset_id) 
-    S = pool.get_share(asset_id) 
+    # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
-
-    # delta_R = delta_S / S * R
-    # ---------------------------------- #
-    # BTR = Sq / Q
-    # delta_Q = delta_R * P
-    delta_Q = delta_S * Q / Sq
     
-    # delta_Sq = delta_Q * BTR
-    return ('Q', (Q - delta_Q))
+
+    delta_R = (delta_S / Sq) * (Q / P)
+   
+    Ri_plus = Ri - delta_R
+    Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
+
+    Q_plus = Q * (Ci / Ci_plus) * ((Y / Y_plus) ** (a)) * ((Ri_plus / Ri) ** (a + 1))
+
+    return ('Q', Q_plus)
 
 def removeLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     """
@@ -368,8 +390,8 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
    
     R = pool.get_reserve(asset_id)
     S = pool.get_share(asset_id)
-    Wi = pool.get_weight(asset_id)
-    Wq = prev_state['Wq']
+    #Wi = pool.get_weight(asset_id)
+    #Wq = prev_state['Wq']
     Sq = prev_state['Sq']
 
     # Before weight to share conversion
@@ -378,7 +400,9 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     Q = prev_state['Q']
     P = pool.get_price(asset_id)
     delta_R = (delta_S / Sq) * (Q / P)
-    delta_W = (delta_R / R) * Wi
+
+    a = params['a']
+    #delta_W = (delta_R / R) * Wi
     # delta_R = (Wq / Wi) * (delta_S / Sq) * R
     # delta_W = Wq * delta_S / Sq
     # print('POOL REMOVE LIQUIDITY Timestep === ', prev_state['timestep'],'delta W ', delta_W, 'delta S ', delta_S)
@@ -386,7 +410,7 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     # print(f"POOL REMOVE LIQUIDITY share fraction of reserve = {delta_R / R}")
     # print(f"POOL REMOVE LIQUIDITY weight fraction of pool = {delta_W / Wi}")
     
-    pool.remove_liquidity_pool(asset_id, delta_R, delta_S, delta_W)
+    pool.remove_liquidity_pool(asset_id, delta_R, a)
 
     return ('pool', pool)
 
