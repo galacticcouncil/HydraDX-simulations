@@ -23,6 +23,8 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     if action == 'Ri_Purchase':
         return q_to_r_pool(params, substep, state_history, prev_state, policy_input)  
     elif action == 'Q_Purchase':
+        ###### only need 1 version, use new change log 
+        ###### only need 1 function, can prune, delete the unused functions
         if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
             return r_to_q_pool_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '4-01-21':
