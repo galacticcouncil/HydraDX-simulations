@@ -18,6 +18,7 @@ In addition to that, we initialize:
 # Dependences
 from .parts.utils import *
 from .initialize_liquidity import C, initial_values
+from .sys_params import params
 # from .parts.asset_utils import Asset
 from .parts.v2_asset_utils import V2_Asset
 import pandas as pd
@@ -56,9 +57,20 @@ agents_df['q_j'] =  180000, 180000.0, 180000, 180000, 180000, 180000, 0.0, 0.0
 #pool.add_new_asset('j', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
 #pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
 
-pool = V2_Asset('i', initial_values['Ri'], initial_values['Si'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Ri']/initial_values['Si']))
-pool.add_new_asset('j', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
-pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
+# JS July 8th, 2021: Add initial price function
+a = params['a']
+def initial_price_in_Q(R, C, Q, Y, a):
+    return (Q * Y**(a)) * (C / R**(a+1))
+
+pool = V2_Asset('i', initial_values['Ri'], initial_values['Ci'],
+        initial_price_in_Q(initial_values['Ri'], initial_values['Ci'], initial_values['Q'], initial_values['Y'], a)
+)
+pool.add_new_asset('j', initial_values['Rj'], initial_values['Cj'],
+        initial_price_in_Q(initial_values['Rj'], initial_values['Cj'], initial_values['Q'], initial_values['Y'], a)
+)
+
+# JS July 8th, 2021: Adding of asset 'k' should be done consistently with V2 Spec--perhaps in sys_params.py as an 'equal player' to assets 'i' and 'j'
+#pool.add_new_asset('k', initial_values['Rj'], initial_values['Sj'], (initial_values['Q']/initial_values['Sq'])/(initial_values['Rj']/initial_values['Sj']))
 
 #############################################################################################
 UNI_P_RQi = initial_values['UNI_Qi'] / initial_values['UNI_Ri']
@@ -93,6 +105,8 @@ initial_state = {
     'H': initial_values['H'],
     'Wq': initial_values['Sq'],
     'Sq': initial_values['Sq'],
+    # Hydra Y Risk Asset Pool Constant
+    'Y': initial_values['Y'],
     # Hydra Local Vars
     'hydra_agents': agents_df,
     'C': C,

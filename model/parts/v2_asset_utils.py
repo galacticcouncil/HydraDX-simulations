@@ -7,7 +7,7 @@ class V2_Asset(): #args
     This includes the shares and weights of those assets.
     Method for adding new asset yet not in existence in the pool
     """  
-    def __init__(self, asset_id, reserve, share, price):
+    def __init__(self, asset_id, reserve, coefficient, price):
         """
         Asset class initialized with 1 risk asset
         """        
@@ -15,13 +15,13 @@ class V2_Asset(): #args
                         # 'asset_id' : asset_id,
                         asset_id :{
                         'R': reserve,
-                        'S': share,
-                        'W': share,
+                        'S': coefficient,
+                        'C': coefficient,
                         'P': price,
                         'dP': 0,   # delta price
                         }}
 
-    def add_new_asset(self, asset_id, reserve, share, price):
+    def add_new_asset(self, asset_id, reserve, coefficient, price):
         """
         Asset class initialized with 1 risk asset
         """        
@@ -30,8 +30,8 @@ class V2_Asset(): #args
                         # 'asset_id' : asset_id,
                         asset_id :{
                         'R': reserve,
-                        'S': share,
-                        'W': share,
+                        'S': coefficient,
+                        'C': coefficient,
                         'P': price}})
         # else calc price
 

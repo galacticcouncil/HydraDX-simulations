@@ -4,8 +4,7 @@ from .state_variables import initial_state
 from .partial_state_update_block import partial_state_update_block
 from .sys_params import params , initial_values
 from .sim_setup import SIMULATION_TIME_STEPS, MONTE_CARLO_RUNS
-from .parts.asset_utils import Asset
-
+from .parts.v2_asset_utils import V2_Asset
 
 # from copy import deepcopy
 from cadCAD import configs
@@ -27,12 +26,11 @@ sim_config = config_sim(
 
 exp = Experiment()
 
-def init_price(a, Q, Wq, W, R):
+def init_price(R, C, Q, Y, a):
     """
-    updates price according to mechanism specification from 4-1-21
+    V2 Spec June 28, 2021 definition of initial price
     """  
-    spot_price = ((Q / Wq)**a) / (R / W)
-    return spot_price
+    return (Q * Y**(a)) * (C / R**(a+1))
 
 def liquidity_randomizer(fake_mc_runs, starting_L_mu, starting_L_sigma, distribution):
     if distribution == 'normal': 
@@ -78,9 +76,21 @@ for n in range(fake_mc_runs):
     initial_state['Q'] =  2 * Ri_array[n] + 2 * Rj_array[n]
     initial_state['H'] =  2 * Ri_array[n] + 2 * Rj_array[n]
 
-    pool = Asset('i', initial_state['UNI_Ri'], initial_values['Si'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Ri']/initial_values['Si']))
-    pool.add_new_asset('j', initial_state['UNI_Rj'], initial_values['Sj'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Rj']/initial_values['Sj']))
-    pool.add_new_asset('k', initial_state['UNI_Rj'], initial_values['Sj'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Rj']/initial_values['Sj']))
+    # pool = V2_Asset('i', initial_state['UNI_Ri'], initial_values['Si'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Ri']/initial_values['Si']))
+    # pool.add_new_asset('j', initial_state['UNI_Rj'], initial_values['Sj'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Rj']/initial_values['Sj']))
+    # pool.add_new_asset('k', initial_state['UNI_Rj'], initial_values['Sj'], (initial_state['Q']/initial_values['Sq'])/(initial_state['UNI_Rj']/initial_values['Sj']))
+
+    # JS July 8, 2021: Initialization of pool using V2 Spec, with placeholder a = 1 value (because 'pool' var
+    # is over-written in config loop below)
+    # TODO: Add new asset 'k' correctly so pool has 3 risk assets
+
+    pool = V2_Asset('i', initial_state['UNI_Ri'], initial_values['Ci'],
+        init_price(initial_state['UNI_Ri'], initial_values['Ci'], initial_values['Q'], initial_values['Y'], 1)
+    )
+    pool.add_new_asset('j', initial_state['UNI_Rj'], initial_values['Cj'],
+        init_price(initial_state['UNI_Rj'], initial_values['Cj'], initial_values['Q'], initial_values['Y'], 1)
+    )
+
     initial_state['pool'] = pool
     exp.append_configs(
         sim_configs=sim_config,
@@ -108,21 +118,24 @@ for i in configs:
     config_param = copy.deepcopy(i.sim_config)
     a = config_param['M']['a']
 
-    # compute initial price (initial_values['Si']= Wi)
-    # JS May 19: For 'a' not equal to 1, need to configure initial state 'Q' to reflect
-    # value of pool
-    if a != 1:
-        config_init_state['Q'] = ( (initial_values['Si'] + initial_values['Sj']) / 
-                                    config_init_state['Wq']**a )**(1 / (1 - a))
-    elif a == 1:
-        config_init_state['Q'] = initial_values['Si'] + initial_values['Sj']
-    Omni_P_RQi = init_price(a, config_init_state['Q'], config_init_state['Wq'], initial_values['Si'] , config_init_state['UNI_Ri'])
-    Omni_P_RQj = init_price(a, config_init_state['Q'], config_init_state['Wq'], initial_values['Sj'] , config_init_state['UNI_Rj'])
+    Omni_P_RQi = init_price(config_init_state['pool']['i']['R'], config_init_state['pool']['i']['C'], config_init_state['Q'], config_init_state['Y'], a)
+    Omni_P_RQj = init_price(config_init_state['pool']['j']['R'], config_init_state['pool']['j']['C'], config_init_state['Q'], config_init_state['Y'], a)
+
+    # Initial base asset amount is value in HDX of pool
+    config_init_state['Q'] = Omni_P_RQi * config_init_state['pool']['i']['R'] + Omni_P_RQj * config_init_state['pool']['j']['R']
+
     # print('Omni_P_RQi ==================', Omni_P_RQi)
     # print(f"Initial Q HDX: {config_init_state['Q']}")
-    config_pool = Asset('i', config_init_state['UNI_Ri'], initial_values['Si'], Omni_P_RQi)
-    config_pool.add_new_asset('j', config_init_state['UNI_Rj'], initial_values['Sj'],Omni_P_RQj)
-    config_pool.add_new_asset('k', config_init_state['UNI_Rj'], initial_values['Sj'], Omni_P_RQj)
+
+    config_pool = V2_Asset('i', config_init_state['pool']['i']['R'], config_init_state['pool']['i']['C'], Omni_P_RQi)
+    config_pool.add_new_asset('j', config_init_state['pool']['j']['R'], config_init_state['pool']['j']['C'], Omni_P_RQj)
+    # TODO: Add asset 'k' in a consistent fashion with V2 Spec, so there are 3 risk assets in OMNIPool
+    # config_pool.add_new_asset('j', config_init_state['pool']['k']['R'], config_init_state['pool']['k']['C'], Omni_P_RQk)
+
+    #config_pool = V2_Asset('i', config_init_state['UNI_Ri'], initial_values['Si'], Omni_P_RQi)
+    #config_pool.add_new_asset('j', config_init_state['UNI_Rj'], initial_values['Sj'],Omni_P_RQj)
+    #config_pool.add_new_asset('k', config_init_state['UNI_Rj'], initial_values['Sj'], Omni_P_RQj)
+    
     config_init_state['pool'] = config_pool
 
     # Update Initial State in config object

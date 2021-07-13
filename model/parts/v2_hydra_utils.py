@@ -1164,3 +1164,53 @@ def q_to_r_H(params, substep, state_history, prev_state, policy_input):
 ###############################################################################################
         return ('H', H + delta_H)
 
+
+def addLiquidity_Y(params, substep, state_history, prev_state, policy_input):
+    """
+    This function updates and returns Y after a liquidity add; according to spec 6-28-21    
+    """
+    asset_id = policy_input['asset_id'] # defines asset subscript
+    pool = prev_state['pool']
+    a = params['a']
+    delta_R = policy_input['ri_deposit']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
+    Q = prev_state['Q']
+    Sq = prev_state['Sq']
+    Wq = prev_state['Wq']
+
+    P = pool.get_price(asset_id) 
+    Ri_plus = Ri + delta_R
+    Ci_plus = Ci * ((Ri + delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri + delta_R) ** (-a))) ** (- (1 / a))
+    
+
+    return ('Y', Y_plus)
+
+def removeLiquidity_Y(params, substep, state_history, prev_state, policy_input):
+    """
+    This function updates and returns Y after a liquidity remove; according to spec 6-28-21    
+    """
+    asset_id = policy_input['asset_id'] # defines asset subscript
+    pool = prev_state['pool']
+    a = params['a']
+    delta_S = policy_input['UNI_burn']
+    Ri = pool.pool[asset_id]['R']
+    Y = prev_state['Y']
+    Ci = pool.get_coefficient(asset_id)
+    Q = prev_state['Q']
+    Sq = prev_state['Sq']
+    Wq = prev_state['Wq']
+
+    P = pool.get_price(asset_id) 
+    delta_R = (delta_S / Sq) * (Q / P)
+    
+    Ri_plus = Ri - delta_R
+    Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+    Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
+    
+
+    return ('Y', Y_plus)
+
+
