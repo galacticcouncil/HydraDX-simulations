@@ -584,7 +584,7 @@ def q_to_r_pool(params, substep, state_history, prev_state, policy_input):
 
     a = params['a']
 
-    if delta_Q == 0:
+    if delta_Q == 0 or delta_Q < 0:
         return ('pool', pool)
     else:
         delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(1/a) - Ri

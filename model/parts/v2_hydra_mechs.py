@@ -3,7 +3,7 @@ import numpy as np
 def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool variable after a trade between 
-    two risk assets where delta_R is the amount being sold.
+    two risk assets where delta_Ri is the amount being sold.
     As per the mechanism of June 28, 2021, a weight update is informative only--thus this mechanism 
     returns the pool variable after delta_Ri and delta_Rk have been added to/removed from the pool's asset balances.
     """
@@ -25,7 +25,10 @@ def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
 
     a = params['a']
 
-    if delta_Ri == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Ri**(-a) + (Ck/Ci)*Rk**(-a) - (Ri + delta_Ri)**(-a)
+
+    if delta_Ri == 0 or threshold < 0:
         return ('pool', pool)
     else:
         # The swap out value delta_Rk is always negative
@@ -148,26 +151,33 @@ def q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
     # print(f"Q ADDED INTO POOL: {delta_Q} to existing amount {Q}")
     # print("**********")
 
-    if delta_Q == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Q + delta_Q
+
+    if delta_Q == 0 or threshold < 0:
         return ('Q', Q)
     else:
         return ('Q', Q + delta_Q)
 
 def q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function calculates and returns Q after a trade where delta_Q is the amount being sold into the pool
+    This function calculates and returns H after a trade where delta_Q is the amount being sold into the pool
     """
     delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     H = prev_state['H']
+    Q = prev_state['Q']
 
-    if delta_Q == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Q + delta_Q
+
+    if delta_Q == 0 or threshold < 0:
         return ('H', H)
     else:
         return ('H', H + delta_Q)
 
 def q_to_r_Sq_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function calculates and returns Q after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
+    This function calculates and returns Sq after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
     """
     delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     Q = prev_state['Q']
@@ -191,12 +201,14 @@ def r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_i
     delta_Ri = policy_input['ri_sold']
     pool = prev_state['pool']
 
-    pool.r_to_q_pool(asset_id, delta_Ri) # adds delta_Ri to pool
+    if delta_Ri > 0:
+        pool.r_to_q_pool(asset_id, delta_Ri) # adds delta_Ri to pool
     return ('pool', pool)
 
 def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function calculates and returns the pool variable after a risk asset is traded for the base asset, where delta_R is the risk asset amount being sold
+    This function calculates and returns the pool base asset after a risk asset is traded for the base asset, 
+    where delta_Ri is the risk asset amount being sold
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
 
@@ -216,7 +228,10 @@ def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
 
     a = params['a']
 
-    if delta_Ri == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Ri + delta_Ri
+
+    if delta_Ri == 0 or threshold < 0:
         return ('Q', Q)
     else:
         delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q
@@ -224,7 +239,8 @@ def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
 
 def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
-    This function calculates and returns the pool variable after a risk asset is traded for the base asset, where delta_R is the risk asset amount being sold
+    This function calculates and returns the total base asset after a risk asset is traded for the base asset, 
+    where delta_Ri is the risk asset amount being sold
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
 
@@ -245,7 +261,10 @@ def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
 
     a = params['a']
 
-    if delta_Ri == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Ri + delta_Ri
+
+    if delta_Ri == 0 or threshold < 0:
         return ('H', H)
     else:
         delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q
