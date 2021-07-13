@@ -65,6 +65,7 @@ Ki = [10**7]
 # CHANGE_LOG = ['3-25-21'] # https://hackmd.io/zmdK33QiShaPT6v8nqNteQ?view same doc, add discrete blue box version of ** and ***
 CHANGE_LOG = ['4-01-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
 # CHANGE_LOG = ['4-01-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
+CHANGE_LOG = ['7-13-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
 
 #ACTION_LIST = [['test_add', 'test_r_for_q', 'test_q_for_r','test_r_for_r', 'test_remove']]
 ACTION_LIST = [['test_add', 'test_r_for_r', 'test_remove']]
@@ -83,7 +84,7 @@ asset_initial_values = {
 }
 
 ##########  Risk Asset Pool Constant Curvature (cf. V2 Spec)
-a = [0.5, 1, 1.5]
+a = [1]
 #a = [0.5]
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 # a = [0.9, 1, 1.1]
@@ -97,14 +98,20 @@ BTR = Sq / Q
 
 # V2 Spec June 28th 2021: Initialization of coefficients based upon adding new asset to pool
 
+##################################### a #################################
+###### using first element for a
+###### needs to be looped over for using a in determining inital state(s)
+temp_a = a[0]
+#########################################################################
+
 # Assume asset 'i' is added first
 Ci = 1
 # Next add asset 'j' according to price invariance (cf. V2 Spec)
 initial_price_j = asset_initial_values['j']['Q']/asset_initial_values['j']['R']
-Cj = ( initial_price_j * (asset_initial_values['j']['R'])**(a+1) ) / ( asset_initial_values['i']['Q']*asset_initial_values['i']['R'] )
+Cj = ( initial_price_j * (asset_initial_values['j']['R'])**(temp_a+1) ) / ( asset_initial_values['i']['Q']*asset_initial_values['i']['R'] )
 
 # V2 Spec June 28th 2021: Initialization of Risk Asset Pool Constant Y
-Y = ( Ci * asset_initial_values['i']['R']**(-a) + Cj * asset_initial_values['j']['R']**(-a) )**(-1/a)
+Y = ( Ci * asset_initial_values['i']['R']**(-temp_a) + Cj * asset_initial_values['j']['R']**(-temp_a) )**(-1/temp_a)
 
 # JS July 8th 2021: This constant is no longer used in V2, and can be removed where it occurs elsewhere in the code
 C = asset_initial_values['i']['S'] * asset_initial_values['j']['S']**2 # squared for same as asset k 
