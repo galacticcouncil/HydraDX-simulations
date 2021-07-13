@@ -21,11 +21,14 @@ def s_base_weight(params, substep, state_history, prev_state, policy_input):
 
     return ('Wq', Sq)
 
-def s_pool_weight(params, substep, state_history, prev_state, policy_input):
-    """
-    Resolves the weights and returns the 'pool' variable.
-    """
-    pool = prev_state['pool']
-
-    pool.update_weight()
-    return ('pool', pool)
+# JS July 8, 2021: this method is not used in the V2 Spec
+#########
+# def s_pool_weight(params, substep, state_history, prev_state, policy_input):
+#    """
+#    Resolves the weights and returns the 'pool' variable.
+#    """
+#    pool = prev_state['pool']
+#
+#    pool.update_weight()
+#    return ('pool', pool)
+#########

@@ -123,16 +123,27 @@ def r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input):
         return ('Q', Q + delta_Q_i - delta_Q_k)
 
 def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
+    """
+    Updates pool values after an add liquidity event
+    Amended 9 July, 2021 to V2 Spec
+    """
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
+    
     # KP: can remove most code for spec 6-28-21
     #Q = prev_state['Q']
     #Sq = prev_state['Sq']
     #Wq = prev_state['Wq']
     # print('Timestep === ', prev_state['timestep'], prev_state['Wq'])
+    
     delta_R = policy_input['ri_deposit']
     a = params['a']
 
+    R = pool.get_reserve(asset_id)
+    S = pool.get_share(asset_id)
+    C = pool.get_coefficient(asset_id)
+
+    a = params['a']
     #P = pool.get_price(asset_id)
     #BTR = Sq / Q
     #delta_Q = delta_R * P
@@ -142,10 +153,23 @@ def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     #a = params['a']
     #delta_W = delta_Q * (Wq / Q)**a
     
+    #P = pool.get_price(asset_id)
+    #BTR = Sq / Q
+    #delta_Q = delta_R * P
+    #delta_Sq = delta_Q * BTR
+    #delta_W = delta_Q * Wq / Q
+    # JS May 19: weight adjustment for price invariance, a neq 1
+    #delta_W = delta_Q * (Wq / Q)**a
+
+    delta_S = S * ( delta_R / R )
+    delta_C = C * ( ((R + delta_R) / R) ** (a+1) - 1 )
+
     # print('delta S', delta_Sq)
     # print('POOL ADD LIQUIDITY Timestep === ', prev_state['timestep'],'delta W ', delta_W)
     #a = params['a']
-    pool.add_liquidity_pool(asset_id, delta_R, a)
+    
+    pool.add_liquidity_pool(asset_id, delta_R, delta_S, delta_C)
+    
     # pool.update_price_a(a,Q, Wq)
 
     return ('pool', pool)
@@ -382,14 +406,23 @@ def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
 
 def removeLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     """
-    This function updates and returns the pool variable after a liquidity removal.
+    Updates pool values after a remove liquidity event
+    Amended 9 July, 2021 to V2 Spec
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     delta_S = policy_input['UNI_burn']
+    
     pool = prev_state['pool']
    
     R = pool.get_reserve(asset_id)
     S = pool.get_share(asset_id)
+    C = pool.get_coefficient(asset_id)
+
+    a = params['a']
+    
+    #Wi = pool.get_weight(asset_id)
+    #Wq = prev_state['Wq']
+    #Sq = prev_state['Sq']
     #Wi = pool.get_weight(asset_id)
     #Wq = prev_state['Wq']
     Sq = prev_state['Sq']
@@ -397,11 +430,19 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     # Before weight to share conversion
     # delta_R = delta_S / S * R
     # JS May 19: reserve adjustment for price invariance, a neq 1
-    Q = prev_state['Q']
-    P = pool.get_price(asset_id)
-    delta_R = (delta_S / Sq) * (Q / P)
+    # Q = prev_state['Q']
+    # P = pool.get_price(asset_id)
+    # delta_R = (delta_S / Sq) * (Q / P)
+    # delta_W = (delta_R / R) * Wi
 
-    a = params['a']
+    delta_R = R * ( delta_S / S )
+    delta_C = C * ( ((R - delta_R) / R) ** (a+1) - 1 )
+
+    # Q = prev_state['Q']
+    # P = pool.get_price(asset_id)
+    # delta_R = (delta_S / Sq) * (Q / P)
+
+    # a = params['a']
     #delta_W = (delta_R / R) * Wi
     # delta_R = (Wq / Wi) * (delta_S / Sq) * R
     # delta_W = Wq * delta_S / Sq
@@ -410,7 +451,9 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     # print(f"POOL REMOVE LIQUIDITY share fraction of reserve = {delta_R / R}")
     # print(f"POOL REMOVE LIQUIDITY weight fraction of pool = {delta_W / Wi}")
     
-    pool.remove_liquidity_pool(asset_id, delta_R, a)
+    # JS July 9, 2021: Note the minus sign added to delta_C in function call below: 
+    # delta_C < 0, but remove_liquidity_pool expects a positive number
+    pool.remove_liquidity_pool(asset_id, delta_R, delta_S, -delta_C, a)
 
     return ('pool', pool)
 

@@ -5,8 +5,8 @@ import copy
 
 def H_agent_add_liq(params, substep, state_history, prev_state, policy_input):
     """
-This function updates system and Hydra agent local states when liquidity is added in one asset; spec 6-28-21
-If symmetric liquidity add is enabled additional calculations are made.
+    This function updates Hydra agent local states when liquidity is added in one asset.
+    Amended 9 July 2021 to V2 Spec
 
     """
     agent_id = policy_input['agent_id']
@@ -15,24 +15,34 @@ If symmetric liquidity add is enabled additional calculations are made.
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
 
-    Q = prev_state['Q']
-    Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
-    
-    Si = pool.get_share(asset_id)
-    Ri = pool.pool[asset_id]['R']
-    delta_R = policy_input['ri_deposit']
-    
-    Ri_plus = Ri + delta_R
-    Si_plus = Si * (Ri + delta_R) / Ri
-    
-    delta_r = Ri - Ri_plus
-    delta_s = Si - Si_plus
-   
+    #Q = prev_state['Q']
+    #Sq = prev_state['Sq']
+    #Wq = prev_state['Wq']
 
-    agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values - delta_r
-    agents.at[agent_id, 'r_' + asset_id + '_in'] = H_chosen_agent['r_' + asset_id + '_in'].values + delta_r
-    agents.at[agent_id, 's_' + asset_id] = H_chosen_agent['s_' + asset_id].values + delta_s
+    delta_R = policy_input['ri_deposit']
+    R = pool.get_reserve(asset_id)
+    S = pool.get_share(asset_id) 
+
+    #P = pool.get_price(asset_id) 
+    # if policy_input['ri_deposit'] == 0:
+    #     token_amount = 0
+    # else:
+    #     token_amount = int(policy_input['ri_deposit'])
+    #BTR = Sq / Q
+    #delta_Q = delta_R * P
+    #delta_Sq = delta_Q * BTR
+    
+    # JS May 19: weight adjustment for price invariance, a neq 1
+    #a = params['a']
+    #delta_W = delta_Q * (Wq / Q)**a
+    #delta_W = delta_Q * Wq / Q
+    #delta_S = delta_W * Sq / Wq
+
+    delta_S = S * ( delta_R / R )
+
+    agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values - delta_R
+    agents.at[agent_id, 'r_' + asset_id + '_in'] = H_chosen_agent['r_' + asset_id + '_in'].values + delta_R
+    agents.at[agent_id, 's_' + asset_id] = H_chosen_agent['s_' + asset_id].values + delta_S
         
 
     return ('hydra_agents', agents)  
@@ -40,8 +50,8 @@ If symmetric liquidity add is enabled additional calculations are made.
 
 def H_agent_remove_liq(params, substep, state_history, prev_state, policy_input):
     """
-This function updates system and Hydra agent states when liquidity is removed in one asset; spec 6-28-21
-If symmetric liquidity add is enabled additional calculations are made.
+    This function updates Hydra agent local states when liquidity is removed in one asset.
+    Amended 9 July 2021 to V2 Spec
     
     """
     agent_id = policy_input['agent_id']
@@ -50,16 +60,15 @@ If symmetric liquidity add is enabled additional calculations are made.
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     delta_S = policy_input['UNI_burn']
+    
     # Q = prev_state['Q']
-    Sq = prev_state['Sq']
+    # Sq = prev_state['Sq']
     #Wq = prev_state['Wq']
     #Wi = pool.get_weight(asset_id)
-    Si = pool.get_share(asset_id)
-    Ri = pool.pool[asset_id]['R']
 
-    
     R = pool.get_reserve(asset_id)
-    # S = pool.get_share(asset_id) 
+    S = pool.get_share(asset_id) 
+
     # P = pool.get_price(asset_id) 
     # if policy_input['ri_deposit'] == 0:
     #     token_amount = 0
@@ -70,21 +79,16 @@ If symmetric liquidity add is enabled additional calculations are made.
     # delta_R = delta_S / S * R
     
     # JS May 19: reserve adjustment for price invariance, a neq 1
-    Q = prev_state['Q']
-    P = pool.get_price(asset_id)
-    delta_R = (delta_S / Sq) * (Q / P)
+    # Q = prev_state['Q']
+    # P = pool.get_price(asset_id)
+    # delta_R = (delta_S / Sq) * (Q / P)
     # delta_R = (Wq / Wi) * (delta_S / Sq) * R
-    
-    Ri_plus = Ri + delta_R
-    Si_plus = Si * (Ri + delta_R) / Ri
-    
-    delta_r = Ri - Ri_plus
-    delta_s = Si - Si_plus
- 
 
-    agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values + delta_r
-    agents.at[agent_id, 'r_' + asset_id + '_in'] = H_chosen_agent['r_' + asset_id + '_in'].values - delta_r
-    agents.at[agent_id, 's_' + asset_id] = H_chosen_agent['s_' + asset_id].values - delta_s
+    delta_R = R * ( delta_S / S)
+ 
+    agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values + delta_R
+    agents.at[agent_id, 'r_' + asset_id + '_in'] = H_chosen_agent['r_' + asset_id + '_in'].values - delta_R
+    agents.at[agent_id, 's_' + asset_id] = H_chosen_agent['s_' + asset_id].values - delta_S
         
     return ('hydra_agents', agents)
 
