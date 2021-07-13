@@ -126,7 +126,7 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
 
     a = params['a']
 
-    if delta_Q == 0:
+    if delta_Q == 0 or delta_Q <0:
         return ('hydra_agents', agents)
     else:
 
@@ -397,7 +397,10 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
 
     a = params['a']
  
-    if delta_Ri == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Ri**(-a) + (Ck/Ci)*Rk**(-a) - (Ri + delta_Ri)**(-a)
+
+    if delta_Ri == 0 or threshold < 0:
         return ('hydra_agents', agents)
 
     else:
@@ -436,7 +439,10 @@ def H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, polic
 
     a = params['a']
 
-    if delta_Ri == 0:
+    # JS July 9, 2021: compute threshold for reserve availability
+    threshold = Ri + delta_Ri
+
+    if delta_Ri == 0 or threshold < 0:
         return ('hydra_agents', agents)
     else:
         delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q

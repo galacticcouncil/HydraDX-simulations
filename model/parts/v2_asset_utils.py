@@ -43,6 +43,12 @@ class V2_Asset(): #args
         - S increased by delta_S>0
         - C increased by delta_C>0
         """ 
+        # JS July 8, 2021: corrected references to 'pool' attribute
+        # Si = self.get_share(asset_id) 
+        # Ci = self.get_coefficient(asset_id)
+        # Ri = self.get_reserve(asset_id)
+        #Y = prev_state['Y']
+        #a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
@@ -50,19 +56,34 @@ class V2_Asset(): #args
                 self.pool[key]['S'] += delta_S
                 self.pool[key]['C'] += delta_C
 
-    def remove_liquidity_pool(self, asset_id, delta_R, delta_S, delta_C):
+    def remove_liquidity_pool(self, asset_id, delta_R, delta_S, delta_C, a):
         """
         Liquidity removed from the pool for one specific risk asset:
         - R decreased by delta_R>0
         - S decreased by delta_S>0
         - C decreased by delta_C>0
         """
+        # JS July 8, 2021: corrected references to 'pool' attribute
+        Si = self.get_share(asset_id) 
+        Ci = self.get_coefficient(asset_id)
+        Ri = self.get_reserve(asset_id)
+        # Y = prev_state['Y']
+        # a = params['a']
         for key in self.pool.keys():
             # print(self.pool.items()) 
             if key == asset_id:
+                Si = self.pool[key]['S'] 
+                Ci = self.pool[key]['C']
+                Ri = self.pool[key]['R']
                 self.pool[key]['R'] -= delta_R
                 self.pool[key]['S'] -= delta_S
                 self.pool[key]['C'] -= delta_C
+                self.pool[key]['S'] = Si * (Ri - delta_R) / Ri
+                self.pool[key]['C'] = Ci * ((Ri - delta_R) / Ri) ** (a+1)
+                #self.pool[key]['W'] += delta_W
+                # JS July 8, 2021: 'Y' is a pool constant and is not part of any individual asset
+                # The 'Y' pool constant is updated via a mechanism hub
+                # self.pool[key]['Y'] = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
 
 
     def q_to_r_pool(self, asset_id, delta_R):
