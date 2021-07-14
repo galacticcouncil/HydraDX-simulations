@@ -12,8 +12,15 @@ from .parts.uniswap import *
 from .parts.metrics import *
 # from .parts.hydra import *
 # from .parts.action import *
-from .parts.action_list import *
+
+################# Choose action sequence for verification test by uncommenting reference to appropriate file #############
+
+# from .parts.action_list import *
 # from .parts.action_swap_test import *
+from .parts.action_list_verification_liquidity import *
+# from .parts.action_list_verification_swapRforR import *
+# from .parts.action_list_verification_swapRforQ import *
+# from .parts.action_list_verification_swapQforR import *
 
 from .parts.resolve import *
 from .parts.v2_hydra import *
