@@ -118,19 +118,17 @@ for i in configs:
     config_param = copy.deepcopy(i.sim_config)
     a = config_param['M']['a']
 
-    Omni_P_RQi = init_price(config_init_state['pool']['i']['R'], config_init_state['pool']['i']['C'], config_init_state['Q'], config_init_state['Y'], a)
-    Omni_P_RQj = init_price(config_init_state['pool']['j']['R'], config_init_state['pool']['j']['C'], config_init_state['Q'], config_init_state['Y'], a)
-    #Omni_P_RQi = 1
-    #Omni_P_RQj = 2
-    
+    Omni_P_RQi = init_price(config_init_state['pool'].pool['i']['R'], config_init_state['pool'].pool['i']['C'], config_init_state['Q'], config_init_state['Y'], a)
+    Omni_P_RQj = init_price(config_init_state['pool'].pool['j']['R'], config_init_state['pool'].pool['j']['C'], config_init_state['Q'], config_init_state['Y'], a)
+
     # Initial base asset amount is value in HDX of pool
-    config_init_state['Q'] = Omni_P_RQi * config_init_state['pool']['i']['R'] + Omni_P_RQj * config_init_state['pool']['j']['R']
+    config_init_state['Q'] = Omni_P_RQi * config_init_state['pool'].pool['i']['R'] + Omni_P_RQj * config_init_state['pool'].pool['j']['R']
 
     # print('Omni_P_RQi ==================', Omni_P_RQi)
     # print(f"Initial Q HDX: {config_init_state['Q']}")
 
-    config_pool = V2_Asset('i', config_init_state['pool']['i']['R'], config_init_state['pool']['i']['C'], Omni_P_RQi)
-    config_pool.add_new_asset('j', config_init_state['pool']['j']['R'], config_init_state['pool']['j']['C'], Omni_P_RQj)
+    config_pool = V2_Asset('i', config_init_state['pool'].pool['i']['R'], config_init_state['pool'].pool['i']['C'], Omni_P_RQi)
+    config_pool.add_new_asset('j', config_init_state['pool'].pool['j']['R'], config_init_state['pool'].pool['j']['C'], Omni_P_RQj)
     # TODO: Add asset 'k' in a consistent fashion with V2 Spec, so there are 3 risk assets in OMNIPool
     # config_pool.add_new_asset('j', config_init_state['pool']['k']['R'], config_init_state['pool']['k']['C'], Omni_P_RQk)
 
