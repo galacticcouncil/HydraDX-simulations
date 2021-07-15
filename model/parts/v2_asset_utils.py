@@ -21,6 +21,9 @@ class V2_Asset(): #args
                         'P': price,
                         'dP': 0,   # delta price
                         }}
+        
+    #def __getitem__(self, item):
+    #    return getattr(self, item)
 
     def add_new_asset(self, asset_id, reserve, coefficient, price):
         """
