@@ -120,7 +120,9 @@ for i in configs:
 
     Omni_P_RQi = init_price(config_init_state['pool']['i']['R'], config_init_state['pool']['i']['C'], config_init_state['Q'], config_init_state['Y'], a)
     Omni_P_RQj = init_price(config_init_state['pool']['j']['R'], config_init_state['pool']['j']['C'], config_init_state['Q'], config_init_state['Y'], a)
-
+    #Omni_P_RQi = 1
+    #Omni_P_RQj = 2
+    
     # Initial base asset amount is value in HDX of pool
     config_init_state['Q'] = Omni_P_RQi * config_init_state['pool']['i']['R'] + Omni_P_RQj * config_init_state['pool']['j']['R']
 
