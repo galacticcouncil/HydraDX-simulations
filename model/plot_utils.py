@@ -13,7 +13,6 @@ For any asset on the risk side of the Hydra Omnipool this function plots quantit
     asset_R = []
     asset_S = []
     asset_P = []
-    asset_W = []
     asset_C = []
 
     df = experiments
@@ -35,15 +34,16 @@ For any asset on the risk side of the Hydra Omnipool this function plots quantit
         # agent_h.append(np.mean(agent_h_list))
         asset_P.append(asset_P_list)
 
-        asset_W_list = []
-        #asset_W_list.append(df.pool[i].pool[asset_id]['W'])
-        # agent_h.append(np.mean(agent_h_list))
-        asset_W.append(asset_W_list)
-        
         asset_C_list = []
         asset_C_list.append(df.pool[i].pool[asset_id]['C'])
         # agent_h.append(np.mean(agent_h_list))
         asset_C.append(asset_C_list)
+        
+        # JS July 15: Y is not a per-asset value, but a pool-wide constant
+        #asset_Y_list = []
+        #asset_Y_list.append(df.pool[i].pool[asset_id]['Y'])
+        # agent_h.append(np.mean(agent_h_list))
+        #asset_Y.append(asset_Y_list)
 
     plt.figure(figsize=(20,6))
     plt.subplot(141)
@@ -70,19 +70,20 @@ For any asset on the risk side of the Hydra Omnipool this function plots quantit
     plt.title('Price' + ' for Asset ' + str(asset_id))
 
     plt.subplot(144)
-    plt.plot(df.timestep,asset_W,label='Asset '+ asset_id + ' Price', marker='o')
-    plt.xlabel('Timestep')
-    plt.ylabel('Weight')
-    plt.legend()
-    plt.title('Weight' + ' for Asset ' + str(asset_id))
-    
-    plt.subplot(145)
     plt.plot(df.timestep,asset_C,label='Asset '+ asset_id + ' Price', marker='o')
     plt.xlabel('Timestep')
-    plt.ylabel('Weight')
+    plt.ylabel('Coefficient')
     plt.legend()
     plt.title('Coefficient' + ' for Asset ' + str(asset_id))
-    plt.suptitle('Hydra Omnipool Asset ' + str(asset_id))
+    
+    # JS July 15: Y is not asset-specific, it is a pool variable
+    #plt.subplot(145)
+    #plt.plot(df.timestep,asset_Y,label='Asset '+ asset_id + ' Price', marker='o')
+    #plt.xlabel('Timestep')
+    #plt.ylabel('Risk Asset Pool Constant')
+    #plt.legend()
+    #plt.title('Coefficient' + ' for Asset ' + str(asset_id))
+    #plt.suptitle('Hydra Omnipool Asset ' + str(asset_id))
     
     plt.show()
 
