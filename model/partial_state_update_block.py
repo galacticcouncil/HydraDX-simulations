@@ -121,7 +121,7 @@ partial_state_update_block = [
             # 'UNI_agent_value': mechanismHub_Q,
             # 'asset' : s_asset_price,
             'pool': s_pool_price,
-            'C': s_share_constant,
+            # 'C': s_share_constant,
 
         }
     },
