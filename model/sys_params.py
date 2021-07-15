@@ -65,7 +65,7 @@ Ki = [10**7]
 # CHANGE_LOG = ['3-25-21'] # https://hackmd.io/zmdK33QiShaPT6v8nqNteQ?view same doc, add discrete blue box version of ** and ***
 CHANGE_LOG = ['4-01-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
 # CHANGE_LOG = ['4-01-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
-CHANGE_LOG = ['7-13-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
+#CHANGE_LOG = ['7-13-21'] # https://hackmd.io/J6bgkZ3dQdmzyejYZgy8BQ  reserve invariance function #1
 
 #ACTION_LIST = [['test_add', 'test_r_for_q', 'test_q_for_r','test_r_for_r', 'test_remove']]
 ACTION_LIST = [['test_add', 'test_r_for_r', 'test_remove']]

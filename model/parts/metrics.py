@@ -96,8 +96,10 @@ def s_share_constant(params, substep, state_history, prev_state, policy_input):
     Si = pool.get_share('i')
     Sj = pool.get_share('j')
     Sk = pool.get_share('k')
-
-    C = Si * Sj * Sk    
+    print(type(Si))
+    print(type(Sj))
+    print(type(Sk))
+    C = Si * Sj #* Sk    
     # print('constant here 2')
 
     return ('C', C)

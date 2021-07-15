@@ -36,14 +36,14 @@ For any asset on the risk side of the Hydra Omnipool this function plots quantit
         asset_P.append(asset_P_list)
 
         asset_W_list = []
-        asset_W_list.append(df.pool[i].pool[asset_id]['W'])
+        #asset_W_list.append(df.pool[i].pool[asset_id]['W'])
         # agent_h.append(np.mean(agent_h_list))
         asset_W.append(asset_W_list)
         
-        asset_Y_list = []
-        asset_Y_list.append(df.pool[i].pool[asset_id]['Y'])
+        asset_C_list = []
+        asset_C_list.append(df.pool[i].pool[asset_id]['C'])
         # agent_h.append(np.mean(agent_h_list))
-        asset_Y.append(asset_Y_list)
+        asset_C.append(asset_C_list)
 
     plt.figure(figsize=(20,6))
     plt.subplot(141)
@@ -77,7 +77,7 @@ For any asset on the risk side of the Hydra Omnipool this function plots quantit
     plt.title('Weight' + ' for Asset ' + str(asset_id))
     
     plt.subplot(145)
-    plt.plot(df.timestep,asset_Y,label='Asset '+ asset_id + ' Price', marker='o')
+    plt.plot(df.timestep,asset_C,label='Asset '+ asset_id + ' Price', marker='o')
     plt.xlabel('Timestep')
     plt.ylabel('Weight')
     plt.legend()

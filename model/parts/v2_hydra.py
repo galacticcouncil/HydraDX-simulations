@@ -209,8 +209,8 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
         return addLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return removeLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
-    elif action == 'R_Swap':
-        return r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input)
+    #elif action == 'R_Swap':
+        #return r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input) # KP 7-15-21 no Wq in V2
     return('Wq', prev_state['Wq'])
 
 def mechanismHub_Y(params, substep, state_history, prev_state, policy_input):
