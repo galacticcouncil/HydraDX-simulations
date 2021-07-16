@@ -203,8 +203,8 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
         return q_to_r_Wq(params, substep, state_history, prev_state, policy_input) # "reserve -one version"
-    elif action == 'Q_Purchase':
-        return r_to_q_Wq(params, substep, state_history, prev_state, policy_input)  # "reserve -one version"
+    #elif action == 'Q_Purchase':
+        #return r_to_q_Wq(params, substep, state_history, prev_state, policy_input)  # "reserve -one version"
     elif action == 'AddLiquidity':
         return addLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':

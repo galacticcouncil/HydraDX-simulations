@@ -222,7 +222,7 @@ def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
     #Sq = prev_state['Sq']
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
+    #Wi = pool.get_weight(asset_id)
     Ci = pool.get_coefficient(asset_id)
     #Si = pool.get_share(asset_id)
 
@@ -254,7 +254,7 @@ def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
     # Sq = prev_state['Sq']
 
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
+    # Wi = pool.get_weight(asset_id)
     Ci = pool.get_coefficient(asset_id)
     # Si = pool.get_share(asset_id)
     H = prev_state['H']
@@ -282,7 +282,7 @@ def r_to_q_Sq_reserve_one(params, substep, state_history, prev_state, policy_inp
     Wq = prev_state['Wq']
     
     Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
+    #Wi = pool.get_weight(asset_id)
     Si = pool.get_share(asset_id)
 
     a = params['a']

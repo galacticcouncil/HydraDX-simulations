@@ -23,7 +23,8 @@ def actionDecoder(params, step, history, prev_state):
         'agent_id' : 0,
         'asset_id' : str(),
         'direction': str(),
-        'direction_q': str()
+        'direction_q': str(),
+        'purchased_asset_id':'N/A'
     }
     
     # ACTION_LIST =  params['ACTION_LIST']
