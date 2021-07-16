@@ -297,7 +297,10 @@ def s_trade_random(params, step, history, prev_state, policy_input):
         # asset_random_choice = random.choice(['i', 'j'])
         trade_size_random_choice = math.ceil(np.random.normal(mu, sigma))
         return 'trade_random_size', trade_size_random_choice
-    
+
+def s_trade_deterministic(params, step, history, prev_state, policy_input):
+    return 'trade_random_size', prev_state['trade_random_size']
+
 def s_direction_random(params, step, history, prev_state, policy_input):
     if params['exo_trade'] == 'pass' and params['exo_liq'] == 'pass':
         # there are no trades to be made this timestep
