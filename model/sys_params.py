@@ -84,8 +84,8 @@ asset_initial_values = {
 }
 
 ##########  Risk Asset Pool Constant Curvature (cf. V2 Spec)
-a = [1]
-#a = [0.5]
+#a = [1]
+a = [1.5]
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 # a = [0.9, 1, 1.1]
 
