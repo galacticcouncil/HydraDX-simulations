@@ -18,7 +18,7 @@ from .parts.metrics import *
 # from .parts.action_list import *
 # from .parts.action_swap_test import *
 # from .parts.action_list_verification_liquidity import *
-# from .parts.action_list_verification_swapRforR import *
+#from .parts.action_list_verification_swapRforR import *
 from .parts.action_list_verification_swapRforQ import *
 # from .parts.action_list_verification_swapQforR import *
 
@@ -35,7 +35,7 @@ partial_state_update_block = [
             # 'H': s_resolve_H,
             # 'asset' : s_asset_weight,
             'asset_random_choice': s_asset_random,
-            #'trade_random_size': s_trade_random,
+            'trade_random_size': s_trade_deterministic,
             'trade_random_direction': s_direction_random,
         }
     },
