@@ -227,7 +227,7 @@ def actionDecoder(params, step, history, prev_state):
     if params['exo_liq'] == 'test_remove':
         print(prev_state['uni_agents']['s_i'][agent2_id])
         #print(removal)
-        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
+        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] #* 0.001
 
         action['purchased_asset_id'] = 'N/A'
 
@@ -235,7 +235,11 @@ def actionDecoder(params, step, history, prev_state):
         if timestep == 90:
             print('removing at timestep 90: ', prev_state['uni_agents']['s_i'][agent2_id])
             action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
-            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
+            #action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
+            #action['UNI_burn'] = 199433.56 -150000 #a=0.5
+            #action['UNI_burn'] = 201370.96 - 150000 #a=1.0
+            action['UNI_burn'] = 816230.51 - 150000 #a=1.5
+            
 
         else:
             action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
@@ -243,7 +247,7 @@ def actionDecoder(params, step, history, prev_state):
         if action['asset_id'] == 'j':
             # print('remove j',step,action['asset_id'])
             action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
-            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] * 0.001
+            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] #* 0.001
             action['purchased_asset_id'] = 'N/A'
 
     ###############################################
@@ -296,6 +300,9 @@ def s_trade_random(params, step, history, prev_state, policy_input):
         # asset_random_choice = random.choice(['i', 'j'])
         trade_size_random_choice = math.ceil(np.random.normal(mu, sigma))
         return 'trade_random_size', trade_size_random_choice
+    
+def s_trade_deterministic(params, step, history, prev_state, policy_input):
+    return 'trade_random_size', prev_state['trade_random_size']
     
 def s_direction_random(params, step, history, prev_state, policy_input):
     if params['exo_trade'] == 'pass' and params['exo_liq'] == 'pass':
