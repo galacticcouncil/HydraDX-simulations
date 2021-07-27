@@ -1250,6 +1250,7 @@ def removeLiquidity_Y(params, substep, state_history, prev_state, policy_input):
     delta_R = (delta_S / Sq) * (Q / P)
     
     Ri_plus = Ri - delta_R
+    print('Ri_plus = ', Ri_plus)
     Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
     Y_plus = ((Y ** (-a)) - Ci * (Ri ** (-a)) + Ci_plus * ((Ri - delta_R) ** (-a))) ** (- (1 / a))
     

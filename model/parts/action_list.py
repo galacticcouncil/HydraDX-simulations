@@ -225,24 +225,31 @@ def actionDecoder(params, step, history, prev_state):
     ########## TEMP TEST REMOVE LIQ ############
     ####### AGENT 3 ######################
     if params['exo_liq'] == 'test_remove':
-        print(prev_state['uni_agents']['s_i'][agent2_id])
+        print(prev_state['hydra_agents']['s_i'][agent2_id])
         #print(removal)
-        action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] #* 0.001
+        # action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent4_id] #* 0.001
 
         action['purchased_asset_id'] = 'N/A'
 
         action['action_id'] = 'RemoveLiquidity'
         if timestep == 90:
-            print('removing at timestep 90: ', prev_state['uni_agents']['s_i'][agent2_id])
-            action['agent_id'] = prev_state['uni_agents']['m'][agent2_id]
-            #action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent2_id] - 150000
+            print('removing at timestep 90: ', prev_state['hydra_agents']['s_i'][agent2_id])
+            action['agent_id'] = prev_state['hydra_agents']['m'][agent2_id]
+            # action['UNI_burn'] = prev_state['hydra_agents']['s_i'][agent2_id]  # starting value subtract - 150000
             #action['UNI_burn'] = 199433.56 -150000 #a=0.5
             #action['UNI_burn'] = 201370.96 - 150000 #a=1.0
-            action['UNI_burn'] = 816230.51 - 150000 #a=1.5
-            
+            # action['UNI_burn'] = 816230.51 - 150000 #a=1.5
+            ######## Something is pretty strange here ########################### 
+            # mismatch between shares and Q removed
+            # the approx 200,000 shares created, if removed result in negative Qs and Rs
+            # which is the cause of math errors in Y upon removal
+            # that math needs to be addressed
+            # this small amount of shares represents the amount close to the amount of Q added, then removed
+            # not THE ANSWER.  
+            action['UNI_burn'] = 550 #a=1.5
 
-        else:
-            action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
+        # else:
+        #     action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]
 
         if action['asset_id'] == 'j':
             # print('remove j',step,action['asset_id'])
