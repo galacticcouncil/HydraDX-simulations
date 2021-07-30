@@ -235,7 +235,7 @@ def actionDecoder(params, step, history, prev_state):
         if timestep == 90:
             print('removing at timestep 90: ', prev_state['hydra_agents']['s_i'][agent2_id])
             action['agent_id'] = prev_state['hydra_agents']['m'][agent2_id]
-            # action['UNI_burn'] = prev_state['hydra_agents']['s_i'][agent2_id]  # starting value subtract - 150000
+            action['UNI_burn'] = prev_state['hydra_agents']['s_i'][agent2_id]  # starting value subtract - 150000
             #action['UNI_burn'] = 199433.56 -150000 #a=0.5
             #action['UNI_burn'] = 201370.96 - 150000 #a=1.0
             # action['UNI_burn'] = 816230.51 - 150000 #a=1.5
@@ -246,7 +246,7 @@ def actionDecoder(params, step, history, prev_state):
             # that math needs to be addressed
             # this small amount of shares represents the amount close to the amount of Q added, then removed
             # not THE ANSWER.  
-            action['UNI_burn'] = 550 #a=1.5
+            # action['UNI_burn'] = 550 #a=1.5
 
         # else:
         #     action['agent_id'] = prev_state['uni_agents']['m'][agent4_id]

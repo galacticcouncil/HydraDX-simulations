@@ -361,9 +361,10 @@ def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, polic
     # W = pool.get_weight(asset_id) 
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
+    Si = pool.get_share(asset_id) 
     
 
-    delta_R = (delta_S / Sq) * (Q / P)
+    delta_R = (delta_S / Si) * (Q / P)
    
     Ri_plus = Ri - delta_R
     Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
@@ -392,9 +393,9 @@ def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     # W = pool.get_weight(asset_id) 
     # S = pool.get_share(asset_id) 
     P = pool.get_price(asset_id) 
-    
+    Si = pool.get_share(asset_id) 
 
-    delta_R = (delta_S / Sq) * (Q / P)
+    delta_R = (delta_S / Si) * (Q / P)
    
     Ri_plus = Ri - delta_R
     Ci_plus = Ci * ((Ri - delta_R) / Ri) ** (a+1)
@@ -1245,9 +1246,10 @@ def removeLiquidity_Y(params, substep, state_history, prev_state, policy_input):
     Q = prev_state['Q']
     Sq = prev_state['Sq']
     Wq = prev_state['Wq']
+    Si = pool.get_share(asset_id)
 
     P = pool.get_price(asset_id) 
-    delta_R = (delta_S / Sq) * (Q / P)
+    delta_R = (delta_S / Si) * (Q / P)
     
     Ri_plus = Ri - delta_R
     print('Ri_plus = ', Ri_plus)

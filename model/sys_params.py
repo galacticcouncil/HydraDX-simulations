@@ -89,7 +89,7 @@ asset_initial_values = {
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 # a = [0.9, 1, 1.1]
 
-a = [1.5]
+a = [1.0]
 
 ######################### Initialize Shares in Omnipool Differently #############
 Q = asset_initial_values['i']['Q'] + asset_initial_values['j']['Q']
