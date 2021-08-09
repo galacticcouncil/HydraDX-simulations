@@ -25,8 +25,8 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     elif action == 'Q_Purchase':
         ###### only need 1 version, use new change log 
         ###### only need 1 function, can prune, delete the unused functions
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return r_to_q_pool_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return r_to_q_pool_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -36,10 +36,10 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     elif action == 'RemoveLiquidity':
         return removeLiquidity_pool(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        if params['CHANGE_LOG'] == '3-18-21':
-            return r_to_r_pool_temp(params, substep, state_history, prev_state, policy_input)
-        if params['CHANGE_LOG'] == '3-25-21':
-            return r_to_r_pool_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-18-21':
+        #    return r_to_r_pool_temp(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21':
+        #    return r_to_r_pool_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -58,15 +58,15 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     """
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21':
-            return q_to_r_Qh_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21':
+        #    return q_to_r_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
             return q_to_r_Qh(params, substep, state_history, prev_state, policy_input)
     elif action == 'Q_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return r_to_q_Qh_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return r_to_q_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -74,13 +74,12 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     elif action == 'AddLiquidity':
         return addLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
-        # print('Timestep-------------= ', prev_state['timestep'])
         return removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        if params['CHANGE_LOG'] == '3-18-21':
-            return r_to_r_swap_Qh_temp(params, substep, state_history, prev_state, policy_input)
-        if params['CHANGE_LOG'] == '3-25-21':
-            return r_to_r_swap_Qh_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-18-21':
+        #    return r_to_r_swap_Qh_temp(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21':
+        #    return r_to_r_swap_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -129,15 +128,15 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
 def H_agenthub(params, substep, state_history, prev_state, policy_input):
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return H_agent_q_to_r_trade_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return H_agent_q_to_r_trade_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
             return H_agent_q_to_r_trade(params, substep, state_history, prev_state, policy_input)
     elif action == 'Q_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return H_agent_r_to_q_trade_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return H_agent_r_to_q_trade_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21': #no actual in change in H
             return H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -147,8 +146,8 @@ def H_agenthub(params, substep, state_history, prev_state, policy_input):
     elif action == 'RemoveLiquidity':
         return H_agent_remove_liq(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        if params['CHANGE_LOG'] == '3-25-21':
-            return H_agent_r_to_r_swap_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21':
+        #    return H_agent_r_to_r_swap_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, policy_input)   
         else:
@@ -165,15 +164,15 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     action = policy_input['action_id']
 
     if action == 'Ri_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return q_to_r_H_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return q_to_r_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
             return q_to_r_H(params, substep, state_history, prev_state, policy_input)
     elif action == 'Q_Purchase':
-        if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-            return r_to_q_H_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
+        #    return r_to_q_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
@@ -183,10 +182,10 @@ For a particular choice of 'CHANGE LOG' parameter it allows to test out differen
     elif action == 'RemoveLiquidity':
         return resolve_remove_Liquidity_H(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        if params['CHANGE_LOG'] == '3-18-21':
-            return r_to_r_swap_H_temp(params, substep, state_history, prev_state, policy_input)
-        if params['CHANGE_LOG'] == '3-25-21':
-            return r_to_r_swap_H_discrete(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-18-21':
+        #    return r_to_r_swap_H_temp(params, substep, state_history, prev_state, policy_input)
+        #if params['CHANGE_LOG'] == '3-25-21':
+        #    return r_to_r_swap_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy_input)
         else:
