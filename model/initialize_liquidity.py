@@ -1,5 +1,3 @@
-print("running file: initialize_liquidity.py")
-
 # JS July 8th, 2021: Assumes a = 1 for calculation of Cj, Y
 initial_values = {  'UNI_Qi': 20000, 
                     'UNI_Ri': 59580, 
@@ -23,5 +21,3 @@ initial_values = {  'UNI_Qi': 20000,
 }
 C =1000000000000
 
-
-print("end of file: initialize_liquidity.py")

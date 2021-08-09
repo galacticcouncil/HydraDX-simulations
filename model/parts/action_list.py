@@ -1,6 +1,5 @@
 # Behaviors
 # from hydra_multi_class.model.sys_params import ACTION_LIST
-# print("running file: action_list.py")
 import numpy as np
 import random
 import math
@@ -321,5 +320,3 @@ def s_direction_random(params, step, history, prev_state, policy_input):
         direction_random_choice = random.choice(['test_r_for_r'])
 
         return 'trade_random_direction', direction_random_choice
-
-print("end of file: action_list.py")

@@ -1,4 +1,3 @@
-print("running file: config_wrapper.py")
 from cadCAD.configuration.utils import config_sim
 from cadCAD.configuration import Experiment
 
@@ -67,4 +66,3 @@ class ConfigWrapper:
         print("initial state:", initial_state)
 
         return self.exp
-print("end of file: config_wrapper.py")
