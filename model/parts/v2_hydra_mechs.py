@@ -15,14 +15,10 @@ def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
 
     Ri = pool.get_reserve(asset_id)
     Ci = pool.get_coefficient(asset_id)
-    #Wi = pool.get_weight(asset_id)
-    #Si = pool.get_share(asset_id)
-
+    
     Rk = pool.get_reserve(purchased_asset_id)
     Ck = pool.get_coefficient(purchased_asset_id)
-    #Wk = pool.get_weight(purchased_asset_id)
-    #Sk = pool.get_share(purchased_asset_id)
-
+    
     a = params['a']
 
     # JS July 9, 2021: compute threshold for reserve availability
@@ -34,7 +30,7 @@ def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
         # The swap out value delta_Rk is always negative
         delta_Rk = ( (Ci/Ck)*Ri**(-a) - (Ci/Ck)*(Ri + delta_Ri)**(-a) + Rk**(-a) )**(-1/a) - Rk
 
-         # Make the delta_Rk value positive for pool balance update below
+        # Make the delta_Rk value positive for pool balance update below
         delta_Rk = - delta_Rk
 
         print(' R added to pool of ',asset_id,' = ', delta_Ri)
@@ -63,45 +59,8 @@ def r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy
     H = prev_state['H']
     return ('H', H)
 
-def r_to_r_swap_Sq_reserve_one(params, substep, state_history, prev_state, policy_input):
-    """
-    This function calculates and returns the quantity Q after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
-    """
-    asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
-    pool = prev_state['pool']
-    purchased_asset_id = policy_input['purchased_asset_id'] # defines asset subscript
-    Q = prev_state['Q']
-    Sq = prev_state['Sq']
 
-    Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
-    Si = pool.get_share(asset_id)
-
-    Rk = pool.get_reserve(purchased_asset_id)
-    Wk = pool.get_weight(purchased_asset_id)
-    Sk = pool.get_share(purchased_asset_id) 
-
-    if delta_Ri == 0:
-        return ('Sq', Sq)
-
-    else:
-        # FROM REORDERING
-        # delta_Wi = - (delta_Ri / (Ri + delta_Ri)) * Wi
-        delta_Si = - (delta_Ri / (Ri + delta_Ri)) * Si
-
-        Si_ratio = delta_Si / Si
-        delta_Sk = - Si_ratio * Sk
-
-        # CHECKED SIGN because it is being subtracted, made negative, to make positive
-        delta_Rk = - Rk * ((Ri / (Ri + delta_Ri))**(Si / Sk) - 1) # blue box force negative because sebtracted from pool
- 
-        delta_Sq = delta_Si + delta_Sk
-
-        delta_Q = delta_Sq / Sq * Q
-
-        return ('Sq', Sq + delta_Sq)
-
+### KP-TE-AC: should be replaced into poolHub and content should be replaced with q_to_r_pool from v2_hydra_utils
 def q_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool variable after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
@@ -129,10 +88,6 @@ def q_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
             third = Q**(1 - a) - (Q + delta_Q)**(1 - a)
             delta_Ri = - Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
 
-        # print("**********")
-        # print(f"POOL RESERVE ONE REMOVING ASSET {asset_id} in amount {delta_Ri} from reserve {Ri}")
-        # print("**********")
-        
         delta_Wi = (delta_Q / Q) * Wq # check sign
 
         pool.q_to_r_pool(asset_id, delta_Ri) # subtracts Ri from pool
@@ -147,10 +102,6 @@ def q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
     delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
     Q = prev_state['Q']
     
-    # print("**********")
-    # print(f"Q ADDED INTO POOL: {delta_Q} to existing amount {Q}")
-    # print("**********")
-
     # JS July 9, 2021: compute threshold for reserve availability
     threshold = Q + delta_Q
 
@@ -175,20 +126,6 @@ def q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
     else:
         return ('H', H + delta_Q)
 
-def q_to_r_Sq_reserve_one(params, substep, state_history, prev_state, policy_input):
-    """
-    This function calculates and returns Sq after a trade where delta_Q is the amount being sold according to the specification from 3-3-21
-    """
-    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
-    Q = prev_state['Q']
-    Sq = prev_state['Sq']
-
-    if delta_Q == 0:
-        return ('Sq', Sq)
-    else:
-        delta_Sq = delta_Q / Q * Sq  # making negative
-    
-        return ('Sq', Sq + delta_Sq) 
 
 def r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
     """
@@ -219,12 +156,10 @@ def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
     Y = prev_state['Y']
     pool = prev_state['pool']
     Wq = prev_state['Wq']
-    #Sq = prev_state['Sq']
+   
 
     Ri = pool.get_reserve(asset_id)
-    #Wi = pool.get_weight(asset_id)
     Ci = pool.get_coefficient(asset_id)
-    #Si = pool.get_share(asset_id)
 
     a = params['a']
 
@@ -251,12 +186,9 @@ def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
     Y = prev_state['Y']
     pool = prev_state['pool']
     Wq = prev_state['Wq']
-    # Sq = prev_state['Sq']
 
     Ri = pool.get_reserve(asset_id)
-    # Wi = pool.get_weight(asset_id)
     Ci = pool.get_coefficient(asset_id)
-    # Si = pool.get_share(asset_id)
     H = prev_state['H']
 
     a = params['a']
@@ -269,35 +201,4 @@ def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
     else:
         delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q
         return ('H', H + delta_Q)
-
-def r_to_q_Sq_reserve_one(params, substep, state_history, prev_state, policy_input):
-    asset_id = policy_input['asset_id'] # defines asset subscript
-    pool = prev_state['pool']
-
-    delta_Ri = policy_input['ri_sold'] #amount of Q being sold by the user
-    pool = prev_state['pool']
-
-    Q = prev_state['Q']
-    Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
-    
-    Ri = pool.get_reserve(asset_id)
-    #Wi = pool.get_weight(asset_id)
-    Si = pool.get_share(asset_id)
-
-    a = params['a']
-
-    if delta_Ri == 0:
-        return ('Sq', Sq)
-
-    else:
-        delta_Q = Q * ((Ri / (Ri + delta_Ri))**(Si / Sq) - 1) 
-        if params['a'] != 1:
-            first = Q**(1 - a)
-            second = Si * (1 -a) / Sq**a
-            third = np.log(1 + delta_Ri / Ri)
-            delta_Q = (first - second * third)**(1/(1 - a)) - Q
-        delta_Sq = delta_Q / Q * Sq
-        
-        return ('Sq', Sq + delta_Sq)
 

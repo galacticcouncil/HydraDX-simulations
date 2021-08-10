@@ -10,194 +10,125 @@ from .v2_hydra_coeffs import * # new mechanism 28 June 2021
 # Mechanisms
 def mechanismHub_pool(params, substep, state_history, prev_state, policy_input):
     """
-This mechanism returns the approprate 'pool' function to a given policy input:
-- Ri_Purchase --> q_to_r_pool
-- Q_Purchase --> r_to_q_pool
-- AddLiquidity --> addLiquidity_pool
-- RemoveLiquidity --> removeLiquidity_pool
-
-For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
+This mechanismHub returns the approprate 'pool' function to a given policy input:
+Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
 
     """
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
-        return q_to_r_pool(params, substep, state_history, prev_state, policy_input)  
+        return q_to_r_pool(params, substep, state_history, prev_state, policy_input)  ## KP_TE_AC: rename & re-define accordingly to _reserve_one
     elif action == 'Q_Purchase':
-        ###### only need 1 version, use new change log 
-        ###### only need 1 function, can prune, delete the unused functions
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return r_to_q_pool_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_q_pool(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'AddLiquidity':
         return addLiquidity_pool(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return removeLiquidity_pool(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        #if params['CHANGE_LOG'] == '3-18-21':
-        #    return r_to_r_pool_temp(params, substep, state_history, prev_state, policy_input)
-        #if params['CHANGE_LOG'] == '3-25-21':
-        #    return r_to_r_pool_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_r_pool(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input)
     return('pool', prev_state['pool'])
     
 def mechanismHub_Q_Hydra(params, substep, state_history, prev_state, policy_input):
     """
 This mechanism returns the approprate hydra (Q=inside pool) function to a given policy input:
-- Ri_Purchase --> q_to_r_Qh
-- Q_Purchase --> r_to_q_Qh
-- AddLiquidity --> addLiquidity_Qh
-- RemoveLiquidity --> removeLiquidity_Qh
-
-For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
+Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
     """
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21':
-        #    return q_to_r_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return q_to_r_Qh(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'Q_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return r_to_q_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_q_Qh(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'AddLiquidity':
         return addLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        #if params['CHANGE_LOG'] == '3-18-21':
-        #    return r_to_r_swap_Qh_temp(params, substep, state_history, prev_state, policy_input)
-        #if params['CHANGE_LOG'] == '3-25-21':
-        #    return r_to_r_swap_Qh_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, policy_input)
     return('Q', prev_state['Q'])
 
-def mechanismHub_Sq(params, substep, state_history, prev_state, policy_input):
+def mechanismHub_Sq(params, substep, state_history, prev_state, policy_input): # KP-TE-AC: can be removed completely? - not w/o nchanges in PSUB
     """
 This mechanism returns the approprate share function to a given policy input:
-- AddLiquidity --> addLiquidity_Sq
-- RemoveLiquidity --> removeLiquidity_Sq
-
-For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
-    """
-    ##### cHANGE log 4-11-21 cOMPLETING WEIGHT-SHARE CONVERSION
+Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
+    """    
     action = policy_input['action_id']
-    # if action == 'Ri_Purchase':
-    #     if params['CHANGE_LOG'] == '3-25-21':
-    #         return q_to_r_Sq_discrete(params, substep, state_history, prev_state, policy_input)
-    #     if params['CHANGE_LOG'] == '4-01-21':
-    #         return q_to_r_Sq_reserve_one(params, substep, state_history, prev_state, policy_input)
-    #     else:
-    #         return q_to_r_Sq(params, substep, state_history, prev_state, policy_input)
-    # elif action == 'Q_Purchase':
-    #     if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-    #         return r_to_q_Sq_discrete(params, substep, state_history, prev_state, policy_input)
-    #     if params['CHANGE_LOG'] == '4-01-21':
-    #         return r_to_q_Sq_reserve_one(params, substep, state_history, prev_state, policy_input)
-    #     else:
-    #         return r_to_q_Sq(params, substep, state_history, prev_state, policy_input)
     if action == 'AddLiquidity':
         return addLiquidity_Sq(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return removeLiquidity_Sq(params, substep, state_history, prev_state, policy_input)
-    # elif action == 'R_Swap':
-    #     if params['CHANGE_LOG'] == '3-18-21':
-    #         return r_to_r_swap_Sq_temp(params, substep, state_history, prev_state, policy_input)
-    #     if params['CHANGE_LOG'] == '3-25-21':
-    #         return r_to_r_swap_Sq_discrete(params, substep, state_history, prev_state, policy_input)
-    #     if params['CHANGE_LOG'] == '4-01-21':
-    #         return r_to_r_swap_Sq_reserve_one(params, substep, state_history, prev_state, policy_input)
-    #     else:
-    #         return r_to_r_swap_Sq(params, substep, state_history, prev_state, policy_input)
     return('Sq', prev_state['Sq'])
 
 def H_agenthub(params, substep, state_history, prev_state, policy_input):
     action = policy_input['action_id']
-    if action == 'Ri_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return H_agent_q_to_r_trade_discrete(params, substep, state_history, prev_state, policy_input)
+    if action == 'Ri_Purchase':        
         if params['CHANGE_LOG'] == '7-13-21':
             return H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return H_agent_q_to_r_trade(params, substep, state_history, prev_state, policy_input)
-    elif action == 'Q_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return H_agent_r_to_q_trade_discrete(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, policy_input)
+    elif action == 'Q_Purchase':        
         if params['CHANGE_LOG'] == '7-13-21': #no actual in change in H
             return H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return H_agent_r_to_q_trade(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'AddLiquidity':
         return H_agent_add_liq(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return H_agent_remove_liq(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        #if params['CHANGE_LOG'] == '3-25-21':
-        #    return H_agent_r_to_r_swap_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, policy_input)   
-        else:
-            return H_agent_r_to_r_swap(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, policy_input)
     return('hydra_agents', prev_state['hydra_agents'])
     
 
 def mechanismHub_H_Hydra(params, substep, state_history, prev_state, policy_input):
     """
 This mechanism returns the approprate Hydra (H=total supply) function to a given policy input.
-
-For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
+Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
     """
     action = policy_input['action_id']
 
     if action == 'Ri_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return q_to_r_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return q_to_r_H(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'Q_Purchase':
-        #if params['CHANGE_LOG'] == '3-25-21': #no actual in change in H
-        #    return r_to_q_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_q_H(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_input)
     elif action == 'AddLiquidity':
         return resolve_addLiquidity_H(params, substep, state_history, prev_state, policy_input)
     elif action == 'RemoveLiquidity':
         return resolve_remove_Liquidity_H(params, substep, state_history, prev_state, policy_input)
     elif action == 'R_Swap':
-        #if params['CHANGE_LOG'] == '3-18-21':
-        #    return r_to_r_swap_H_temp(params, substep, state_history, prev_state, policy_input)
-        #if params['CHANGE_LOG'] == '3-25-21':
-        #    return r_to_r_swap_H_discrete(params, substep, state_history, prev_state, policy_input)
         if params['CHANGE_LOG'] == '7-13-21':
             return r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy_input)
-        else:
-            return r_to_r_swap_H(params, substep, state_history, prev_state, policy_input)
+        else: #placeholder for alternative mechanism below:
+            return r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy_input)
     return('H', prev_state['H'])
 
-def mechanismHub_Wq(params, substep, state_history, prev_state, policy_input):
+def mechanismHub_Wq(params, substep, state_history, prev_state, policy_input): #KP-TE-AC: can be removed completely? - not w/o nchanges in PSUB
     """
 This mechanism returns the approprate share function to a given policy input:
 Weight and Share break constraint
-
-For a particular choice of 'CHANGE LOG' parameter it allows to test out different candidate mechanisms and their effects.
+Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
     """
     action = policy_input['action_id']
     if action == 'Ri_Purchase':
