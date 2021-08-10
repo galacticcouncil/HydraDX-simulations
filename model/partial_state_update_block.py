@@ -13,14 +13,7 @@ from .parts.metrics import *
 # from .parts.hydra import *
 # from .parts.action import *
 
-################# Choose action sequence for verification test by uncommenting reference to appropriate file #############
-
 from .parts.action_list import *
-# from .parts.action_swap_test import *
-#from .parts.action_list_verification_liquidity import *
-#from .parts.action_list_verification_swapRforR import *
-#from .parts.action_list_verification_swapRforQ import *
-#from .parts.action_list_verification_swapQforR import *
 
 from .parts.resolve import *
 from .parts.v2_hydra import *
@@ -39,41 +32,41 @@ partial_state_update_block = [
             'trade_random_direction': s_direction_random,
         }
     },
-    # {
-    #     # uniswap.py asset i AND j
-    #     'policies': {
-    #         'user_action': actionDecoder
-    #     },
-    #     'variables': {
-    #         # UNISWAP WORLD
-    #         'UNI_Ri': mechanismHub_Ri,
-    #         'UNI_Qi': mechanismHub_Q,
-    #         'UNI_Si': mechanismHub_Si,
-    #         'uni_agents': agenthub,
-    #         'UNI_Rj': mechanismHub_Ri,
-    #         'UNI_Qj': mechanismHub_Q,
-    #         'UNI_Sj': mechanismHub_Si,
-    #         'UNI_ij': mechanismHub_ij,
-    #         'UNI_ji': mechanismHub_ji,
-    #     }
-    # },
-    # {
-    #     # hydra.py 
-    #     'policies': {
-    #         'user_action': actionDecoder
-    #     },
-    #     'variables': {
-    #         'hydra_agents': H_agenthub, # MUST UPDATE FOR MULTI
-    #         # HYDRA WORLD
-    #         # 'asset' : mechanismHub_asset,
-    #         'Sq' : mechanismHub_Sq,
-    #         'Q' : mechanismHub_Q_Hydra, 
-    #         'H': mechanismHub_H_Hydra,
-    #         'Wq' : mechanismHub_Wq,
-    #         'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
-    #         'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
-    #     }
-    # },
+     #{
+     #    # uniswap.py asset i AND j
+     #    'policies': {
+     #        'user_action': actionDecoder
+     #    },
+     #    'variables': {
+     #        # UNISWAP WORLD
+     #        'UNI_Ri': mechanismHub_Ri,
+     #        'UNI_Qi': mechanismHub_Q,
+     #        'UNI_Si': mechanismHub_Si,
+     #        'uni_agents': agenthub,
+     #        'UNI_Rj': mechanismHub_Ri,
+     #        'UNI_Qj': mechanismHub_Q,
+     #        'UNI_Sj': mechanismHub_Si,
+     #        'UNI_ij': mechanismHub_ij,
+     #        'UNI_ji': mechanismHub_ji,
+     #    }
+     #},
+     #{
+     #    # hydra.py 
+     #    'policies': {
+     #        'user_action': actionDecoder
+     #    },
+     #    'variables': {
+     #        'hydra_agents': H_agenthub, # MUST UPDATE FOR MULTI
+     #        # HYDRA WORLD
+     #        # 'asset' : mechanismHub_asset,
+     #        'Sq' : mechanismHub_Sq,
+     #        'Q' : mechanismHub_Q_Hydra, 
+     #        'H': mechanismHub_H_Hydra,
+     #        'Wq' : mechanismHub_Wq,
+     #        'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
+     #        'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
+     #    }
+     #},
         {
         ############ v2_hydra.py  #################################################
         'policies': {
