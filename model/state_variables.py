@@ -17,9 +17,7 @@ In addition to that, we initialize:
 
 # Dependences
 from .parts.utils import *
-# from .initialize_liquidity import C, initial_values
 from .sys_params import params, initial_values, temp_a, C
-# from .parts.asset_utils import Asset
 from .parts.v2_asset_utils import V2_Asset
 import pandas as pd
 ########## AGENT INITIALIZATION ##########
