@@ -11,7 +11,6 @@ print("running file: partial_state_update_block.py")
 from .parts.uniswap import *
 from .parts.metrics import *
 from .parts.action_list import *
-from .parts.resolve import *
 from .parts.v2_hydra import *
 partial_state_update_block = [
     {
