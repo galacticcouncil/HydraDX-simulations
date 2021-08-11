@@ -1,6 +1,6 @@
 import numpy as np
 
-def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_r_pool(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool variable after a trade between 
     two risk assets where delta_Ri is the amount being sold.
@@ -42,7 +42,7 @@ def r_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_i
         return ('pool', pool)
 
 
-def r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the quantity Q after a trade between two risk assets
     Under the mechanism defined June 28, 2021 there is **no change** in the quantity Q
@@ -50,7 +50,7 @@ def r_to_r_swap_Qh_reserve_one(params, substep, state_history, prev_state, polic
     Q = prev_state['Q']
     return('Q', Q)
 
-def r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_r_swap_H(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the quantity H after a trade between two risk assets
     Under the mechanism defined June 28, 2021 there is **no change** in the quantity H
@@ -60,42 +60,8 @@ def r_to_r_swap_H_reserve_one(params, substep, state_history, prev_state, policy
     return ('H', H)
 
 
-### KP-TE-AC: should be replaced into poolHub and content should be replaced with q_to_r_pool from v2_hydra_utils
-def q_to_r_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
-    """
-    This function calculates and returns the pool variable after a trade between two risk assets where delta_R is the amount being sold according to the specification from 3-18-21
-    """
-    asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_Q = policy_input['q_sold'] #amount of Q being sold by the user
-    pool = prev_state['pool']
-    Q = prev_state['Q']
-    Wq = prev_state['Wq']
-    Sq = prev_state['Sq']
 
-    Ri = pool.get_reserve(asset_id)
-    Wi = pool.get_weight(asset_id)
-    Si = pool.get_share(asset_id)
-    # print(params['a'])
-    a = params['a']
-    # print(a)
-    if delta_Q == 0:
-        return ('pool', pool)
-    else:
-        delta_Ri = - Ri * ((Q / (Q + delta_Q))**(Wq / Wi) - 1)  # making negative because subtracted
-        if params['a'] != 1:
-            first = 1 /(1 - a)
-            second = (Wq**a) / Wi
-            third = Q**(1 - a) - (Q + delta_Q)**(1 - a)
-            delta_Ri = - Ri * (np.exp(first*second*third) - 1)  # making negative because subtracted
-
-        delta_Wi = (delta_Q / Q) * Wq # check sign
-
-        pool.q_to_r_pool(asset_id, delta_Ri) # subtracts Ri from pool
-        pool.swap_weight_pool(asset_id, delta_Wi) # adds share
-
-        return ('pool', pool)
-
-def q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_input):
+def q_to_r_Qh(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns Q after a trade where delta_Q is the amount being sold into the pool
     """
@@ -110,7 +76,7 @@ def q_to_r_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
     else:
         return ('Q', Q + delta_Q)
 
-def q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_input):
+def q_to_r_H(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns H after a trade where delta_Q is the amount being sold into the pool
     """
@@ -127,7 +93,7 @@ def q_to_r_H_reserve_one(params, substep, state_history, prev_state, policy_inpu
         return ('H', H + delta_Q)
 
 
-def r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_q_pool(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool variable after a weight update follwing a trade 
     between a risk asset and the base asset where delta_R is the amount being sold.
@@ -142,7 +108,7 @@ def r_to_q_pool_reserve_one(params, substep, state_history, prev_state, policy_i
         pool.r_to_q_pool(asset_id, delta_Ri) # adds delta_Ri to pool
     return ('pool', pool)
 
-def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_q_Qh(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool base asset after a risk asset is traded for the base asset, 
     where delta_Ri is the risk asset amount being sold
@@ -172,7 +138,7 @@ def r_to_q_Qh_reserve_one(params, substep, state_history, prev_state, policy_inp
         delta_Q = Q * Y * (Y**(-a) - Ci * Ri**(-a) + Ci * (Ri + delta_Ri)**(-a))**(1/a) - Q
         return('Q', Q + delta_Q)
 
-def r_to_q_H_reserve_one(params, substep, state_history, prev_state, policy_input):
+def r_to_q_H(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the total base asset after a risk asset is traded for the base asset, 
     where delta_Ri is the risk asset amount being sold

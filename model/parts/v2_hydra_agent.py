@@ -61,7 +61,7 @@ def getInputPrice(input_amount, input_reserve, output_reserve, params):
     denominator = (input_reserve * fee_denominator) + input_amount_with_fee
     return int(numerator // denominator)
 
-def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, policy_input):
+def H_agent_q_to_r(params, substep, state_history, prev_state, policy_input):
     """
     This function updates Hydra agent states when the pool asset Q is traded into the pool in return for a risk asset Ri
     """
@@ -93,7 +93,7 @@ def H_agent_q_to_r_reserve_one(params, substep, state_history, prev_state, polic
         return ('hydra_agents', agents)
 
 
-def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, policy_input):
+def H_agent_r_to_r_swap(params, substep, state_history, prev_state, policy_input):
     """
     This function updates Hydra agent states when one risk asset is traded for another risk asset
     Deepcopy fixes double resolution error
@@ -135,7 +135,7 @@ def H_agent_r_to_r_swap_reserve_one(params, substep, state_history, prev_state, 
         
         return ('hydra_agents', agents)
 
-def H_agent_r_to_q_reserve_one(params, substep, state_history, prev_state, policy_input):
+def H_agent_r_to_q(params, substep, state_history, prev_state, policy_input):
     """
     This function updates Hydra agent states when a risk asset Ri is traded into the pool in return for the pool asset Q  
     """

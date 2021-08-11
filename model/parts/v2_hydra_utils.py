@@ -187,7 +187,6 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     return ('pool', pool)
 
 
-# KP-TE-AC should be renamed due to consistency to q_to_r_pool_reserve_one
 def q_to_r_pool(params, substep, state_history, prev_state, policy_input):
     """
     This function calculates and returns the pool variable after a trade where 
