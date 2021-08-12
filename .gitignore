@@ -129,3 +129,9 @@ dmypy.json
 
 # ignore pycache
 *.pyc
+
+# old models
+uniswap/**
+hydra_single/**
+hydra_multi/**
+hydra_multi_class/**
