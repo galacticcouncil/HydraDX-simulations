@@ -60,7 +60,7 @@ Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternati
             return r_to_r_swap_Qh(params, substep, state_history, prev_state, policy_input)
     return('Q', prev_state['Q'])
 
-def mechanismHub_Sq(params, substep, state_history, prev_state, policy_input): # KP-TE-AC: can be removed completely? - not w/o nchanges in PSUB
+def mechanismHub_Sq(params, substep, state_history, prev_state, policy_input):
     """
 This mechanism returns the approprate share function to a given policy input:
 Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
@@ -124,7 +124,7 @@ Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternati
             return r_to_r_swap_H(params, substep, state_history, prev_state, policy_input)
     return('H', prev_state['H'])
 
-def mechanismHub_Wq(params, substep, state_history, prev_state, policy_input): #KP-TE-AC: can be removed completely? - not w/o nchanges in PSUB
+def mechanismHub_Wq(params, substep, state_history, prev_state, policy_input): #KP-TE-AC: can be removed completely - but not w/o nchanges in PSUB
     """
 This mechanism returns the approprate share function to a given policy input:
 Weight and Share break constraint

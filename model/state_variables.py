@@ -1,15 +1,10 @@
-print("running file: state_variables.py")
 """
 State variables are defined here.
 
-We set:
-- dependencies
 - agent parameters (agent dataframe)
-- asset parameters (asset daraframe)
+- asset parameters (asset dataframe)
 - potential new asset parameters (new_asset dataframe)
 
-
-In addition to that, we initialize:
 - the Hydra pool
 - all Uniswap pools
 - the initial state object
@@ -114,4 +109,3 @@ initial_state = {
     'purchased_asset_id': 'N/A'
 }
 
-print("end of file: state_variables.py")

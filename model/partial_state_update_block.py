@@ -57,8 +57,8 @@ partial_state_update_block = [
             'Sq' : mechanismHub_Sq,
             'Q' : mechanismHub_Q_Hydra, 
             'H': mechanismHub_H_Hydra,
-            'Wq' : mechanismHub_Wq, # js july 1st: need to revisit for coefficient updating
-            'Y' : mechanismHub_Y, #kp: included for Y mechanisms
+            'Wq' : mechanismHub_Wq, 
+            'Y' : mechanismHub_Y,
             'hydra_agents': H_agenthub,
             'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
             'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
