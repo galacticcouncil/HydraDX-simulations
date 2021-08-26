@@ -7,7 +7,6 @@ Here the partial state update blocks are configurated by setting
 
 for each state update block individually
 """
-print("running file: partial_state_update_block.py")
 from .parts.uniswap import *
 from .parts.metrics import *
 from .parts.action_list import *
@@ -57,7 +56,6 @@ partial_state_update_block = [
             'Sq' : mechanismHub_Sq,
             'Q' : mechanismHub_Q_Hydra, 
             'H': mechanismHub_H_Hydra,
-            'Wq' : mechanismHub_Wq, 
             'Y' : mechanismHub_Y,
             'hydra_agents': H_agenthub,
             'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
@@ -83,5 +81,3 @@ partial_state_update_block = [
         }
     },
 ]
-
-print("end of file: partial_state_update_block.py")

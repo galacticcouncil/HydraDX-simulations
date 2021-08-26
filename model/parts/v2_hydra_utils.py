@@ -39,21 +39,6 @@ def addLiquidity_Qh(params, substep, state_history, prev_state, policy_input):
     return ('Q', Q_plus)
 
 
-#def calc_price_q_i(Ki, Ri, Q, Si, Sq): #KP-TE-AC: can be removed completely?
-#    """
-#    calculates the price according to specification from 3-3-21
-#    """
-################################################################################################
-############ YELLOW BOX HYDRA SPEC SWAP RISK ASSETS 3-3-21 #####################################
-#    first_term = Ki / Ri
-#    second_term_fraction = (Q / Sq) / (Ri / Si)
-#    price_q_i = first_term - second_term_fraction * np.log(Ri)
-############ YELLOW BOX HYDRA SPEC SWAP RISK ASSETS 3-3-21 #####################################
-################################################################################################
-#    return price_q_i
-#
-
-
 def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
     """
     Updates pool values after an add liquidity event

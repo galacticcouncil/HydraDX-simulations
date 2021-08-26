@@ -5,7 +5,6 @@ from .v2_hydra_utils import * # original mechanisms
 from .v2_hydra_agent import *
 from .v2_hydra_mechs import * # newer mechanisms
 from .v2_hydra_coeffs import * # new mechanism 28 June 2021
-# from .hydra_weights import * # weight to share mechanisms
 
 # Mechanisms
 def mechanismHub_pool(params, substep, state_history, prev_state, policy_input):
@@ -123,25 +122,6 @@ Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternati
         else: #placeholder for alternative mechanism below:
             return r_to_r_swap_H(params, substep, state_history, prev_state, policy_input)
     return('H', prev_state['H'])
-
-def mechanismHub_Wq(params, substep, state_history, prev_state, policy_input): #KP-TE-AC: can be removed completely - but not w/o nchanges in PSUB
-    """
-This mechanism returns the approprate share function to a given policy input:
-Weight and Share break constraint
-Conditioned upon the choice of the 'CHANGE LOG' parameter selection of alternative mechanisms is facilitated which allows to test different candidate mechanisms and their effects.
-    """
-    action = policy_input['action_id']
-    if action == 'Ri_Purchase':
-        return q_to_r_Wq(params, substep, state_history, prev_state, policy_input) # "reserve -one version"
-    #elif action == 'Q_Purchase':
-        #return r_to_q_Wq(params, substep, state_history, prev_state, policy_input)  # "reserve -one version"
-    elif action == 'AddLiquidity':
-        return addLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
-    elif action == 'RemoveLiquidity':
-        return removeLiquidity_Wq(params, substep, state_history, prev_state, policy_input)
-    #elif action == 'R_Swap':
-        #return r_to_r_swap_Wq(params, substep, state_history, prev_state, policy_input) # KP 7-15-21 no Wq in V2
-    return('Wq', prev_state['Wq'])
 
 def mechanismHub_Y(params, substep, state_history, prev_state, policy_input):
     """

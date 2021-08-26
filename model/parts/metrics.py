@@ -69,7 +69,6 @@ def s_pool_price(params, substep, state_history, prev_state, policy_input):
     JS July 8, 2021: updated method call signature according to V2 Spec
     """
     pool = copy.deepcopy(prev_state['pool'])
-    # print('pool price here 1')
 
     Q = prev_state['Q']
     Y = prev_state['Y']
@@ -80,7 +79,7 @@ def s_pool_price(params, substep, state_history, prev_state, policy_input):
 
     # pool.update_price(Q, Sq)
     pool.update_price_a(Q, Y, a,)
-    # print('pool price here 2')
+    
 
     return ('pool', pool)
 
