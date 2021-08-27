@@ -212,7 +212,6 @@ def addLiquidity_Y(params, substep, state_history, prev_state, policy_input):
     Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
     Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
 
     P = pool.get_price(asset_id) 
     Ri_plus = Ri + delta_R
@@ -235,7 +234,6 @@ def removeLiquidity_Y(params, substep, state_history, prev_state, policy_input):
     Ci = pool.get_coefficient(asset_id)
     Q = prev_state['Q']
     Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
     Si = pool.get_share(asset_id)
 
     P = pool.get_price(asset_id) 

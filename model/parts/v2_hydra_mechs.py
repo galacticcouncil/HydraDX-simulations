@@ -121,7 +121,7 @@ def r_to_q_Qh(params, substep, state_history, prev_state, policy_input):
     Q = prev_state['Q']
     Y = prev_state['Y']
     pool = prev_state['pool']
-    Wq = prev_state['Wq']
+    
    
 
     Ri = pool.get_reserve(asset_id)
@@ -151,7 +151,7 @@ def r_to_q_H(params, substep, state_history, prev_state, policy_input):
     Q = prev_state['Q']
     Y = prev_state['Y']
     pool = prev_state['pool']
-    Wq = prev_state['Wq']
+    
 
     Ri = pool.get_reserve(asset_id)
     Ci = pool.get_coefficient(asset_id)

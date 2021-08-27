@@ -64,8 +64,6 @@ exo_composite = ['alternating'] # add liq then trade
 ENABLE_SYMMETRIC_LIQ = [True] 
 # ENABLE_SYMMETRIC_LIQ = [False] # False
 
-# Ki = [10**7, 10**8]  # FIXED FOR NOW, BUT MAY BE STATE BASED
-Ki = [10**7]
 
 #################### CHANGE LOG PARAMETER #######################
 #### This parameter can be used for future exploration of alternative mechanisms
@@ -94,11 +92,6 @@ asset_initial_values = {
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 # a = [0.9, 1, 1.1]
 a = [1.0]
-
-######################### Initialize Shares in Omnipool Differently #############
-Q = asset_initial_values['i']['Q'] + asset_initial_values['j']['Q']
-Sq = Q
-BTR = Sq / Q
 
 # V2 Spec June 28th 2021: Initialization of coefficients based upon adding new asset to pool
 
@@ -157,9 +150,9 @@ fee_numerator = [1000]
 fee_denominator = [1000]
 
 ### Parameters
-factors = [fee_numerator, fee_denominator, exo_trade, exo_liq, ENABLE_SYMMETRIC_LIQ, exo_asset, exo_composite, Ki, ACTION_LIST, CHANGE_LOG, a, ENABLE_BALANCER_PRICING]
+factors = [fee_numerator, fee_denominator, exo_trade, exo_liq, ENABLE_SYMMETRIC_LIQ, exo_asset, exo_composite, ACTION_LIST, CHANGE_LOG, a, ENABLE_BALANCER_PRICING]
 product = list(itertools.product(*factors))
-fee_numerator, fee_denominator, exo_trade, exo_liq, ENABLE_SYMMETRIC_LIQ, exo_asset, exo_composite, Ki, ACTION_LIST, CHANGE_LOG, a, ENABLE_BALANCER_PRICING = zip(*product)
+fee_numerator, fee_denominator, exo_trade, exo_liq, ENABLE_SYMMETRIC_LIQ, exo_asset, exo_composite, ACTION_LIST, CHANGE_LOG, a, ENABLE_BALANCER_PRICING = zip(*product)
 fee_numerator = list(fee_numerator)
 fee_denominator = list(fee_denominator)
 exo_trade =  list(exo_trade)
@@ -167,7 +160,6 @@ exo_liq =  list(exo_liq)
 ENABLE_SYMMETRIC_LIQ = list(ENABLE_SYMMETRIC_LIQ)
 exo_asset =  list(exo_asset)
 exo_composite = list(exo_composite)
-Ki = list(Ki)
 ACTION_LIST =  list(ACTION_LIST)
 CHANGE_LOG = list(CHANGE_LOG)
 a = list(a)
@@ -182,7 +174,6 @@ params = {
     'ENABLE_SYMMETRIC_LIQ' : ENABLE_SYMMETRIC_LIQ,
     'exo_asset' : exo_asset,
     'exo_composite' : exo_composite,
-    'Ki' : Ki,
     'ACTION_LIST': ACTION_LIST,
     'CHANGE_LOG': CHANGE_LOG,
     'a': a, 

@@ -73,7 +73,6 @@ def s_pool_price(params, substep, state_history, prev_state, policy_input):
     Q = prev_state['Q']
     Y = prev_state['Y']
     Sq = prev_state['Sq']
-    Wq = prev_state['Wq']
 
     a = params['a']
 

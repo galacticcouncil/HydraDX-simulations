@@ -96,7 +96,6 @@ initial_state = {
     # Hydra
     'Q': initial_values['Q'],
     'H': initial_values['H'],
-    'Wq': initial_values['Sq'],
     'Sq': initial_values['Sq'],
     # Hydra Y Risk Asset Pool Constant
     'Y': initial_values['Y'],
