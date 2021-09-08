@@ -90,8 +90,8 @@ asset_initial_values = {
 ##########  Risk Asset Pool Constant Curvature (cf. V2 Spec)
 #### Multiple values will cause a parameter sweep
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
-# a = [0.9, 1, 1.1]
-a = [1.0]
+a = [0.9, 1, 1.1]
+# a = [1.0]
 
 # V2 Spec June 28th 2021: Initialization of coefficients based upon adding new asset to pool
 
