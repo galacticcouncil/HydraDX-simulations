@@ -782,7 +782,7 @@ def param_fan_plot3(experiments, config_ids, swept_variable, y_variable, *args):
 
         cc_label = experiments.iloc[cc_idx]['subset']
 
-        secondary_label = [item['M'][swept_variable] for item in config_ids if  item["subset_id"]== cc_label]
+        #secondary_label = [item['M'][swept_variable] for item in config_ids if  item["subset_id"]== cc_label]
         sub_experiments = experiments[experiments['subset']==cc]
         cc_idx += len(sub_experiments)
         fig, axs = plt.subplots(ncols=cols, nrows=rows, figsize=(15*cols,7*rows))
@@ -792,7 +792,7 @@ def param_fan_plot3(experiments, config_ids, swept_variable, y_variable, *args):
         colors = ['orange', 'g', 'magenta', 'r', 'k' ]
 
         ax = axs
-        title = swept_variable + ' Effect on ' + y_variable + '\n' + 'Scenario: ' + str(secondary_label[0]) + ' ' + swept_variable
+        title = swept_variable + ' Effect on ' + y_variable + '\n' + 'Scenario: ' + str('[0.5, 1, 1.5]') + ' ' + swept_variable
         # + 'Scenario: ' + str(cc_label)  + ' rules_price'
         ax.set_title(title)
         ax.set_ylabel('Funds')
@@ -1084,7 +1084,7 @@ def param_pool_simulation_plot(experiments, config_ids, swept_variable, asset_id
 
         cc_label = experiments.iloc[cc_idx]['subset']
 
-        secondary_label = [item['M'][swept_variable] for item in config_ids if  item["subset_id"]== cc_label]
+        #secondary_label = [item['M'][swept_variable] for item in config_ids if  item["subset_id"]== cc_label]
         sub_experiments = experiments[experiments['subset']==cc]
         cc_idx += len(sub_experiments)
         fig, axs = plt.subplots(ncols=cols, nrows=rows, figsize=(15*cols,7*rows))
@@ -1096,7 +1096,7 @@ def param_pool_simulation_plot(experiments, config_ids, swept_variable, asset_id
         colors = ['orange', 'g', 'magenta', 'r', 'k' ]
         df = df.groupby('timestep').agg({df_label: ['min', 'mean', 'max']}).reset_index()
         ax = axs
-        title = swept_variable + ' Effect on Pool Asset ' + asset_id + '\n' + 'Scenario: ' + str(secondary_label[0]) + ' ' + swept_variable
+        title = swept_variable + ' Effect on Pool Asset ' + asset_id + '\n' + 'Scenario: ' + str('[0.5, 1, 1.5]') + ' ' + swept_variable
         # + 'Scenario: ' + str(cc_label)  + ' rules_price'
         ax.set_title(title)
         ax.set_ylabel('Funds')
