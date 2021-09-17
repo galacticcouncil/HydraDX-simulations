@@ -33,7 +33,7 @@ exo_liq = ['pass'] # No liquidity actions
 # exo_trade_size = ['fix_size']  
 exo_trade_size = ['vary_size'] 
 mu = [1000]
-sigma = [0]
+sigma = [100]
 
 ############### RANDOM SEQUENCE - add -swap -remove #####################
 #### If 'on' then a random sequence for agent actions is generated in action_list.py
@@ -91,6 +91,7 @@ asset_initial_values = {
 #### Multiple values will cause a parameter sweep
 # a = [0.9, 0.92, 0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06, 1.08, 1.1]
 a = [0.9, 1, 1.1]
+#a = [0.8, 1.2]
 # a = [1.0]
 
 # V2 Spec June 28th 2021: Initialization of coefficients based upon adding new asset to pool

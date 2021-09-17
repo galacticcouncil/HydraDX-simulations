@@ -22,7 +22,7 @@ partial_state_update_block = [
             # 'H': s_resolve_H,
             # 'asset' : s_asset_weight,
             'asset_random_choice': s_asset_random,
-            'trade_random_size': s_trade_deterministic,
+            'trade_random_size': s_trade_random,
             'trade_random_direction': s_direction_random,
         }
     },

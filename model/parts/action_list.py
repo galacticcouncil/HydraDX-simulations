@@ -70,7 +70,7 @@ def actionDecoder(params, step, history, prev_state):
             #params['exo_trade'] = random.choice(['pass'])
             #params['exo_trade'] = random.choice(['test_q_for_r', 'test_r_for_q'])
             params['exo_trade'] = prev_state['trade_random_direction']
-            #action['asset_id'] = random.choice(['i', 'j'])
+            #action['asset_id'] = random.choice(['i'])
             action['asset_id'] = prev_state['asset_random_choice']
       ############## SET RANDOM SEQUENCE ##################                    
         
@@ -168,10 +168,10 @@ def actionDecoder(params, step, history, prev_state):
         action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
         if action['asset_id'] == 'j':
             action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
-            action['ri_sold'] = prev_state['trade_random_size']
+            action['ri_sold'] = 4 * prev_state['trade_random_size']
             action['purchased_asset_id'] = 'i'
             action['direction'] = 'ji'           
-
+    print(action)
     return action
 
 #########################################################################################
@@ -209,7 +209,8 @@ def s_trade_random(params, step, history, prev_state, policy_input):
     else:
         sigma = params['sigma']
         mu = params['mu']
-        # asset_random_choice = random.choice(['i', 'j'])
+        asset_random_choice = random.choice(['i', 'j'])
+        #asset_random_choice = random.choice(['i'])
         trade_size_random_choice = math.ceil(np.random.normal(mu, sigma))
         return 'trade_random_size', trade_size_random_choice
     
