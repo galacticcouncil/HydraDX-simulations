@@ -26,24 +26,24 @@ partial_state_update_block = [
             'trade_random_direction': s_direction_random,
         }
     },
-     #{
-     #    # uniswap.py asset i AND j
-     #    'policies': {
-     #        'user_action': actionDecoder
-     #    },
-     #    'variables': {
-     #        # UNISWAP WORLD
-     #        'UNI_Ri': mechanismHub_Ri,
-     #        'UNI_Qi': mechanismHub_Q,
-     #        'UNI_Si': mechanismHub_Si,
-     #        'uni_agents': agenthub,
-     #        'UNI_Rj': mechanismHub_Ri,
-     #        'UNI_Qj': mechanismHub_Q,
-     #        'UNI_Sj': mechanismHub_Si,
-     #        'UNI_ij': mechanismHub_ij,
-     #        'UNI_ji': mechanismHub_ji,
-     #    }
-     #},
+     {
+         # uniswap.py asset i AND j
+         'policies': {
+             'user_action': actionDecoder
+         },
+         'variables': {
+             # UNISWAP WORLD
+             'UNI_Ri': mechanismHub_Ri,
+             'UNI_Qi': mechanismHub_Q,
+             'UNI_Si': mechanismHub_Si,
+             'uni_agents': agenthub,
+             'UNI_Rj': mechanismHub_Ri,
+             'UNI_Qj': mechanismHub_Q,
+             'UNI_Sj': mechanismHub_Si,
+             'UNI_ij': mechanismHub_ij,
+             'UNI_ji': mechanismHub_ji,
+         }
+     },
 
         {
         ############ v2_hydra.py  #################################################

@@ -26,7 +26,7 @@ def removeLiquidity_C(params, substep, state_history, prev_state, policy_input):
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Ri = pool.get_reserve(asset_id)
     Ci = pool.get_coefficient(asset_id)
     a = params['a']

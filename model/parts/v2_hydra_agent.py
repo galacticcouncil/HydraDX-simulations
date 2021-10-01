@@ -40,7 +40,7 @@ def H_agent_remove_liq(params, substep, state_history, prev_state, policy_input)
     H_chosen_agent = agents[agents['m']==agent_id]
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     
     R = pool.get_reserve(asset_id)
     S = pool.get_share(asset_id) 

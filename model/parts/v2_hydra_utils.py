@@ -62,10 +62,10 @@ def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
 def removeLiquidity_Sq(params, substep, state_history, prev_state, policy_input):
     """
     This function returns shares Sq after a liquidity removal in a specific risk asset.
-    The delta_Sq is taken prom the policy_input as the amount 'UNI_burn'
+    The delta_Sq is taken prom the policy_input as the amount 'HYDRA_burn'
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Sq = prev_state['Sq']
     
     return ('Sq', Sq - delta_S)

@@ -32,8 +32,8 @@ exo_liq = ['pass'] # No liquidity actions
 #### The method 's_trade_random' defined in action_list.py uses these parameters and assigns a trade size to each timestep
 # exo_trade_size = ['fix_size']  
 exo_trade_size = ['vary_size'] 
-mu = [1000]
-sigma = [100]
+mu = [0]
+sigma = [0]
 
 ############### RANDOM SEQUENCE - add -swap -remove #####################
 #### If 'on' then a random sequence for agent actions is generated in action_list.py
