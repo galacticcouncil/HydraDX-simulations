@@ -15,6 +15,8 @@ from .parts.utils import *
 from .sys_params import params, initial_values, temp_a, C
 from .parts.v2_asset_utils import V2_Asset
 import pandas as pd
+import copy 
+
 ########## AGENT INITIALIZATION ##########
 number_of_agents = 8
 
@@ -40,9 +42,9 @@ agents_df['h'] =  140000, 140000.0, 140000, 140000, 140000, 140000, 10.0, 0.0
 agents_df['s_i'] =   150000, 150000.0, 0.0, 150000, 150000, 150000, 0.0, 0.0
 agents_df['q_i'] =  170000, 170000.0, 170000, 170000, 170000, 170000, 0.0, 0.0
 agents_df['r_i_in'] =  110000, 110000.0, 110000, 110000, 110000, 110000, 0.0, 0.0
-agents_df['r_j_out'] = 120000, 120000.0, 120000, 120000, 120000, 120000, 0.0, 0.0
+agents_df['r_j_out'] = 120000, 120000.0, 120000, 120000, 100000, 100000, 0.0, 0.0
 agents_df['s_j'] =  160000, 160000.0, 160000, 160000, 160000, 160000, 0.0, 0.0
-agents_df['r_j_in'] =  130000, 130000.0, 130000, 130000, 130000, 130000, 0.0, 0.0
+agents_df['r_j_in'] =  130000, 130000.0, 130000, 130000, 10000, 100000, 0.0, 0.0
 agents_df['q_j'] =  180000, 180000.0, 180000, 180000, 180000, 180000, 0.0, 0.0
 ##################### ASSET TYPES ###################################
 ############
@@ -100,7 +102,7 @@ initial_state = {
     # Hydra Y Risk Asset Pool Constant
     'Y': initial_values['Y'],
     # Hydra Local Vars
-    'hydra_agents': agents_df,
+    'hydra_agents': copy.deepcopy(agents_df),
     'C': C,
     'asset_random_choice': 'i',
     'trade_random_size': 1000,

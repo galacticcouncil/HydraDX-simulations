@@ -29,7 +29,7 @@ def actionDecoder(params, step, history, prev_state):
     timestep = prev_state['timestep']
     pool = prev_state['pool']
     action['asset_id'] = prev_state['asset_random_choice']
-    action['q_sold'] = prev_state['trade_random_size'] * 2
+    action['q_sold'] = prev_state['trade_random_size']
     action['ri_sold'] = prev_state['trade_random_size']
     action['direction_q'] = prev_state['trade_random_direction']
  
@@ -42,8 +42,8 @@ def actionDecoder(params, step, history, prev_state):
     agent4_id = 4
     agent5_id = 5    
     
-    if params['exo_random_sequence'] == 'on':
-        agent3_id = 2
+    # if params['exo_random_sequence'] == 'on':
+    #     agent3_id = 2
     ############# CREATE AGENT ID's ################
 
    
@@ -62,6 +62,14 @@ def actionDecoder(params, step, history, prev_state):
             params['exo_trade'] = 'pass'
             action['asset_id'] = random.choice(['i'])
             action['purchased_asset_id'] = 'N/A'
+
+        elif timestep == 1:            
+            params['exo_liq'] = 'pass'
+            params['exo_trade'] = 'test_r_for_r'
+            action['asset_id'] = 'i' # random.choice(['i'])
+            action['purchased_asset_id'] = 'j'
+            params['exo_trade'] = prev_state['trade_random_direction']
+
     
         else:
             
@@ -87,13 +95,13 @@ def actionDecoder(params, step, history, prev_state):
         action['action_id'] = 'Ri_Purchase'
         action['purchased_asset_id'] = 'i'
         P = pool.get_price(action['purchased_asset_id']) 
-        action['q_sold'] = prev_state['trade_random_size'] * 2
+        action['q_sold'] = prev_state['trade_random_size']
         action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
         if action['asset_id'] == 'j':
             action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
             action['purchased_asset_id'] = 'j'
             P = pool.get_price(action['purchased_asset_id']) 
-            action['q_sold'] = prev_state['trade_random_size'] * 2
+            action['q_sold'] = prev_state['trade_random_size']
     ###############################################
 
 ########## TEMP TEST SELL R FOR Q ############
@@ -160,7 +168,8 @@ def actionDecoder(params, step, history, prev_state):
 
     ########## TEMP TEST SELL R FOR R ############
     ####### AGENT 5 ######################
-    if params['exo_trade'] == 'test_r_for_r':        
+    if params['exo_trade'] == 'test_r_for_r':
+        action['agent_id'] = prev_state['hydra_agents']['m'][agent5_id]
         action['ri_sold'] = prev_state['trade_random_size']
         action['action_id'] = 'R_Swap'
         action['purchased_asset_id'] = 'j'
@@ -170,7 +179,7 @@ def actionDecoder(params, step, history, prev_state):
         action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
         if action['asset_id'] == 'j':
             action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
-            action['ri_sold'] = 4 * prev_state['trade_random_size']
+            action['ri_sold'] = prev_state['trade_random_size']
             action['purchased_asset_id'] = 'i'
             action['direction'] = 'ji'           
     print(action)
@@ -213,7 +222,8 @@ def s_trade_random(params, step, history, prev_state, policy_input):
         mu = params['mu']
         asset_random_choice = random.choice(['i', 'j'])
         #asset_random_choice = random.choice(['i'])
-        trade_size_random_choice = math.ceil(np.random.normal(mu, sigma))
+        # trade_size_random_choice = math.ceil(np.random.normal(mu, sigma))
+        trade_size_random_choice = 1000
         return 'trade_random_size', trade_size_random_choice
     
 def s_trade_deterministic(params, step, history, prev_state, policy_input):
