@@ -60,6 +60,7 @@ partial_state_update_block = [
             'hydra_agents': H_agenthub,
             'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
             'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
+            'fee_revenue': mechanismHub_fee_revenue,
         }
     },
         ############ v2_hydra.py  #################################################

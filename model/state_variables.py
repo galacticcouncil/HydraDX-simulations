@@ -105,6 +105,7 @@ initial_state = {
     'asset_random_choice': 'i',
     'trade_random_size': 1000,
     'trade_random_direction': 'test_q_for_r',
-    'purchased_asset_id': 'N/A'
+    'purchased_asset_id': 'N/A',
+    'fee_revenue': 0,
 }
 

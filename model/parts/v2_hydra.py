@@ -7,6 +7,12 @@ from .v2_hydra_mechs import * # newer mechanisms
 from .v2_hydra_coeffs import * # new mechanism 28 June 2021
 
 # Mechanisms
+def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_input):
+    """
+    This mechanismHub returns the updated fee taken from the trade.
+    """
+    return 'fee_revenue', prev_state['fee_revenue'] + policy_input['fee']
+
 def mechanismHub_pool(params, substep, state_history, prev_state, policy_input):
     """
 This mechanismHub returns the approprate 'pool' function to a given policy input:

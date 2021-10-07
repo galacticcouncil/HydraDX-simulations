@@ -30,7 +30,8 @@ def actionDecoder(params, step, history, prev_state):
     pool = prev_state['pool']
     action['asset_id'] = prev_state['asset_random_choice']
     action['q_sold'] = prev_state['trade_random_size'] * 2
-    action['ri_sold'] = prev_state['trade_random_size']
+    action['ri_sold'] = prev_state['trade_random_size'] * 0.99 # Reduce amount used as fee
+    action['fee'] = prev_state['trade_random_size'] * 0.01 # Collect fee as static 1%
     action['direction_q'] = prev_state['trade_random_direction']
  
 
