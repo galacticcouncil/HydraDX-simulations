@@ -107,5 +107,7 @@ initial_state = {
     'trade_random_direction': 'test_q_for_r',
     'purchased_asset_id': 'N/A',
     'fee_revenue': 0,
+    'oracle_price_i': 0,
+    'oracle_price_j': 0,
 }
 

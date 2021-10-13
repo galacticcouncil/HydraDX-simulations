@@ -7,6 +7,18 @@ from .v2_hydra_mechs import * # newer mechanisms
 from .v2_hydra_coeffs import * # new mechanism 28 June 2021
 
 # Mechanisms
+def mechanismHub_oracle_price_i(params, substep, state_history, prev_state, policy_input):
+    """
+    This mechanismHub returns the updated oracle price for token i.
+    """
+    return 'oracle_price_i', prev_state['oracle_price_i']
+
+def mechanismHub_oracle_price_j(params, substep, state_history, prev_state, policy_input):
+    """
+    This mechanismHub returns the updated oracle price for token j.
+    """
+    return 'oracle_price_j', prev_state['oracle_price_j']
+
 def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_input):
     """
     This mechanismHub returns the updated fee taken from the trade.

@@ -61,6 +61,8 @@ partial_state_update_block = [
             'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
             'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
             'fee_revenue': mechanismHub_fee_revenue,
+            'oracle_price_i': mechanismHub_oracle_price_i,
+            'oracle_price_j': mechanismHub_oracle_price_j,
         }
     },
         ############ v2_hydra.py  #################################################

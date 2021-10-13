@@ -4,6 +4,9 @@ import numpy as np
 import random
 import math
 
+from oracles import constant_function, step_function
+
+
 # Set numpy random seed for replication
 np.random.seed(42)
 
@@ -33,6 +36,10 @@ def actionDecoder(params, step, history, prev_state):
     action['ri_sold'] = prev_state['trade_random_size'] * 0.99 # Reduce amount used as fee
     action['fee'] = prev_state['trade_random_size'] * 0.01 # Collect fee as static 1%
     action['direction_q'] = prev_state['trade_random_direction']
+
+    # Oracle prices
+    action['oracle_price_i'] = constant_function(timestep, 10)
+    action['oracle_price_j'] = constant_function(timestep, 12)
  
 
     ############# CREATE AGENT ID's ################    
