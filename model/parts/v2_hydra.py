@@ -25,16 +25,16 @@ def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_
     """
     return 'fee_revenue', prev_state['fee_revenue'] + policy_input['fee']
 
-def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_input:
+def mechanismHub_fee_revenue_H2(params, substep, state_history, prev_state, policy_input:
     """
     This mechanismHub returns the updated fee taken from the trade for different fee percentages. This is a practical implementation of fee hypothesis 2
     """
-	fee_rev = prev_state['fee_revenue_2’]
-	fee_returns = policy_input['fees’]
+	fee_rev = prev_state['fee_revenue_2']
+	fee_returns = policy_input['fees']
 
 	for i in range(0, len(fee_returns)):
 				fee_rev[i] = fee_rev[i] + fee_returns[i]
-	return ‘fee_revenue_2’, fee_rev
+	return 'fee_revenue_2', fee_rev
 
 def mechanismHub_pool(params, substep, state_history, prev_state, policy_input):
     """
