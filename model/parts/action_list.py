@@ -34,7 +34,7 @@ def actionDecoder(params, step, history, prev_state):
 
     # Populate revenue_array with revenue from every potential fee in fees_array
     for value in fees_array:
-	    revenue_array.append(prev_state['trade_random_size’] * value)
+	    revenue_array.append(prev_state['trade_random_size'] * value)
 
     timestep = prev_state['timestep']
     pool = prev_state['pool']
@@ -42,7 +42,7 @@ def actionDecoder(params, step, history, prev_state):
     action['q_sold'] = prev_state['trade_random_size'] * 2
     action['ri_sold'] = prev_state['trade_random_size'] * 0.99 # Reduce amount used as fee for Hypothesis 1
     action['fee'] = prev_state['trade_random_size'] * 0.01 # Collect fee as static 1% for Hypothesis 1
-    action['fees’] = revenue_array # Collected fees as 1%, 2% & 5% for Hypothesis 2
+    action['fees'] = revenue_array # Collected fees as 1%, 2% & 5% for Hypothesis 2
     action['direction_q'] = prev_state['trade_random_direction']
 
     # Oracle prices
