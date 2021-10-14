@@ -31,7 +31,7 @@ def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_
     """
 	fee_rev = prev_state['fee_revenue_2’]
 	fee_returns = policy_input['fees’]
-    
+
 	for i in range(0, len(fee_returns)):
 				fee_rev[i] = fee_rev[i] + fee_returns[i]
 	return ‘fee_revenue_2’, fee_rev
