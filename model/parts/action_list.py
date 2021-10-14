@@ -31,7 +31,7 @@ def actionDecoder(params, step, history, prev_state):
     # fees_array contains 3 possible fee percentages for Hypothesis
     fees_array = [0.01, 0.02, 0.05]
     revenue_array = []
-    
+
     # Populate revenue_array with revenue from every potential fee in fees_array
     for value in fees_array:
 	    revenue_array.append(prev_state['trade_random_size’] * value)
