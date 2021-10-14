@@ -4,7 +4,7 @@ import numpy as np
 import random
 import math
 
-from oracles import constant_function, step_function
+from .oracles import constant_function, step_function
 
 
 # Set numpy random seed for replication
