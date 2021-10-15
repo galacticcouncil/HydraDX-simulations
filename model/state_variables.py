@@ -107,7 +107,7 @@ initial_state = {
     'trade_random_direction': 'test_q_for_r',
     'purchased_asset_id': 'N/A',
     'fee_revenue': 0,
-    'fee_revenue_2': [], # Empty array to represent the different revenues collected from different fee percentages
+    'fee_revenue_2': [0, 0, 0], # Empty array to represent the different revenues collected from different fee percentages
     'oracle_price_i': 0,
     'oracle_price_j': 0,
 }
