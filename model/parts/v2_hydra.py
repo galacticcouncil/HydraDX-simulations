@@ -23,7 +23,12 @@ def mechanismHub_fee_revenue(params, substep, state_history, prev_state, policy_
     """
     This mechanismHub returns the updated fee taken from the trade. This is a practical implementation of fee hypothesis 1
     """
-    return 'fee_revenue', prev_state['fee_revenue'] + policy_input['fee']
+    # Use the asset as key & the fee revenue gained from it as value 
+    asset = policy_input['asset_id']
+    fee_rev = prev_state['fee_revenue']
+    fee_rev[asset] = fee_rev[asset]+ policy_input['fee']
+
+    return 'fee_revenue', fee_rev
 
 def mechanismHub_fee_revenue_H2(params, substep, state_history, prev_state, policy_input):
     """
