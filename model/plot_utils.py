@@ -2,6 +2,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+def impermanent_loss_plot(rdf):
+    pool = rdf.pool
+    oracles = rdf[['oracle_price_i', 'oracle_price_j']]
+
+    def get_price(pool, key):
+        return pool.get_price(key)
+
+    price_i = pool.apply(get_price, key='i')
+    price_j = pool.apply(get_price, key='j')
+
+    impermanent_loss_i = (price_i - oracles['oracle_price_i']) / oracles['oracle_price_i']
+    impermanent_loss_j = (price_j - oracles['oracle_price_j']) / oracles['oracle_price_j']
+
+    plt.figure(figsize=(20, 6))
+
+    plt.subplot(121)
+    plt.plot(impermanent_loss_i)
+    plt.xlabel("Timestep")
+    plt.ylabel("Impermanent Loss")
+
+    plt.subplot(122)
+    plt.plot(impermanent_loss_j)
+    plt.xlabel("Timestep")
+    plt.ylabel("Impermanent Loss")
+
 def hydra_pool_plot(experiments,test_title,T, asset_id):
     """
 For any asset on the risk side of the Hydra Omnipool this function plots quantities of:
