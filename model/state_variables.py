@@ -109,7 +109,7 @@ initial_state = {
     'purchased_asset_id': 'N/A',
     'fee_revenue': defaultdict(lambda: 0), # Dictionary where the key is the asset & the value is the fee revenue generated from asset
     'fee_revenue_2': [0, 0, 0], # Empty array to represent the different revenues collected from different fee percentages
-    'oracle_price_i': 0,
-    'oracle_price_j': 0,
+    'oracle_price_i': 2,
+    'oracle_price_j': 3,
 }
 

@@ -13,25 +13,47 @@ def constant_function(x, constant=0):
     return constant
 
 
-def step_function(x, steps=[(-np.inf, 0), (0, 1), (np.inf, 0)]):
+def dirac_delta_function(x, steps=[(1, 1)]):
     """
-    Returns the value from a step function.
-    
-    The function returns the step according to the list of values such that
-    f(x) = y_0 if x_0 <= x < x_1,
-           y_1 if x_1 <= x < x_2,
-           y_2 if x_2 <= x < x_3,
-           ...
+    Returns a Dirac delta function such that
 
-    Typically it's a good idea to use very large values for the boundary pairs.
+    f(x) = y_0 if x = x_0,
+           y_1 if x = x_1,
+           ...
+           else 0
 
     Parameters
     ============
     x: the input value.
-    steps: a list of (x, y) pairs that define the steps.
+    steps: a list of deltas.
     """
-    for n in range(1, len(steps)):
-        if steps[n-1][0] <= x and x < steps[n][0]:
-            return steps[n-1][1]
+    for x_n, y_n in steps:
+        if x == x_n:
+            return y_n
     else:
         return 0
+
+
+def random_stochastic_function(x, delta):
+    """
+    Creates a random stochastic function that adds a value between
+    [-delta, delta]
+
+    Parameters
+    ============
+    x: the input value.
+    delta: defines the range
+    """
+    return (np.random.random_sample() * 2 * delta) - delta
+
+
+def random_gaussian_function(x, sigma):
+    """
+    Samples from a Gaussian distribution.
+
+    Parameters
+    ============
+    x: the input value.
+    delta: defines the variance of the Gaussian curve.
+    """
+    return np.random.normal(0, sigma)

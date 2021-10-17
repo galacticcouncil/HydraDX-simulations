@@ -46,8 +46,8 @@ def actionDecoder(params, step, history, prev_state):
     action['direction_q'] = prev_state['trade_random_direction']
 
     # Oracle prices
-    action['oracle_price_i'] = constant_function(timestep, 2)
-    action['oracle_price_j'] = constant_function(timestep, 3)
+    action['oracle_price_i'] = constant_function(timestep, 0)
+    action['oracle_price_j'] = constant_function(timestep, 0)
  
 
     ############# CREATE AGENT ID's ################    
