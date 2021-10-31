@@ -4,7 +4,7 @@ import math
 import pytest
 from hypothesis import given, strategies as st, assume
 
-from hydradx_update.model.parts.amm import omnipool_amm as oamm
+from hydradx_update.model.amm import omnipool_amm as oamm
 
 # Token counts
 tkn_ct_strat = st.floats(min_value=1, max_value=1e20, allow_nan=False, allow_infinity=False)

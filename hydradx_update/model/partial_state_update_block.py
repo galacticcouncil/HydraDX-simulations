@@ -1,4 +1,4 @@
-from .parts.system import *
+from .system import *
 
 partial_state_update_block = [
     {
