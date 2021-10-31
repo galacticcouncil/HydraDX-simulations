@@ -1,4 +1,4 @@
-from hydradx_update.model.amm import amm
+from .amm import amm
 
 
 # Behaviors

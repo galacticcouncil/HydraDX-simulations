@@ -1,4 +1,4 @@
-from hydradx_update.model.system import *
+from .system import *
 
 partial_state_update_block = [
     {
