@@ -1,7 +1,7 @@
 import string
 
-from .parts import actions
-from .parts.amm import amm
+from . import actions
+from .amm import amm
 
 
 def complete_initial_values(values: dict, cfmm_type: string) -> dict:
