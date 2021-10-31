@@ -1,6 +1,6 @@
 import string
 
-import hydradx_update.model.parts.amm.omnipool_amm as oamm
+from ..amm import omnipool_amm as oamm
 
 
 def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
