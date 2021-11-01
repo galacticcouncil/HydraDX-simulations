@@ -141,6 +141,9 @@ def remove_risk_liquidity(
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
+    if delta_S == 0:
+        return new_state, new_agents
+
     piq = price_i(old_state, i)
     p0 = new_agents[LP_id]['p'][i]
     mult = 2 * piq / (piq + p0) * math.sqrt(piq / p0)
@@ -160,7 +163,7 @@ def remove_risk_liquidity(
                 mult * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
 
     # HDX burn
-    delta_Q = old_state['P'][i] * delta_R
+    delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
     return new_state, new_agents

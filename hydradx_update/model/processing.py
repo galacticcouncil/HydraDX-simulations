@@ -1,7 +1,10 @@
 import pandas as pd
 
+from . import init_utils as iu
+from .amm import amm
 
-def postprocessing(events):
+
+def postprocessing(events, count=True, count_tkn='R', count_k='n'):
     '''
     Definition:
     Refine and extract metrics from the simulation
@@ -20,6 +23,8 @@ def postprocessing(events):
             if k == 'AMM':
                 for k in step['AMM']:
                     expand_state_var(k, step['AMM'][k], d)
+                if count and count_tkn in step['AMM']:
+                    d[count_k] = len(step['AMM'][count_tkn])
 
             elif k == 'external':
                 for k in step['external']:
@@ -73,11 +78,10 @@ def expand_state_var(k, var, d) -> None:
         d[k].append(var)
 
 
-'''
-def get_state_from_row(row, cfmm_type) -> dict:
+def get_state_from_row(row) -> dict:
     state = {
         'token_list': [None] * row['n'],
-        'Q': [0] * row['n']
+        'Q': [0] * row['n'],
         'R': [0] * row['n'],
         'S': [0] * row['n'],
         'B': [0] * row['n']
@@ -97,45 +101,45 @@ def get_agent_from_row(row) -> dict:
     agent_d = {
         'r': [0] * row['n'],
         's': [0] * row['n'],
-        'h': row['h'],
+        'p': [0] * row['n'],
         'q': row['q']
     }
 
     for i in range(row['n']):
         agent_d['r'][i] = row['r-' + str(i)]
         agent_d['s'][i] = row['s-' + str(i)]
+        agent_d['p'][i] = row['p-' + str(i)]
 
     return agent_d
 
 
-def val_pool(row, cfmm_type):
-    state = get_state_from_row(row, cfmm_type)
+def val_pool(row):
+    state = get_state_from_row(row)
     agent_d = get_agent_from_row(row)
-    return amm.value_holdings(state, agent_d, row['agent_label'], cfmm_type)
+    return amm.value_holdings(state, agent_d, row['agent_label'])
 
 
-def val_hold(row, orig_agent_d, cfmm_type):
-    state = get_state_from_row(row, cfmm_type)
+def val_hold(row, orig_agent_d):
+    state = get_state_from_row(row)
     agent = orig_agent_d[row['agent_label']]
-    value = amm.value_assets(state, agent, state['P'])
+    value = amm.value_assets(state, agent)
     return value
 
 
-def get_withdraw_agent_d(initial_values: dict, agent_d: dict, cfmm_type) -> dict:
+def get_withdraw_agent_d(initial_values: dict, agent_d: dict) -> dict:
     # Calculate withdrawal based on initial state
     withdraw_agent_d = {}
-    initial_state = complete_initial_values(initial_values, agent_d, cfmm_type)
+    initial_state = iu.complete_initial_values(initial_values, agent_d)
     agents_init_d = amm.convert_agents(initial_state, agent_d)
     for agent_id in agents_init_d:
-        new_state, new_agents = amm.withdraw_all_liquidity(initial_state, agents_init_d[agent_id], agent_id, cfmm_type)
+        new_state, new_agents = amm.withdraw_all_liquidity(initial_state, agents_init_d[agent_id], agent_id)
         withdraw_agent_d[agent_id] = new_agents[agent_id]
     return withdraw_agent_d
 
 
-def pool_val(row, cfmm_type):
-    state = get_state_from_row(row, cfmm_type)
-    value = state['Q']*state['D']/state['H']
-    for i in range(state['n']):
-        value += state['R'][i] * state['B'][i]/state['S'][i] * state['P'][i]
+def pool_val(row):
+    state = get_state_from_row(row)
+    value = sum(state['Q'])
+    for i in range(len(state['R'])):
+        value += state['R'][i] * state['B'][i] / state['S'][i] * amm.price_i(state, i)
     return value
-'''
