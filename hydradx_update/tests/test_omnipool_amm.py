@@ -183,11 +183,16 @@ def test_remove_risk_liquidity(old_state):
 @given(QR_strat)
 def test_swap_hdx(old_state):
     n = len(old_state['R'])
+    old_state['S'] = [1000] * n
+    old_state['A'] = [0] * n
+    old_state['B'] = [0] * n
+    old_state['D'] = 0
     trader_id = 'trader'
     old_agents = {
         trader_id: {
             'r': [1000] * n,
-            'q': 1000
+            'q': 1000,
+            's': [0] * n
         }
     }
     delta_R = 1000
@@ -203,6 +208,44 @@ def test_swap_hdx(old_state):
     assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
 
 
+fee_strat = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+@given(QR_strat, fee_strat)
+def test_swap_hdx_fee(old_state, fee):
+    n = len(old_state['R'])
+    old_state['S'] = [1000] * n
+    old_state['A'] = [0] * n
+    old_state['B'] = [100] * n
+    old_state['D'] = 0
+    trader_id = 'trader'
+    LP_id = 'lp'
+    old_agents = {
+        trader_id: {
+            'r': [1000] * n,
+            'q': 1000,
+            's': [0] * n
+        },
+        LP_id: {
+            'r': [0] * n,
+            'q': 0,
+            's': [900] * n
+        }
+    }
+    delta_R = 1000
+    delta_Q = 1000
+    i = 0
+
+    # Test with trader selling asset i
+    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, delta_R, 0, i, fee)
+    assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
+    assert sum(old_state['Q']) + old_agents[trader_id]['q'] == pytest.approx(sum(new_state['Q']) + new_state['D'] + new_agents[trader_id]['q'])
+
+    # Test with trader selling HDX
+    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, 0, delta_Q, i, fee)
+    assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i), fee)
+    assert new_state['A'][i] > 0
+    assert new_state['A'][i] * 9 == pytest.approx(new_agents[LP_id]['r'][i])
+
+
 price_strat = st.floats(min_value=1e-5, max_value=1e5, allow_nan=False, allow_infinity=False)
 
 
@@ -210,6 +253,8 @@ price_strat = st.floats(min_value=1e-5, max_value=1e5, allow_nan=False, allow_in
 def test_add_asset(old_state, price):
     old_state['S'] = [1000000, 1000000]
     old_state['B'] = [0, 0]
+    old_state['A'] = [0, 0]
+    old_state['D'] = 0
 
     n = len(old_state['R'])
     init_R = 100000
@@ -221,6 +266,7 @@ def test_add_asset(old_state, price):
 if __name__ == '__main__':
     test_swap_hdx_delta_TKN_respects_invariant()
     test_swap_hdx()
+    test_swap_hdx_fee()
     test_weights()
     test_QR_strat()
     test_add_risk_liquidity()

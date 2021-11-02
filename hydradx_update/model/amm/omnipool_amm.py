@@ -20,12 +20,12 @@ def weight_i(state: dict, i: int) -> float:
     return state['Q'][i] / sum(state['Q'])
 
 
-def price_i(state: dict, i: int) -> float:
+def price_i(state: dict, i: int, fee: float = 0) -> float:
     """Price of i denominated in HDX"""
     if state['R'][i] == 0:
         return 0
     else:
-        return state['Q'][i] / state['R'][i]
+        return (state['Q'][i] / state['R'][i]) * (1 - fee)
 
 
 def initialize_pool_state(init_d=None) -> dict:
@@ -35,7 +35,9 @@ def initialize_pool_state(init_d=None) -> dict:
         'R': [],
         'Q': [],
         'S': [],
-        'B': []
+        'B': [],
+        'A': [],
+        'D': 0
     }
     for i in range(len(init_d['R'])):
         state = add_asset(state, init_d['R'][i], init_d['P'][i])
@@ -48,6 +50,7 @@ def add_asset(old_state: dict, init_R: float, price: float) -> dict:
     new_state['Q'].append(price * init_R)
     new_state['S'].append(init_R)
     new_state['B'].append(init_R)
+    new_state['A'].append(0)
     return new_state
 
 
@@ -57,24 +60,41 @@ def swap_hdx(
         trader_id: string,
         delta_R: float,
         delta_Q: float,
-        i: int
+        i: int,
+        fee: float = 0
 ) -> tuple:
     """Compute new state after HDX swap"""
 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
-    if delta_Q == 0:
+
+    if delta_Q == 0 and delta_R != 0:
         delta_Q = swap_hdx_delta_Qi(old_state, delta_R, i)
-    elif delta_R == 0:
+    elif delta_R == 0 and delta_Q != 0:
         delta_R = swap_hdx_delta_Ri(old_state, delta_Q, i)
     else:
-        raise Exception
+        return new_state, new_agents
 
     # Token amounts update
-    new_state['R'][i] += delta_R
-    new_state['Q'][i] += delta_Q
-    new_agents[trader_id]['r'][i] -= delta_R
-    new_agents[trader_id]['q'] -= delta_Q
+    # Fee is taken from the "out" leg
+    if delta_Q < 0:
+        new_state['R'][i] += delta_R
+        new_state['Q'][i] += delta_Q
+        new_agents[trader_id]['r'][i] -= delta_R
+        new_agents[trader_id]['q'] -= delta_Q * (1 - fee)
+
+        new_state['D'] -= delta_Q * fee
+    else:
+        new_state['R'][i] += delta_R
+        new_state['Q'][i] += delta_Q
+        new_agents[trader_id]['r'][i] -= delta_R * (1 - fee)
+        new_agents[trader_id]['q'] -= delta_Q
+
+        # distribute fees
+        new_state['A'][i] -= delta_R * fee * (new_state['B'][i] / new_state['S'][i])
+        for agent_id in new_agents:
+            agent = new_agents[agent_id]
+            agent['r'][i] -= delta_R * fee * (agent['s'][i] / new_state['S'][i])
 
     return new_state, new_agents
 
@@ -85,13 +105,15 @@ def swap_assets(
         trader_id: string,
         delta_sell: float,
         i_buy: int,
-        i_sell: int
+        i_sell: int,
+        fee_assets: float = 0,
+        fee_HDX: float = 0
 ) -> tuple:
     # swap asset in for HDX
-    first_state, first_agents = swap_hdx(old_state, old_agents, trader_id, delta_sell, 0, i_sell)
+    first_state, first_agents = swap_hdx(old_state, old_agents, trader_id, delta_sell, 0, i_sell, fee_HDX)
     # swap HDX in for asset
     delta_Q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
-    return swap_hdx(first_state, first_agents, trader_id, 0, delta_Q, i_buy)
+    return swap_hdx(first_state, first_agents, trader_id, 0, delta_Q, i_buy, fee_assets)
 
 
 def add_risk_liquidity(
