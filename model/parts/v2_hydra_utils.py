@@ -62,10 +62,10 @@ def addLiquidity_pool(params, substep, state_history, prev_state, policy_input):
 def removeLiquidity_Sq(params, substep, state_history, prev_state, policy_input):
     """
     This function returns shares Sq after a liquidity removal in a specific risk asset.
-    The delta_Sq is taken prom the policy_input as the amount 'UNI_burn'
+    The delta_Sq is taken prom the policy_input as the amount 'HYDRA_burn'
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Sq = prev_state['Sq']
     
     return ('Sq', Sq - delta_S)
@@ -101,7 +101,7 @@ def resolve_remove_Liquidity_H(params, substep, state_history, prev_state, polic
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     a = params['a']
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Ri = pool.pool[asset_id]['R']
     Y = prev_state['Y']
     Ci = pool.get_coefficient(asset_id)
@@ -127,7 +127,7 @@ def removeLiquidity_Qh(params, substep, state_history, prev_state, policy_input)
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     a = params['a']
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Ri = pool.pool[asset_id]['R']
     Y = prev_state['Y']
     Ci = pool.get_coefficient(asset_id)
@@ -151,7 +151,7 @@ def removeLiquidity_pool(params, substep, state_history, prev_state, policy_inpu
     Amended 9 July, 2021 to V2 Spec
     """
     asset_id = policy_input['asset_id'] # defines asset subscript
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     
     pool = prev_state['pool']
    
@@ -228,7 +228,7 @@ def removeLiquidity_Y(params, substep, state_history, prev_state, policy_input):
     asset_id = policy_input['asset_id'] # defines asset subscript
     pool = prev_state['pool']
     a = params['a']
-    delta_S = policy_input['UNI_burn']
+    delta_S = policy_input['HYDRA_burn']
     Ri = pool.pool[asset_id]['R']
     Y = prev_state['Y']
     Ci = pool.get_coefficient(asset_id)

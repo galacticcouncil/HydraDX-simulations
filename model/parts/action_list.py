@@ -29,7 +29,7 @@ def actionDecoder(params, step, history, prev_state):
     timestep = prev_state['timestep']
     pool = prev_state['pool']
     action['asset_id'] = prev_state['asset_random_choice']
-    action['q_sold'] = prev_state['trade_random_size'] * 2
+    action['q_sold'] = prev_state['trade_random_size']
     action['ri_sold'] = prev_state['trade_random_size']
     action['direction_q'] = prev_state['trade_random_direction']
  
@@ -87,13 +87,13 @@ def actionDecoder(params, step, history, prev_state):
         action['action_id'] = 'Ri_Purchase'
         action['purchased_asset_id'] = 'i'
         P = pool.get_price(action['purchased_asset_id']) 
-        action['q_sold'] = prev_state['trade_random_size'] * 2
+        action['q_sold'] = prev_state['trade_random_size'] 
         action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
         if action['asset_id'] == 'j':
             action['agent_id'] = prev_state['uni_agents']['m'][agent0_id]
             action['purchased_asset_id'] = 'j'
             P = pool.get_price(action['purchased_asset_id']) 
-            action['q_sold'] = prev_state['trade_random_size'] * 2
+            action['q_sold'] = prev_state['trade_random_size'] 
     ###############################################
 
 ########## TEMP TEST SELL R FOR Q ############
@@ -141,9 +141,10 @@ def actionDecoder(params, step, history, prev_state):
         action['purchased_asset_id'] = 'N/A'
         action['action_id'] = 'RemoveLiquidity'
         if timestep == 90:            
-            action['agent_id'] = prev_state['hydra_agents']['m'][agent3_id]
+            action['agent_id'] = prev_state['uni_agents']['m'][agent3_id]
             #action['UNI_burn'] = 500 #prev_state['hydra_agents']['s_i'][agent3_id] # starting value subtract - 150000
-            action['UNI_burn'] = prev_state['hydra_agents']['s_i'][agent3_id] # starting value subtract - 150000
+            action['UNI_burn'] = prev_state['uni_agents']['s_i'][agent3_id] # starting value subtract - 150000
+            action['HYDRA_burn'] = prev_state['hydra_agents']['s_i'][agent3_id]
             #action['UNI_burn'] = 199433.56 -150000 #a=0.5
             #action['UNI_burn'] = 201370.96 - 150000 #a=1.0
             # action['UNI_burn'] = 816230.51 - 150000 #a=1.5
@@ -169,7 +170,7 @@ def actionDecoder(params, step, history, prev_state):
         action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
         if action['asset_id'] == 'j':
             action['agent_id'] = prev_state['uni_agents']['m'][agent5_id]
-            action['ri_sold'] = 4 * prev_state['trade_random_size']
+            action['ri_sold'] = prev_state['trade_random_size']
             action['purchased_asset_id'] = 'i'
             action['direction'] = 'ji'           
     print(action)

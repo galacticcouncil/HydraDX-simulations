@@ -15,6 +15,7 @@ from .parts.utils import *
 from .sys_params import params, initial_values, temp_a, C
 from .parts.v2_asset_utils import V2_Asset
 import pandas as pd
+import copy
 ########## AGENT INITIALIZATION ##########
 number_of_agents = 8
 
@@ -100,7 +101,8 @@ initial_state = {
     # Hydra Y Risk Asset Pool Constant
     'Y': initial_values['Y'],
     # Hydra Local Vars
-    'hydra_agents': agents_df,
+    #'hydra_agents': agents_df,
+    'hydra_agents': copy.deepcopy(agents_df),
     'C': C,
     'asset_random_choice': 'i',
     'trade_random_size': 1000,
