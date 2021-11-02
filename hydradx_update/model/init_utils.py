@@ -4,20 +4,19 @@ from . import actions
 from .amm import amm
 
 
-def complete_initial_values(values: dict, cfmm_type: string) -> dict:
+def complete_initial_values(values: dict) -> dict:
     state = amm.initialize_state(values)
     state['token_list'] = values['token_list']
+    state['fee_assets'] = values['fee_assets']
+    state['fee_HDX'] = values['fee_HDX']
     return state
 
 
 def get_configuration(config_d: dict) -> tuple:
-    # amm = amm_selector.get_amm(config_d['cfmm_type'])
-
-    initial_values = complete_initial_values(config_d['initial_values'], config_d['cfmm_type'])
+    initial_values = complete_initial_values(config_d['initial_values'])
     timesteps = sum([x[1] for x in config_d['action_ls']])
     action_list = actions.get_action_list(config_d['action_ls'], config_d['prob_dict'])
-    params = {'cfmm_type': [config_d['cfmm_type']],
-              'action_list': [action_list],
+    params = {'action_list': [action_list],
               'action_dict': [config_d['action_dict']],
               'timesteps': [timesteps]}
     converted_agent_d = amm.convert_agents(initial_values, config_d['agent_d'])

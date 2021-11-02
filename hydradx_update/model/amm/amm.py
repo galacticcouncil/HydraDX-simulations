@@ -45,10 +45,12 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         delta_Q = 0
         delta_R = trade['amount_sell']
 
-    if i_buy < 0 or i_sell < 0:
-        return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_sell, i_buy))
+    if i_buy < 0:
+        return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, i_sell, old_state['fee_HDX'])
+    elif i_sell < 0:
+        return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, i_buy, old_state['fee_assets'])
     else:
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade['amount_sell'], i_buy, i_sell)
+        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade['amount_sell'], i_buy, i_sell, old_state['fee_assets'], old_state['fee_HDX'])
 
 
 def price_i(state: dict, i: int) -> float:
