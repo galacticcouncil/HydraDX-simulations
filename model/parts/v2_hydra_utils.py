@@ -193,7 +193,7 @@ def q_to_r_pool(params, substep, state_history, prev_state, policy_input):
     if delta_Q == 0 or delta_Q < 0:
         return ('pool', pool)
     else:
-        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(1/a) - Ri
+        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(-1/a) - Ri
     
         pool.q_to_r_pool(asset_id, delta_Ri)
 

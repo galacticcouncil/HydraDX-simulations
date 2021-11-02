@@ -85,7 +85,7 @@ def H_agent_q_to_r(params, substep, state_history, prev_state, policy_input):
         return ('hydra_agents', agents)
     else:
 
-        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(1/a) - Ri
+        delta_Ri = ( (1/Ci) * ((Q*Y) / (Q + delta_Q))**(-a) - (Y**(-a) / Ci) + Ri**(-a) )**(-1/a) - Ri
 
         agents.at[agent_id, 'r_' + asset_id + '_out'] = H_chosen_agent['r_' + asset_id + '_out'].values + delta_Ri
         agents.at[agent_id, 'h'] = H_chosen_agent['h'].values - delta_Q
