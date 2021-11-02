@@ -226,7 +226,7 @@ def s_direction_random(params, step, history, prev_state, policy_input):
     else:
         #direction_random_choice = random.choice(['test_q_for_r', 'test_r_for_q', 'test_r_for_r', 'test_add', 'test_remove'])
         #direction_random_choice = random.choice(['test_q_for_r', 'test_r_for_q', 'test_r_for_r'])
-        direction_random_choice = random.choice(['test_q_for_r'])
+        direction_random_choice = random.choice(['test_r_for_r'])
 
         return 'trade_random_direction', direction_random_choice
     
