@@ -57,9 +57,10 @@ partial_state_update_block = [
             'Q' : mechanismHub_Q_Hydra, 
             'H': mechanismHub_H_Hydra,
             'Y' : mechanismHub_Y,
-            'hydra_agents': H_agenthub,
+            #'hydra_agents': H_agenthub,
             'pool': mechanismHub_pool, # must be last or else updated would be used in omnipool updates
             'purchased_asset_id': s_purchased_asset_id, # writes from the action policy the outgoing risk asset
+            'hydra_agents': H_agenthub,
         }
     },
         ############ v2_hydra.py  #################################################
