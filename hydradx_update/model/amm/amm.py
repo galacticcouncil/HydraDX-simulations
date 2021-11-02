@@ -57,6 +57,10 @@ def price_i(state: dict, i: int) -> float:
     return oamm.price_i(state, i)
 
 
+def price_i(state: dict, i: int) -> float:
+    return oamm.price_i(state, i)
+
+
 def remove_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
     assert transaction['token_remove'] in old_state['token_list']
     agent_id = transaction['agent_id']
