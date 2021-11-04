@@ -168,7 +168,7 @@ def remove_risk_liquidity(
 
     piq = price_i(old_state, i)
     p0 = new_agents[LP_id]['p'][i]
-    mult = 2 * piq / (piq + p0) * math.sqrt(piq / p0)
+    mult = 2 * piq / (piq + p0) * (piq / p0)
 
     # Share update
     delta_B = max((mult - 1) * delta_S, - old_state['B'][i])
