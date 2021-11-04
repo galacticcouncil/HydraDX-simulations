@@ -91,7 +91,7 @@ def get_state_from_row(row) -> dict:
         state['R'][i] = row['R-' + str(i)]
         state['S'][i] = row['S-' + str(i)]
         state['B'][i] = row['B-' + str(i)]
-        state['Q'][i] = row['B-' + str(i)]
+        state['Q'][i] = row['Q-' + str(i)]
         state['token_list'][i] = row['token_list-' + str(i)]
 
     return state
