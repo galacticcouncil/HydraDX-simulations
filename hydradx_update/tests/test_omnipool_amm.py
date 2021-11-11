@@ -263,6 +263,31 @@ def test_add_asset(old_state, price):
     assert oamm.price_i(new_state, n) == pytest.approx(price)
 
 
+# Want to make sure this does not change pij, only changes piq proportionally
+# Also should make sure things stay reasonably bounded
+# Requires state with H, T, Q, burn_rate
+rate_strat = st.floats(min_value=1e-4, max_value=.99, allow_nan=False, allow_infinity=False)
+@given(QR_strat, rate_strat)
+def test_adjust_supply(old_state, r):
+    old_state['H'] = 20000000000
+    old_state['T'] = 15000000000
+    blocks_per_day = 5 * 60 * 24  # 12-second blocks
+    old_state['burn_rate'] = (1 + r)**(1/blocks_per_day) - 1
+
+    new_state = oamm.adjust_supply(old_state)
+
+    assert new_state['H'] > 0
+    assert new_state['H'] >= new_state['T']
+    for i in range(len(old_state['Q'])):
+        assert new_state['Q'][i] > 0
+        for j in range(i):
+            piq_old = oamm.price_i(old_state, i)
+            piq_new = oamm.price_i(new_state, i)
+            pjq_old = oamm.price_i(old_state, j)
+            pjq_new = oamm.price_i(new_state, j)
+            assert piq_old/pjq_old == pytest.approx(piq_new/pjq_new)
+
+
 if __name__ == '__main__':
     test_swap_hdx_delta_TKN_respects_invariant()
     test_swap_hdx()
@@ -272,3 +297,4 @@ if __name__ == '__main__':
     test_add_risk_liquidity()
     test_remove_risk_liquidity()
     test_add_asset()
+    test_adjust_supply()

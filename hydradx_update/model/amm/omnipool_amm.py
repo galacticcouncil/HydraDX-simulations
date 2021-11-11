@@ -2,6 +2,8 @@ import copy
 import math
 import string
 
+import ipdb
+
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
@@ -28,6 +30,24 @@ def price_i(state: dict, i: int, fee: float = 0) -> float:
         return (state['Q'][i] / state['R'][i]) * (1 - fee)
 
 
+def adjust_supply(old_state: dict):
+
+    if old_state['H'] <= old_state['T']:
+        return old_state
+
+    over_supply = old_state['H'] - old_state['T']
+    Q = sum(old_state['Q'])
+    Q_burn = min(over_supply, old_state['burn_rate']*Q)
+
+    new_state = copy.deepcopy(old_state)
+    for i in range(len(new_state['Q'])):
+        new_state['Q'][i] *= 1 - Q_burn/Q
+
+    new_state['H'] -= Q_burn
+
+    return new_state
+
+
 def initialize_pool_state(init_d=None) -> dict:
     if init_d is None:
         init_d = {}
@@ -37,7 +57,9 @@ def initialize_pool_state(init_d=None) -> dict:
         'S': [],
         'B': [],
         'A': [],
-        'D': 0
+        'D': 0,
+        'T': init_d['T'] if 'T' in init_d else None,
+        'H': init_d['H'] if 'H' in init_d else None
     }
     for i in range(len(init_d['R'])):
         state = add_asset(state, init_d['R'][i], init_d['P'][i])
