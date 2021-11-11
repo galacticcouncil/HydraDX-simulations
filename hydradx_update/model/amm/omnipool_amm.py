@@ -140,7 +140,7 @@ def add_risk_liquidity(
     new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
 
     # HDX add
-    delta_Q = old_state['P'][i] * delta_R
+    delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
     # set price at which liquidity was added
