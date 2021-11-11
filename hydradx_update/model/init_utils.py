@@ -9,6 +9,8 @@ def complete_initial_values(values: dict) -> dict:
     state['token_list'] = values['token_list']
     state['fee_assets'] = values['fee_assets']
     state['fee_HDX'] = values['fee_HDX']
+    if 'burn_rate' in values:
+        state['burn_rate'] = values['burn_rate']
     return state
 
 

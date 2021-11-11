@@ -41,7 +41,7 @@ def adjust_supply(old_state: dict):
 
     new_state = copy.deepcopy(old_state)
     for i in range(len(new_state['Q'])):
-        new_state['Q'][i] *= 1 - Q_burn/Q
+        new_state['Q'][i] += Q_burn * old_state['Q'][i]/Q
 
     new_state['H'] -= Q_burn
 
