@@ -68,16 +68,23 @@ def mechanismHub_AMM(params, substep, state_history, prev_state, policy_input):
     if action == 'Trade':
         new_state, _ = amm.swap(prev_state['AMM'], agents, policy_input)
         return ('AMM', new_state)
+    elif action == 'AddLiquidity':
+        print("Adding Liquidity")
+        new_state, _ = amm.add_liquidity(prev_state['AMM'], agents, policy_input)
+        return ('AMM', new_state)
+        #return ('AMM', params['cfmm'].add_liquidity(prev_state['AMM'], policy_input)) #KP-Q: What is going on here?
+    elif action == 'RemoveLiquidity':
+        print("Removing Liquidity")
+        new_state, _ = amm.remove_liquidity(prev_state['AMM'], agents, policy_input)
+        return ('AMM', new_state)
+    #    return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], policy_input)) #KP-Q: What is going on here?
     '''
     elif action == 'ArbMarket':
         next_state = prev_state['AMM']
         for trade in policy_input['arb_trades']:
             next_state = params['cfmm'].trade(next_state, trade)
         return ('AMM', next_state)
-    elif action == 'AddLiquidity':
-        return ('AMM', params['cfmm'].add_liquidity(prev_state['AMM'], policy_input))
-    elif action == 'RemoveLiquidity':
-        return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], policy_input))
+    
     elif action == 'RemoveLiquidityPercent':
         agent_id = policy_input['agent_id']
         agents = prev_state['uni_agents']
@@ -100,6 +107,18 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
         # agents[agent_id] = params['cfmm'].trade_agent(prev_state['AMM'], policy_input, agents[agent_id])
         _, new_agents = amm.swap(prev_state['AMM'], agents, policy_input)
         return ('uni_agents', new_agents)
+    elif action == 'AddLiquidity':
+        print("Agent update for AddLiquidity")
+        _, new_agents = amm.add_liquidity(prev_state['AMM'], agents, policy_input)
+        #KP-Q: params key 'cfmm' not defined and function add_liquidity_agent where defined?
+        #agents[agent_id] = params['cfmm'].add_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
+        return ('uni_agents', new_agents)
+    elif action == 'RemoveLiquidity':
+        print("Agent update for RemoveLiquidity")
+        _, new_agents = amm.remove_liquidity(prev_state['AMM'], agents, policy_input)
+        #agents[agent_id] = params['cfmm'].remove_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
+        #KP-Q: params key 'cfmm' not defined and function add_liquidity_agent where defined?
+        return ('uni_agents', new_agents)
     '''
     elif action == 'ArbMarket':     # Note that we track changes of sequential changes to the AMM here too
         next_state = prev_state['AMM']
@@ -110,10 +129,7 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
             next_state = params['cfmm'].trade(next_state, trade)
             agents[agent_id] = settle_to_asset(agents[agent_id], prev_market, policy_input['settle_asset'])
 
-    elif action == 'AddLiquidity':
-        agents[agent_id] = params['cfmm'].add_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
-    elif action == 'RemoveLiquidity':
-        agents[agent_id] = params['cfmm'].remove_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
+
     elif action == 'RemoveLiquidityPercent':
         agent = agents[agent_id]
         new_policy_input = copy.deepcopy(policy_input)

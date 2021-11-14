@@ -16,6 +16,7 @@ def get_configuration(config_d: dict) -> tuple:
     initial_values = complete_initial_values(config_d['initial_values'])
     timesteps = sum([x[1] for x in config_d['action_ls']])
     action_list = actions.get_action_list(config_d['action_ls'], config_d['prob_dict'])
+    action_list = actions.assign_liquidity_actions(action_list)
     params = {'action_list': [action_list],
               'action_dict': [config_d['action_dict']],
               'timesteps': [timesteps]}
