@@ -73,7 +73,7 @@ def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple
     assert transaction['token_add'] in old_state['token_list']
     agent_id = transaction['agent_id']
     amount_add = transaction['amount_add']
-    i = old_state['token_list'].index(transaction['token_remove'])
+    i = old_state['token_list'].index(transaction['token_add'])
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
