@@ -129,8 +129,8 @@ def val_hold(row, orig_agent_d):
 def get_withdraw_agent_d(initial_values: dict, agent_d: dict) -> dict:
     # Calculate withdrawal based on initial state
     withdraw_agent_d = {}
-    initial_state = iu.complete_initial_values(initial_values)
-    agents_init_d = amm.convert_agents(initial_state, agent_d)
+    initial_state = iu.complete_initial_values(initial_values, agent_d)
+    agents_init_d = amm.convert_agents(initial_state, initial_values['token_list'], agent_d)
     for agent_id in agents_init_d:
         new_state, new_agents = amm.withdraw_all_liquidity(initial_state, agents_init_d[agent_id], agent_id)
         withdraw_agent_d[agent_id] = new_agents[agent_id]

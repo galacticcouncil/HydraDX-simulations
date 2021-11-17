@@ -48,32 +48,40 @@ def adjust_supply(old_state: dict):
     return new_state
 
 
-def initialize_pool_state(init_d=None) -> dict:
+def initialize_token_counts(init_d=None) -> dict:
     if init_d is None:
         init_d = {}
     state = {
-        'R': [],
-        'Q': [],
-        'S': [],
-        'B': [],
-        'A': [],
-        'D': 0,
-        'T': init_d['T'] if 'T' in init_d else None,
-        'H': init_d['H'] if 'H' in init_d else None
+        'R': copy.deepcopy(init_d['R']),
+        'Q': [init_d['P'][i] * init_d['R'][i] for i in range(len(init_d['R']))]
     }
-    for i in range(len(init_d['R'])):
-        state = add_asset(state, init_d['R'][i], init_d['P'][i])
     return state
 
 
-def add_asset(old_state: dict, init_R: float, price: float) -> dict:
-    new_state = copy.deepcopy(old_state)
-    new_state['R'].append(init_R)
-    new_state['Q'].append(price * init_R)
-    new_state['S'].append(init_R)
-    new_state['B'].append(init_R)
-    new_state['A'].append(0)
-    return new_state
+def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
+    if agent_d is None:
+        agent_d = {}
+    if init_d is None:
+        init_d = {}
+
+    n = len(token_counts['R'])
+    state = copy.deepcopy(token_counts)
+    state['S'] = copy.deepcopy(state['R'])
+    state['A'] = [0]*n
+
+    agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
+    state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
+
+    state['D'] = 0
+    state['T'] = init_d['T'] if 'T' in init_d else None
+    state['H'] = init_d['H'] if 'H' in init_d else None
+
+    return state
+
+
+def initialize_pool_state(init_d=None, agent_d=None) -> dict:
+    token_counts = initialize_token_counts(init_d)
+    return initialize_shares(token_counts, init_d)
 
 
 def swap_hdx(
