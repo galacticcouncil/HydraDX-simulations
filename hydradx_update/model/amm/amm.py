@@ -85,8 +85,10 @@ def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
-def value_assets(state: dict, assets: dict) -> float:
-    return assets['q'] + sum([assets['r'][i] * price_i(state, i) for i in range(len(state['R']))])
+def value_assets(state: dict, assets: dict, prices: list = None) -> float:
+    if prices is None:
+        prices = [price_i(state, i) for i in range(len(state['R']))]
+    return assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))])
 
 
 def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tuple:
@@ -106,8 +108,9 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
 
 
 def value_holdings(state: dict, agent_d: dict, agent_id: string) -> float:
+    prices = [price_i(state, i) for i in range(len(state['R']))]
     new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
-    return value_assets(new_state, new_agents[agent_id])
+    return value_assets(new_state, new_agents[agent_id], prices)
 
 
 def convert_agent(state: dict, token_list: list, agent_dict: dict) -> dict:
