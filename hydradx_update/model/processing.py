@@ -83,15 +83,23 @@ def get_state_from_row(row) -> dict:
         'token_list': [None] * row['n'],
         'Q': [0] * row['n'],
         'R': [0] * row['n'],
+        'A': [0] * row['n'],
+        'D': row['D'],
         'S': [0] * row['n'],
-        'B': [0] * row['n']
+        'B': [0] * row['n'],
     }
+
+    if 'H' in row:
+        state['H'] = row['H']
+    if 'T' in row:
+        state['T'] = row['T']
 
     for i in range(row['n']):
         state['R'][i] = row['R-' + str(i)]
         state['S'][i] = row['S-' + str(i)]
         state['B'][i] = row['B-' + str(i)]
         state['Q'][i] = row['Q-' + str(i)]
+        state['A'][i] = row['A-' + str(i)]
         state['token_list'][i] = row['token_list-' + str(i)]
 
     return state
