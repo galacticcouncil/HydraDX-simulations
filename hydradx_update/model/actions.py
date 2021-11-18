@@ -63,6 +63,8 @@ def get_action_list(init_list, action_dict, seed=42):
 
 def assign_liquidity_actions(init_list):
     init_list[100] = 'provide_r1_liq'
+    init_list[1000] = 'provide_r1_liq'
+    init_list[3900] = 'remove_r1_liq'
     init_list[4900] = 'remove_r1_liq'
     action_list = init_list
     print("The action at timestep 101 is:", action_list[100])

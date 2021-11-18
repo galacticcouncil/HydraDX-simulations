@@ -177,7 +177,7 @@ def remove_risk_liquidity(
     mult = 2 * piq / (piq + p0) * math.sqrt(piq / p0)
 
     # Share update
-    delta_B = max((mult - 1) * delta_S, - old_state['B'][i])
+    delta_B = max((mult - 1) * delta_S, - old_state['B'][i]) #KP: how to remove 'B' so that future calculations are possible?
     new_state['B'][i] += delta_B
     new_state['S'][i] += delta_S + delta_B
     new_agents[LP_id]['s'][i] += delta_S
