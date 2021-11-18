@@ -2,6 +2,8 @@ import copy
 import math
 import string
 
+import ipdb
+
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
@@ -28,30 +30,58 @@ def price_i(state: dict, i: int, fee: float = 0) -> float:
         return (state['Q'][i] / state['R'][i]) * (1 - fee)
 
 
-def initialize_pool_state(init_d=None) -> dict:
+def adjust_supply(old_state: dict):
+
+    if old_state['H'] <= old_state['T']:
+        return old_state
+
+    over_supply = old_state['H'] - old_state['T']
+    Q = sum(old_state['Q'])
+    Q_burn = min(over_supply, old_state['burn_rate']*Q)
+
+    new_state = copy.deepcopy(old_state)
+    for i in range(len(new_state['Q'])):
+        new_state['Q'][i] += Q_burn * old_state['Q'][i]/Q
+
+    new_state['H'] -= Q_burn
+
+    return new_state
+
+
+def initialize_token_counts(init_d=None) -> dict:
     if init_d is None:
         init_d = {}
     state = {
-        'R': [],
-        'Q': [],
-        'S': [],
-        'B': [],
-        'A': [],
-        'D': 0
+        'R': copy.deepcopy(init_d['R']),
+        'Q': [init_d['P'][i] * init_d['R'][i] for i in range(len(init_d['R']))]
     }
-    for i in range(len(init_d['R'])):
-        state = add_asset(state, init_d['R'][i], init_d['P'][i])
     return state
 
 
-def add_asset(old_state: dict, init_R: float, price: float) -> dict:
-    new_state = copy.deepcopy(old_state)
-    new_state['R'].append(init_R)
-    new_state['Q'].append(price * init_R)
-    new_state['S'].append(init_R)
-    new_state['B'].append(init_R)
-    new_state['A'].append(0)
-    return new_state
+def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
+    if agent_d is None:
+        agent_d = {}
+    if init_d is None:
+        init_d = {}
+
+    n = len(token_counts['R'])
+    state = copy.deepcopy(token_counts)
+    state['S'] = copy.deepcopy(state['R'])
+    state['A'] = [0]*n
+
+    agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
+    state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
+
+    state['D'] = 0
+    state['T'] = init_d['T'] if 'T' in init_d else None
+    state['H'] = init_d['H'] if 'H' in init_d else None
+
+    return state
+
+
+def initialize_pool_state(init_d=None, agent_d=None) -> dict:
+    token_counts = initialize_token_counts(init_d)
+    return initialize_shares(token_counts, init_d)
 
 
 def swap_hdx(
@@ -140,13 +170,7 @@ def add_risk_liquidity(
     new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
 
     # HDX add
-    print("i is", i)
-    print(old_state)
-    #KP-Q: old_state has no key 'P'
-    price = old_state['Q'][i]/old_state['R'][i]
-    print(old_state)
-    #delta_Q = old_state['P'][i] * delta_R
-    delta_Q = price * delta_R
+    delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
     # set price at which liquidity was added
@@ -174,10 +198,10 @@ def remove_risk_liquidity(
 
     piq = price_i(old_state, i)
     p0 = new_agents[LP_id]['p'][i]
-    mult = 2 * piq / (piq + p0) * math.sqrt(piq / p0)
+    mult = 2 * piq / (piq + p0) * (piq / p0)
 
     # Share update
-    delta_B = max((mult - 1) * delta_S, - old_state['B'][i]) #KP: how to remove 'B' so that future calculations are possible?
+    delta_B = max((mult - 1) * delta_S, - old_state['B'][i])
     new_state['B'][i] += delta_B
     new_state['S'][i] += delta_S + delta_B
     new_agents[LP_id]['s'][i] += delta_S

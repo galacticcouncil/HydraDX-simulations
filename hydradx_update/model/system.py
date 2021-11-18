@@ -1,6 +1,5 @@
 from .amm import amm
 
-
 # Behaviors
 def actionDecoder(params, step, history, prev_state) -> dict:
     t = len(history) - 1
@@ -137,3 +136,9 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
         return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], new_policy_input))
     '''
     return ('uni_agents', agents)
+
+
+def posthub(params, substep, state_history, prev_state, policy_input):
+    if 'T' in prev_state['AMM'] and prev_state['AMM']['T'] is not None:
+        return ('AMM', amm.adjust_supply(prev_state['AMM']))
+    return ('AMM', prev_state['AMM'])

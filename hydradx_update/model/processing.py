@@ -83,15 +83,23 @@ def get_state_from_row(row) -> dict:
         'token_list': [None] * row['n'],
         'Q': [0] * row['n'],
         'R': [0] * row['n'],
+        'A': [0] * row['n'],
+        'D': row['D'],
         'S': [0] * row['n'],
-        'B': [0] * row['n']
+        'B': [0] * row['n'],
     }
+
+    if 'H' in row:
+        state['H'] = row['H']
+    if 'T' in row:
+        state['T'] = row['T']
 
     for i in range(row['n']):
         state['R'][i] = row['R-' + str(i)]
         state['S'][i] = row['S-' + str(i)]
         state['B'][i] = row['B-' + str(i)]
-        state['Q'][i] = row['B-' + str(i)]
+        state['Q'][i] = row['Q-' + str(i)]
+        state['A'][i] = row['A-' + str(i)]
         state['token_list'][i] = row['token_list-' + str(i)]
 
     return state
@@ -129,8 +137,8 @@ def val_hold(row, orig_agent_d):
 def get_withdraw_agent_d(initial_values: dict, agent_d: dict) -> dict:
     # Calculate withdrawal based on initial state
     withdraw_agent_d = {}
-    initial_state = iu.complete_initial_values(initial_values)
-    agents_init_d = amm.convert_agents(initial_state, agent_d)
+    initial_state = iu.complete_initial_values(initial_values, agent_d)
+    agents_init_d = amm.convert_agents(initial_state, initial_values['token_list'], agent_d)
     for agent_id in agents_init_d:
         new_state, new_agents = amm.withdraw_all_liquidity(initial_state, agents_init_d[agent_id], agent_id)
         withdraw_agent_d[agent_id] = new_agents[agent_id]

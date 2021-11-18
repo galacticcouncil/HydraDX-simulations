@@ -16,9 +16,17 @@ def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
     return agent_d
 
 
-def initialize_state(init_d: dict) -> dict:
-    state_d = oamm.initialize_pool_state(init_d)
-    return state_d
+def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> dict:
+    # initialize tokens
+    tokens_state = oamm.initialize_token_counts(init_d)  # shares will be wrong here, but it doesn't matter
+    # initialize LPs
+    if agents_d is not None:
+        converted_agents_d = convert_agents(tokens_state, token_list, agents_d)
+    else:
+        converted_agents_d = None
+    # initialize AMM shares
+    state = oamm.initialize_shares(tokens_state, init_d, converted_agents_d)  # shares will be correct here
+    return state
 
 
 def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
@@ -57,6 +65,10 @@ def price_i(state: dict, i: int) -> float:
     return oamm.price_i(state, i)
 
 
+def adjust_supply(state: dict) -> dict:
+    return oamm.adjust_supply(state)
+
+
 def remove_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
     assert transaction['token_remove'] in old_state['token_list']
     agent_id = transaction['agent_id']
@@ -69,12 +81,14 @@ def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple
     assert transaction['token_add'] in old_state['token_list']
     agent_id = transaction['agent_id']
     amount_add = transaction['amount_add']
-    i = old_state['token_list'].index(transaction['token_add']) #KP-Q: why was this: index(transaction['token_remove'])?
+    i = old_state['token_list'].index(transaction['token_add'])
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
-def value_assets(state: dict, assets: dict) -> float:
-    return assets['q'] + sum([assets['r'][i] * price_i(state, i) for i in range(len(state['R']))])
+def value_assets(state: dict, assets: dict, prices: list = None) -> float:
+    if prices is None:
+        prices = [price_i(state, i) for i in range(len(state['R']))]
+    return assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))])
 
 
 def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tuple:
@@ -94,32 +108,32 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
 
 
 def value_holdings(state: dict, agent_d: dict, agent_id: string) -> float:
+    prices = [price_i(state, i) for i in range(len(state['R']))]
     new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
-    return value_assets(new_state, new_agents[agent_id])
+    return value_assets(new_state, new_agents[agent_id], prices)
 
 
-def convert_agent(state: dict, agent_dict: dict) -> dict:
+def convert_agent(state: dict, token_list: list, agent_dict: dict) -> dict:
     """Return agent dict compatible with this amm"""
     n = len(state['R'])
-    tks = state['token_list']
     d = {'q': 0, 's': [0] * n, 'r': [0] * n, 'p': [0] * n}
 
     # iterate through tokens held by AMM, look for both tokens and shares. Ignore the rest
     if 'HDX' in agent_dict:
         d['q'] = agent_dict['HDX']
     for i in range(n):
-        if tks[i] in agent_dict:
-            d['r'][i] = agent_dict[tks[i]]
-        if 'omni' + tks[i] in agent_dict:
-            d['s'][i] = agent_dict['omni' + tks[i]]
+        if token_list[i] in agent_dict:
+            d['r'][i] = agent_dict[token_list[i]]
+        if 'omni' + token_list[i] in agent_dict:
+            d['s'][i] = agent_dict['omni' + token_list[i]]
             # absent other information, assumes LPs contributed at current prices
             d['p'][i] = price_i(state, i)
 
     return d
 
 
-def convert_agents(state: dict, agents_dict: dict) -> dict:
+def convert_agents(state: dict, token_list: list, agents_dict: dict) -> dict:
     d = {}
     for agent_id in agents_dict:
-        d[agent_id] = convert_agent(state, agents_dict[agent_id])
+        d[agent_id] = convert_agent(state, token_list, agents_dict[agent_id])
     return d

@@ -21,4 +21,12 @@ partial_state_update_block = [
         }
     },
 
+    {
+        'policies': {
+        },
+        'variables': {
+            'AMM': posthub
+        }
+    },
+
 ]

@@ -1,26 +1,29 @@
+import copy
 import string
 
 from . import actions
 from .amm import amm
+import ipdb
 
-
-def complete_initial_values(values: dict) -> dict:
-    state = amm.initialize_state(values)
+def complete_initial_values(values: dict, agent_d: dict = None) -> dict:
+    state = amm.initialize_state(values, values['token_list'], agent_d)
     state['token_list'] = values['token_list']
     state['fee_assets'] = values['fee_assets']
     state['fee_HDX'] = values['fee_HDX']
+    if 'burn_rate' in values:
+        state['burn_rate'] = values['burn_rate']
     return state
 
 
 def get_configuration(config_d: dict) -> tuple:
-    initial_values = complete_initial_values(config_d['initial_values'])
+    initial_values = complete_initial_values(config_d['initial_values'], config_d['agent_d'])
     timesteps = sum([x[1] for x in config_d['action_ls']])
     action_list = actions.get_action_list(config_d['action_ls'], config_d['prob_dict'])
     action_list = actions.assign_liquidity_actions(action_list)
     params = {'action_list': [action_list],
               'action_dict': [config_d['action_dict']],
               'timesteps': [timesteps]}
-    converted_agent_d = amm.convert_agents(initial_values, config_d['agent_d'])
+    converted_agent_d = amm.convert_agents(initial_values, config_d['initial_values']['token_list'], config_d['agent_d'])
     state = {'external': {}, 'AMM': initial_values, 'uni_agents': converted_agent_d}
     config_dict = {
         'N': 1,  # number of monte carlo runs
