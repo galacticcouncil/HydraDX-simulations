@@ -176,7 +176,7 @@ def test_remove_risk_liquidity(old_state):
 
     piq = oamm.price_i(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
-    assert -2 * piq / (piq + p_init) * (piq / p_init) * delta_S / old_state['S'][i] * piq * old_state['R'][
+    assert -2 * piq / (piq + p_init) * delta_S / old_state['S'][i] * piq * old_state['R'][
         i] == pytest.approx(val_withdrawn)
 
 
@@ -296,5 +296,5 @@ if __name__ == '__main__':
     test_QR_strat()
     test_add_risk_liquidity()
     test_remove_risk_liquidity()
-    test_add_asset()
+    #test_add_asset()
     test_adjust_supply()

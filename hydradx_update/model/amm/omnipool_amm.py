@@ -2,8 +2,6 @@ import copy
 import math
 import string
 
-import ipdb
-
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
@@ -198,10 +196,10 @@ def remove_risk_liquidity(
 
     piq = price_i(old_state, i)
     p0 = new_agents[LP_id]['p'][i]
-    mult = 2 * piq / (piq + p0) * (piq / p0)
+    mult = (piq - p0)/(piq + p0)
 
     # Share update
-    delta_B = max((mult - 1) * delta_S, - old_state['B'][i])
+    delta_B = max(mult * delta_S, - old_state['B'][i])
     new_state['B'][i] += delta_B
     new_state['S'][i] += delta_S + delta_B
     new_agents[LP_id]['s'][i] += delta_S
@@ -211,8 +209,8 @@ def remove_risk_liquidity(
     new_state['R'][i] += delta_R
     new_agents[LP_id]['r'][i] -= delta_R
     if piq >= p0:  # prevents rounding errors
-        new_agents[LP_id]['q'] -= price_i(old_state, i) * (
-                mult * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
+        new_agents[LP_id]['q'] -= piq * (
+                2*piq/(piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
 
     # HDX burn
     delta_Q = price_i(old_state, i) * delta_R
