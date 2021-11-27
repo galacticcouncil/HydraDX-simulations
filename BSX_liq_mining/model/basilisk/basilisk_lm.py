@@ -3,42 +3,179 @@ import math
 import string
 
 
-class LoyaltyCurve:
-    def __init__(self, b=0.5, scale_coef=100):
-        self.b = b
-        self.scale_coef = scale_coef
-
-
 class GlobalPool:
-    def __init__(self, starting_block: int, reward_currency: string):
-        self.updated_at = starting_block
-        self.reward_currency = reward_currency
+    def __init__(self, id, updated_at, reward_currency, yield_per_period, planned_yielding_periods, blocks_per_period,
+                 owner, incentivized_token, max_reward_per_period):
+        self.updated_at = updated_at
         self.total_shares = 0
         self.accumulated_rps_start = 0
         self.accumulated_rps = 0
         self.accumulated_rewards = 0
         self.paid_accumulated_rewards = 0
+        self.yield_per_period = yield_per_period
+        self.blocks_per_period = blocks_per_period
+        self.incentivized_token = incentivized_token
+        self.reward_currency = reward_currency
+        self.max_reward_per_period = max_reward_per_period
+        self.planned_yielding_periods = planned_yielding_periods
+        self.owner = owner
+        self.liq_pools_count = 0
+        self.id = id
         self.free_balance = 0
 
 
-def create_new_program(origin, pool_id, currency_id, loyalty_curve):
-    pass  # Todo
+class LiquidityPool:
+    def __init__(self, id, updated_at, loyalty_curve, multiplier):
+        self.id = id
+        self.updated_at = updated_at
+        self.total_shares = 0
+        self.accumulated_rps = 0
+        self.loyalty_curve = loyalty_curve
+        self.stake_in_global_pool = 0
+        self.multiplier = multiplier
+        self.free_balance = 0
 
 
-def get_period_number(now: int, accumulate_period: int):
-    return now/accumulate_period  # Todo: should this be floored or something?
+class LoyaltyCurve:
+    def __init__(self, initial_reward_percentage: float = 0.5, scale_coef: int = 100):
+        self.initial_reward_percentage = initial_reward_percentage
+        self.scale_coef = scale_coef
+
+
+GlobalPoolData = []
+LiquidityPoolData = [{}]
+T = 0
+
+
+def create_farm(params, origin, total_rewards, planned_yielding_periods, blocks_per_period, incentivized_token, reward_currency,
+                owner, yield_per_period):
+    planned_periods = planned_yielding_periods
+    max_reward_per_period = total_rewards / planned_periods
+    now_period = get_now_period(params, blocks_per_period)
+    pool_id = get_next_id()
+
+    pool = GlobalPool(pool_id, now_period, reward_currency, yield_per_period, planned_yielding_periods,
+                      blocks_per_period, owner, incentivized_token, max_reward_per_period)
+
+    GlobalPoolData.append(pool)
+    LiquidityPoolData.append({})
+
+    pool.free_balance += total_rewards
+
+
+def destroy_farm(origin, farm_id):  # QUESTION: does this need to push out unclaimed but earned rewards?
+    GlobalPoolData[farm_id] = None
+    LiquidityPoolData[farm_id] = {}
+
+
+def withdraw_undistributed_rewards(origin, farm_id):
+    pass
+
+
+def add_liquidity_pool(params, origin, farm_id, asset_pair, weight, loyalty_curve=None):
+    who = origin
+    assert weight != 0
+    g_pool = GlobalPoolData[farm_id]
+    assert who == g_pool.owner
+    amm_pool_id = asset_pair  # simplification for now, for modeling purposes
+    assert amm_pool_id not in LiquidityPoolData[farm_id]
+
+    now_period = get_now_period(params, g_pool.blocks_per_period)
+    reward_per_period = get_reward_per_period(g_pool.yield_per_period, g_pool.total_shares, g_pool.max_reward_per_period)
+
+    update_global_pool(g_pool, now_period, reward_per_period)
+    g_pool.liq_pools_count += 1
+
+    liq_pool_id = farm_id + "_" + amm_pool_id
+    pool = LiquidityPool(liq_pool_id, now_period, loyalty_curve, weight)
+    LiquidityPoolData[farm_id][amm_pool_id] = pool
+
+
+def update_liquidity_pool(params, origin, farm_id, asset_pair, weight):
+    who = origin
+    assert weight != 0
+
+    amm_pool_id = asset_pair
+    liq_pool = LiquidityPoolData[farm_id][amm_pool_id]
+    g_pool = GlobalPoolData[farm_id]
+
+    assert g_pool.owner == who
+
+    now_period = get_now_period(params, g_pool.blocks_per_period)
+    reward_per_period = get_reward_per_period(g_pool.yield_per_period, g_pool.total_shares, g_pool.max_reward_per_period)
+
+    update_global_pool(g_pool, now_period, reward_per_period)
+
+    pool_reward = claim_from_global_pool(g_pool, liq_pool.stake_in_global_pool)
+    update_pool(liq_pool, pool_reward, now_period, g_pool.id, g_pool.reward_currency)
+
+    incentivized_token_balance_in_amm = params[amm_pool_id][g_pool.reward_currency]
+    new_stake_in_global_pool = incentivized_token_balance_in_amm * liq_pool.total_shares * weight
+
+    if new_stake_in_global_pool > liq_pool.stake_in_global_pool:
+        diff = new_stake_in_global_pool - liq_pool.stake_in_global_pool
+        g_pool.total_shares += diff
+    else:
+        diff = liq_pool.stake_in_global_pool - new_stake_in_global_pool
+        g_pool.total_shares -= diff
+
+    liq_pool.stake_in_global_pool = new_stake_in_global_pool
+    liq_pool.multiplier = weight
+
+
+def cancel_liquidity_pool(origin, farm_id):
+    pass
+
+
+def remove_liquidity_pool(origin, farm_id):
+    pass
+
+
+def deposit_shares(params, origin, farm_id, asset_pair, amount):
+    who = origin
+    #amm_share = get_share_token(asset_pair)
+
+    liq_pool_key = asset_pair
+    liq_pool = LiquidityPoolData[farm_id][liq_pool_key]
+    g_pool = GlobalPoolData[farm_id]
+    update_liquidity_pool(params, origin, farm_id, asset_pair, liq_pool.multiplier)  # are "weight" and "multiplier" the same?
+
+
+def claim_rewards(origin):  # TODO
+    pass
+
+
+def withdraw_shares(origin):  # TODO
+    pass
+
+
+def get_next_id():
+    return len(GlobalPoolData) + 1
+
+
+def get_now_period(params, blocks_per_period):
+    return get_period_number(params['T'], blocks_per_period)
+
+
+def get_period_number(now, blocks_per_period):
+    return int(now / blocks_per_period)
+
+
+def set_now_block(block_number):
+    """Called from cadCAD to update block number"""
+    T = block_number
 
 
 def get_loyalty_multiplier(periods: int, curve: LoyaltyCurve):
-    if curve.b == 1:
+    if curve.initial_reward_percentage == 1:
         return 1
 
-    denom = (curve.b + 1) * curve.scale_coef
+    denom = (curve.initial_reward_percentage + 1) * curve.scale_coef
     p = periods
     theta = p/denom
-    theta_mul_b = theta * curve.b
+    theta_mul_b = theta * curve.initial_reward_percentage
     theta_add_theta_mul_b = theta + theta_mul_b
-    num = theta_add_theta_mul_b + curve.b
+    num = theta_add_theta_mul_b + curve.initial_reward_percentage
     denom = theta_add_theta_mul_b + 1
 
     return num/denom
@@ -48,25 +185,27 @@ def get_reward_per_period(yield_per_period: float, total_global_farm_shares: flo
     return min(yield_per_period * total_global_farm_shares, max_reward_per_period)
 
 
-def update_global_pool(pool_id, pool: GlobalPool, now_period: int, reward_per_period: float):
+def update_global_pool(pool: GlobalPool, now_period: int):
     if pool.updated_at == now_period:
         pass
     if pool.total_shares == 0:
         pass
     periods_since_last_update = now_period - pool.updated_at
-    #reward = min(periods_since_last_update * reward_per_period, free_balance(pool.reward_currency, pool_id))  # Todo: do we need this in the modeling?
-    reward = periods_since_last_update * reward_per_period
+    reward_per_period = get_reward_per_period(pool.yield_per_period, pool.total_shares, pool.max_reward_per_period)
+    reward = min(periods_since_last_update * reward_per_period, pool.free_balance)
     if reward != 0:
-        pool.accumulated_rps = get_new_accumulated_rps(pool.accumulated_rps, pool.total_shares, reward)
+        pool.accumulated_rps = get_accumulated_rps(pool.accumulated_rps, pool.total_shares, reward)
         pool.accumulated_rewards += reward
 
+    pool.updated_at = now_period
 
-def get_new_accumulated_rps(accumulated_rps_now: float, total_shares: float, reward: float) -> float:
+
+def get_accumulated_rps(accumulated_rps_now: float, total_shares: float, reward: float) -> float:
     return reward/total_shares + accumulated_rps_now
 
 
-def get_user_reward(user_accumulated_rps: float, user_shares: float, accumulated_rps_now: float, user_accumulated_claimed_rewards: float, loyalty_multiplier: float) -> (float, float):
-    # Todo fix the return type to pair of floats
+def get_user_reward(user_accumulated_rps: float, user_shares: float, accumulated_rps_now: float,
+                    user_accumulated_claimed_rewards: float, loyalty_multiplier: float) -> (float, float):
     max_rewards = (accumulated_rps_now - user_accumulated_rps) * user_shares
     claimable_rewards = loyalty_multiplier * max_rewards
     unclaimable_rewards = max_rewards - claimable_rewards
@@ -80,3 +219,20 @@ def claim_from_global_pool(pool: GlobalPool, shares: float):
     pool.paid_accumulated_rewards += reward
     pool.accumulated_rewards -= reward
     return reward
+
+
+def update_pool(pool, rewards, period_now, global_pool_id, reward_currency):
+    if pool.updated_at == period_now:
+        return
+    if pool.total_shares == 0:
+        return
+
+    pool.accumulated_rps = get_accumulated_rps(pool.accumulated_rps, pool.total_shares, rewards)
+    pool.updated_at = period_now
+
+    global_pool_balance = GlobalPoolData[global_pool_id].free_balance
+
+    assert global_pool_balance >= rewards
+
+    GlobalPoolData[global_pool_id].free_balance -= rewards
+    pool.free_balance += rewards
