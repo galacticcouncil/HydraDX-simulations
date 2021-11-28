@@ -1,6 +1,3 @@
-import copy
-import math
-import string
 
 
 class GlobalPool:
@@ -42,20 +39,18 @@ class LoyaltyCurve:
         self.scale_coef = scale_coef
 
 
-GlobalPoolData = []
-LiquidityPoolData = [{}]
-T = 0
-
-
 def create_farm(params, origin, total_rewards, planned_yielding_periods, blocks_per_period, incentivized_token, reward_currency,
                 owner, yield_per_period):
     planned_periods = planned_yielding_periods
     max_reward_per_period = total_rewards / planned_periods
     now_period = get_now_period(params, blocks_per_period)
-    pool_id = get_next_id()
+    pool_id = get_next_id(params)
 
     pool = GlobalPool(pool_id, now_period, reward_currency, yield_per_period, planned_yielding_periods,
                       blocks_per_period, owner, incentivized_token, max_reward_per_period)
+
+    GlobalPoolData = params['GlobalPoolData']
+    LiquidityPoolData = params['LiquidityPoolData']
 
     GlobalPoolData.append(pool)
     LiquidityPoolData.append({})
@@ -63,7 +58,9 @@ def create_farm(params, origin, total_rewards, planned_yielding_periods, blocks_
     pool.free_balance += total_rewards
 
 
-def destroy_farm(origin, farm_id):  # QUESTION: does this need to push out unclaimed but earned rewards?
+def destroy_farm(params, origin, farm_id):  # QUESTION: does this need to push out unclaimed but earned rewards?
+    GlobalPoolData = params['GlobalPoolData']
+    LiquidityPoolData = params['LiquidityPoolData']
     GlobalPoolData[farm_id] = None
     LiquidityPoolData[farm_id] = {}
 
@@ -75,15 +72,16 @@ def withdraw_undistributed_rewards(origin, farm_id):
 def add_liquidity_pool(params, origin, farm_id, asset_pair, weight, loyalty_curve=None):
     who = origin
     assert weight != 0
+    GlobalPoolData = params['GlobalPoolData']
     g_pool = GlobalPoolData[farm_id]
     assert who == g_pool.owner
     amm_pool_id = asset_pair  # simplification for now, for modeling purposes
+    LiquidityPoolData = params['LiquidityPoolData']
     assert amm_pool_id not in LiquidityPoolData[farm_id]
 
     now_period = get_now_period(params, g_pool.blocks_per_period)
-    reward_per_period = get_reward_per_period(g_pool.yield_per_period, g_pool.total_shares, g_pool.max_reward_per_period)
 
-    update_global_pool(g_pool, now_period, reward_per_period)
+    update_global_pool(g_pool, now_period)
     g_pool.liq_pools_count += 1
 
     liq_pool_id = farm_id + "_" + amm_pool_id
@@ -96,18 +94,19 @@ def update_liquidity_pool(params, origin, farm_id, asset_pair, weight):
     assert weight != 0
 
     amm_pool_id = asset_pair
+    LiquidityPoolData = params['LiquidityPoolData']
     liq_pool = LiquidityPoolData[farm_id][amm_pool_id]
+    GlobalPoolData = params['GlobalPoolData']
     g_pool = GlobalPoolData[farm_id]
 
     assert g_pool.owner == who
 
     now_period = get_now_period(params, g_pool.blocks_per_period)
-    reward_per_period = get_reward_per_period(g_pool.yield_per_period, g_pool.total_shares, g_pool.max_reward_per_period)
 
-    update_global_pool(g_pool, now_period, reward_per_period)
+    update_global_pool(g_pool, now_period)
 
     pool_reward = claim_from_global_pool(g_pool, liq_pool.stake_in_global_pool)
-    update_pool(liq_pool, pool_reward, now_period, g_pool.id, g_pool.reward_currency)
+    update_pool(params, liq_pool, pool_reward, now_period, g_pool.id, g_pool.reward_currency)
 
     incentivized_token_balance_in_amm = params[amm_pool_id][g_pool.reward_currency]
     new_stake_in_global_pool = incentivized_token_balance_in_amm * liq_pool.total_shares * weight
@@ -131,34 +130,67 @@ def remove_liquidity_pool(origin, farm_id):
     pass
 
 
+# why is this "deposit shares"? Are users going to need to deposit their LP shares somewhere to get LM rewards?
+# aren't they just going to get rewards automatically for having liquidity contributed to the pool?
+# then this should be "deposit_liquidity" or something
 def deposit_shares(params, origin, farm_id, asset_pair, amount):
     who = origin
     #amm_share = get_share_token(asset_pair)
 
     liq_pool_key = asset_pair
+    LiquidityPoolData = params['LiquidityPoolData']
     liq_pool = LiquidityPoolData[farm_id][liq_pool_key]
-    g_pool = GlobalPoolData[farm_id]
-    update_liquidity_pool(params, origin, farm_id, asset_pair, liq_pool.multiplier)  # are "weight" and "multiplier" the same?
+    update_liquidity_pool(params, origin, farm_id, asset_pair, liq_pool.multiplier + amount)  # are "weight" and "multiplier" the same?
+
+    # return position NFT... although it is actually semi-fungible
+    return {'owner': origin, 'farm_id': farm_id, 'pool': asset_pair, 'amount': amount, 'block_deposited': params['T'],
+            'accumulated_rps_start': liq_pool.accumulated_rps, 'accumulated_claimed_rewards': 0}
 
 
-def claim_rewards(origin):  # TODO
-    pass
+def claim_rewards(params, position):
+    pool = params['LiquidityPoolData'][position['pool']]
+
+    user_accumulated_rps = position['accumulated_rps_start']
+    user_shares = position['amount']
+    accumulated_rps_now = pool.accumulated_rps
+    user_accumulated_claimed_rewards = position['accumulated_claimed_rewards']
+    farm_id = position['farm_id']
+    blocks_per_period = params['GlobalFarmData'][farm_id].blocks_per_period
+    periods = get_period_number(params['T'], blocks_per_period) - get_period_number(position['block_deposited'], blocks_per_period)
+    loyalty_curve = pool.loyalty_curve
+    loyalty_multiplier = get_loyalty_multiplier(periods, loyalty_curve)
+    rewards, locked_rewards = get_user_reward(user_accumulated_rps, user_shares, accumulated_rps_now,
+                                              user_accumulated_claimed_rewards, loyalty_multiplier)
+    position['accumulated_claimed_rewards'] += rewards
+    pool.free_balance -= rewards
+    return locked_rewards
 
 
-def withdraw_shares(origin):  # TODO
-    pass
+def withdraw_shares(params, position):
+    lost_rewards = claim_rewards(params, position)
+
+    liq_pool_key = position['pool']
+    farm_id = position['farm_id']
+    LiquidityPoolData = params['LiquidityPoolData']
+    liq_pool = LiquidityPoolData[farm_id][liq_pool_key]
+    g_pool = params['GlobalPoolData'][farm_id]
+
+    update_liquidity_pool(params, position['owner'], farm_id, liq_pool_key, liq_pool.multiplier - position['amount'])
+    position['amount'] = 0
+    liq_pool.free_balance -= lost_rewards
+    g_pool.free_balance += lost_rewards
 
 
-def get_next_id():
-    return len(GlobalPoolData) + 1
+def get_next_id(params):
+    return len(params['GlobalPoolData']) + 1
 
 
 def get_now_period(params, blocks_per_period):
     return get_period_number(params['T'], blocks_per_period)
 
 
-def get_period_number(now, blocks_per_period):
-    return int(now / blocks_per_period)
+def get_period_number(block, blocks_per_period):
+    return int(block / blocks_per_period)
 
 
 def set_now_block(block_number):
@@ -204,6 +236,7 @@ def get_accumulated_rps(accumulated_rps_now: float, total_shares: float, reward:
     return reward/total_shares + accumulated_rps_now
 
 
+# can we name 'user_accumulated_rps' more carefully? should be rps of liquidity pool at point of deposit?
 def get_user_reward(user_accumulated_rps: float, user_shares: float, accumulated_rps_now: float,
                     user_accumulated_claimed_rewards: float, loyalty_multiplier: float) -> (float, float):
     max_rewards = (accumulated_rps_now - user_accumulated_rps) * user_shares
@@ -221,7 +254,7 @@ def claim_from_global_pool(pool: GlobalPool, shares: float):
     return reward
 
 
-def update_pool(pool, rewards, period_now, global_pool_id, reward_currency):
+def update_pool(params, pool, rewards, period_now, global_pool_id, reward_currency):
     if pool.updated_at == period_now:
         return
     if pool.total_shares == 0:
@@ -230,6 +263,7 @@ def update_pool(pool, rewards, period_now, global_pool_id, reward_currency):
     pool.accumulated_rps = get_accumulated_rps(pool.accumulated_rps, pool.total_shares, rewards)
     pool.updated_at = period_now
 
+    GlobalPoolData = params['GlobalPoolData']
     global_pool_balance = GlobalPoolData[global_pool_id].free_balance
 
     assert global_pool_balance >= rewards
