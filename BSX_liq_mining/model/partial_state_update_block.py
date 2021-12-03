@@ -17,7 +17,7 @@ partial_state_update_block = [
         },
         'variables': {
             'AMM': mechanismHub_AMM,
-            'uni_agents': agenthub,
+            #'uni_agents': agenthub,
         }
     },
 

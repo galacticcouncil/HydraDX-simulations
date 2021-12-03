@@ -1,4 +1,4 @@
-from .basilisk import amm
+from .basilisk import basilisk_lm
 
 
 # Behaviors
@@ -22,102 +22,25 @@ def actionDecoder(params, step, history, prev_state) -> dict:
     return policy_input
 
 
-'''
-def settle_to_asset(agent, prices_market, i_settle):
-    for i in range(len(prices_market)):
-        if i != i_settle:
-            # convert profits/losses to i_settle
-            if i_settle >= 0:
-                agent['r'][i_settle] += agent['r'][i]*prices_market[i]/prices_market[i_settle]
-            else:
-                agent['h'] += agent['r'][i]*prices_market[i]
-            agent['r'][i] = 0
-    return agent
-'''
-
-
-def externalHub(params, substep, state_history, prev_state, policy_input):
-    '''
-    if 'market' in prev_state['external']:
-        prev_market = prev_state['external']['market']
-        sigma = params['sigma']
-        mu = params['mu']
-        n = len(prev_market)
-        if params['fix-first']:
-            W = list(np.random.randn(n - 1))
-            #market = [1] + [prev_market[i+1] * math.exp(-sigma[i]**2/2 + sigma[i]*W[i]) for i in range(n - 1)]
-            market = [1] + [prev_market[i + 1] * math.exp(mu[i] + sigma[i] * W[i]) for i in range(n - 1)]
-        else:
-            W = list(np.random.randn(n))
-            #market = [prev_market[i] * math.exp(-sigma[i]**2/2 + sigma[i]*W[i]) for i in range(n)]
-            market = [prev_market[i] * math.exp(mu[i] + sigma[i] * W[i]) for i in range(n)]
-        state = copy.deepcopy(prev_state['external'])
-        state['market'] = market
-        return ('external', state)
-    '''
-    return ('external', prev_state['external'])
-
-
 # Mechanisms
-def mechanismHub_AMM(params, substep, state_history, prev_state, policy_input):
+def mechanismHub_state(params, substep, state_history, prev_state, policy_input):
     if 'action_id' not in policy_input:
-        return ('AMM', prev_state['AMM'])
+        return ('state', prev_state['state'])
     # amm = amm_selector.get_amm(params['cfmm_type'])
     action = policy_input['action_id']
-    agents = prev_state['uni_agents']
-    if action == 'Trade':
-        new_state, _ = amm.swap(prev_state['AMM'], agents, policy_input)
-        return ('AMM', new_state)
-    '''
-    elif action == 'ArbMarket':
-        next_state = prev_state['AMM']
-        for trade in policy_input['arb_trades']:
-            next_state = params['cfmm'].trade(next_state, trade)
-        return ('AMM', next_state)
-    elif action == 'AddLiquidity':
-        return ('AMM', params['cfmm'].add_liquidity(prev_state['AMM'], policy_input))
-    elif action == 'RemoveLiquidity':
-        return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], policy_input))
-    elif action == 'RemoveLiquidityPercent':
-        agent_id = policy_input['agent_id']
-        agents = prev_state['uni_agents']
-        agent = agents[agent_id]
-        new_policy_input = copy.deepcopy(policy_input)
-        new_policy_input['s_burn'] = [policy_input['r_percent'][i] * agent['s'][i] for i in range(len(policy_input['r_percent']))]
-        return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], new_policy_input))
-    '''
-    return ('AMM', prev_state['AMM'])
-
-
-def agenthub(params, substep, state_history, prev_state, policy_input):
-    if 'action_id' not in policy_input or 'agent_id' not in policy_input:
-        return ('uni_agents', prev_state['uni_agents'])
-    # amm = amm_selector.get_amm(params['cfmm_type'])
-    action = policy_input['action_id']
-    agent_id = policy_input['agent_id']
-    agents = prev_state['uni_agents']
-    if action == 'Trade':
-        # agents[agent_id] = params['cfmm'].trade_agent(prev_state['AMM'], policy_input, agents[agent_id])
-        _, new_agents = amm.swap(prev_state['AMM'], agents, policy_input)
-        return ('uni_agents', new_agents)
-    '''
-    elif action == 'ArbMarket':     # Note that we track changes of sequential changes to the AMM here too
-        next_state = prev_state['AMM']
-        prev_market = prev_state['external']['market']
-        for trade in policy_input['arb_trades']:
-            trade['agent_id'] = agent_id
-            agents = params['cfmm'].trade_agents(next_state, trade, agents)
-            next_state = params['cfmm'].trade(next_state, trade)
-            agents[agent_id] = settle_to_asset(agents[agent_id], prev_market, policy_input['settle_asset'])
-
-    elif action == 'AddLiquidity':
-        agents[agent_id] = params['cfmm'].add_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
-    elif action == 'RemoveLiquidity':
-        agents[agent_id] = params['cfmm'].remove_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
-    elif action == 'RemoveLiquidityPercent':
-        agent = agents[agent_id]
-        new_policy_input = copy.deepcopy(policy_input)
-        new_policy_input['s_burn'] = [policy_input['r_percent'][i] * agent['s'][i] for i in range(len(policy_input['r_percent']))]
-        return ('AMM', params['cfmm'].remove_liquidity(prev_state['AMM'], new_policy_input))
-    '''
-    return ('uni_agents', agents)
+    user_id = policy_input['user_id']
+    if action == 'Deposit':
+        farm_id = policy_input['farm_id']
+        asset_pair = policy_input['asset_pair']
+        amount = policy_input['amount']
+        positions, GlobalPoolData, LiquidityPoolData = basilisk_lm.deposit_shares(prev_state['state'], len(state_history),
+                                                                                  user_id, farm_id, asset_pair, amount)
+    elif action == 'Claim':
+        position = prev_state['state']['positions'][user_id]
+        positions, GlobalPoolData, LiquidityPoolData = basilisk_lm.claim_rewards(prev_state['state'], len(state_history), position)
+    elif action == 'Withdraw':
+        position = prev_state['state']['positions'][user_id]
+        positions, GlobalPoolData, LiquidityPoolData = basilisk_lm.withdraw_shares(prev_state['state'], len(state_history), position)
+    else:
+        return ('state', prev_state['state'])
+    return ('state', {'positions': positions, 'GlobalPoolData': GlobalPoolData, 'LiquidityPoolData': LiquidityPoolData})

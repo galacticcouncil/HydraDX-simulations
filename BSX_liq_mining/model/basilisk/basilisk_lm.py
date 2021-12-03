@@ -30,6 +30,7 @@ class LiquidityPool:
         self.loyalty_curve = loyalty_curve
         self.stake_in_global_pool = 0
         self.multiplier = multiplier
+        self.incentivized_token_in_amm = 0
         self.free_balance = 0
 
 
@@ -89,26 +90,26 @@ def add_liquidity_pool(params, origin, farm_id, asset_pair, weight, loyalty_curv
     LiquidityPoolData[farm_id][amm_pool_id] = pool
 
 
-def update_liquidity_pool(params, origin, farm_id, asset_pair, weight):
+def update_liquidity_pool(old_state, block_number, origin, farm_id, asset_pair, weight):
     who = origin
     assert weight != 0
 
     amm_pool_id = asset_pair
-    LiquidityPoolData = params['LiquidityPoolData']
+    LiquidityPoolData = old_state['LiquidityPoolData']
     liq_pool = LiquidityPoolData[farm_id][amm_pool_id]
-    GlobalPoolData = params['GlobalPoolData']
+    GlobalPoolData = old_state['GlobalPoolData']
     g_pool = GlobalPoolData[farm_id]
 
     assert g_pool.owner == who
 
-    now_period = get_now_period(params, g_pool.blocks_per_period)
+    now_period = get_period_number(block_number, g_pool.blocks_per_period)
 
     update_global_pool(g_pool, now_period)
 
     pool_reward = claim_from_global_pool(g_pool, liq_pool.stake_in_global_pool)
-    update_pool(params, liq_pool, pool_reward, now_period, g_pool.id, g_pool.reward_currency)
+    update_pool(old_state, liq_pool, pool_reward, now_period, g_pool.id, g_pool.reward_currency)
 
-    incentivized_token_balance_in_amm = params[amm_pool_id][g_pool.reward_currency]
+    incentivized_token_balance_in_amm = liq_pool.incentivized_token_in_amm
     new_stake_in_global_pool = incentivized_token_balance_in_amm * liq_pool.total_shares * weight
 
     if new_stake_in_global_pool > liq_pool.stake_in_global_pool:
@@ -133,17 +134,17 @@ def remove_liquidity_pool(origin, farm_id):
 # why is this "deposit shares"? Are users going to need to deposit their LP shares somewhere to get LM rewards?
 # aren't they just going to get rewards automatically for having liquidity contributed to the pool?
 # then this should be "deposit_liquidity" or something
-def deposit_shares(params, origin, farm_id, asset_pair, amount):
+def deposit_shares(old_state, block_number, origin, farm_id, asset_pair, amount):
     who = origin
     #amm_share = get_share_token(asset_pair)
 
     liq_pool_key = asset_pair
-    LiquidityPoolData = params['LiquidityPoolData']
+    LiquidityPoolData = old_state['LiquidityPoolData']
     liq_pool = LiquidityPoolData[farm_id][liq_pool_key]
     update_liquidity_pool(params, origin, farm_id, asset_pair, liq_pool.multiplier + amount)  # are "weight" and "multiplier" the same?
 
     # return position NFT... although it is actually semi-fungible
-    return {'owner': origin, 'farm_id': farm_id, 'pool': asset_pair, 'amount': amount, 'block_deposited': params['T'],
+    return {'owner': origin, 'farm_id': farm_id, 'pool': asset_pair, 'amount': amount, 'block_deposited': block_number,
             'accumulated_rps_start': liq_pool.accumulated_rps, 'accumulated_claimed_rewards': 0}
 
 
@@ -183,10 +184,6 @@ def withdraw_shares(params, position):
 
 def get_next_id(params):
     return len(params['GlobalPoolData']) + 1
-
-
-def get_now_period(params, blocks_per_period):
-    return get_period_number(params['T'], blocks_per_period)
 
 
 def get_period_number(block, blocks_per_period):
