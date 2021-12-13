@@ -1,19 +1,57 @@
 import copy
 import math
 import string
-
+add_log=False
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
-    return state['R'][i] * state['Q'][i]
+    global add_log
+    if add_log: 
+        equation = "inv=(state['R'][i]**(-state['a'][i]) + state['Q'][i]**(-state['a'][i]))**(-1/state['a'][i])"
+        inv=(state['R'][i]**(-state['a'][i]) + state['Q'][i]**(-state['a'][i]))**(-1/state['a'][i])
+        print(equation)
+        equation1 = equation.replace('inv', str(inv)).replace("state['Q'][i]", str(state['Q'][i])).replace("state['R'][i]", str(state['R'][i])).replace("state['a'][i]", str(state['a'][i]))
+        print(equation1)
+    return (state['R'][i]**(-state['a'][i]) + state['Q'][i]**(-state['a'][i]))**(-1/state['a'][i])
+    #return state['R'][i] * state['Q'][i]
 
 
 def swap_hdx_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
-    return old_state['Q'][i] * (- delta_Ri / (old_state['R'][i] + delta_Ri))
+    global add_log
+    if add_log: 
+        print("swap_hdx_delta_Qi")
+        print("old_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_state.items()) + "}")
+        delta_Qi = (old_state['Q'][i]**(-old_state['a'][i]) + old_state['R'][i]**(-old_state['a'][i]) - (delta_Ri + old_state['R'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['Q'][i]
+        equation = "delta_Qi=(old_state['Q'][i]**(-old_state['a'][i]) + old_state['R'][i]**(-old_state['a'][i]) - (delta_Ri + old_state['R'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['Q'][i]"
+        print(equation)
+        equation1 = equation.replace('delta_Qi', str(delta_Qi)).replace("old_state['Q'][i]", str(old_state['Q'][i])).replace("delta_Ri", str(delta_Ri)).replace("old_state['R'][i]", str(old_state['R'][i])).replace("old_state['a'][i]", str(old_state['a'][i]))
+        print(equation1)
+        print()    
+    
+    return (old_state['Q'][i]**(-old_state['a'][i]) + old_state['R'][i]**(-old_state['a'][i]) - (delta_Ri + old_state['R'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['Q'][i]
+    #return old_state['Q'][i] * (- delta_Ri / (old_state['R'][i] + delta_Ri))
 
 
 def swap_hdx_delta_Ri(old_state: dict, delta_Qi: float, i: int) -> float:
-    return old_state['R'][i] * (- delta_Qi / (old_state['Q'][i] + delta_Qi))
+    global add_log
+    if add_log: 
+        print("swap_hdx_delta_Ri")
+        print("old_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_state.items()) + "}")
+
+        delta_Ri = (old_state['R'][i]**(-old_state['a'][i]) + old_state['Q'][i]**(-old_state['a'][i]) - (delta_Qi + old_state['Q'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['R'][i]
+        equation = "delta_Ri = (old_state['R'][i]**(-old_state['a'][i]) + old_state['Q'][i]**(-old_state['a'][i]) - (delta_Qi + old_state['Q'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['R'][i]"
+        print(equation)
+        equation1 = equation.replace('delta_Qi', str(delta_Qi)).replace("old_state['Q'][i]", str(old_state['Q'][i])).replace("delta_Ri", str(delta_Ri)).replace("old_state['R'][i]", str(old_state['R'][i])).replace("old_state['a'][i]", str(old_state['a'][i]))
+        print(equation1)
+        print()     
+    
+    
+    return (old_state['R'][i]**(-old_state['a'][i]) + old_state['Q'][i]**(-old_state['a'][i]) - (delta_Qi + old_state['Q'][i])**(-old_state['a'][i]))**(-1/old_state['a'][i]) - old_state['R'][i]
+    #return old_state['R'][i] * (- delta_Qi / (old_state['Q'][i] + delta_Qi))
 
 
 def weight_i(state: dict, i: int) -> float:

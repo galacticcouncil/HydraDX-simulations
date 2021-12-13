@@ -3,15 +3,18 @@ import math
 
 import pytest
 from hypothesis import given, strategies as st, assume
-
+from hypothesis import settings
 from hydradx_update.model.amm import omnipool_amm as oamm
 
 # Token counts
-tkn_ct_strat = st.floats(min_value=1, max_value=1e20, allow_nan=False, allow_infinity=False)
+tkn_ct_strat = st.floats(min_value=1, max_value=1e10, allow_nan=False, allow_infinity=False)
 
+# Parameter a
+a_strat = st.floats(min_value=0.01, max_value=10, allow_nan=False, allow_infinity=False)
 
 def get_tkn_ct_strat(n):
     args = [tkn_ct_strat] * n
+    args.append(a_strat)
     return st.tuples(*args)
 
 
@@ -36,10 +39,11 @@ def get_state_from_strat(x, key_list):
     return d
 
 
-QR_strat = st.lists(QiRi_strat, min_size=1, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R']))
+QR_strat = st.lists(QiRi_strat, min_size=1, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R', 'a']))
 
 # Delta_TKN variables
-delta_tkn_strat = st.floats(allow_nan=False, allow_infinity=False)
+#delta_tkn_strat = st.floats(allow_nan=False, allow_infinity=False)
+delta_tkn_strat = st.floats(min_value=0.01, max_value=1e11, allow_nan=False, allow_infinity=False)
 
 # TKN quantity list
 Q_strat = st.lists(tkn_ct_strat, min_size=1, max_size=5).map(lambda x: get_state_from_strat(x, 'Q'))
@@ -47,15 +51,17 @@ Q_strat = st.lists(tkn_ct_strat, min_size=1, max_size=5).map(lambda x: get_state
 # Indexes
 i_strat = st.integers(min_value=0)
 
-RQBSHD_strat = get_tkn_ct_strat(6).map(lambda x: get_state_from_strat(x, ['R', 'Q', 'B', 'S', 'H', 'D']))
+RQBSHD_strat = get_tkn_ct_strat(6).map(lambda x: get_state_from_strat(x, ['R', 'Q', 'B', 'S', 'H', 'D', 'a']))
 
 
 # Tests over input space of Q, R, delta_TKN, i
 
 def test_swap_hdx_delta_Qi_respects_invariant(d, delta_Ri, i):
+    #print("swap_hdx_delta_Qi_respects_invariant")
     assume(i < len(d['R']))
     assume(d['R'][i] > delta_Ri > -d['R'][i])
     d2 = copy.deepcopy(d)
+    
     delta_Qi = oamm.swap_hdx_delta_Qi(d, delta_Ri, i)
     d2['R'][i] += delta_Ri
     d2['Q'][i] += delta_Qi
@@ -72,9 +78,11 @@ def test_swap_hdx_delta_Qi_respects_invariant(d, delta_Ri, i):
 
 
 def test_swap_hdx_delta_Ri_respects_invariant(d, delta_Qi, i):
+    #print("test_swap_hdx_delta_Ri_respects_invariant")
     assume(i < len(d['Q']))
     assume(d['Q'][i] > delta_Qi > -d['Q'][i])
     d2 = copy.deepcopy(d)
+    
     delta_Ri = oamm.swap_hdx_delta_Ri(d, delta_Qi, i)
     d2['Q'][i] += delta_Qi
     d2['R'][i] += delta_Ri
@@ -91,8 +99,10 @@ def test_swap_hdx_delta_Ri_respects_invariant(d, delta_Qi, i):
 
 
 # Combining these two tests because the valid input space is the same
+@settings(deadline=1000)
 @given(QR_strat, delta_tkn_strat, i_strat)
 def test_swap_hdx_delta_TKN_respects_invariant(d, delta_TKN, i):
+    #print("test_swap_hdx_delta_TKN_respects_invariant")
     test_swap_hdx_delta_Qi_respects_invariant(d, delta_TKN, i)
     test_swap_hdx_delta_Ri_respects_invariant(d, delta_TKN, i)
 
@@ -187,6 +197,7 @@ def test_swap_hdx(old_state):
     old_state['A'] = [0] * n
     old_state['B'] = [0] * n
     old_state['D'] = 0
+    #old_state['a'] = 1
     trader_id = 'trader'
     old_agents = {
         trader_id: {
@@ -215,7 +226,7 @@ def test_swap_hdx_fee(old_state, fee):
     old_state['S'] = [1000] * n
     old_state['A'] = [0] * n
     old_state['B'] = [100] * n
-    old_state['D'] = 0
+    old_state['D'] = 0    
     trader_id = 'trader'
     LP_id = 'lp'
     old_agents = {
@@ -246,7 +257,7 @@ def test_swap_hdx_fee(old_state, fee):
     assert new_state['A'][i] * 9 == pytest.approx(new_agents[LP_id]['r'][i])
 
 
-price_strat = st.floats(min_value=1e-5, max_value=1e5, allow_nan=False, allow_infinity=False)
+price_strat = st.floats(min_value=1e-4, max_value=1e5, allow_nan=False, allow_infinity=False)
 
 
 @given(QR_strat, price_strat)
@@ -286,6 +297,10 @@ def test_adjust_supply(old_state, r):
             pjq_old = oamm.price_i(old_state, j)
             pjq_new = oamm.price_i(new_state, j)
             assert piq_old/pjq_old == pytest.approx(piq_new/pjq_new)
+
+
+
+
 
 
 if __name__ == '__main__':
