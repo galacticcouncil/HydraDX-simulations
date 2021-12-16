@@ -1,8 +1,15 @@
 import copy
 import string
 
-from ..amm import omnipool_amm as oamm
+with open(r"./select_model.txt") as f:
+        contents = f.readlines()
+        if contents[0]=="Model=Omnipool_reweighting":
+            from ..amm import reweighting_amm as oamm
+        else:
+            from ..amm import omnipool_amm as oamm
 
+#from ..amm import omnipool_amm as oamm
+#from ..amm import reweighting_amm as oamm
 
 def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
     agent_d = {}

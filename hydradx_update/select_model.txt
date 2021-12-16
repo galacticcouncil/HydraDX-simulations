@@ -1,0 +1,5 @@
+Model=Omnipool_reweighting
+
+Please put into first string one of following to select model for CADCAD simulation: 
+Model=Omnipool_uni
+Model=Omnipool_reweighting
