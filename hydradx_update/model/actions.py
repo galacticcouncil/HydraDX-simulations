@@ -48,6 +48,16 @@ def get_action_list(init_list, action_dict, seed=42):
     for x in init_list:
         if x[0] not in action_dict:
             action_list.extend([x[0]] * x[1])
+        elif 'trade_types' in action_dict[x[0]]:
+            action_d = action_dict[x[0]]['trade_types']
+            n = 1
+            if 'n' in action_dict[x[0]]:
+                n = action_dict[x[0]]['n']
+            action_list_x = tuple(random.choices(list(action_d.keys()), weights=list(action_d.values()), k=x[1])
+                                  for i in range(n))
+            action_list_x = zip(*action_list_x)
+            action_list.extend(action_list_x)
+
         else:
             action_d = action_dict[x[0]]
             action_list_x = random.choices(list(action_d.keys()), weights=list(action_d.values()), k=x[1])
