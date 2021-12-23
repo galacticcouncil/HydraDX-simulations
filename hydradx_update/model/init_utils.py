@@ -20,9 +20,10 @@ def get_configuration(config_d: dict) -> tuple:
     action_list = actions.get_action_list(config_d['action_ls'], config_d['prob_dict'])
     params = {'action_list': [action_list],
               'action_dict': [config_d['action_dict']],
-              'timesteps': [timesteps]}
+              'timesteps': [timesteps],
+              'batch': [config_d['batch']]}
     converted_agent_d = amm.convert_agents(initial_values, config_d['initial_values']['token_list'], config_d['agent_d'])
-    state = {'external': {}, 'AMM': initial_values, 'uni_agents': converted_agent_d}
+    state = {'external': {}, 'global_state': {'AMM': initial_values, 'uni_agents': converted_agent_d}}
     config_dict = {
         'N': 1,  # number of monte carlo runs
         'T': range(timesteps),  # number of timesteps - 147439 is the length of uniswap_events

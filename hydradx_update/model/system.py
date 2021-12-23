@@ -1,5 +1,7 @@
 import copy
 
+import ipdb
+
 from .amm import amm
 
 # Behaviors
@@ -72,12 +74,15 @@ def mechanismHub_AMM(params, substep, state_history, prev_state, policy_input):
     policy_inputs = policy_input['policy_input']
     new_state = copy.deepcopy(prev_state['AMM'])
     new_agents = copy.deepcopy(prev_state['uni_agents'])
-    for action in policy_inputs:
-        if 'action_id' in action:
-            # amm = amm_selector.get_amm(params['cfmm_type'])
-            action_id = action['action_id']
-            if action_id == 'Trade':
-                new_state, new_agents = amm.swap(new_state, new_agents, action)
+    if 'batch' in params and params['batch']:
+        new_state, new_agents = amm.process_transactions(new_state, new_agents, policy_inputs)
+    else:
+        for action in policy_inputs:
+            if 'action_id' in action:
+                # amm = amm_selector.get_amm(params['cfmm_type'])
+                action_id = action['action_id']
+                if action_id == 'Trade':
+                    new_state, new_agents = amm.swap(new_state, new_agents, action)
         '''
         elif action == 'ArbMarket':
             next_state = prev_state['AMM']
@@ -135,7 +140,25 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
     return ('uni_agents', new_agents)
 
 
+def unified_hub(params, substep, state_history, prev_state, policy_input):
+    policy_inputs = policy_input['policy_input']
+
+    new_state = copy.deepcopy(prev_state['global_state']['AMM'])
+    new_agents = copy.deepcopy(prev_state['global_state']['uni_agents'])
+    if 'batch' in params and params['batch']:
+        new_state, new_agents = amm.process_transactions(new_state, new_agents, policy_inputs)
+    else:
+        for action in policy_inputs:
+            if 'action_id' in action:
+                # amm = amm_selector.get_amm(params['cfmm_type'])
+                action_id = action['action_id']
+                if action_id == 'Trade':
+                    new_state, new_agents = amm.swap(new_state, new_agents, action)
+    return ('global_state', {'AMM': new_state, 'uni_agents': new_agents})
+
+'''
 def posthub(params, substep, state_history, prev_state, policy_input):
     if 'T' in prev_state['AMM'] and prev_state['AMM']['T'] is not None:
         return ('AMM', amm.adjust_supply(prev_state['AMM']))
     return ('AMM', prev_state['AMM'])
+'''

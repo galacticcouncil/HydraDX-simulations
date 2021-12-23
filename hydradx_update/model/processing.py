@@ -1,3 +1,4 @@
+import ipdb
 import pandas as pd
 
 from . import init_utils as iu
@@ -13,37 +14,40 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n'):
     df: simulation dataframe
     '''
     d = {}
-    n = len(events[0]['AMM']['R'])
+    n = len(events[0]['global_state']['AMM']['R'])
     agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': []}
 
     # build the DFs
     for step in events:
         for k in step:
-            # expand AMM structure
-            if k == 'AMM':
-                for k in step['AMM']:
-                    expand_state_var(k, step['AMM'][k], d)
-                if count and count_tkn in step['AMM']:
-                    d[count_k] = len(step['AMM'][count_tkn])
+            if k == 'global_state':
+                for k in step['global_state']:
+                    # expand AMM structure
+                    if k == 'AMM':
+                        for k in step['global_state']['AMM']:
+                            expand_state_var(k, step['global_state']['AMM'][k], d)
+                        if count and count_tkn in step['global_state']['AMM']:
+                            d[count_k] = len(step['global_state']['AMM'][count_tkn])
+                    elif k == 'uni_agents':
+                        for agent_k in step['global_state']['uni_agents']:
+                            agent_state = step['global_state']['uni_agents'][agent_k]
+
+                            if 'agent_label' not in agent_d:
+                                agent_d['agent_label'] = list()
+                            agent_d['agent_label'].append(agent_k)
+
+                            for k in agent_state:
+                                expand_state_var(k, agent_state[k], agent_d)
+
+                            # add simulation columns
+                            for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
+                                agent_d[key].append(step[key])
+                    else:
+                        expand_state_var(k, step['global_state'][k], d)
 
             elif k == 'external':
                 for k in step['external']:
                     expand_state_var(k, step['external'][k], d)
-
-            elif k == 'uni_agents':
-                for agent_k in step['uni_agents']:
-                    agent_state = step['uni_agents'][agent_k]
-
-                    if 'agent_label' not in agent_d:
-                        agent_d['agent_label'] = list()
-                    agent_d['agent_label'].append(agent_k)
-
-                    for k in agent_state:
-                        expand_state_var(k, agent_state[k], agent_d)
-
-                    # add simulation columns
-                    for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
-                        agent_d[key].append(step[key])
 
             else:
                 expand_state_var(k, step[k], d)
