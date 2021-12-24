@@ -28,6 +28,11 @@ def price_i(state: dict, i: int, fee: float = 0) -> float:
         return (state['Q'][i] / state['R'][i]) * (1 - fee)
 
 
+def settle_price(state: dict, i: int, delta_q: float, delta_r: float):
+    """Settle price of two transactions between asset i and HDX, one with HDX quantity stipulated, one with asset i"""
+    return (state['Q'][i] + delta_q)/(state['R'][i] + delta_r)
+
+
 def adjust_supply(old_state: dict):
 
     if old_state['H'] <= old_state['T']:

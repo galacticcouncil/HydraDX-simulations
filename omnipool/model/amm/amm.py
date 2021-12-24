@@ -204,7 +204,7 @@ def process_transactions(state: dict, agent_d: dict, policy_inputs: list) -> tup
         if delta_r_asset == 0:
             clearing_prices[asset] = None
         else:
-            clearing_prices[asset] = (new_state['Q'][i] + delta_q_hdx)/(new_state['R'][i] + delta_r_asset)
+            clearing_prices[asset] = oamm.settle_price(new_state, i, delta_q_hdx, delta_r_asset)
 
     new_agents = copy.deepcopy(agent_d)
 
