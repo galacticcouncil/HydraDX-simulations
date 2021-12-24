@@ -1,8 +1,6 @@
 import copy
 import string
 
-import ipdb
-
 from ..amm import omnipool_amm as oamm
 
 
@@ -56,13 +54,11 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         delta_R = trade['amount_sell']
 
     if i_buy < 0 or i_sell < 0:
-        return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell))
-        #return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
-                             #old_state['fee_HDX'] + old_state['fee_assets'])
+        return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+                             old_state['fee_HDX'] + old_state['fee_assets'])
     else:
-        raise
-        #return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade['amount_sell'], i_buy, i_sell,
-                                #old_state['fee_assets'], old_state['fee_HDX'])
+        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade['amount_sell'], i_buy, i_sell,
+                                old_state['fee_assets'], old_state['fee_HDX'])
 
 
 def price_i(state: dict, i: int) -> float:
@@ -108,149 +104,6 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
         }
 
         new_state, new_agents = remove_liquidity(new_state, new_agents, transaction)
-    return new_state, new_agents
-
-
-def process_transactions(state: dict, agent_d: dict, policy_inputs: list) -> tuple:
-    batch_trade_d = {}  # keys will be (asset, tkn specified)
-                        # values will be net amt specified with positive values indicating
-                        # that traders want to buy from pool
-    new_state = copy.deepcopy(state)
-    protocol_agents = {}
-    n = len(state['R'])
-
-    # Accumulate net trades
-    for trade in policy_inputs:
-        # break up trades into LHDX trades
-        # batch for each TKN
-        if trade['token_sell'] == 'HDX':
-            asset = trade['token_buy']
-            if 'amount_buy' in trade:
-                tkn_spec = asset
-                other_tkn = 'HDX'
-                amt_spec = trade['amount_buy']
-            elif 'amount_sell' in trade:
-                tkn_spec = 'HDX'
-                other_tkn = asset
-                amt_spec = -trade['amount_sell']
-            else:
-                raise
-        elif trade['token_buy'] == 'HDX':
-            asset = trade['token_sell']
-            if 'amount_sell' in trade:
-                tkn_spec = asset
-                other_tkn = 'HDX'
-                amt_spec = -trade['amount_sell']
-            elif 'amount_buy' in trade:
-                tkn_spec = 'HDX'
-                other_tkn = asset
-                amt_spec = trade['amount_buy']
-            else:
-                raise
-        else:
-            raise
-
-        if (asset, tkn_spec, other_tkn) not in batch_trade_d:
-            batch_trade_d[(asset, tkn_spec, other_tkn)] = 0
-
-        batch_trade_d[(asset, tkn_spec, other_tkn)] += amt_spec
-
-        # prepare a different "agent" for interacting with each TKN/HDX AMM
-        protocol_agents[asset] = {'q': 0, 's': [0] * n, 'r': [0] * n, 'p': [0] * n}
-
-    # Construct net trades
-    net_trades = {}
-    for (asset, tkn_spec, other_tkn) in batch_trade_d:
-        amt_spec = batch_trade_d[(asset, tkn_spec, other_tkn)]
-        if amt_spec < 0:  # traders on net want to sell token to pool
-            trade = {
-                'token_sell': tkn_spec,
-                'token_buy': other_tkn,
-                'amount_sell': -amt_spec,
-                'action_id': 'Trade',
-                'agent_id': asset
-            }
-        else:  # traders on net want to buy token from pool
-            # need to include the amt_spec = 0 case here because this may change when slippage limits are applied
-            trade = {
-                'token_buy': tkn_spec,
-                'token_sell': other_tkn,
-                'amount_buy': amt_spec,
-                'action_id': 'Trade',
-                'agent_id': asset
-            }
-        if asset not in net_trades:
-            net_trades[asset] = {}
-        net_trades[asset][tkn_spec] = trade
-
-        # Execute net trades against AMM (without fee)
-        #new_state, protocol_agents = swap(new_state, protocol_agents, trade)
-
-    clearing_prices = {}
-    for asset in protocol_agents:
-        assert asset in net_trades
-        i = new_state['token_list'].index(asset)
-        #delta_r = protocol_agents[asset]['r'][i]
-        #delta_q = protocol_agents[asset]['q']
-        delta_q_hdx = 0
-        delta_r_asset = 0
-        if 'HDX' in net_trades[asset]:
-            trade = net_trades[asset]['HDX']
-            delta_q_hdx += trade['amount_sell'] if 'amount_sell' in trade else trade['amount_buy']
-        if asset in net_trades[asset]:
-            trade = net_trades[asset][asset]
-            delta_r_asset += trade['amount_sell'] if 'amount_sell' in trade else trade['amount_buy']
-
-        if delta_r_asset == 0:
-            clearing_prices[asset] = None
-        else:
-            clearing_prices[asset] = (new_state['Q'][i] + delta_q_hdx)/(new_state['R'][i] + delta_r_asset)
-
-    new_agents = copy.deepcopy(agent_d)
-
-    # process trades with agents
-    for trade in policy_inputs:
-        if 'amount_sell' in trade:
-            if trade['token_sell'] == 'HDX':
-                asset = trade['token_buy']
-                if clearing_prices[asset] is not None:
-                    i = new_state['token_list'].index(asset)
-                    agent = new_agents[trade['agent_id']]
-                    agent['q'] -= trade['amount_sell']
-                    agent['r'][i] += trade['amount_sell']/clearing_prices[asset]
-                    new_state['Q'][i] += trade['amount_sell']
-                    new_state['R'][i] -= trade['amount_sell']/clearing_prices[asset]
-            else:
-                asset = trade['token_sell']
-                if clearing_prices[asset] is not None:
-                    i = new_state['token_list'].index(asset)
-                    agent = new_agents[trade['agent_id']]
-                    agent['r'][i] -= trade['amount_sell']
-                    agent['q'] += trade['amount_sell'] * clearing_prices[asset]
-                    new_state['R'][i] += trade['amount_sell']
-                    new_state['Q'][i] -= trade['amount_sell'] * clearing_prices[asset]
-        elif 'amount_buy' in trade:
-            if trade['token_buy'] == 'HDX':
-                asset = trade['token_sell']
-                if clearing_prices[asset] is not None:
-                    i = new_state['token_list'].index(asset)
-                    agent = new_agents[trade['agent_id']]
-                    agent['q'] += trade['amount_buy']
-                    agent['r'][i] -= trade['amount_buy']/clearing_prices[asset]
-                    new_state['Q'][i] -= trade['amount_buy']
-                    new_state['R'][i] += trade['amount_buy']/clearing_prices[asset]
-            else:
-                asset = trade['token_buy']
-                if clearing_prices[asset] is not None:
-                    i = new_state['token_list'].index(asset)
-                    agent = new_agents[trade['agent_id']]
-                    agent['r'][i] += trade['amount_buy']
-                    agent['q'] -= trade['amount_buy'] * clearing_prices[asset]
-                    new_state['R'][i] -= trade['amount_buy']
-                    new_state['Q'][i] += trade['amount_buy'] * clearing_prices[asset]
-        else:
-            raise
-
     return new_state, new_agents
 
 

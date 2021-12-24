@@ -16,9 +16,16 @@ partial_state_update_block = [
             'user_action': actionDecoder
         },
         'variables': {
-            #'AMM': mechanismHub_AMM,
-            #'uni_agents': agenthub,
-            'global_state': unified_hub,
+            'AMM': mechanismHub_AMM,
+            'uni_agents': agenthub,
+        }
+    },
+
+    {
+        'policies': {
+        },
+        'variables': {
+            'AMM': posthub
         }
     },
 
