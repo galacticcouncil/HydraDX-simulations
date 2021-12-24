@@ -3,6 +3,7 @@ import string
 
 from . import actions
 from .amm import amm
+import ipdb
 
 def complete_initial_values(values: dict, agent_d: dict = None) -> dict:
     state = amm.initialize_state(values, values['token_list'], agent_d)
