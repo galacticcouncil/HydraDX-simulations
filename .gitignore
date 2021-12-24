@@ -5,3 +5,6 @@
 # Jupyter Notebook
 .ipynb_checkpoints
 *-checkpoint.ipynb
+
+# Hypothesis folder
+.hypothesis/
