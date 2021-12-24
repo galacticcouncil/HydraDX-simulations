@@ -4,7 +4,7 @@ import math
 import pytest
 from hypothesis import given, strategies as st, assume
 
-from hydradx_update.model.amm import omnipool_amm as oamm
+from omnipool.model.amm import omnipool_amm as oamm
 
 # Token counts
 tkn_ct_strat = st.floats(min_value=1, max_value=1e20, allow_nan=False, allow_infinity=False)
@@ -109,6 +109,20 @@ def test_weights(d):
 def test_prices(d):
     for i in range(len(d['Q'])):
         assert oamm.price_i(d, i) > 0
+
+
+@given(QR_strat)
+def test_settle_price(state):
+    i = 0
+    delta_q = 20000  # 10k HDX worth of asset i to be bought from pool
+    delta_r = 10000  # 20k asset i worth of HDX to be bought from pool
+    p = oamm.settle_price(state, i, delta_q, delta_r)
+    new_state = copy.deepcopy(state)
+    delta_q_tot = delta_q - delta_r * p
+    delta_r_tot = delta_r - delta_q / p
+    new_state['Q'][i] += delta_q_tot
+    new_state['R'][i] += delta_r_tot
+    assert oamm.asset_invariant(state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
 
 
 def test_initialize_pool_state(d):
@@ -298,3 +312,4 @@ if __name__ == '__main__':
     test_remove_risk_liquidity()
     #test_add_asset()
     test_adjust_supply()
+    test_settle_price()
