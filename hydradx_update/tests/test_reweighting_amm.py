@@ -187,11 +187,10 @@ def test_remove_risk_liquidity(old_state):
     assert delta_q >= 0 or delta_q == pytest.approx(0)
     assert delta_r >= 0 or delta_r == pytest.approx(0)
    
-<<<<<<< HEAD
     # TO DO 2-token reweighting AMM additional tests
-=======
 
->>>>>>> b305feab1c11a875c75f15e3519ff9cd9ee60c8b
+
+
 
 @given(QR_strat)
 def test_swap_hdx(old_state):
