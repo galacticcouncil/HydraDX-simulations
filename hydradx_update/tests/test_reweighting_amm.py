@@ -162,8 +162,8 @@ def test_remove_risk_liquidity(old_state):
     n = len(old_state['R'])
     old_state['S'] = [1500000] * n
     old_state['P'] = [oamm.price_i(old_state, j) for j in range(n)]
-    B_init = 0
-    old_state['B'] = [B_init] * n
+    #B_init = 0
+    #old_state['B'] = [B_init] * n
 
     LP_id = 'LP'
     p_init = 1
@@ -186,11 +186,10 @@ def test_remove_risk_liquidity(old_state):
     delta_q = new_agents[LP_id]['q'] - old_agents[LP_id]['q']
     assert delta_q >= 0 or delta_q == pytest.approx(0)
     assert delta_r >= 0 or delta_r == pytest.approx(0)
+   
+    # TO DO 2-token reweighting AMM additional tests
 
-    piq = oamm.price_i(old_state, i)
-    val_withdrawn = piq * delta_r + delta_q
-    assert -2 * piq / (piq + p_init) * delta_S / old_state['S'][i] * piq * old_state['R'][
-        i] == pytest.approx(val_withdrawn)
+
 
 
 @given(QR_strat)
