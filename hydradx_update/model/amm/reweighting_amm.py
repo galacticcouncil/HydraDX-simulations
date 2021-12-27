@@ -1,12 +1,14 @@
 import copy
 import math
 import string
-add_log=False
+add_log_swap=False
+add_log_liqadd=False
+add_log_liqrem=False
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
-    global add_log
-    if add_log: 
+    global add_log_swap
+    if add_log_swap: 
         equation = "inv=(state['R'][i]**(-state['a'][i]) + state['Q'][i]**(-state['a'][i]))**(-1/state['a'][i])"
         inv=(state['R'][i]**(-state['a'][i]) + state['Q'][i]**(-state['a'][i]))**(-1/state['a'][i])
         print(equation)
@@ -17,8 +19,8 @@ def asset_invariant(state: dict, i: int) -> float:
 
 
 def swap_hdx_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
-    global add_log
-    if add_log: 
+    global add_log_swap
+    if add_log_swap: 
         print("swap_hdx_delta_Qi")
         print("old_state")
         print("i="+str(i))
@@ -35,8 +37,8 @@ def swap_hdx_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
 
 
 def swap_hdx_delta_Ri(old_state: dict, delta_Qi: float, i: int) -> float:
-    global add_log
-    if add_log: 
+    global add_log_swap
+    if add_log_swap: 
         print("swap_hdx_delta_Ri")
         print("old_state")
         print("i="+str(i))
@@ -190,6 +192,22 @@ def add_risk_liquidity(
         i: int
 ) -> tuple:
     """Compute new state after liquidity addition"""
+    global add_log_liqadd
+    
+    if add_log_liqadd: 
+        print("add_risk_liquidity")
+        print() 
+
+        print("old_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_state.items()) + "}")
+        print() 
+        
+        print("old_agents")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_agents.items()) + "}")
+        print() 
+
 
     assert delta_R > 0, "delta_R must be positive: " + str(delta_R)
     assert i >= 0, "invalid value for i: " + str(i)
@@ -212,8 +230,22 @@ def add_risk_liquidity(
     # set price at which liquidity was added
     new_agents[LP_id]['p'][i] = price_i(new_state, i)
 
-    return new_state, new_agents
+    if add_log_liqadd:        
+        print("new_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in new_state.items()) + "}")
+        print() 
+        
+        print("new_agents")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in new_agents.items()) + "}")
+        print() 
 
+        print("add_risk_liquidity finish")
+        print() 
+
+    
+    return new_state, new_agents
 
 def remove_risk_liquidity(
         old_state: dict,
@@ -225,33 +257,52 @@ def remove_risk_liquidity(
     """Compute new state after liquidity removal"""
     assert delta_S <= 0, "delta_S cannot be positive: " + str(delta_S)
     assert i >= 0, "invalid value for i: " + str(i)
+    
+    global add_log_liqrem
+    
+    if add_log_liqrem: 
+        print("remove_risk_liquidity")
+        print() 
 
+        print("old_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_state.items()) + "}")
+        print() 
+        
+        print("old_agents")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_agents.items()) + "}")
+        print() 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
     if delta_S == 0:
         return new_state, new_agents
 
-    piq = price_i(old_state, i)
-    p0 = new_agents[LP_id]['p'][i]
-    mult = (piq - p0)/(piq + p0)
-
-    # Share update
-    delta_B = max(mult * delta_S, - old_state['B'][i])
-    new_state['B'][i] += delta_B
-    new_state['S'][i] += delta_S + delta_B
+    # Share update    
+    new_state['S'][i] += delta_S 
     new_agents[LP_id]['s'][i] += delta_S
 
     # Token amounts update
-    delta_R = old_state['R'][i] * max((delta_S + delta_B) / old_state['S'][i], -1)
+    delta_R = old_state['R'][i] / old_state['S'][i] * delta_S 
     new_state['R'][i] += delta_R
     new_agents[LP_id]['r'][i] -= delta_R
-    if piq >= p0:  # prevents rounding errors
-        new_agents[LP_id]['q'] -= piq * (
-                2*piq/(piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
-
+    
     # HDX burn
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
+    
+    if add_log_liqrem:        
+        print("new_state")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in new_state.items()) + "}")
+        print() 
+        
+        print("new_agents")
+        print("i="+str(i))
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in new_agents.items()) + "}")
+        print() 
 
+        print("remove_risk_liquidity finish")
+        print() 
     return new_state, new_agents
