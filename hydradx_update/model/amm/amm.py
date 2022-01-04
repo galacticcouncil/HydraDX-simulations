@@ -3,7 +3,6 @@ import string
 
 from ..amm import omnipool_amm as oamm
 
-
 def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
     agent_d = {}
     for i in range(len(init_LPs)):
