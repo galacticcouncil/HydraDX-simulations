@@ -112,17 +112,14 @@ def swap_hdx(
         new_agents[trader_id]['q'] -= delta_Q * (1 - fee)
 
         new_state['D'] -= delta_Q * fee
+
     else:
-        new_state['R'][i] += delta_R
-        new_state['Q'][i] += delta_Q
+        new_state['R'][i] += delta_R * (1 - fee)
+        # new LHDX is set to identical price as though fee were not taken... effectively, fee is distributed to LPs
+        # and added to pool as additional liquidity.
+        new_state['Q'][i] = (old_state['Q'][i] + delta_Q)/(old_state['R'][i] + delta_R) * new_state['R'][i]
         new_agents[trader_id]['r'][i] -= delta_R * (1 - fee)
         new_agents[trader_id]['q'] -= delta_Q
-
-        # distribute fees
-        new_state['A'][i] -= delta_R * fee * (new_state['B'][i] / new_state['S'][i])
-        for agent_id in new_agents:
-            agent = new_agents[agent_id]
-            agent['r'][i] -= delta_R * fee * (agent['s'][i] / new_state['S'][i])
 
     return new_state, new_agents
 
@@ -138,9 +135,17 @@ def swap_assets(
         fee_HDX: float = 0
 ) -> tuple:
     # swap asset in for HDX
-    first_state, first_agents = swap_hdx(old_state, old_agents, trader_id, delta_sell, 0, i_sell, fee_HDX)
+    first_state, first_agents = swap_hdx(old_state, old_agents, trader_id, delta_sell, 0, i_sell, 0)
     # swap HDX in for asset
-    delta_Q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
+    Q1 = old_state['Q'][i_sell]
+    Q2 = old_state['Q'][i_buy]
+    dR1 = delta_sell
+    R1 = old_state['R'][i_sell]
+    R2 = old_state['R'][i_buy]
+    fee_HDX_actual = fee_HDX*(Q2*(dR1 + R1) + Q1*dR1)/(fee_HDX*Q1*dR1 + Q2*(dR1 + R1)*(1 - fee_assets))
+    delta_Q = (first_agents[trader_id]['q'] - old_agents[trader_id]['q']) * (1 - fee_HDX_actual)
+    first_agents[trader_id]['q'] = old_agents[trader_id]['q'] + delta_Q
+    first_state['D'] += abs(delta_Q) * fee_HDX_actual
     return swap_hdx(first_state, first_agents, trader_id, 0, delta_Q, i_buy, fee_assets)
 
 
