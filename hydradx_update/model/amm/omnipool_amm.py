@@ -1,5 +1,4 @@
 import copy
-import math
 import string
 
 
@@ -29,17 +28,16 @@ def price_i(state: dict, i: int, fee: float = 0) -> float:
 
 
 def adjust_supply(old_state: dict):
-
     if old_state['H'] <= old_state['T']:
         return old_state
 
     over_supply = old_state['H'] - old_state['T']
     Q = sum(old_state['Q'])
-    Q_burn = min(over_supply, old_state['burn_rate']*Q)
+    Q_burn = min(over_supply, old_state['burn_rate'] * Q)
 
     new_state = copy.deepcopy(old_state)
     for i in range(len(new_state['Q'])):
-        new_state['Q'][i] += Q_burn * old_state['Q'][i]/Q
+        new_state['Q'][i] += Q_burn * old_state['Q'][i] / Q
 
     new_state['H'] -= Q_burn
 
@@ -65,7 +63,7 @@ def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
     n = len(token_counts['R'])
     state = copy.deepcopy(token_counts)
     state['S'] = copy.deepcopy(state['R'])
-    state['A'] = [0]*n
+    state['A'] = [0] * n
 
     agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
     state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
@@ -82,14 +80,13 @@ def initialize_pool_state(init_d=None, agent_d=None) -> dict:
     return initialize_shares(token_counts, init_d)
 
 
-def swap_hdx(
+def swap_lhdx(
         old_state: dict,
         old_agents: dict,
         trader_id: string,
         delta_R: float,
         delta_Q: float,
-        i: int,
-        fee: float = 0
+        i: int
 ) -> tuple:
     """Compute new state after HDX swap"""
 
@@ -104,23 +101,48 @@ def swap_hdx(
         return new_state, new_agents
 
     # Token amounts update
-    # Fee is taken from the "out" leg
     if delta_Q < 0:
         new_state['R'][i] += delta_R
         new_state['Q'][i] += delta_Q
         new_agents[trader_id]['r'][i] -= delta_R
-        new_agents[trader_id]['q'] -= delta_Q * (1 - fee)
-
-        new_state['D'] -= delta_Q * fee
-
-    else:
-        new_state['R'][i] += delta_R * (1 - fee)
-        # new LHDX is set to identical price as though fee were not taken... effectively, fee is distributed to LPs
-        # and added to pool as additional liquidity.
-        new_state['Q'][i] = (old_state['Q'][i] + delta_Q)/(old_state['R'][i] + delta_R) * new_state['R'][i]
-        new_agents[trader_id]['r'][i] -= delta_R * (1 - fee)
         new_agents[trader_id]['q'] -= delta_Q
 
+    else:
+        new_state['R'][i] += delta_R
+        new_state['Q'][i] = (old_state['Q'][i] + delta_Q) / (old_state['R'][i] + delta_R) * new_state['R'][i]
+        new_agents[trader_id]['r'][i] -= delta_R
+        new_agents[trader_id]['q'] -= delta_Q
+
+    return new_state, new_agents
+
+
+def swap_lhdx_fee(
+        old_state: dict,
+        old_agents: dict,
+        trader_id: string,
+        delta_R: float,
+        delta_Q: float,
+        i: int,
+        fee_assets: float = 0,
+        fee_LHDX: float = 0
+) -> tuple:
+    """Computed new state for HDX swap with fee"""
+    new_state, new_agents = swap_lhdx(old_state, old_agents, trader_id, delta_R, delta_Q, i)
+    delta_Q = new_state['Q'][i] - old_state['Q'][i]
+    if delta_Q < 0:
+        # LHDX fee
+        new_agents[trader_id]['q'] += delta_Q * fee_LHDX
+        new_state['D'] -= delta_Q * fee_LHDX
+    else:
+        delta_R = new_state['R'][i] - old_state['R'][i]  # delta_R is negative
+        # asset fee
+        new_agents[trader_id]['r'][i] += delta_R * fee_assets
+        # fee added back as liquidity, distributed to existing LPs (i.e. no new shares minted)
+        # eventually, can mint protocol shares to take some cut as POL
+        p = price_i(new_state, i)
+        new_state['R'][i] -= delta_R * fee_assets
+        # LHDX minted so that asset fee level does not change price and increase IL
+        new_state['Q'][i] = p * new_state['R'][i]
     return new_state, new_agents
 
 
@@ -132,21 +154,15 @@ def swap_assets(
         i_buy: int,
         i_sell: int,
         fee_assets: float = 0,
-        fee_HDX: float = 0
+        fee_LHDX: float = 0
 ) -> tuple:
-    # swap asset in for HDX
-    first_state, first_agents = swap_hdx(old_state, old_agents, trader_id, delta_sell, 0, i_sell, 0)
-    # swap HDX in for asset
-    Q1 = old_state['Q'][i_sell]
-    Q2 = old_state['Q'][i_buy]
-    dR1 = delta_sell
-    R1 = old_state['R'][i_sell]
-    R2 = old_state['R'][i_buy]
-    fee_HDX_actual = fee_HDX*(Q2*(dR1 + R1) + Q1*dR1)/(fee_HDX*Q1*dR1 + Q2*(dR1 + R1)*(1 - fee_assets))
-    delta_Q = (first_agents[trader_id]['q'] - old_agents[trader_id]['q']) * (1 - fee_HDX_actual)
-    first_agents[trader_id]['q'] = old_agents[trader_id]['q'] + delta_Q
-    first_state['D'] += abs(delta_Q) * fee_HDX_actual
-    return swap_hdx(first_state, first_agents, trader_id, 0, delta_Q, i_buy, fee_assets)
+    # swap asset in for LHDX
+    first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_sell, 0, i_sell, fee_assets,
+                                              fee_LHDX)
+    delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
+    # swap LHDX back in for second asset
+    new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
+    return new_state, new_agents
 
 
 def add_risk_liquidity(
@@ -201,7 +217,7 @@ def remove_risk_liquidity(
 
     piq = price_i(old_state, i)
     p0 = new_agents[LP_id]['p'][i]
-    mult = (piq - p0)/(piq + p0)
+    mult = (piq - p0) / (piq + p0)
 
     # Share update
     delta_B = max(mult * delta_S, - old_state['B'][i])
@@ -215,7 +231,7 @@ def remove_risk_liquidity(
     new_agents[LP_id]['r'][i] -= delta_R
     if piq >= p0:  # prevents rounding errors
         new_agents[LP_id]['q'] -= piq * (
-                2*piq/(piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
+                2 * piq / (piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
 
     # HDX burn
     delta_Q = price_i(old_state, i) * delta_R

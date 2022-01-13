@@ -7,7 +7,7 @@ from hypothesis import given, strategies as st, assume
 from hydradx_update.model.amm import omnipool_amm as oamm
 
 # Token counts
-tkn_ct_strat = st.floats(min_value=1, max_value=1e20, allow_nan=False, allow_infinity=False)
+tkn_ct_strat = st.floats(min_value=10000, max_value=1e20, allow_nan=False, allow_infinity=False)
 
 
 def get_tkn_ct_strat(n):
@@ -36,7 +36,7 @@ def get_state_from_strat(x, key_list):
     return d
 
 
-QR_strat = st.lists(QiRi_strat, min_size=1, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R']))
+QR_strat = st.lists(QiRi_strat, min_size=2, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R']))
 
 # Delta_TKN variables
 delta_tkn_strat = st.floats(allow_nan=False, allow_infinity=False)
@@ -200,11 +200,11 @@ def test_swap_hdx(old_state):
     i = 0
 
     # Test with trader selling asset i
-    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, delta_R, 0, i)
+    new_state, new_agents = oamm.swap_lhdx(old_state, old_agents, trader_id, delta_R, 0, i)
     assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
 
     # Test with trader selling HDX
-    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, 0, delta_Q, i)
+    new_state, new_agents = oamm.swap_lhdx(old_state, old_agents, trader_id, 0, delta_Q, i)
     assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
 
 
@@ -235,15 +235,58 @@ def test_swap_hdx_fee(old_state, fee):
     i = 0
 
     # Test with trader selling asset i
-    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, delta_R, 0, i, fee)
+    new_state, new_agents = oamm.swap_lhdx_fee(old_state, old_agents, trader_id, delta_R, 0, i, fee, fee)
     assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i))
     assert sum(old_state['Q']) + old_agents[trader_id]['q'] == pytest.approx(sum(new_state['Q']) + new_state['D'] + new_agents[trader_id]['q'])
 
     # Test with trader selling HDX
-    new_state, new_agents = oamm.swap_hdx(old_state, old_agents, trader_id, 0, delta_Q, i, fee)
-    assert oamm.asset_invariant(old_state, i) == pytest.approx(oamm.asset_invariant(new_state, i), fee)
-    assert new_state['A'][i] > 0
-    assert new_state['A'][i] * 9 == pytest.approx(new_agents[LP_id]['r'][i])
+    new_state, new_agents = oamm.swap_lhdx_fee(old_state, old_agents, trader_id, 0, delta_Q, i, fee, fee)
+    feeless_state, feeless_agents = oamm.swap_lhdx_fee(old_state, old_agents, trader_id, 0, delta_Q, i, 0, 0)
+    for j in range(len(old_state['R'])):
+        assert oamm.price_i(feeless_state, j) == pytest.approx(oamm.price_i(new_state, j))
+        assert min(new_state['R'][j] - feeless_state['R'][j], 0) == pytest.approx(0)
+    assert min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) == pytest.approx(1)
+
+fee_strat = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+@given(QR_strat, fee_strat, fee_strat)
+def test_swap_assets(old_state, fee_LHDX, fee_assets):
+    n = len(old_state['R'])
+    old_state['S'] = [1000] * n
+    old_state['A'] = [0] * n
+    old_state['B'] = [100] * n
+    old_state['D'] = 0
+    trader_id = 'trader'
+    LP_id = 'lp'
+
+    old_agents = {
+        trader_id: {
+            'r': [1000] * n,
+            'q': 1000,
+            's': [0] * n
+        },
+        LP_id: {
+            'r': [0] * n,
+            'q': 0,
+            's': [900] * n
+        }
+    }
+    delta_R = 1000
+    i_buy = 0
+    i_sell = 1
+
+    # Test with trader selling asset i, no HDX fee... price should match feeless
+    new_state, new_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, fee_assets, fee_LHDX)
+    asset_only_state, asset_only_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, fee_assets, 0)
+    feeless_state, feeless_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, 0, 0)
+    for j in range(len(old_state['R'])):
+        # price tracks feeless price
+        assert oamm.price_i(feeless_state, j) == pytest.approx(oamm.price_i(asset_only_state, j))
+        # assets in pools only go up compared to asset_only_state
+        assert min(asset_only_state['R'][j] - feeless_state['R'][j], 0) == pytest.approx(0)
+        # asset in pool goes up from asset_only_state -> new_state (i.e. introduction of LHDX fee)
+        assert min(new_state['R'][j] - asset_only_state['R'][j], 0) == pytest.approx(0)
+        # invariant does not decrease
+        assert min(oamm.asset_invariant(new_state, j) / oamm.asset_invariant(old_state, j), 1) == pytest.approx(1)
 
 
 price_strat = st.floats(min_value=1e-5, max_value=1e5, allow_nan=False, allow_infinity=False)
@@ -298,3 +341,4 @@ if __name__ == '__main__':
     test_remove_risk_liquidity()
     #test_add_asset()
     test_adjust_supply()
+    test_swap_assets()
