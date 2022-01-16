@@ -3,6 +3,8 @@ import pandas as pd
 from . import init_utils as iu
 from .amm import amm
 
+add_log_val_hold = False
+add_log_val_pool = False
 
 def postprocessing(events, count=True, count_tkn='R', count_k='n'):
     '''
@@ -79,6 +81,9 @@ def expand_state_var(k, var, d) -> None:
 
 
 def get_state_from_row(row) -> dict:
+    #print ("row")
+    #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in row.items()) + "}")
+    #print ("row end")
     state = {
         'token_list': [None] * row['n'],
         'Q': [0] * row['n'],
@@ -87,6 +92,7 @@ def get_state_from_row(row) -> dict:
         'D': row['D'],
         'S': [0] * row['n'],
         'B': [0] * row['n'],
+        'a': [0] * row['n'],
     }
 
     if 'H' in row:
@@ -100,8 +106,16 @@ def get_state_from_row(row) -> dict:
         state['B'][i] = row['B-' + str(i)]
         state['Q'][i] = row['Q-' + str(i)]
         state['A'][i] = row['A-' + str(i)]
-        state['token_list'][i] = row['token_list-' + str(i)]
+        with open(r"./select_model.txt") as f:
+            contents = f.readlines()
+            if contents[0].replace("\n", "")=="Model=Omnipool_reweighting":
+                state['a'][i] = row['a-' + str(i)]   
 
+        #state['a'][i] = row['a-' + str(i)]
+        state['token_list'][i] = row['token_list-' + str(i)]
+    #print ("get_state_from_row")
+    #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")
+    #print ("get_state_from_row end")
     return state
 
 
@@ -122,15 +136,52 @@ def get_agent_from_row(row) -> dict:
 
 
 def val_pool(row):
+    global add_log_val_pool
+
     state = get_state_from_row(row)
     agent_d = get_agent_from_row(row)
-    return amm.value_holdings(state, agent_d, row['agent_label'])
+
+    if add_log_val_pool: print("val_pool begin")
+    if add_log_val_pool: print("state:")
+    if add_log_val_pool: print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")        
+    if add_log_val_pool: print("agent_d:")
+    if add_log_val_pool: print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in agent_d.items()) + "}")   
+    
+    value = amm.value_holdings(state, agent_d, row['agent_label'])
+
+    if add_log_val_pool: print("value: " + str(value))
+    if add_log_val_pool: print("val_pool end")
+    if add_log_val_pool: print()
+
+    if False == True: 
+        print("val_pool begin")
+        print("state:")
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")        
+        print("agent_d:")
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in agent_d.items()) + "}")        
+        print("value: " + str(value))
+        print("val_pool end")
+        print()
+    return value
+#    return amm.value_holdings(state, agent_d, row['agent_label'])
 
 
 def val_hold(row, orig_agent_d):
-    state = get_state_from_row(row)
+    state = get_state_from_row(row)    
     agent = orig_agent_d[row['agent_label']]
     value = amm.value_assets(state, agent)
+
+    global add_log_val_hold
+    if add_log_val_hold == True: 
+        print("add_log_val_hold begin")
+        print("state:")
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")        
+        print("agent:")
+        print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in agent.items()) + "}")        
+        print("value: " + str(value))
+        print("add_log_val_hold end")
+        print()
+
     return value
 
 

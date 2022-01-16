@@ -1,10 +1,16 @@
 import copy
+from multiprocessing.sharedctypes import Value
 import string
+
+add_log_value_assets=False
+add_log_value_holdings=False
+add_log_withdraw_all_liquidity=False
+add_log_remove_liquidity=False
 
 with open(r"./select_model.txt") as f:
         contents = f.readlines()
-        if contents[0]=="Model=Omnipool_reweighting":
-            from ..amm import reweighting_amm as oamm
+        if contents[0].replace("\n", "")=="Model=Omnipool_reweighting":
+            from ..amm import reweighting_amm as oamm  
         else:
             from ..amm import omnipool_amm as oamm
 
@@ -24,8 +30,16 @@ def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
 
 
 def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> dict:
+    #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in init_d.items()) + "}")
     # initialize tokens
     tokens_state = oamm.initialize_token_counts(init_d)  # shares will be wrong here, but it doesn't matter
+    
+    #with open(r"./select_model.txt") as f:
+    #    contents = f.readlines()
+    #    if contents[0].replace("\n", "")=="Model=Omnipool_reweighting":
+    #        tokens_state['a'] = init_d['a']
+    
+    #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in tokens_state.items()) + "}")
     # initialize LPs
     if agents_d is not None:
         converted_agents_d = convert_agents(tokens_state, token_list, agents_d)
@@ -77,11 +91,23 @@ def adjust_supply(state: dict) -> dict:
 
 
 def remove_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
+    global add_log_remove_liquidity
+      
+    
     assert transaction['token_remove'] in old_state['token_list']
     agent_id = transaction['agent_id']
     shares_burn = transaction['shares_remove']
     i = old_state['token_list'].index(transaction['token_remove'])
-    return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_burn, i)
+
+    if add_log_withdraw_all_liquidity: print("remove_liquidity agent_id: " + str(i))
+    if add_log_withdraw_all_liquidity: print("remove_liquidity shares_burn: " + str(shares_burn))
+    if add_log_withdraw_all_liquidity: print("remove_liquidity i: " + str(i))
+
+    value = oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_burn, i) 
+    
+    if add_log_withdraw_all_liquidity: print("remove_liquidity value: " + str(value))
+
+    return value
 
 
 def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
@@ -93,15 +119,29 @@ def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple
 
 
 def value_assets(state: dict, assets: dict, prices: list = None) -> float:
+    global add_log_value_assets
     if prices is None:
-        prices = [price_i(state, i) for i in range(len(state['R']))]
+        prices = [price_i(state, i) for i in range(len(state['R']))] 
+                        
+    if add_log_value_assets == True:
+        print("value_assets assets['q']: " + str(assets['q']))
+        print("value_assets assets['r'][i]: " + str(assets['r'][:]))  
+        print("value_assets prices[i]: " + str(prices))
+        print("value_assets value = assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))])")    
+        value = assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))]) 
+        print("value_assets value: " + str(value))
     return assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))])
 
 
 def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tuple:
+    global add_log_withdraw_all_liquidity
+
     n = len(state['R'])
     new_agents = {agent_id: agent_d}
     new_state = copy.deepcopy(state)
+
+    if add_log_withdraw_all_liquidity: print("withdraw_all_liquidity new_agents: " + str(new_agents))
+    if add_log_withdraw_all_liquidity: print("withdraw_all_liquidity new_state: " + str(new_state))
 
     for i in range(n):
         transaction = {
@@ -109,15 +149,37 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
             'agent_id': agent_id,
             'shares_remove': -agent_d['s'][i]
         }
-
+        
+        if add_log_withdraw_all_liquidity: print("withdraw_all_liquidity transaction: " + str(transaction))        
+        
         new_state, new_agents = remove_liquidity(new_state, new_agents, transaction)
+        if add_log_withdraw_all_liquidity: print("withdraw_all_liquidity new_agents: " + str(new_agents)) 
+        if add_log_withdraw_all_liquidity: print("withdraw_all_liquidity new_state: " + str(new_state)) 
+
     return new_state, new_agents
 
 
 def value_holdings(state: dict, agent_d: dict, agent_id: string) -> float:
+    global add_log_value_holdings
+
     prices = [price_i(state, i) for i in range(len(state['R']))]
+
+    if add_log_value_holdings: print("value_holdings prices: "+ str(prices))
+
+    if add_log_value_holdings: print("value_holdings state: " + str(state)) 
+    if add_log_value_holdings: print("value_holdings agent_d: " + str(agent_d)) 
+    if add_log_value_holdings: print("value_holdings agent_id: " + str(agent_id)) 
+
     new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
-    return value_assets(new_state, new_agents[agent_id], prices)
+    
+    if add_log_value_holdings: print("value_holdings new_state: " + str(new_state)) 
+    if add_log_value_holdings: print("value_holdings new_agents: " + str(new_agents)) 
+
+    value = value_assets(new_state, new_agents[agent_id], prices)
+
+    if add_log_value_holdings: print("value_holdings value: " + str(value)) 
+
+    return value
 
 
 def convert_agent(state: dict, token_list: list, agent_dict: dict) -> dict:

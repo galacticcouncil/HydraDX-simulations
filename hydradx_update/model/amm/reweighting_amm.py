@@ -4,7 +4,10 @@ import string
 add_log_swap=False
 add_log_liqadd=False
 add_log_liqrem=False
-
+add_log_liqrem_short=False
+add_log_price=False
+add_log_price_short=False
+print("amm rew import")
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
     global add_log_swap
@@ -61,11 +64,34 @@ def weight_i(state: dict, i: int) -> float:
 
 
 def price_i(state: dict, i: int, fee: float = 0) -> float:
+    global add_log_price    
+    global add_log_price_short 
     """Price of i denominated in HDX"""
     if state['R'][i] == 0:
         return 0
     else:
-        return (state['Q'][i] / state['R'][i]) * (1 - fee)
+        if add_log_price: 
+            #return (state['Q'][i] / state['R'][i]) * (1 - fee)
+            print("")
+            print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")
+            equation = "price1=(state['Q'][i] / state['R'][i])**(state['a'][i]+1) * (1 - fee)"
+            print(equation)
+            price1=(state['Q'][i] / state['R'][i])**(state['a'][i]+1) * (1 - fee)
+            equation1 = equation.replace("state['Q'][i]", str(state['Q'][i])).replace("state['R'][i]", str(state['R'][i])).replace("state['a'][i]", str(state['a'][i])).replace("price1", str(price1)).replace("fee", str(fee))
+            print(equation1)
+            print("")
+        
+        if add_log_price_short: 
+            #return (state['Q'][i] / state['R'][i]) * (1 - fee)
+            print("")
+            #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in state.items()) + "}")
+            equation = "price: price1=(state['Q'][i] / state['R'][i])**(state['a'][i]+1) * (1 - fee)"
+            #print(equation)
+            price1=(state['Q'][i] / state['R'][i])**(state['a'][i]+1) * (1 - fee)
+            equation1 = equation.replace("state['Q'][i]", str(state['Q'][i])).replace("state['R'][i]", str(state['R'][i])).replace("state['a'][i]", str(state['a'][i])).replace("price1", str(price1)).replace("fee", str(fee))
+            print(equation1)
+            print("")
+        return (state['Q'][i] / state['R'][i])**(state['a'][i]+1) * (1 - fee)
 
 
 def adjust_supply(old_state: dict):
@@ -91,7 +117,8 @@ def initialize_token_counts(init_d=None) -> dict:
         init_d = {}
     state = {
         'R': copy.deepcopy(init_d['R']),
-        'Q': [init_d['P'][i] * init_d['R'][i] for i in range(len(init_d['R']))]
+        'Q': [init_d['P'][i] * init_d['R'][i] for i in range(len(init_d['R']))],
+        'a': copy.deepcopy(init_d['a'])
     }
     return state
 
@@ -220,11 +247,35 @@ def add_risk_liquidity(
     new_agents[LP_id]['r'][i] -= delta_R
 
     # Share update
+    new_state_si_old = new_state['S'][i]
     new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
+    
+    if add_log_liqadd: 
+        equation = "new_state['S'][i] = new_state['S'][i]_old*new_state['R'][i] / old_state['R'][i]"
+        print(equation)
+        equation1 = equation.replace("new_state['S'][i]_old", str(new_state_si_old)).replace("new_state['S'][i]", str(new_state['S'][i])).replace("new_state['R'][i]", str(new_state['R'][i])).replace("old_state['R'][i]", str(old_state['R'][i]))
+        print(equation1)
+
     new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
 
     # HDX add
-    delta_Q = price_i(old_state, i) * delta_R
+    #delta_Q = price_i(old_state, i) * delta_R
+    delta_Q = new_state['R'][i]*price_i(old_state, i)**(1/(old_state['a'][i]+1)) - old_state['Q'][i]
+    
+
+
+    if add_log_liqadd: 
+        #equation = "delta_Q = price_i(old_state, i) * delta_R"
+        equation = "delta_Q = new_state['R'][i]*price_i(old_state, i)**(1/(old_state['a'][i]+1)) - old_state['Q'][i]"
+        print(equation)
+        #equation1 = equation.replace("delta_Q", str(delta_Q)).replace("price_i(old_state, i)", str(price_i(old_state, i))).replace("delta_R", str(delta_R))
+        equation1 = (equation.replace("delta_Q", str(delta_Q))
+                             .replace("new_state['R'][i]", str(new_state['R'][i]))
+                             .replace("price_i(old_state, i)", str(price_i(old_state, i)))
+                             .replace("old_state['a'][i]", str(old_state['a'][i]))
+                             .replace("old_state['Q'][i]", str(old_state['Q'][i])))
+        print(equation1)
+
     new_state['Q'][i] += delta_Q
 
     # set price at which liquidity was added
@@ -259,7 +310,7 @@ def remove_risk_liquidity(
     assert i >= 0, "invalid value for i: " + str(i)
     
     global add_log_liqrem
-    
+    global add_log_liqrem_short
     if add_log_liqrem: 
         print("remove_risk_liquidity")
         print() 
@@ -273,6 +324,10 @@ def remove_risk_liquidity(
         print("i="+str(i))
         print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in old_agents.items()) + "}")
         print() 
+    
+    if add_log_liqrem_short: print("remove_risk_liquidity old_state: " + str(old_state))
+    if add_log_liqrem_short: print("remove_risk_liquidity old_agents: " + str(old_agents))
+
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
@@ -289,10 +344,23 @@ def remove_risk_liquidity(
     new_agents[LP_id]['r'][i] -= delta_R
     
     # HDX burn
-    delta_Q = price_i(old_state, i) * delta_R
+    #delta_Q = price_i(old_state, i) * delta_R
+    delta_Q = new_state['R'][i]*price_i(old_state, i)**(1/(old_state['a'][i]+1)) - old_state['Q'][i]
+
     new_state['Q'][i] += delta_Q
     
-    if add_log_liqrem:        
+    if add_log_liqrem:  
+        #equation = "delta_Q = price_i(old_state, i) * delta_R"
+        equation = "delta_Q = new_state['R'][i]*price_i(old_state, i)**(1/(old_state['a'][i]+1)) - old_state['Q'][i]"
+        print(equation)
+        #equation1 = equation.replace("delta_Q", str(delta_Q)).replace("price_i(old_state, i)", str(price_i(old_state, i))).replace("delta_R", str(delta_R))
+        equation1 = (equation.replace("delta_Q", str(delta_Q))
+                             .replace("new_state['R'][i]", str(new_state['R'][i]))
+                             .replace("price_i(old_state, i)", str(price_i(old_state, i)))
+                             .replace("old_state['a'][i]", str(old_state['a'][i]))
+                             .replace("old_state['Q'][i]", str(old_state['Q'][i])))
+        print(equation1)
+
         print("new_state")
         print("i="+str(i))
         print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in new_state.items()) + "}")
@@ -305,4 +373,19 @@ def remove_risk_liquidity(
 
         print("remove_risk_liquidity finish")
         print() 
+    
+    if add_log_liqrem_short:  
+        print("remove_risk_liquidity new_state: " + str(new_state))
+        print("remove_risk_liquidity new_agents: " + str(new_agents))
+        #equation = "delta_Q = price_i(old_state, i) * delta_R"
+        equation = "remove_risk_liquidity price: delta_Q = new_state['R'][i]*price_i(old_state, i)**(1/(old_state['a'][i]+1)) - old_state['Q'][i]"
+        print(equation)
+        #equation1 = equation.replace("delta_Q", str(delta_Q)).replace("price_i(old_state, i)", str(price_i(old_state, i))).replace("delta_R", str(delta_R))
+        equation1 = (equation.replace("delta_Q", str(delta_Q))
+                             .replace("new_state['R'][i]", str(new_state['R'][i]))
+                             .replace("price_i(old_state, i)", str(price_i(old_state, i)))
+                             .replace("old_state['a'][i]", str(old_state['a'][i]))
+                             .replace("old_state['Q'][i]", str(old_state['Q'][i])))
+        print(equation1)
     return new_state, new_agents
+

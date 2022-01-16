@@ -11,4 +11,11 @@
 
 - 23 Dec 2021
 - New withdrawal mechanics
-- Optional logs for swaps, liquidity add and liquidity  withdrawal
+- Optional logs for swaps, liquidity add liquidity  withdrawal
+
+- 16 Jan 2021
+- New IL mechanics
+- New price formula for reweighting amm
+- New optional logs for IL and other important parts of code
+- Updated tests
+- New testing files for reweighting amm: TestHDXSwap_reweighting.ipynb, TestIL_reweighting.ipynb, TestIL_reweighting.ipynb, TestHDXSwap_reweighting.ipynb

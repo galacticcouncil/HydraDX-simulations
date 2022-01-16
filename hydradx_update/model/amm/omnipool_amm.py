@@ -1,7 +1,7 @@
 import copy
 import math
 import string
-
+print("amm base import")
 
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""

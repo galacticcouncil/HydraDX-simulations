@@ -6,15 +6,16 @@ from .amm import amm
 import ipdb
 
 def complete_initial_values(values: dict, agent_d: dict = None) -> dict:
+    #print("{" + "\n".join("{!r}: {!r},".format(k, v) for k, v in values.items()) + "}")
     state = amm.initialize_state(values, values['token_list'], agent_d)
     state['token_list'] = values['token_list']
     state['fee_assets'] = values['fee_assets']
     state['fee_HDX'] = values['fee_HDX']
 
-    with open(r"./select_model.txt") as f:
-        contents = f.readlines()
-        if contents[0]=="Model=Omnipool_reweighting":
-            state['a'] = values['a']
+    #with open(r"./select_model.txt") as f:
+    #    contents = f.readlines()
+    #    if contents[0].replace("\n", "")=="Model=Omnipool_reweighting":
+    #        state['a'] = values['a']
             
     if 'burn_rate' in values:
         state['burn_rate'] = values['burn_rate']
