@@ -36,6 +36,10 @@ def amm_load_child(params, step, history, prev_state, policy_input):
     '''
     Load child class
     '''
-    method_to_call = getattr(amm_class, params['amm']) 
-    print(method_to_call)  
-    return 'AMM_child', method_to_call()
+    if prev_state['timestep'] == 0:
+        method_to_call = getattr(amm_class, params['amm']) 
+    # print(method_to_call)  
+        return 'AMM_child', method_to_call()
+    else: 
+        return 'AMM_child', prev_state['AMM_child']
+        

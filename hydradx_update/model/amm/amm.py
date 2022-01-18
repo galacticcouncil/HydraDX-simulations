@@ -2,6 +2,11 @@ import copy
 import string
 
 from ..amm import omnipool_amm as oamm
+from ..amm import amm_class
+
+# method_to_call = getattr(amm_class,'initialize_shares') #, params['amm']) 
+# print(method_to_call) 
+# amm_class.OAMM.swap_hdx
 
 def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
     agent_d = {}
@@ -28,7 +33,7 @@ def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> d
     return state
 
 
-def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
+def swap(old_state: dict, old_agents: dict, trade: dict, amm_choice) -> tuple:
     """Translates from user-friendly trade API to internal API
 
     swap['token_buy'] is the token being bought
@@ -37,7 +42,10 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     swap['amount_sell'] is the amount of the token being sold
     """
     assert trade['token_buy'] != trade['token_sell'], "Cannot trade a token for itself"
-
+    # print(amm_choice)
+    method_to_call = getattr(amm_class, amm_choice) #(swap_hdx) 
+    print(method_to_call())  
+    print('token list',old_state['token_list'])
     i_buy = -1
     i_sell = -1
     if trade['token_buy'] != 'HDX':
@@ -53,6 +61,12 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         delta_R = trade['amount_sell']
 
     if i_buy < 0 or i_sell < 0:
+        swap_hdx_method = getattr(method_to_call, 'swap_hdx')
+        print(swap_hdx_method)
+        print(swap_hdx_method(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+                             old_state['fee_HDX'] + old_state['fee_assets']))
+        # return swap_hdx_method(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+        #                      old_state['fee_HDX'] + old_state['fee_assets'])
         return oamm.swap_hdx(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
                              old_state['fee_HDX'] + old_state['fee_assets'])
     else:

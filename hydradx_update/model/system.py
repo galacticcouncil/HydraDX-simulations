@@ -64,9 +64,8 @@ def mechanismHub_AMM(params, substep, state_history, prev_state, policy_input):
     # amm = amm_selector.get_amm(params['cfmm_type'])
     action = policy_input['action_id']
     agents = prev_state['uni_agents']
-    
     if action == 'Trade':
-        new_state, _ = amm.swap(prev_state['AMM'], agents, policy_input)
+        new_state, _ = amm.swap(prev_state['AMM'], agents, policy_input, params['amm'])
         return ('AMM', new_state)
     '''
     elif action == 'ArbMarket':
@@ -98,7 +97,7 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
     agents = prev_state['uni_agents']
     if action == 'Trade':
         # agents[agent_id] = params['cfmm'].trade_agent(prev_state['AMM'], policy_input, agents[agent_id])
-        _, new_agents = amm.swap(prev_state['AMM'], agents, policy_input)
+        _, new_agents = amm.swap(prev_state['AMM'], agents, policy_input,  params['amm'])
         return ('uni_agents', new_agents)
     '''
     elif action == 'ArbMarket':     # Note that we track changes of sequential changes to the AMM here too
