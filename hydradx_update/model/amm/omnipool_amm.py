@@ -150,19 +150,38 @@ def swap_assets(
         old_state: dict,
         old_agents: dict,
         trader_id: string,
-        delta_sell: float,
+        trade_type: string,
+        delta_token: float,
         i_buy: int,
         i_sell: int,
         fee_assets: float = 0,
         fee_LHDX: float = 0
 ) -> tuple:
-    # swap asset in for LHDX
-    first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_sell, 0, i_sell, fee_assets,
-                                              fee_LHDX)
-    delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
-    # swap LHDX back in for second asset
-    new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
-    return new_state, new_agents
+    if trade_type == 'sell':
+        # swap asset in for LHDX
+        first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
+                                                  fee_LHDX)
+        delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
+        # swap LHDX back in for second asset
+        new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
+        return new_state, new_agents
+    elif trade_type == 'buy':
+        new_state = copy.deepcopy(old_state)
+        new_agents = copy.deepcopy(old_agents)
+        delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
+        delta_Qi = -delta_Qj/(1 - fee_LHDX)
+        delta_Ri = -old_state['R'][i_sell] * delta_Qi / (old_state['Q'][i_sell] + delta_Qi)
+        new_state['D'] -= delta_Qi * fee_LHDX
+        new_state['R'][i_buy] = old_state['R'][i_buy] + (1 - fee_assets) * delta_token
+        new_state['Q'][i_buy] = new_state['R'][i_buy] * (old_state['Q'][i_buy] * old_state['R'][i_buy])/(old_state['R'][i_buy] + delta_token)**2
+        new_state['R'][i_sell] += delta_Ri
+        new_state['Q'][i_sell] += delta_Qi
+        new_agents[trader_id]['r'][i_buy] -= delta_token
+        new_agents[trader_id]['r'][i_sell] -= delta_Ri
+        return new_state, new_agents
+
+    else:
+        raise
 
 
 def add_risk_liquidity(

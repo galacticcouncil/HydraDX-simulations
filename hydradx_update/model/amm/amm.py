@@ -46,19 +46,31 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     if trade['token_sell'] != 'HDX':
         i_sell = old_state['token_list'].index(trade['token_sell'])
 
-    if trade['token_sell'] == 'HDX':
-        delta_Q = trade['amount_sell']
-        delta_R = 0
+    if 'amount_sell' in trade:
+        trade_type = 'sell'
+        if trade['token_sell'] == 'HDX':
+            delta_Q = trade['amount_sell']
+            delta_R = 0
+        else:
+            delta_Q = 0
+            delta_R = trade['amount_sell']
+    elif 'amount_buy' in trade:
+        trade_type = 'buy'
+        if trade['token_buy'] == 'HDX':
+            delta_Q = -trade['amount_buy']
+            delta_R = 0
+        else:
+            delta_Q = 0
+            delta_R = -trade['amount_buy']
     else:
-        delta_Q = 0
-        delta_R = trade['amount_sell']
+        raise
 
     if i_buy < 0 or i_sell < 0:
-        return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+        return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], trade_type, delta_R, delta_Q, max(i_buy, i_sell),
                                   old_state['fee_assets'],
                                   old_state['fee_HDX'])
     else:
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade['amount_sell'], i_buy, i_sell,
+        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, trade['amount_sell'], i_buy, i_sell,
                                 old_state['fee_assets'], old_state['fee_HDX'])
 
 
