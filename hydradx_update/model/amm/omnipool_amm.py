@@ -220,7 +220,7 @@ def remove_risk_liquidity(
     mult = (piq - p0) / (piq + p0)
 
     # Share update
-    delta_B = max(mult * delta_S, - old_state['B'][i])
+    delta_B = max(mult * delta_S, 0)
     new_state['B'][i] += delta_B
     new_state['S'][i] += delta_S + delta_B
     new_agents[LP_id]['s'][i] += delta_S
