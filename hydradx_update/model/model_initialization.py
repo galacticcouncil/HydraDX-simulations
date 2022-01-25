@@ -8,7 +8,7 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 # omniHDXABC is HDX shares dedicated to pool of token ABC
 
     trader = {'HDX': 1000000, 'R1': 1000000, 'R2': 1000000}
-    LP1 = {'omniR1': initial_tradevolume}
+    LP1 = {'omniR1': initial_liquidity}
     LP2 = {'omniR2': 1500000}
 
 # key -> agent_id, value -> agent dict
@@ -29,8 +29,8 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 
 # maps action_id to action dict, with some probability to enable randomness
     prob_dict = {
-        'trade': {'sell_r2_for_r1': 0.5,
-                  'sell_r1_for_r2': 0.5}
+        'trade': {'sell_r2_for_r1': 0,
+                  'sell_r1_for_r2': 1}
     }
 
 ########## CFMM INITIALIZATION ##########
