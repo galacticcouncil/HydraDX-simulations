@@ -7,7 +7,7 @@ from hypothesis import given, strategies as st, assume
 from hydradx_update.model.amm import omnipool_amm as oamm
 
 # Token counts
-tkn_ct_strat = st.floats(min_value=10000, max_value=1e20, allow_nan=False, allow_infinity=False)
+tkn_ct_strat = st.floats(min_value=10000, max_value=10000000, allow_nan=False, allow_infinity=False)
 
 
 def get_tkn_ct_strat(n):
@@ -250,6 +250,7 @@ def test_swap_hdx_fee(old_state, fee):
 fee_strat = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
 @given(QR_strat, fee_strat, fee_strat)
 def test_swap_assets(old_state, fee_LHDX, fee_assets):
+
     n = len(old_state['R'])
     old_state['S'] = [1000] * n
     old_state['A'] = [0] * n
@@ -275,12 +276,31 @@ def test_swap_assets(old_state, fee_LHDX, fee_assets):
     i_sell = 1
 
     # Test with trader selling asset i, no HDX fee... price should match feeless
-    new_state, new_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, fee_assets, fee_LHDX)
-    asset_only_state, asset_only_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, fee_assets, 0)
-    feeless_state, feeless_agents = oamm.swap_assets(old_state, old_agents, trader_id, delta_R, i_buy, i_sell, 0, 0)
+    new_state, new_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'sell', delta_R, i_buy, i_sell, fee_assets, fee_LHDX)
+    asset_only_state, asset_only_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'sell', delta_R, i_buy, i_sell, fee_assets, 0)
+    feeless_state, feeless_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'sell', delta_R, i_buy, i_sell, 0, 0)
     for j in range(len(old_state['R'])):
         # price tracks feeless price
         assert oamm.price_i(feeless_state, j) == pytest.approx(oamm.price_i(asset_only_state, j))
+        # assets in pools only go up compared to asset_only_state
+        assert min(asset_only_state['R'][j] - feeless_state['R'][j], 0) == pytest.approx(0)
+        # asset in pool goes up from asset_only_state -> new_state (i.e. introduction of LHDX fee)
+        assert min(new_state['R'][j] - asset_only_state['R'][j], 0) == pytest.approx(0)
+        # invariant does not decrease
+        assert min(oamm.asset_invariant(new_state, j) / oamm.asset_invariant(old_state, j), 1) == pytest.approx(1)
+
+    i_buy = 1
+    i_sell = 0
+
+    # Test with trader buying asset i, no HDX fee... price should match feeless
+    new_state, new_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'buy', -delta_R, i_buy, i_sell,  fee_assets, fee_LHDX)
+    asset_only_state, asset_only_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'buy', -delta_R, i_buy, i_sell,  fee_assets, 0)
+    feeless_state, feeless_agents = oamm.swap_assets(old_state, old_agents, trader_id, 'buy', -delta_R, i_buy, i_sell,  0, 0)
+
+    # price tracks feeless price
+    assert oamm.price_i(feeless_state, i_buy) == pytest.approx(oamm.price_i(asset_only_state, i_buy))
+
+    for j in range(len(old_state['R'])):
         # assets in pools only go up compared to asset_only_state
         assert min(asset_only_state['R'][j] - feeless_state['R'][j], 0) == pytest.approx(0)
         # asset in pool goes up from asset_only_state -> new_state (i.e. introduction of LHDX fee)
