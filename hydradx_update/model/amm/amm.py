@@ -66,7 +66,7 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         raise
 
     if i_buy < 0 or i_sell < 0:
-        return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], trade_type, delta_R, delta_Q, max(i_buy, i_sell),
+        return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
                                   old_state['fee_assets'],
                                   old_state['fee_HDX'])
     else:
