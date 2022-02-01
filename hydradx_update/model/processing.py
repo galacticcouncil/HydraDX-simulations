@@ -52,9 +52,15 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n'):
     agent_df = pd.DataFrame(agent_d)
 
     # subset to last substep
-    df = df[df['substep'] == df.substep.max()]
+    indices = (df.substep == df.substep.max())
+    # add in genesis state
+    indices |= (df.substep == 0)
+    df = df.loc[indices]
+    df.reset_index()
+    
     agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
-
+    # agent_df = agent_df.loc[indices]
+    # agent_df.reset_index()
     #     # Clean substeps
     #     first_ind = (df.substep == 0) & (df.timestep == 0)
     #     last_ind = df.substep == max(df.substep)
