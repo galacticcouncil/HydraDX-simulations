@@ -158,6 +158,7 @@ def swap_assets(
         fee_LHDX: float = 0
 ) -> tuple:
     if trade_type == 'sell':
+        print('Is this trade type sell called?')
         # swap asset in for LHDX
         first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
                                                   fee_LHDX)
@@ -166,6 +167,7 @@ def swap_assets(
         new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
         return new_state, new_agents
     elif trade_type == 'buy':
+        print('Is this trade type buy called?')
         new_state = copy.deepcopy(old_state)
         new_agents = copy.deepcopy(old_agents)
         delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
