@@ -167,20 +167,11 @@ def swap_assets(
         new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
         return new_state, new_agents
     elif trade_type == 'buy':
-        print('Is this trade type buy called?')
-        new_state = copy.deepcopy(old_state)
-        new_agents = copy.deepcopy(old_agents)
+        # back into correct delta_Ri, then execute sell
         delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
         delta_Qi = -delta_Qj/(1 - fee_LHDX)
         delta_Ri = -old_state['R'][i_sell] * delta_Qi / (old_state['Q'][i_sell] + delta_Qi)
-        new_state['D'] -= delta_Qi * fee_LHDX
-        new_state['R'][i_buy] = old_state['R'][i_buy] + (1 - fee_assets) * delta_token
-        new_state['Q'][i_buy] = new_state['R'][i_buy] * (old_state['Q'][i_buy] * old_state['R'][i_buy])/(old_state['R'][i_buy] + delta_token)**2
-        new_state['R'][i_sell] += delta_Ri
-        new_state['Q'][i_sell] += delta_Qi
-        new_agents[trader_id]['r'][i_buy] -= delta_token
-        new_agents[trader_id]['r'][i_sell] -= delta_Ri
-        return new_state, new_agents
+        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, i_buy, i_sell, fee_assets, fee_LHDX)
 
     else:
         raise
