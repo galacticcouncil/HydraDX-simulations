@@ -7,15 +7,13 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 # note that token name of 'omniABC' is used for omnipool LP shares of token 'ABC'
 # omniHDXABC is HDX shares dedicated to pool of token ABC
 
-    trader = {'HDX': 1000000, 'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000, 'R5': 1000000}
+    trader = {'HDX': 1000000, 'R1': 1000000, 'R2': 1000000, 'R3': 1000000}
     LP1 = {'omniR1': initial_liquidity[0]}
     LP2 = {'omniR2': initial_liquidity[1]}
     LP3 = {'omniR3': initial_liquidity[2]}
-    LP4 = {'omniR4': initial_liquidity[3]}
-    LP5 = {'omniR5': initial_liquidity[4]}
 
 # key -> agent_id, value -> agent dict
-    agent_d = {'Trader': trader, 'LP1': LP1, 'LP2': LP2, 'LP3': LP3, 'LP4': LP4, 'LP5': LP5}
+    agent_d = {'Trader': trader, 'LP1': LP1, 'LP2': LP2, 'LP3': LP3}
 
 ########## ACTION CONFIGURATION ##########
 
@@ -23,10 +21,6 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
         'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
         'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
-                           'agent_id': 'Trader'},
-        'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
-                           'agent_id': 'Trader'},
-        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'}
     }
 
@@ -36,18 +30,16 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 
 # maps action_id to action dict, with some probability to enable randomness
     prob_dict = {
-        'trade': {'sell_r2_for_r1': 0.5,
-                  'sell_r1_for_r2': 0,
-                  'sell_r4_for_r3': 0.25,
-                  'sell_r3_for_r4': 0.25}
+        'trade': {'sell_r2_for_r1': 1,
+                  'sell_r1_for_r2': 0}
     }
 
 ########## CFMM INITIALIZATION ##########
 
     initial_values = {
-        'token_list': ['R1', 'R2', 'R3', 'R4', 'R5'],
-        'R': [initial_liquidity[0], (1 / 3 ) * initial_liquidity[1], 0.5 * initial_liquidity[2], 0.5 * initial_liquidity[3], 2 * initial_liquidity[4]],
-        'P': [2, 2 / 3, 1, 1, 4],
+        'token_list': ['R1', 'R2', 'R3'],
+        'R': [initial_liquidity[0], initial_liquidity[1], initial_liquidity[2]],
+        'P': [2, 2 / 3, 1],
         'fee_assets': initial_fee_assets,
         'fee_HDX': initial_fee_HDX
     }
