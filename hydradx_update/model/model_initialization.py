@@ -20,13 +20,13 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 ########## ACTION CONFIGURATION ##########
 
     action_dict = {
-        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
+        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': 3 * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
         'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
         'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': initial_tradevolume, 'action_id': 'Trade',
+        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': 3 * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'}
     }
 
@@ -46,8 +46,8 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
 
     initial_values = {
         'token_list': ['R1', 'R2', 'R3', 'R4', 'R5'],
-        'R': [initial_liquidity[0], (1 / 3 ) * initial_liquidity[1], 0.5 * initial_liquidity[2], 0.5 * initial_liquidity[3], 2 * initial_liquidity[4]],
-        'P': [2, 2 / 3, 1, 1, 4],
+        'R': [initial_liquidity[0], initial_liquidity[1], initial_liquidity[2], initial_liquidity[3], initial_liquidity[4]],
+        'P': [2, 2 / 3, 1, 3, 4],
         'fee_assets': initial_fee_assets,
         'fee_HDX': initial_fee_HDX
     }
