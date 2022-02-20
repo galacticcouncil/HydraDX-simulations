@@ -1,7 +1,23 @@
 import pandas as pd
 
-def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets, initial_fee_HDX):
+# Asset balances in the Omnipool:
+# Asset 1: 7,000
+# Asset 2: 90,000
+# Asset 3: 13,000,000
+# Asset 4: 8,300,000
+# LERNA balances in the Omnipool:
+# Against Asset 1: 117,000,000
+# Against Asset 2: 109,000,000
+# Against Asset 3: 80,000,000
+# Against Asset 4: 15,500,000
 
+def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets, initial_fee_HDX, initial_prices):
+
+### calculation of LERNA in pool
+
+#initial_liquidity_LERNA = initial_liquidity * prices
+
+    
 ########## AGENT CONFIGURATION ##########
 # key -> token name, value -> token amount owned by agent
 # note that token name of 'omniABC' is used for omnipool LP shares of token 'ABC'
