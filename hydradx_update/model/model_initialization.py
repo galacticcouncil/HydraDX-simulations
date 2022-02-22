@@ -29,6 +29,8 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     LP3 = {'omniR3': initial_lerna_in_pool[2]}
     LP4 = {'omniR4': initial_lerna_in_pool[3]}
     LP5 = {'omniR5': initial_lerna_in_pool[4]}
+    
+    # this assignment is arbitrary for initial LPs, can coincide with lerna, after pool is initialazed there is no freedom any more
 
 # key -> agent_id, value -> agent dict
     agent_d = {'Trader': trader, 'LP1': LP1, 'LP2': LP2, 'LP3': LP3, 'LP4': LP4, 'LP5': LP5}
@@ -48,11 +50,15 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     sell_r3_r4_factor = 1
     sell_r4_r3_factor = 1
     
-    #sell_r2_r1_factor = initial_prices[0] / initial_prices[1]
-    #sell_r1_r2_factor = initial_prices[1] / initial_prices[0]
-    #sell_r3_r4_factor = initial_prices[3] / initial_prices[2]
-    #sell_r4_r3_factor = initial_prices[2] / initial_prices[3]
+    sell_r2_r1_factor = initial_prices[0] / initial_prices[1]
+    sell_r1_r2_factor = initial_prices[1] / initial_prices[0]
+    sell_r3_r4_factor = initial_prices[3] / initial_prices[2]
+    sell_r4_r3_factor = initial_prices[2] / initial_prices[3]
 
+    #sell_r2_r1_factor = initial_prices[1] / initial_prices[0]
+    #sell_r1_r2_factor = initial_prices[0] / initial_prices[1]
+    #sell_r3_r4_factor = initial_prices[2] / initial_prices[3]
+    #sell_r4_r3_factor = initial_prices[3] / initial_prices[2]
 
 ###########################################
 
@@ -61,19 +67,62 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
 ## trade volumes for each asset should mirror market volumes for the above pool asset values
 ## insert here calc + adapt action_dict either by factor or array_of_tradevolumes
 
+# Asset balances in the Omnipool:
+# Asset 1: 7,000
+# Asset 2: 90,000
+# Asset 3: 13,000,000
+# Asset 4: 8,300,000
+
+# Trade size:
+# [100, 200]
+# daily trade size should be 33% of liquidity depth
+# for 1000 timesteps
+# for current probability distributions (0.5, 0, 0.25, 0.25) this means
+# expected actions for each asset
+# Asset 1: 500
+# Asset 2: 0
+# Asset 3: 250
+# Asset 4: 250
+
+# Target total daily trade volume in the Omnipool:
+# Asset 1: 2,300
+# Asset 2: 30,000
+# Asset 3: 4,300,000
+# Asset 4: 2,800,000
+
+# Given action frequency to obtain this total value, each trade should have a size of
+# Asset 1: 2300 / 500 = 4.6
+# Asset 2: 30,000 / 0 = NaN
+# Asset 3: 4,300,000 / 250 = 17200 
+# Asset 4: 2,800,000 / 250 = 11200
+
+# For a trade size of 100, this means that the scale multiplyer must be as follows to achieve the daily trade volume
+# Asset 1: 4.6  / 100 = 0.046
+# Asset 2: NaN / 100 = NaN
+# Asset 3: 17200 / 100 = 172 
+# Asset 4: 11200 / 100 = 112
+
+# tbd:
+# does this multiplyer have to be didided by 2 to consider sell/buy traffic volume?
+
+    scale1 = 0.046 #for selling asset1
+    scale2 = 0 #for selling asset2
+    scale3 = 172 #for selling asset3
+    scale4 = 112 #for selling asset4
+
 
 ###########################################
 
 ########## ACTION CONFIGURATION ##########
 
     action_dict = {
-        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': sell_r2_r1_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': scale2 * sell_r2_r1_factor * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': sell_r1_r2_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': scale1 * sell_r1_r2_factor * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': sell_r4_r3_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': scale4 * sell_r4_r3_factor * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': sell_r3_r4_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': scale3 * sell_r3_r4_factor * initial_tradevolume, 'action_id': 'Trade',
                            'agent_id': 'Trader'}
     }
 
