@@ -1,7 +1,31 @@
 import matplotlib.pyplot as plt
 
+def plot_state(df, var_list: list, sim_labels: list = ['0', '1', '2', '3']) -> None:
+    simulations = df.simulation.unique()
+    # print(simulations)
+    plot_figs = 101 + 10*len(sim_labels)
+    for var in var_list:
+        plt.figure(figsize=(15, 5))
+        if var in df.columns:
+            init = plot_figs # make this scale to number of assets
+            ax = plt.subplot(init, title=var)
+            for i in simulations:
+                df[[var, 'timestep']][df['simulation'] == i].astype(float).plot(ax=ax, y=[var], x='Timestep',
+                                                                                label=[sim_labels[i]])
+        elif var + '-0' in df.columns:
+            max_i = 0
+            while var + '-' + str(max_i + 1) in df.columns:
+                max_i += 1
+            for i in range(max_i + 1):
+                init = plot_figs + i # make this scale to number of assets
+                var_i = var + '-' + str(i)
+                ax = plt.subplot(init, title=var_i)
+                for j in simulations:
+                    df[[var_i, 'timestep']][df['simulation'] == j].astype(float).plot(ax=ax, y=[var_i], x='Timestep',
+                                                                                      label=[sim_labels[j]])
+    plt.show()
 
-def plot_vars(df, var_list: list, sim_labels: list = ['0', '1']) -> None:
+def plot_vars(df, var_list: list, sim_labels: list = ['0', '1', '2', '3']) -> None:
     simulations = df.simulation.unique()
     print(simulations)
     for var in var_list:
@@ -17,7 +41,7 @@ def plot_vars(df, var_list: list, sim_labels: list = ['0', '1']) -> None:
             while var + '-' + str(max_i + 1) in df.columns:
                 max_i += 1
             for i in range(max_i + 1):
-                init = 131 + i
+                init = 141 + i # make this scale to number of assets
                 var_i = var + '-' + str(i)
                 ax = plt.subplot(init, title=var_i)
                 for j in simulations:
