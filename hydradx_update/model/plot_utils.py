@@ -10,7 +10,7 @@ def plot_state(df, var_list: list, sim_labels: list = ['0', '1', '2', '3']) -> N
             init = plot_figs # make this scale to number of assets
             ax = plt.subplot(init, title=var)
             for i in simulations:
-                df[[var, 'timestep']][df['simulation'] == i].astype(float).plot(ax=ax, y=[var], x='Timestep',
+                df[[var, 'timestep']][df['simulation'] == i].astype(float).plot(ax=ax, y=[var], x='timestep',
                                                                                 label=[sim_labels[i]])
         elif var + '-0' in df.columns:
             max_i = 0
@@ -21,7 +21,7 @@ def plot_state(df, var_list: list, sim_labels: list = ['0', '1', '2', '3']) -> N
                 var_i = var + '-' + str(i)
                 ax = plt.subplot(init, title=var_i)
                 for j in simulations:
-                    df[[var_i, 'timestep']][df['simulation'] == j].astype(float).plot(ax=ax, y=[var_i], x='Timestep',
+                    df[[var_i, 'timestep']][df['simulation'] == j].astype(float).plot(ax=ax, y=[var_i], x='timestep',
                                                                                       label=[sim_labels[j]])
     plt.show()
 
