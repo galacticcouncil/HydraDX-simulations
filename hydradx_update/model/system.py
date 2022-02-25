@@ -105,8 +105,9 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
         # agents[agent_id] = params['cfmm'].trade_agent(prev_state['AMM'], policy_input, agents[agent_id])
         _, new_agents = amm.swap(prev_state['AMM'], agents, policy_input)
         return ('uni_agents', new_agents)
-    # elif action == 'AddLiquidity':
-    #     agents[agent_id] = amm.add_liquidity_agent(prev_state['AMM'], policy_input, agents[agent_id])
+    elif action == 'AddLiquidity':
+        _, new_agents = amm.add_liquidity(prev_state['AMM'], agents, policy_input)
+        return ('uni_agents', new_agents)
     '''
     elif action == 'ArbMarket':     # Note that we track changes of sequential changes to the AMM here too
         next_state = prev_state['AMM']
