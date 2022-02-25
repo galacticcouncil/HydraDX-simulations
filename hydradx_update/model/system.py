@@ -70,6 +70,9 @@ def mechanismHub_AMM(params, substep, state_history, prev_state, policy_input):
     elif action == 'AddLiquidity':
         new_state, _ = amm.add_liquidity(prev_state['AMM'], agents, policy_input)
         return ('AMM', new_state)
+    elif action == 'RemoveLiquidity':
+        new_state, _ = amm.remove_liquidity(prev_state['AMM'], agents, policy_input)
+        return ('AMM', new_state)
     '''
     elif action == 'ArbMarket':
         next_state = prev_state['AMM']
