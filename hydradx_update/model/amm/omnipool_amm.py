@@ -62,11 +62,25 @@ def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
 
     n = len(token_counts['R'])
     state = copy.deepcopy(token_counts)
+    ############## change in initialization
     state['S'] = copy.deepcopy(state['R'])
     state['A'] = [0] * n
-
+    print('init shares called')
+    print('agent_d', agent_d)
     agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
+    print('agent shares', agent_shares)
+    state['S'] = [state['S'][i] + agent_shares[i] for i in range(n)]
+    
     state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
+    ############## change in initialization
+    
+    # state['S'] = copy.deepcopy(state['R'])
+    # state['A'] = [0] * n
+    # print('init shares called')
+    # print('agent_d', agent_d)
+    # agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
+    # print('agent shares', agent_shares)
+    # state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
 
     state['D'] = 0
     state['T'] = init_d['T'] if 'T' in init_d else None

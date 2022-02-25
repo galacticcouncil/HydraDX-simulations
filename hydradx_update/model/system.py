@@ -108,6 +108,9 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
     elif action == 'AddLiquidity':
         _, new_agents = amm.add_liquidity(prev_state['AMM'], agents, policy_input)
         return ('uni_agents', new_agents)
+    elif action == 'RemoveLiquidity':
+        _, new_agents = amm.remove_liquidity(prev_state['AMM'], agents, policy_input)
+        return ('uni_agents', new_agents)
     '''
     elif action == 'ArbMarket':     # Note that we track changes of sequential changes to the AMM here too
         next_state = prev_state['AMM']
