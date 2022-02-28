@@ -50,9 +50,9 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     sell_r3_r4_factor = 1
     sell_r4_r3_factor = 1
     
-    sell_r2_r1_factor = initial_prices[0] / initial_prices[1]
+    #sell_r2_r1_factor = initial_prices[0] / initial_prices[1] #units r2 over r1
     sell_r1_r2_factor = initial_prices[1] / initial_prices[0]
-    sell_r3_r4_factor = initial_prices[3] / initial_prices[2]
+    #sell_r3_r4_factor = initial_prices[3] / initial_prices[2]
     sell_r4_r3_factor = initial_prices[2] / initial_prices[3]
 
     #sell_r2_r1_factor = initial_prices[1] / initial_prices[0]
@@ -74,41 +74,56 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
 # Asset 4: 8,300,000
 
 # Trade size:
-# [100, 200]
-# daily trade size should be 33% of liquidity depth
-# for 1000 timesteps
-# for current probability distributions (0.5, 0, 0.25, 0.25) this means
-# expected actions for each asset
-# Asset 1: 500
-# Asset 2: 0
-# Asset 3: 250
-# Asset 4: 250
+# [1, 2]
+
+## daily trade sizes as % of liquidity depth as of DUNE analytics
+# Asset 1(WBTC): 1.17% rounded to 1%
+# Asset 2(ETH):  4.18% rounded to 4%
+# Asset 3(LINK): 3.01% rounded to 3%
+# Asset 4(SNX):  1.34% rounded to 1%
+
+## daily trade sizes therefore:
+# Asset 1(WBTC): 70
+# Asset 2(ETH):  3,600
+# Asset 3(LINK): 390,000
+# Asset 4(SNX): 83,000 
+
+## If 1 timestep == 6 hours, a day has 4 timesteps, a month has 30*4 = 120 timesteps
+
+## (Change timesteps (~ 3-4 a day) to mirror one month. A timestep would be 6-8 hours etc.. divide 24h volume by this factor)
+
+# for current probability distributions (0.25, 0.25, 0.25, 0.25) this means
+# expected actions for each asset / per day
+# Asset 1: 2
+# Asset 2: 2
+# Asset 3: 2
+# Asset 4: 2
 
 # Target total daily trade volume in the Omnipool:
-# Asset 1: 2,300
-# Asset 2: 30,000
-# Asset 3: 4,300,000
-# Asset 4: 2,800,000
+# Asset 1: 70 
+# Asset 2: 3,600
+# Asset 3: 390,000
+# Asset 4: 83,000
 
 # Given action frequency to obtain this total value, each trade should have a size of
-# Asset 1: 2300 / 500 = 4.6
-# Asset 2: 30,000 / 0 = NaN
-# Asset 3: 4,300,000 / 250 = 17200 
-# Asset 4: 2,800,000 / 250 = 11200
+# Asset 1: 70 / 2 = 35
+# Asset 2: 3,600 / 2 = 1800
+# Asset 3: 390,000 / 2 = 195000
+# Asset 4: 83,000 / 2 = 41500
 
-# For a trade size of 100, this means that the scale multiplyer must be as follows to achieve the daily trade volume
-# Asset 1: 4.6  / 100 = 0.046
-# Asset 2: NaN / 100 = NaN
-# Asset 3: 17200 / 100 = 172 
-# Asset 4: 11200 / 100 = 112
+# For a trade size of 1, this means that the scale multiplyer must be as follows to achieve the daily trade volume
+# Asset 1: 70 / 1 = 35
+# Asset 2: 3,600 / 1 = 3600
+# Asset 3: 390,000 / 1 = 195000
+# Asset 4: 83,000 / 1 = 41500
 
 # tbd:
 # does this multiplyer have to be didided by 2 to consider sell/buy traffic volume?
 
-    scale1 = 0.046 #for selling asset1
-    scale2 = 0 #for selling asset2
-    scale3 = 172 #for selling asset3
-    scale4 = 112 #for selling asset4
+    scale1 = 35 #for selling asset1
+    scale2 = 1800 #for selling asset2
+    scale3 = 195000 #for selling asset3
+    scale4 = 41500 #for selling asset4
 
 
 ###########################################
@@ -127,13 +142,13 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     }
 
 # list of (action, number of repetitions of action), timesteps = sum of repititions of all actions
-    trade_count = 1000
+    trade_count = 120
     action_ls = [('trade', trade_count)]
 
 # maps action_id to action dict, with some probability to enable randomness
     prob_dict = {
-        'trade': {'sell_r2_for_r1': 0.5,
-                  'sell_r1_for_r2': 0,
+        'trade': {'sell_r2_for_r1': 0.25,
+                  'sell_r1_for_r2': 0.25,
                   'sell_r4_for_r3': 0.25,
                   'sell_r3_for_r4': 0.25}
     }
