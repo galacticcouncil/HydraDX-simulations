@@ -24,11 +24,11 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
 # omniHDXABC is HDX shares dedicated to pool of token ABC
 
     trader = {'HDX': 1000000, 'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000, 'R5': 1000000}
-    LP1 = {'omniR1': initial_lerna_in_pool[0]}
-    LP2 = {'omniR2': initial_lerna_in_pool[1]}
-    LP3 = {'omniR3': initial_lerna_in_pool[2]}
-    LP4 = {'omniR4': initial_lerna_in_pool[3]}
-    LP5 = {'omniR5': initial_lerna_in_pool[4]}
+    LP1 = {'omniR1': initial_assets_in_pool[0]}
+    LP2 = {'omniR2': initial_assets_in_pool[1]}
+    LP3 = {'omniR3': initial_assets_in_pool[2]}
+    LP4 = {'omniR4': initial_assets_in_pool[3]}
+    LP5 = {'omniR5': initial_assets_in_pool[4]}
     
     # this assignment is arbitrary for initial LPs, can coincide with lerna, after pool is initialazed there is no freedom any more
 
