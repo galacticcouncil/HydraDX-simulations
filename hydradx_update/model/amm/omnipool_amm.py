@@ -101,10 +101,10 @@ def swap_lhdx(
 
     if delta_Q == 0 and delta_R != 0:
         print('delta_Q is zero AND delta_R is NOT zero')
-        delta_Q = swap_hdx_delta_Qi(old_state, delta_R, i) ## potentially wrong sign, minus has to be removed if wrong => at least one seems to be right, but both assets move up in quantity for this, not good
+        delta_Q = - swap_hdx_delta_Qi(old_state, delta_R, i) ## potentially wrong sign, minus has to be removed if wrong => at least one seems to be right, but both assets move up in quantity for this, not good; only if....
         print('delta_Q_new', delta_Q)
     elif delta_R == 0 and delta_Q != 0:
-        delta_R = swap_hdx_delta_Ri(old_state, delta_Q, i) ## here minus as well??
+        delta_R = - swap_hdx_delta_Ri(old_state, delta_Q, i) ## .... here minus as well??
     else:
         return new_state, new_agents
 
