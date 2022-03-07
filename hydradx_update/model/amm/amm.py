@@ -37,6 +37,12 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     swap['token_sell'] is the token being sold
     swap['amount_sell'] is the amount of the token being sold
     """
+    print('#                         #')
+    print('I would SWAP now')
+    print('#                         #')
+    print('old state is', old_state)
+    print('#                         #')
+    print('trade parameters are', trade)
     assert trade['token_buy'] != trade['token_sell'], "Cannot trade a token for itself"
     i_buy = -1
     i_sell = -1
@@ -63,7 +69,15 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
             delta_R = -trade['amount_buy']
     else:
         raise
-
+    
+    print('#                         #')
+    print('delta_Q is', delta_Q)
+    print('delta_R is', delta_R)
+    print('i_buy is', i_buy)
+    print('i_sell is', i_sell)
+    print('trade_type is', trade_type)
+    print('#                         #')
+    
     if i_buy < 0 or i_sell < 0:
         return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
                                   old_state['fee_assets'],
