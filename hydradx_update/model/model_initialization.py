@@ -136,6 +136,11 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     #scale2 = 1 #for selling asset2
     #scale3 = 1 #for selling asset3
     #scale4 = 1 #for selling asset4
+    
+    trade_vol1 = scale1 * sell_r1_r2_factor * initial_tradevolume
+    trade_vol2 = initial_prices[0]/initial_prices[1] * trade_vol1  # maintains stable prices
+    trade_vol3 = scale3 * sell_r3_r4_factor * initial_tradevolume
+    trade_vol4 = initial_prices[2]/initial_prices[3] * trade_vol3  # maintains stable prices
 
 
 ###########################################
@@ -143,13 +148,13 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
 ########## ACTION CONFIGURATION ##########
 
     action_dict = {
-        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': scale2 * sell_r2_r1_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r2_for_r1': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_sell': trade_vol2, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': scale1 * sell_r1_r2_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': trade_vol1, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': scale4 * sell_r4_r3_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r4_for_r3': {'token_buy': 'R3', 'token_sell': 'R4', 'amount_sell': trade_vol4, 'action_id': 'Trade',
                            'agent_id': 'Trader'},
-        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': scale3 * sell_r3_r4_factor * initial_tradevolume, 'action_id': 'Trade',
+        'sell_r3_for_r4': {'token_sell': 'R3', 'token_buy': 'R4', 'amount_sell': trade_vol3, 'action_id': 'Trade',
                            'agent_id': 'Trader'}
     }
 
