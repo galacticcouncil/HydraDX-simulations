@@ -32,11 +32,11 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     LP5 = {'omniR5': initial_assets_in_pool[4]}
     
     # following 'should' be okay as changes to def initialize_shares were made
-    LP1 = {'omniR1': initial_lerna_in_pool[0]}
-    LP2 = {'omniR2': initial_lerna_in_pool[1]}
-    LP3 = {'omniR3': initial_lerna_in_pool[2]}
-    LP4 = {'omniR4': initial_lerna_in_pool[3]}
-    LP5 = {'omniR5': initial_lerna_in_pool[4]}
+    #LP1 = {'omniR1': initial_lerna_in_pool[0]}
+    #LP2 = {'omniR2': initial_lerna_in_pool[1]}
+    #LP3 = {'omniR3': initial_lerna_in_pool[2]}
+    #LP4 = {'omniR4': initial_lerna_in_pool[3]}
+    #LP5 = {'omniR5': initial_lerna_in_pool[4]}
     #
     # this assignment is arbitrary for initial LPs, can coincide with lerna, after pool is initialazed there is no freedom any more
 
@@ -128,20 +128,28 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
 # tbd:
 # does this multiplyer have to be didided by 2 to consider sell/buy traffic volume?
 
-    scale1 = 35 #for selling asset1
-    scale2 = 1800 #for selling asset2
-    scale3 = 195000 #for selling asset3
-    scale4 = 41500 #for selling asset4
-    
+   
     #scale1 = 1 #for selling asset1
     #scale2 = 1 #for selling asset2
     #scale3 = 1 #for selling asset3
     #scale4 = 1 #for selling asset4
     
+    scale1 = 35 #for selling asset1
+    scale2 = 1800 #for selling asset2
+    scale3 = 195000 #for selling asset3
+    scale4 = 41500 #for selling asset4
+    
+    #scale1 = 0.05
+    
     trade_vol1 = scale1 * sell_r1_r2_factor * initial_tradevolume
     trade_vol2 = initial_prices[0]/initial_prices[1] * trade_vol1  # maintains stable prices
     trade_vol3 = scale3 * sell_r3_r4_factor * initial_tradevolume
     trade_vol4 = initial_prices[2]/initial_prices[3] * trade_vol3  # maintains stable prices
+    
+    #trade_vol1 = scale1 * sell_r1_r2_factor * initial_tradevolume
+    #trade_vol2 = scale2 * initial_prices[0]/initial_prices[1] * trade_vol1 / scale1  # maintains stable prices
+    #trade_vol3 = scale3 * sell_r3_r4_factor * initial_tradevolume
+    #trade_vol4 = scale4 * initial_prices[2]/initial_prices[3] * trade_vol3 / scale3   # maintains stable prices
 
 
 ###########################################

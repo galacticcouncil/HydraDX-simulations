@@ -8,10 +8,6 @@ def asset_invariant(state: dict, i: int) -> float:
 
 
 def swap_hdx_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
-    print('#                                           #')
-    print('I entered the swap hdx delta Qi function in OAMM now')   
-    print('delta_Ri', delta_Ri) ## has this the wrong sign? is throughout positive & coming from 'amount_sell'
-    #delta_Ri = - delta_Ri ## to test above question, need to be commented out
     return old_state['Q'][i] * (- delta_Ri / (old_state['R'][i] + delta_Ri))
 
 
@@ -66,7 +62,7 @@ def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
 
     n = len(token_counts['R'])
     state = copy.deepcopy(token_counts)
-    state['S'] = copy.deepcopy(state['Q'])
+    state['S'] = copy.deepcopy(state['R'])
     state['A'] = [0] * n
 
     agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
@@ -92,19 +88,15 @@ def swap_lhdx(
         delta_Q: float,
         i: int
 ) -> tuple:
-    print('#                                           #')
-    print('I entered the lhdx swap function in OAMM now')   
     """Compute new state after HDX swap"""
 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
     if delta_Q == 0 and delta_R != 0:
-        print('delta_Q is zero AND delta_R is NOT zero')
-        delta_Q = - swap_hdx_delta_Qi(old_state, delta_R, i) ## potentially wrong sign, minus has to be removed if wrong => at least one seems to be right, but both assets move up in quantity for this, not good; only if....
-        print('delta_Q_new', delta_Q)
+        delta_Q = swap_hdx_delta_Qi(old_state, delta_R, i) 
     elif delta_R == 0 and delta_Q != 0:
-        delta_R = - swap_hdx_delta_Ri(old_state, delta_Q, i) ## .... here minus as well??
+        delta_R = swap_hdx_delta_Ri(old_state, delta_Q, i) 
     else:
         return new_state, new_agents
 
@@ -129,30 +121,18 @@ def swap_lhdx_fee(
         old_agents: dict,
         trader_id: string,
         delta_R: float,
-        delta_Q: float, # was passed as 0 from before (hardcoded for swapping in, first trade)
+        delta_Q: float, 
         i: int,
         fee_assets: float = 0,
         fee_LHDX: float = 0
 ) -> tuple:
     """Computed new state for HDX swap with fee"""
-    print('#                                           #')
-    print('I entered the lhdx (fee) swap function in OAMM now')    
     new_state, new_agents = swap_lhdx(old_state, old_agents, trader_id, delta_R, delta_Q, i)
-    ## helping to print
-    oldQ = old_state['Q'][i]
-    newQ = new_state['Q'][i]
-    ## --
-    delta_Q = new_state['Q'][i] - old_state['Q'][i] ## Is this the wrong sign? not here, but somewhere earlier...
-    #delta_Q = old_state['Q'][i] - new_state['Q'][i] ## to accommodate above questions: has to be commented out if wrong
-    print('oldQ', oldQ)
-    print('newQ', newQ)
-    print('delta_Q_before distinction', delta_Q)
+    delta_Q = new_state['Q'][i] - old_state['Q'][i] 
     if delta_Q < 0:
         # LHDX fee
-        new_agents[trader_id]['q'] += delta_Q * fee_LHDX ## maybe it should be (1 - fee_LHDX) ??
+        new_agents[trader_id]['q'] += delta_Q * fee_LHDX 
         new_state['D'] -= delta_Q * fee_LHDX
-        ## why only if fee_LHDX > 0 would 'D' increase?
-        ## why nothing else happens in this case, e.g. with R,r,Q etc.?
     else:
         delta_R = new_state['R'][i] - old_state['R'][i]  # delta_R is negative
         # asset fee
@@ -174,30 +154,15 @@ def swap_assets(
         delta_token: float,
         i_buy: int,
         i_sell: int,
-        fee_assets: float = 0, ## is this hardcoded to 0??
+        fee_assets: float = 0, 
         fee_LHDX: float = 0
 ) -> tuple:
-    print('#                                           #')
-    print('I entered the asset swap function in OAMM now')
     if trade_type == 'sell':
         # swap asset in for LHDX
-        print('#                                           #')
-        print('I entered the -sell- trade type now and ready to swap for lhdx with the following parameters')
-        print('This, by the way, is the first leg: trading asset in for LHDX')
-        print('delta_token', delta_token)
-        print('fee_assets', fee_assets)
-        print('fee_LHDX', fee_LHDX)
         first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
                                                   fee_LHDX)
-        delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q'] ## possibly wrong sign??
+        delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q'] 
         # swap LHDX back in for second asset
-        print('#                                           #')
-        print('I am still in the -sell- trade type now and ready to swap for lhdx with the following parameters')
-        print('This, by the way, is the second leg: trading LHDX in for asset')
-        print('delta_token', delta_token)
-        print('fee_assets', fee_assets)
-        print('fee_LHDX', fee_LHDX)
-        print('delta_q', delta_q)
         new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
         return new_state, new_agents
     elif trade_type == 'buy':
