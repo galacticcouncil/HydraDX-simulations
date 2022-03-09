@@ -59,9 +59,9 @@ def initialize_model(initial_lerna_in_pool, initial_tradevolume, initial_fee_ass
     sell_r4_r3_factor = 1
     
     #sell_r2_r1_factor = initial_prices[0] / initial_prices[1] #units r2 over r1
-    sell_r1_r2_factor = initial_prices[1] / initial_prices[0]
+    #sell_r1_r2_factor = initial_prices[1] / initial_prices[0]
     #sell_r3_r4_factor = initial_prices[3] / initial_prices[2]
-    sell_r4_r3_factor = initial_prices[2] / initial_prices[3]
+    #sell_r4_r3_factor = initial_prices[2] / initial_prices[3]
 
     #sell_r2_r1_factor = initial_prices[1] / initial_prices[0]
     #sell_r1_r2_factor = initial_prices[0] / initial_prices[1]
