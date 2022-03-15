@@ -130,6 +130,7 @@ def get_agent_from_row(row) -> dict:
 def val_pool(row):
     state = get_state_from_row(row)
     agent_d = get_agent_from_row(row)
+    print(f"{state}, {agent_d},{row['agent_label']}")
     return amm.value_holdings(state, agent_d, row['agent_label'])
 
 
