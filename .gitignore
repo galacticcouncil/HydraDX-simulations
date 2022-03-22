@@ -5,3 +5,5 @@
 # Jupyter Notebook
 .ipynb_checkpoints
 *-checkpoint.ipynb
+/venv/
+/.idea/
