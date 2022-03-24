@@ -39,7 +39,7 @@ def test_swap(old_state) -> tuple:
     n = len(old_state['R'])
     old_state['token_list'] = ['DOT', 'DAI', 'HDX']
     old_state['fee_assets'] = 0
-    old_state['fee_HDX'] = 0
+    old_state['fee_LRNA'] = 0
     old_state['D'] = 0
 
     trader_id = 'trader'
