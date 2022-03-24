@@ -141,7 +141,7 @@ def swap_lrna_fee(
         # eventually, can mint protocol shares to take some cut as POL
         p = price_i(new_state, i)
         new_state['R'][i] -= delta_R * fee_assets
-        # lrna minted so that asset fee level does not change price and increase IL
+        # LRNA minted so that asset fee level does not change price and increase IL
         new_state['Q'][i] = p * new_state['R'][i]
     return new_state, new_agents
 
@@ -158,11 +158,11 @@ def swap_assets(
         fee_lrna: float = 0
 ) -> tuple:
     if trade_type == 'sell':
-        # swap asset in for lrna
+        # swap asset in for LRNA
         first_state, first_agents = swap_lrna_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
                                                   fee_lrna)
         delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
-        # swap lrna back in for second asset
+        # swap LRNA back in for second asset
         new_state, new_agents = swap_lrna_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
         return new_state, new_agents
     elif trade_type == 'buy':
@@ -244,7 +244,7 @@ def remove_risk_liquidity(
         new_agents[LP_id]['q'] -= piq * (
                 2 * piq / (piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
 
-    # lrna burn
+    # LRNA burn
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
