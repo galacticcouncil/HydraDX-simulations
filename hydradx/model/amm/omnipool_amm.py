@@ -20,7 +20,7 @@ def weight_i(state: dict, i: int) -> float:
 
 
 def price_i(state: dict, i: int, fee: float = 0) -> float:
-    """Price of i denominated in lrna"""
+    """Price of i denominated in LRNA"""
     if state['R'][i] == 0:
         return 0
     else:
@@ -88,7 +88,7 @@ def swap_lrna(
         delta_Q: float,
         i: int
 ) -> tuple:
-    """Compute new state after lrna swap"""
+    """Compute new state after LRNA swap"""
 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
@@ -126,11 +126,11 @@ def swap_lrna_fee(
         fee_assets: float = 0,
         fee_lrna: float = 0
 ) -> tuple:
-    """Computed new state for lrna swap with fee"""
+    """Computed new state for LRNA swap with fee"""
     new_state, new_agents = swap_lrna(old_state, old_agents, trader_id, delta_R, delta_Q, i)
     delta_Q = new_state['Q'][i] - old_state['Q'][i]
     if delta_Q < 0:
-        # lrna fee
+        # LRNA fee
         new_agents[trader_id]['q'] += delta_Q * fee_lrna
         new_state['D'] -= delta_Q * fee_lrna
     else:
@@ -199,7 +199,7 @@ def add_risk_liquidity(
     new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
     new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
 
-    # lrna add
+    # LRNA add
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 

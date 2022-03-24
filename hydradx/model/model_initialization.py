@@ -8,7 +8,7 @@ def initialize_model(initial_liquidity, initial_tradevolume, initial_fee_assets,
     # note that token name of 'omniABC' is used for omnipool LP shares of token 'ABC'
     # omniHDXABC is HDX shares dedicated to pool of token ABC
 
-    trader = {'HDX': 1000000, 'R1': 1000000, 'R2': 1000000}
+    trader = {'LRNA': 1000000, 'R1': 1000000, 'R2': 1000000}
     LP1 = {'omniR1': initial_tradevolume}
     LP2 = {'omniR2': 1500000}
 
