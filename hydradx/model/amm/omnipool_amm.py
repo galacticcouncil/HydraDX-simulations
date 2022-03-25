@@ -7,11 +7,11 @@ def asset_invariant(state: dict, i: int) -> float:
     return state['R'][i] * state['Q'][i]
 
 
-def swap_hdx_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
+def swap_lrna_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
     return old_state['Q'][i] * (- delta_Ri / (old_state['R'][i] + delta_Ri))
 
 
-def swap_hdx_delta_Ri(old_state: dict, delta_Qi: float, i: int) -> float:
+def swap_lrna_delta_Ri(old_state: dict, delta_Qi: float, i: int) -> float:
     return old_state['R'][i] * (- delta_Qi / (old_state['Q'][i] + delta_Qi))
 
 
@@ -20,7 +20,7 @@ def weight_i(state: dict, i: int) -> float:
 
 
 def price_i(state: dict, i: int, fee: float = 0) -> float:
-    """Price of i denominated in HDX"""
+    """Price of i denominated in LRNA"""
     if state['R'][i] == 0:
         return 0
     else:
@@ -80,7 +80,7 @@ def initialize_pool_state(init_d=None, agent_d=None) -> dict:
     return initialize_shares(token_counts, init_d)
 
 
-def swap_lhdx(
+def swap_lrna(
         old_state: dict,
         old_agents: dict,
         trader_id: string,
@@ -88,15 +88,15 @@ def swap_lhdx(
         delta_Q: float,
         i: int
 ) -> tuple:
-    """Compute new state after HDX swap"""
+    """Compute new state after LRNA swap"""
 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
     if delta_Q == 0 and delta_R != 0:
-        delta_Q = swap_hdx_delta_Qi(old_state, delta_R, i)
+        delta_Q = swap_lrna_delta_Qi(old_state, delta_R, i)
     elif delta_R == 0 and delta_Q != 0:
-        delta_R = swap_hdx_delta_Ri(old_state, delta_Q, i)
+        delta_R = swap_lrna_delta_Ri(old_state, delta_Q, i)
     else:
         return new_state, new_agents
 
@@ -116,7 +116,7 @@ def swap_lhdx(
     return new_state, new_agents
 
 
-def swap_lhdx_fee(
+def swap_lrna_fee(
         old_state: dict,
         old_agents: dict,
         trader_id: string,
@@ -124,15 +124,15 @@ def swap_lhdx_fee(
         delta_Q: float,
         i: int,
         fee_assets: float = 0,
-        fee_LHDX: float = 0
+        fee_lrna: float = 0
 ) -> tuple:
-    """Computed new state for HDX swap with fee"""
-    new_state, new_agents = swap_lhdx(old_state, old_agents, trader_id, delta_R, delta_Q, i)
+    """Computed new state for LRNA swap with fee"""
+    new_state, new_agents = swap_lrna(old_state, old_agents, trader_id, delta_R, delta_Q, i)
     delta_Q = new_state['Q'][i] - old_state['Q'][i]
     if delta_Q < 0:
-        # LHDX fee
-        new_agents[trader_id]['q'] += delta_Q * fee_LHDX
-        new_state['D'] -= delta_Q * fee_LHDX
+        # LRNA fee
+        new_agents[trader_id]['q'] += delta_Q * fee_lrna
+        new_state['D'] -= delta_Q * fee_lrna
     else:
         delta_R = new_state['R'][i] - old_state['R'][i]  # delta_R is negative
         # asset fee
@@ -141,7 +141,7 @@ def swap_lhdx_fee(
         # eventually, can mint protocol shares to take some cut as POL
         p = price_i(new_state, i)
         new_state['R'][i] -= delta_R * fee_assets
-        # LHDX minted so that asset fee level does not change price and increase IL
+        # LRNA minted so that asset fee level does not change price and increase IL
         new_state['Q'][i] = p * new_state['R'][i]
     return new_state, new_agents
 
@@ -155,22 +155,22 @@ def swap_assets(
         i_buy: int,
         i_sell: int,
         fee_assets: float = 0,
-        fee_LHDX: float = 0
+        fee_lrna: float = 0
 ) -> tuple:
     if trade_type == 'sell':
-        # swap asset in for LHDX
-        first_state, first_agents = swap_lhdx_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
-                                                  fee_LHDX)
+        # swap asset in for LRNA
+        first_state, first_agents = swap_lrna_fee(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets,
+                                                  fee_lrna)
         delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
-        # swap LHDX back in for second asset
-        new_state, new_agents = swap_lhdx_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_LHDX)
+        # swap LRNA back in for second asset
+        new_state, new_agents = swap_lrna_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
         return new_state, new_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
         delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
-        delta_Qi = -delta_Qj/(1 - fee_LHDX)
+        delta_Qi = -delta_Qj/(1 - fee_lrna)
         delta_Ri = -old_state['R'][i_sell] * delta_Qi / (old_state['Q'][i_sell] + delta_Qi)
-        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, i_buy, i_sell, fee_assets, fee_LHDX)
+        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, i_buy, i_sell, fee_assets, fee_lrna)
 
     else:
         raise
@@ -199,7 +199,7 @@ def add_risk_liquidity(
     new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
     new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
 
-    # HDX add
+    # LRNA add
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
@@ -244,7 +244,7 @@ def remove_risk_liquidity(
         new_agents[LP_id]['q'] -= piq * (
                 2 * piq / (piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
 
-    # HDX burn
+    # LRNA burn
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 

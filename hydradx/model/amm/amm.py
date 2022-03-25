@@ -40,14 +40,14 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     assert trade['token_buy'] != trade['token_sell'], "Cannot trade a token for itself"
     i_buy = -1
     i_sell = -1
-    if trade['token_buy'] != 'HDX':
+    if trade['token_buy'] != 'LRNA':
         i_buy = old_state['token_list'].index(trade['token_buy'])
-    if trade['token_sell'] != 'HDX':
+    if trade['token_sell'] != 'LRNA':
         i_sell = old_state['token_list'].index(trade['token_sell'])
 
     if 'amount_sell' in trade:
         trade_type = 'sell'
-        if trade['token_sell'] == 'HDX':
+        if trade['token_sell'] == 'LRNA':
             delta_Q = trade['amount_sell']
             delta_R = 0
         else:
@@ -55,7 +55,7 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
             delta_R = trade['amount_sell']
     elif 'amount_buy' in trade:
         trade_type = 'buy'
-        if trade['token_buy'] == 'HDX':
+        if trade['token_buy'] == 'LRNA':
             delta_Q = -trade['amount_buy']
             delta_R = 0
         else:
@@ -65,16 +65,16 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         raise
 
     if i_buy < 0 or i_sell < 0:
-        return oamm.swap_lhdx_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+        return oamm.swap_lrna_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
                                   old_state['fee_assets'],
-                                  old_state['fee_HDX'])
+                                  old_state['fee_LRNA'])
     elif trade_type == 'sell':
         return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, trade['amount_sell'], i_buy, i_sell,
-                                old_state['fee_assets'], old_state['fee_HDX'])
+                                old_state['fee_assets'], old_state['fee_LRNA'])
 
     elif trade_type == 'buy':
         return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, -trade['amount_buy'], i_buy, i_sell,
-                                old_state['fee_assets'], old_state['fee_HDX'])
+                                old_state['fee_assets'], old_state['fee_LRNA'])
 
     else:
         raise
@@ -138,8 +138,8 @@ def convert_agent(state: dict, token_list: list, agent_dict: dict) -> dict:
     d = {'q': 0, 's': [0] * n, 'r': [0] * n, 'p': [0] * n}
 
     # iterate through tokens held by AMM, look for both tokens and shares. Ignore the rest
-    if 'HDX' in agent_dict:
-        d['q'] = agent_dict['HDX']
+    if 'LRNA' in agent_dict:
+        d['q'] = agent_dict['LRNA']
     for i in range(n):
         if token_list[i] in agent_dict:
             d['r'][i] = agent_dict[token_list[i]]
