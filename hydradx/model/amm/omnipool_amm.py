@@ -164,6 +164,14 @@ def swap_assets(
         delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
         # swap LRNA back in for second asset
         new_state, new_agents = swap_lrna_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
+
+        delta_Q = old_state['Q'][i_sell] - new_state['Q'][i_sell]
+        delta_L = min(-delta_Q * fee_lrna, -old_state['L'])
+        new_state['L'] += delta_L
+
+        delta_QH = -fee_lrna * delta_Q - delta_L
+        new_state['R'][new_state['R'].index('HDX')] += delta_QH
+
         return new_state, new_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
@@ -202,6 +210,10 @@ def add_risk_liquidity(
     # LRNA add
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
+
+    # L update: LRNA fees to be burned before they will start to accumulate again
+    delta_L = delta_R * old_state['Q'][i]/old_state['R'][i] * old_state['L']/sum(old_state['Q'])
+    new_state['L'] += delta_L
 
     # set price at which liquidity was added
     new_agents[LP_id]['p'][i] = price_i(new_state, i)
@@ -247,5 +259,9 @@ def remove_risk_liquidity(
     # LRNA burn
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
+
+    # L update: LRNA fees to be burned before they will start to accumulate again
+    delta_L = delta_R * old_state['Q'][i]/old_state['R'][i] * old_state['L']/sum(old_state['Q'])
+    new_state['L'] += delta_L
 
     return new_state, new_agents
