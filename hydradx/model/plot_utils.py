@@ -5,10 +5,10 @@ def plot_vars(df, var_list: list, sim_labels: list = ['0', '1']) -> None:
     simulations = df.simulation.unique()
     print(simulations)
     for var in var_list:
-        plt.figure(figsize=(15, 5))
+        fig = plt.figure(figsize=(15, 5))
         if var in df.columns:
-            init = 131
-            ax = plt.subplot(init, title=var)
+            bounds = (1, 3, 1)
+            ax = plt.subplot(*bounds, title=var)
             for i in simulations:
                 df[[var, 'timestep']][df['simulation'] == i].astype(float).plot(ax=ax, y=[var], x='timestep',
                                                                                 label=[sim_labels[i]])
@@ -17,9 +17,10 @@ def plot_vars(df, var_list: list, sim_labels: list = ['0', '1']) -> None:
             while var + '-' + str(max_i + 1) in df.columns:
                 max_i += 1
             for i in range(max_i + 1):
-                init = 131 + i
+                # rows, columns, index
+                bounds = (1, max_i+1, i+1)
                 var_i = var + '-' + str(i)
-                ax = plt.subplot(init, title=var_i)
+                ax = plt.subplot(*bounds, title=var_i)
                 for j in simulations:
                     df[[var_i, 'timestep']][df['simulation'] == j].astype(float).plot(ax=ax, y=[var_i], x='timestep',
                                                                                       label=[sim_labels[j]])

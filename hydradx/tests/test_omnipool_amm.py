@@ -1,5 +1,4 @@
 import copy
-import math
 
 import pytest
 from hypothesis import given, strategies as st, assume
@@ -256,6 +255,8 @@ def test_swap_assets(old_state, fee_lrna, fee_assets):
     old_state['A'] = [0] * n
     old_state['B'] = [100] * n
     old_state['D'] = 0
+    old_state['L'] = 0
+    old_state['token_list'] = ['HDX', 'USD'] + ['?'] * (n-2)
     trader_id = 'trader'
     LP_id = 'lp'
 
@@ -325,6 +326,8 @@ def test_add_asset(old_state, price):
 # Also should make sure things stay reasonably bounded
 # Requires state with H, T, Q, burn_rate
 rate_strat = st.floats(min_value=1e-4, max_value=.99, allow_nan=False, allow_infinity=False)
+
+
 @given(QR_strat, rate_strat)
 def test_adjust_supply(old_state, r):
     old_state['H'] = 20000000000
@@ -344,6 +347,77 @@ def test_adjust_supply(old_state, r):
             pjq_old = oamm.price_i(old_state, j)
             pjq_new = oamm.price_i(new_state, j)
             assert piq_old/pjq_old == pytest.approx(piq_new/pjq_new)
+
+
+def test_swap_with_graphs():
+    import pandas
+
+    from hydradx.model import init_utils
+    from hydradx.model import processing
+    # Experiments
+    from hydradx.model import run
+    from hydradx.model.plot_utils import plot_vars
+
+    ########## AGENT CONFIGURATION ##########
+    # key -> token name, value -> token amount owned by agent
+    # note that token name of 'omniABC' is used for omnipool LP shares of token 'ABC'
+
+    trader = {'LRNA': 1000000, 'R1': 1000000, 'R2': 1000000}
+
+    # key -> agent_id, value -> agent dict
+    agent_d = {'Trader': trader}
+
+    ########## ACTION CONFIGURATION ##########
+
+    action_dict = {
+        'buy_r1_with_r2': {'token_buy': 'R1', 'token_sell': 'R2', 'amount_buy': 1200, 'action_id': 'Trade',
+                           'agent_id': 'Trader'},
+        'sell_r1_for_r2': {'token_sell': 'R1', 'token_buy': 'R2', 'amount_sell': 1000, 'action_id': 'Trade',
+                           'agent_id': 'Trader'}
+    }
+
+    # list of (action, number of repetitions of action), timesteps = sum of repititions of all actions
+    trade_count = 1000
+    action_ls = [('trade', trade_count)]
+
+    # maps action_id to action dict, with some probability to enable randomness
+    prob_dict = {
+        'trade': {'buy_r1_with_r2': 0.5,
+                  'sell_r1_for_r2': 0.5}
+    }
+
+    ########## CFMM INITIALIZATION ##########
+
+    initial_values = oamm.state_dict(
+        token_list=['HDX', 'USD', 'R1', 'R2'],
+        R_values=[1000000, 1000000, 500000, 1500000],
+        P_values=[1, 1, 2, 2 / 3],
+        fee_assets=0.0015,
+        fee_lrna=0.0015
+    )
+    ############################################ SETUP ##########################################################
+
+    config_params = {
+        'cfmm_type': "",
+        'initial_values': initial_values,
+        'agent_d': agent_d,
+        'action_ls': action_ls,
+        'prob_dict': prob_dict,
+        'action_dict': action_dict,
+    }
+
+    config_dict, state = init_utils.get_configuration(config_params)
+
+    pandas.options.mode.chained_assignment = None  # default='warn'
+    pandas.options.display.float_format = '{:.2f}'.format
+
+    run.config(config_dict, state)
+    events = run.run()
+
+    rdf, agent_df = processing.postprocessing(events)
+
+    var_list = ['R', 'Q', 'A', 'D', 'L']
+    plot_vars(rdf, var_list)
 
 
 if __name__ == '__main__':

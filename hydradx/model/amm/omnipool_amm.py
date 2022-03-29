@@ -2,6 +2,37 @@ import copy
 import string
 
 
+def state_dict(
+        token_list: list[str],
+        R_values: list[float],
+        P_values: list[float],
+        omega_values: list[float] = [],
+        L: float = 0,
+        fee_assets: float = 0.0,
+        fee_lrna: float = 0.0,
+        preferred_stablecoin: str = 'USD'
+) -> dict:
+    assert 'HDX' in token_list, 'HDX not included in token list'
+    assert len(R_values) == len(token_list) and len(P_values) == len(token_list), 'list lengths do not match'
+    # get initial value of T (total value locked)
+
+    if not omega_values:
+        omega_values = [0 for _ in range(len(token_list))]
+
+    state = {
+        'token_list': token_list,
+        'R': R_values,  # Risk asset quantities
+        'P': P_values,  # prices of risks assets denominated in LRNA
+        'Q': [R_values[i] * P_values[i] for i in range(len(token_list))],  # LRNA quantities
+        'L': L,  # LRNA imbalance
+        'O': omega_values,  # per-asset cap on what fraction of TVL can be stored
+        'fee_assets': fee_assets,
+        'fee_LRNA': fee_lrna,
+        'preferred_stablecoin': preferred_stablecoin
+    }
+    return state
+
+
 def asset_invariant(state: dict, i: int) -> float:
     """Invariant for specific asset"""
     return state['R'][i] * state['Q'][i]
@@ -170,7 +201,7 @@ def swap_assets(
         new_state['L'] += delta_L
 
         delta_QH = -fee_lrna * delta_Q - delta_L
-        new_state['R'][new_state['R'].index('HDX')] += delta_QH
+        new_state['R'][new_state['token_list'].index('HDX')] += delta_QH
 
         return new_state, new_agents
     elif trade_type == 'buy':
@@ -201,13 +232,24 @@ def add_risk_liquidity(
 
     # Token amounts update
     new_state['R'][i] += delta_R
-    new_agents[LP_id]['r'][i] -= delta_R
+    if LP_id:
+        new_agents[LP_id]['r'][i] -= delta_R
 
+    # TODO: does it make any sense to refer to agents[x]['r'][i]? maybe, but look into it
     # Share update
-    new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
-    new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
+    if new_state['S']:
+        new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
+    else:
+        new_state['S'] = 1
 
-    # LRNA add
+    if LP_id:
+        # shares go to provisioning agent
+        new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
+    else:
+        # shares go to protocol
+        new_state['B'] += new_state['S'][i] - old_state['S'][i]
+
+    # LRNA add (mint)
     delta_Q = price_i(old_state, i) * delta_R
     new_state['Q'][i] += delta_Q
 
@@ -215,9 +257,36 @@ def add_risk_liquidity(
     delta_L = delta_R * old_state['Q'][i]/old_state['R'][i] * old_state['L']/sum(old_state['Q'])
     new_state['L'] += delta_L
 
-    # set price at which liquidity was added
-    new_agents[LP_id]['p'][i] = price_i(new_state, i)
+    # T update: TVL soft cap
+    stableIndex = new_state['token_list'].index(new_state['preferred_stablecoin'])
+    delta_Ti = new_state['Q'][i] * new_state['R'][stableIndex]/new_state['Q'][stableIndex] - new_state['T'][i]
 
+    # set price at which liquidity was added
+    # TODO: should this be averaged with existing price, if this agent has provided liquidity before?
+    # e.g. p[i] = (old_p[i] * r[i] + new_p[i] * delta_r) / (r[i] * delta_r)
+    if LP_id:
+        new_agents[LP_id]['p'][i] = price_i(new_state, i)
+
+    return new_state, new_agents
+
+
+def add_token(
+        old_state: dict,
+        old_agents: dict,
+        quantity: float,
+        token_name: str,
+        price_in_lrna: float,
+        LP_id: str = ''
+) -> tuple:
+    new_state = copy.deepcopy(old_state)
+    new_agents = copy.deepcopy(old_agents)
+    new_state['token_list'].append(token_name)
+    new_state['P'].append(price_in_lrna)
+    new_state['R'].append(0)
+    new_state['Q'].append(0)
+    new_state['T'].append(0)
+    new_state['B'].append(0)
+    new_state, new_agents = add_risk_liquidity(new_state, new_agents, LP_id, quantity, len(new_state['token_list']))
     return new_state, new_agents
 
 
