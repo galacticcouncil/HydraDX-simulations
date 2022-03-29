@@ -4,27 +4,47 @@ import string
 
 def state_dict(
         token_list: list[str],
-        R_values: list[float],
-        P_values: list[float],
-        omega_values: list[float] = [],
+        r_values: list[float],
+        q_values: list[float] = None,
+        p_values: list[float] = None,
+        b_values: list[float] = None,
+        s_values: list[float] = None,
+        omega_values: list[float] = None,
         L: float = 0,
+        D: float = 0,
         fee_assets: float = 0.0,
         fee_lrna: float = 0.0,
         preferred_stablecoin: str = 'USD'
 ) -> dict:
     assert 'HDX' in token_list, 'HDX not included in token list'
-    assert len(R_values) == len(token_list) and len(P_values) == len(token_list), 'list lengths do not match'
+    assert len(r_values) == len(token_list) and len(p_values) == len(token_list), 'list lengths do not match'
     # get initial value of T (total value locked)
 
     if not omega_values:
         omega_values = [0 for _ in range(len(token_list))]
 
+    if not q_values:
+        q_values = [r_values[i] * p_values[i] for i in range(len(token_list))]
+    elif not p_values:
+        p_values = [r_values[i] / q_values[i] for i in range(len(token_list))]
+    else:
+        assert False, 'Either LRNA quantities per pool or assets prices in LRNA must be specified.'
+
+    if not b_values:
+        b_values = [0] * len(token_list)
+
+    if not s_values:
+        b_values = [0] * len(token_list)
+
     state = {
         'token_list': token_list,
-        'R': R_values,  # Risk asset quantities
-        'P': P_values,  # prices of risks assets denominated in LRNA
-        'Q': [R_values[i] * P_values[i] for i in range(len(token_list))],  # LRNA quantities
+        'R': r_values,  # Risk asset quantities
+        'P': p_values,  # prices of risks assets denominated in LRNA
+        'Q': q_values,  # LRNA quantities in each pool
+        'B': b_values,  # quantity of shares in each asset owned by the protocol
+        'S': s_values,  # quantity of LP shares in each pool
         'L': L,  # LRNA imbalance
+        'D': D,  # quantity of LRNA owned by the protocol
         'O': omega_values,  # per-asset cap on what fraction of TVL can be stored
         'fee_assets': fee_assets,
         'fee_LRNA': fee_lrna,
@@ -176,6 +196,41 @@ def swap_lrna_fee(
         new_state['Q'][i] = p * new_state['R'][i]
     return new_state, new_agents
 
+def swap_assets_direct(
+        old_state: dict,
+        old_agents: dict,
+        trader_id: string,
+        delta_token: float,
+        i_buy: int,
+        i_sell: int,
+        fee_assets: float = 0,
+        fee_lrna: float = 0
+) -> tuple:
+    i = i_sell
+    j = i_buy
+    delta_Ri = delta_token
+    assert delta_Ri > 0, 'sell amount must be greater than zero'
+
+    delta_Qi = old_state['Q'][i] * -delta_Ri / (old_state['R'][i] + delta_Ri)
+    delta_Qj = -delta_Qi * (1 - fee_lrna)
+    delta_Rj = old_state['R'][j] * -delta_Qj / (old_state['Q'][j] + delta_Qj) * (1 - fee_assets)
+    delta_L = min(-delta_Qi * fee_lrna, -old_state['L'])
+    delta_QH = -fee_lrna * delta_Qi - delta_L
+
+    new_state = copy.deepcopy(old_state)
+    new_state['Q'][i] += delta_Qi
+    new_state['Q'][j] += delta_Qj
+    new_state['R'][i] += delta_Ri
+    new_state['R'][j] += delta_Rj
+    new_state['Q'][new_state['token_list'].index('HDX')] += delta_QH
+    new_state['L'] += delta_L
+
+    new_agents = copy.deepcopy(old_agents)
+    new_agents[trader_id]['r'][i] -= delta_Ri
+    new_agents[trader_id]['r'][j] -= delta_Rj
+
+    return new_state, new_agents
+
 
 def swap_assets(
         old_state: dict,
@@ -196,14 +251,29 @@ def swap_assets(
         # swap LRNA back in for second asset
         new_state, new_agents = swap_lrna_fee(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
 
-        delta_Q = old_state['Q'][i_sell] - new_state['Q'][i_sell]
-        delta_L = min(-delta_Q * fee_lrna, -old_state['L'])
+        delta_Qi = new_state['Q'][i_sell] - old_state['Q'][i_sell]
+        delta_Qj = new_state['Q'][i_buy] - old_state['Q'][i_buy]
+        delta_L = min(-delta_Qi * fee_lrna, -old_state['L'])
         new_state['L'] += delta_L
 
-        delta_QH = -fee_lrna * delta_Q - delta_L
+        delta_QH = -fee_lrna * delta_Qi - delta_L
         new_state['R'][new_state['token_list'].index('HDX')] += delta_QH
 
-        return new_state, new_agents
+        alternative_state, alternative_agents = swap_assets_direct(
+            old_state=old_state,
+            old_agents=old_agents,
+            trader_id=trader_id,
+            delta_token=delta_token,
+            i_buy=i_buy,
+            i_sell=i_sell,
+            fee_assets=fee_assets,
+            fee_lrna=fee_lrna
+        )
+
+        if alternative_state['Q'][i_sell] != new_state['Q'][i_sell]:
+            er = 1
+
+        return alternative_state, alternative_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
         delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
@@ -258,12 +328,13 @@ def add_risk_liquidity(
     new_state['L'] += delta_L
 
     # T update: TVL soft cap
-    stableIndex = new_state['token_list'].index(new_state['preferred_stablecoin'])
-    delta_Ti = new_state['Q'][i] * new_state['R'][stableIndex]/new_state['Q'][stableIndex] - new_state['T'][i]
+    stable_index = new_state['token_list'].index(new_state['preferred_stablecoin'])
+    delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
+    new_state['T'] += delta_t
 
     # set price at which liquidity was added
     # TODO: should this be averaged with existing price, if this agent has provided liquidity before?
-    # e.g. p[i] = (old_p[i] * r[i] + new_p[i] * delta_r) / (r[i] * delta_r)
+    # e.g. p[i] = (old_p[i] * r[i] + new_p[i] * delta_r) / (r[i] + delta_r)
     if LP_id:
         new_agents[LP_id]['p'][i] = price_i(new_state, i)
 
@@ -286,7 +357,7 @@ def add_token(
     new_state['Q'].append(0)
     new_state['T'].append(0)
     new_state['B'].append(0)
-    new_state, new_agents = add_risk_liquidity(new_state, new_agents, LP_id, quantity, len(new_state['token_list']))
+    new_state, new_agents = add_risk_liquidity(new_state, new_agents, LP_id, quantity, len(new_state['token_list'])-1)
     return new_state, new_agents
 
 
