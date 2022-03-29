@@ -13,3 +13,5 @@ pathos
 hypothesis
 pytest
 ipdb
+sympy
+
