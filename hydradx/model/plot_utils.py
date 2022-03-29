@@ -5,7 +5,7 @@ def plot_vars(df, var_list: list, sim_labels: list = ['0', '1']) -> None:
     simulations = df.simulation.unique()
     print(simulations)
     for var in var_list:
-        fig = plt.figure(figsize=(15, 5))
+        fig = plt.figure(figsize=(20, 5))
         if var in df.columns:
             bounds = (1, 3, 1)
             ax = plt.subplot(*bounds, title=var)
