@@ -29,42 +29,45 @@ class RiskAssetPool:
 
 
 class Position:
-    def __init__(self, pool: RiskAssetPool, quantity, price: float = 0):
+    def __init__(self, pool: RiskAssetPool, shares: float, price: float):
+        self.pool_index = pool.index
+        self.shares = shares
+        self.price = price
         self.pool = pool
-        self.shares = pool.shares * pool.assetQuantity / quantity
-        self.price = price or pool.price
 
 
 class Agent:
     def __init__(self,
+                 name: str,
                  pool_assets: dict[RiskAssetPool: float],
                  outside_assets: dict[RiskAssetPool, float],
                  lrna: float = 0.0
                  ):
-        self.poolAssets = {
-            pool: Position(pool, quantity)
+        self.poolAssets: dict[int: Position] = {
+            pool.index: Position(pool, quantity)
             for pool, quantity in pool_assets.items()
         }
-        self.outsideAssets = outside_assets
+        self.poolAssets.update({
+            pool.name: Position(pool, quantity)
+            for pool, quantity in pool_assets.items()
+        })
+        self.outsideAssets = {
+            pool.index: value for pool, value in outside_assets.items()
+        }
+        self.outsideAssets.update({
+            pool.name: value for pool, value in outside_assets.items()
+        })
         self.lrna = lrna
+        self.name = name
 
-    @property
-    def s(self) -> dict:
-        return_dict = {pool.index: position.shares for pool, position in self.poolAssets.items()}
-        return_dict.update({pool.name: position.shares for pool, position in self.poolAssets.items()})
-        return return_dict
+    def s(self, index: int or str) -> float:
+        return self.poolAssets[index].shares
 
-    @property
-    def r(self):
-        return_dict = {pool.index: quantity for pool, quantity in self.outsideAssets.items()}
-        return_dict.update({pool.name: quantity for pool, quantity in self.outsideAssets.items()})
-        return return_dict
+    def r(self, index: int or str) -> float:
+        return self.outsideAssets[index]
 
-    @property
-    def p(self):
-        return_dict = {pool.index: position.price for pool, position in self.poolAssets.items()}
-        return_dict.update({pool.name: position.price for pool, position in self.poolAssets.items()})
-        return return_dict
+    def p(self, index: int or str) -> float:
+        return self.poolAssets[index].price
 
     @property
     def q(self):
@@ -79,7 +82,9 @@ class Exchange:
                  asset_fee: float,
                  preferred_stablecoin: str
                  ):
-        self.riskAssets = risk_assets
+        self.riskAssets: dict[int or str: RiskAssetPool]
+        self.riskAssets = {i: pool for i, pool in enumerate(risk_assets)}
+        self.riskAssets.update({pool.name: pool for pool in risk_assets})
         self.tvlCapUSD = tvl_cap_usd
         self.lrnaFee = lrna_fee
         self.assetFee = asset_fee
@@ -90,10 +95,12 @@ class Exchange:
 
     def agent(self,
               pool_assets: dict[str: float],
-              outside_assets: dict[str: float]
+              outside_assets: dict[str: float],
+              name: str
               ) -> Agent:
 
         return Agent(
+            name=name,
             pool_assets={
                 self.riskAssets[[pool.name for pool in self.riskAssets].index(name)]: value
                 for name, value in pool_assets.items()
@@ -101,7 +108,8 @@ class Exchange:
             outside_assets={
                 self.riskAssets[[pool.name for pool in self.riskAssets].index(name)]: value
                 for name, value in outside_assets.items()
-            }
+            },
+            lrna=outside_assets['LRNA'] if 'LRNA' in outside_assets else 0
         )
 
     @property
@@ -109,51 +117,45 @@ class Exchange:
         """ the total quantity of LRNA contained in all asset pools """
         return sum([asset.lrnaQuantity for asset in self.riskAssets])
 
-    @property
-    def W(self) -> dict:
+    def W(self, index: int or str) -> float:
         """ the percentage of total LRNA contained in each asset pool """
         lrna_total = self.totalQ
-        return_dict = {pool.index: pool.lrnaQuantity / lrna_total for pool in self.riskAssets}
-        return_dict.update({pool.name: pool.lrnaQuantity / lrna_total for pool in self.riskAssets})
-        return return_dict
+        return self.riskAssets[index].lrnaQuantity / lrna_total
 
-    @property
-    def Q(self) -> dict:
+    def Q(self, index: int or str) -> float:
         """ the absolute quantity of LRNA in each asset pool """
-        return_dict = {pool.index: pool.lrnaQuantity for pool in self.riskAssets}
-        return_dict.update({pool.name: pool.lrnaQuantity for pool in self.riskAssets})
-        return return_dict
+        return self.riskAssets[index].lrnaQuantity
 
-    @property
-    def R(self) -> dict:
+    @Q.setter
+    def Q(self, index: int or str, value):
+        self.riskAssets[index].lrnaQuantity = value
+
+    def R(self, index: int or str) -> float:
         """ quantity of risk asset in each asset pool """
-        return_dict = {pool.index: pool.assetQuantity for pool in self.riskAssets}
-        return_dict.update({pool.name: pool.assetQuantity for pool in self.riskAssets})
-        return return_dict
+        return self.riskAssets[index].assetQuantity
 
-    @property
-    def B(self) -> dict:
+    def B(self, index: int or str) -> float:
         """ quantity of liquidity provider shares in each pool owned by the protocol """
-        return_dict = {pool.index: pool.sharesOwnedByProtocol for pool in self.riskAssets}
-        return_dict.update({pool.name: pool.sharesOwnedByProtocol for pool in self.riskAssets})
-        return return_dict
+        return self.riskAssets[index].sharesOwnedByProtocol
 
-    @property
-    def P(self) -> dict:
+    def P(self, index: int or str) -> float:
         """ price of each asset denominated in LRNA """
-        return_dict = {pool.index: pool.price for pool in self.riskAssets}
-        return_dict.update({pool.name: pool.price for pool in self.riskAssets})
-        return return_dict
+        return self.riskAssets[index].price
 
     @property
     def L(self):
         return self.lrnaImbalance
+
+    @L.setter
+    def L(self, value):
+        self.lrnaImbalance = value
 
     @property
     def C(self):
         """ soft cap on total value locked, denominated in preferred stablecoin """
         return self.tvlCapUSD
 
-    @L.setter
-    def L(self, value):
-        self.lrnaImbalance = value
+
+class State:
+    exchange: Exchange
+    agents: list[Agent]
