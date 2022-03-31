@@ -1,6 +1,8 @@
 import copy
 import string
 
+import pytest
+
 
 def state_dict(
         token_list: list[str],
@@ -224,6 +226,10 @@ def swap_assets_direct(
     new_state['R'][j] += delta_Rj
     new_state['Q'][new_state['token_list'].index('HDX')] += delta_QH
     new_state['L'] += delta_L
+
+    # do some algebraic checks
+    if old_state['Q'][i] * old_state['R'][i] != pytest.approx(new_state['Q'][i] * new_state['R'][i]):
+        raise f'price change in asset {i}'
 
     new_agents = copy.deepcopy(old_agents)
     new_agents[trader_id]['r'][i] -= delta_Ri
