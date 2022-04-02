@@ -1,8 +1,99 @@
+class Asset:
+    def __init__(self, name: str, index: int, market_price_usd: float):
+        self.name = name
+        self.index = index
+        self.price = market_price_usd
+
+
+class Market:
+    def __init__(self, assets: list[Asset]):
+        self._asset_list = list()
+        self._asset_dict = dict()
+        for asset in assets:
+            self.add_asset(asset)
+
+    def add_asset(self, new_asset: Asset):
+        """ add an asset to the exchange """
+        new_asset.index = len(self._asset_list)
+        self._asset_list.append(new_asset)
+        # maintain a reference to both name and index in asset_dict, for convenience
+        self._asset_dict[new_asset.index] = new_asset
+        self._asset_dict[new_asset.name] = new_asset
+
+    def asset(self, index) -> Asset:
+        return self._asset_dict[index]
+
+    @property
+    def asset_list(self) -> list[Asset]:
+        return self._asset_list
+
+    def price(self, index):
+        return self._asset_dict[index].price
+
+    @staticmethod
+    def relativePrice(asset: Asset, denominator: Asset):
+        return asset.price / denominator.price
+
+
+class Position:
+    def __init__(self,
+                 asset: Asset,
+                 market: Market,
+                 quantity: float = 0,
+                 price: float = 0):
+
+        self.quantity = quantity
+        self.price = price or market.price(asset)
+        self.market = market
+        self.asset = asset
+
+
+class Agent:
+    def __init__(self,
+                 name: str,
+                 positions: dict[Market: dict[str: float]],
+                 ):
+
+        self.name = name
+
+        self._positions: dict[tuple[Market, Asset]: Position] = {}
+        for market in positions:
+            for asset in market:
+                self._positions[(market, asset)] = Position(
+                    market=market,
+                    asset=market.asset(asset),
+                    price=market.price(asset),
+                    quantity=positions[market][asset]
+                )
+
+    def holdings(self, market: Market, index: int or str) -> float:
+        """ get this agent's holdings in the specified market, asset pair """
+        for (p_market, asset), position in self._positions.items():
+            if p_market == market and market.asset(index) == asset:
+                return self._positions[(market, asset)].quantity
+        return 0
+
+    def add_asset(self, market: Market, index: int or str, delta: float):
+        """ add delta to the agent's asset holdings in market """
+        for (p_market, asset), position in self._positions.items():
+            if p_market == market and market.asset(index) == asset:
+                self._positions[(market, asset)].quantity += delta
+                return
+        # if (market, asset) position was not found, create one
+        asset = market.asset(index)
+        self._positions[(market, asset)] = Position(
+            market=market,
+            asset=asset,
+            price=market.price(asset),
+            quantity=delta
+        )
+
+
 class RiskAssetPool:
     index: int
 
     def __init__(self,
-                 name: str,
+                 asset: Asset,
                  quantity: float,
                  lrna_price: float = 1.0,
                  lrna_quantity: float = 0,
@@ -12,7 +103,7 @@ class RiskAssetPool:
         """
         The state of one asset pool.
         """
-        self.name = name
+        self.asset = asset
         self.assetQuantity = quantity
         if lrna_quantity and lrna_price:
             raise "Specify either LRNA quantity or price, but not both."
@@ -28,53 +119,7 @@ class RiskAssetPool:
         return self.lrnaQuantity / self.assetQuantity
 
 
-class Position:
-    def __init__(self, pool: RiskAssetPool, shares: float, price: float):
-        self.pool_index = pool.index
-        self.shares = shares
-        self.price = price
-        self.pool = pool
-
-
-class Agent:
-    def __init__(self,
-                 name: str,
-                 pool_assets: dict[RiskAssetPool: float],
-                 outside_assets: dict[RiskAssetPool, float],
-                 lrna: float = 0.0
-                 ):
-        self.poolAssets: dict[int: Position] = {
-            pool.index: Position(pool, quantity)
-            for pool, quantity in pool_assets.items()
-        }
-        self.poolAssets.update({
-            pool.name: Position(pool, quantity)
-            for pool, quantity in pool_assets.items()
-        })
-        self.outsideAssets = {
-            pool.index: value for pool, value in outside_assets.items()
-        }
-        self.outsideAssets.update({
-            pool.name: value for pool, value in outside_assets.items()
-        })
-        self.lrna = lrna
-        self.name = name
-
-    def s(self, index: int or str) -> float:
-        return self.poolAssets[index].shares
-
-    def r(self, index: int or str) -> float:
-        return self.outsideAssets[index]
-
-    def p(self, index: int or str) -> float:
-        return self.poolAssets[index].price
-
-    @property
-    def q(self):
-        return self.lrna
-
-
-class Exchange:
+class Exchange(Market):
     def __init__(self,
                  risk_assets: list[RiskAssetPool],
                  tvl_cap_usd: float,
@@ -82,80 +127,14 @@ class Exchange:
                  asset_fee: float,
                  preferred_stablecoin: str
                  ):
-        self.riskAssets: dict[int or str: RiskAssetPool]
-        self.riskAssets = {i: pool for i, pool in enumerate(risk_assets)}
-        self.riskAssets.update({pool.name: pool for pool in risk_assets})
+
+        self.asset_pools = {}
+        super().__init__([])
+        for pool in risk_assets:
+            self.add_asset(pool.asset)
+
         self.tvlCapUSD = tvl_cap_usd
         self.lrnaFee = lrna_fee
         self.assetFee = asset_fee
         self.lrnaImbalance = 0
-        self.stableCoin = risk_assets[[pool.name for pool in risk_assets].index(preferred_stablecoin)]
-        for i, pool in enumerate(self.riskAssets):
-            pool.index = i
-
-    def agent(self,
-              pool_assets: dict[str: float],
-              outside_assets: dict[str: float],
-              name: str
-              ) -> Agent:
-
-        return Agent(
-            name=name,
-            pool_assets={
-                self.riskAssets[[pool.name for pool in self.riskAssets].index(name)]: value
-                for name, value in pool_assets.items()
-            },
-            outside_assets={
-                self.riskAssets[[pool.name for pool in self.riskAssets].index(name)]: value
-                for name, value in outside_assets.items()
-            },
-            lrna=outside_assets['LRNA'] if 'LRNA' in outside_assets else 0
-        )
-
-    @property
-    def totalQ(self) -> float:
-        """ the total quantity of LRNA contained in all asset pools """
-        return sum([asset.lrnaQuantity for asset in self.riskAssets])
-
-    def W(self, index: int or str) -> float:
-        """ the percentage of total LRNA contained in each asset pool """
-        lrna_total = self.totalQ
-        return self.riskAssets[index].lrnaQuantity / lrna_total
-
-    def Q(self, index: int or str) -> float:
-        """ the absolute quantity of LRNA in each asset pool """
-        return self.riskAssets[index].lrnaQuantity
-
-    @Q.setter
-    def Q(self, index: int or str, value):
-        self.riskAssets[index].lrnaQuantity = value
-
-    def R(self, index: int or str) -> float:
-        """ quantity of risk asset in each asset pool """
-        return self.riskAssets[index].assetQuantity
-
-    def B(self, index: int or str) -> float:
-        """ quantity of liquidity provider shares in each pool owned by the protocol """
-        return self.riskAssets[index].sharesOwnedByProtocol
-
-    def P(self, index: int or str) -> float:
-        """ price of each asset denominated in LRNA """
-        return self.riskAssets[index].price
-
-    @property
-    def L(self):
-        return self.lrnaImbalance
-
-    @L.setter
-    def L(self, value):
-        self.lrnaImbalance = value
-
-    @property
-    def C(self):
-        """ soft cap on total value locked, denominated in preferred stablecoin """
-        return self.tvlCapUSD
-
-
-class State:
-    exchange: Exchange
-    agents: list[Agent]
+        self.stableCoin = risk_assets[[pool.asset.name for pool in risk_assets].index(preferred_stablecoin)]
