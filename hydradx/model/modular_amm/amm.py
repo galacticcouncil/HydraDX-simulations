@@ -9,15 +9,16 @@ class Asset:
 
 class Market:
     def __init__(self, assets: list[Asset], price_denomination: Asset or None = None):
+        """ Base class of all markets. Accepts a list of assets and a price denominator """
         self._asset_list = list()
         self._asset_dict = dict()
         for asset in assets:
             self.add_asset(asset)
         if not price_denomination:
             # choose whichever asset has a price of 1
-            self.priceDenomination = filter(lambda asset: asset.price == 1, self.asset_list)[0]
+            self.priceDenomination = list(filter(lambda a: a.price == 1, self.asset_list))[0]
         else:
-            self.priceDenomination = price_denomination
+            self.priceDenomination = self.asset(price_denomination)
 
     def add_asset(self, new_asset: Asset):
         """ add an asset to the market """
@@ -28,7 +29,7 @@ class Market:
         self._asset_dict[new_asset.name] = new_asset
         self._asset_dict[new_asset] = new_asset
 
-    def asset(self, index) -> Asset:
+    def asset(self, index: int or str or Asset) -> Asset:
         return self._asset_dict[index] if index in self._asset_dict else None
 
     @property
@@ -36,11 +37,8 @@ class Market:
         return self._asset_list
 
     def price(self, asset: Asset):
+        asset = self.asset(asset)
         return asset.price / self.priceDenomination.price
-
-    @staticmethod
-    def relativePrice(asset: Asset, denominator: Asset):
-        return asset.price / denominator.price
 
 
 class Position:
@@ -76,18 +74,23 @@ class Agent:
                 return self._positions[(market, asset)].price
         return 0
 
-    def add_asset(self, market: Market, asset: Asset, delta: float):
-        """ add delta to the agent's asset holdings in market """
+    def position(self, market, asset: Asset or int or str) -> Position:
+        if not type(asset) == Asset:
+            asset = market.asset(asset)
+        return self._positions[(market, asset)]
+
+    def add_asset(self, market: Market, asset: Asset, quantity: float):
+        """ add specified quantity to the agent's asset holdings in market """
         for (p_market, p_asset), position in self._positions.items():
             if p_market == market and p_asset == asset:
-                self._positions[(market, asset)].quantity += delta
+                self._positions[(market, asset)].quantity += quantity
                 return
         # if (market, asset) position was not found, create one
         self._positions[(market, asset)] = Position(
             market=market,
             asset=asset,
             price=market.price(asset),
-            quantity=delta
+            quantity=quantity
         )
         return self
 
@@ -126,7 +129,7 @@ class Exchange(Market):
                  initial_liquidity: float = 0,
                  ):
 
-        super().__init__([lrna, preferred_stablecoin])
+        super().__init__([preferred_stablecoin])
 
         self._asset_pools_list = list()
         self._asset_pools_dict = dict()
