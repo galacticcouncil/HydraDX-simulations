@@ -123,6 +123,6 @@ def agenthub(params, substep, state_history, prev_state, policy_input):
 
 
 def posthub(params, substep, state_history, prev_state, policy_input):
-    if 'T' in prev_state['AMM'] and prev_state['AMM']['T'] is not None:
-        return ('AMM', amm.adjust_supply(prev_state['AMM']))
+    # if 'T' in prev_state['AMM'] and prev_state['AMM']['T'] is not None:
+    #     return ('AMM', amm.adjust_supply(prev_state['AMM']))
     return ('AMM', prev_state['AMM'])
