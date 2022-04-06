@@ -87,6 +87,7 @@ def get_state_from_row(row) -> dict:
         'D': row['D'],
         'S': [0] * row['n'],
         'B': [0] * row['n'],
+        'L': row['L']
     }
 
     if 'H' in row:
