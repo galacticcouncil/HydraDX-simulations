@@ -2,8 +2,6 @@ import copy
 import math
 import string
 
-import pytest
-
 
 def state_dict(
         token_list: list,
@@ -170,7 +168,7 @@ def swap_lrna(
         delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state['Q'][i] / (old_state['Q'][i] + delta_Q))
         delta_Qa = -delta_Q
     else:
-        print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
+        # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
         return old_state, old_agents
 
     new_agents[trader_id]['q'] += delta_Qa
@@ -340,8 +338,8 @@ def add_risk_liquidity(
     if LP_id:
         new_agents[LP_id]['r'][i] -= delta_R
         if new_agents[LP_id]['r'][i] < 0:
-            print('Transaction rejected because agent has insufficient funds.')
-            print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+            # print('Transaction rejected because agent has insufficient funds.')
+            # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
             return old_state, old_agents
 
     # Share update
@@ -371,13 +369,13 @@ def add_risk_liquidity(
     new_state['T'][i] += delta_t
 
     if 'O' in new_state and new_state['Q'][i] / sum(new_state['Q']) > new_state['O'][i]:
-        print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
-        print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+        # print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
+        # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
 
     if 'C' in new_state and sum(new_state['T']) > new_state['C']:
-        print('Transaction rejected because it would exceed the TVL cap.')
-        print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+        # print('Transaction rejected because it would exceed the TVL cap.')
+        # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
 
     # set price at which liquidity was added
