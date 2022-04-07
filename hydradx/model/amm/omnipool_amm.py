@@ -1,4 +1,5 @@
 import copy
+import math
 import string
 
 import pytest
@@ -13,7 +14,7 @@ def state_dict(
         s_values: list[float] = None,
         omega_values: list[float] = None,
         L: float = 0,
-        D: float = 0,
+        C: float = math.inf,
         fee_assets: float = 0.0,
         fee_lrna: float = 0.0,
         preferred_stablecoin: str = 'USD'
@@ -23,7 +24,7 @@ def state_dict(
     # get initial value of T (total value locked)
 
     if not omega_values:
-        omega_values = [0 for _ in range(len(token_list))]
+        omega_values = [1 for _ in range(len(token_list))]
 
     if not q_values:
         q_values = [r_values[i] * p_values[i] for i in range(len(token_list))]
@@ -36,11 +37,11 @@ def state_dict(
         b_values = [0] * len(token_list)
 
     if not s_values:
-        b_values = [0] * len(token_list)
+        s_values = [0] * len(token_list)
 
     stablecoin_index = token_list.index(preferred_stablecoin)
     t_values = [
-        q_values[n] / r_values[n] * r_values[stablecoin_index] / q_values[stablecoin_index]
+        q_values[n] * r_values[stablecoin_index] / q_values[stablecoin_index]
         for n in range(len(token_list))
     ]
 
@@ -53,7 +54,7 @@ def state_dict(
         'S': s_values,  # quantity of LP shares in each pool
         'T': t_values,  # tvl per pool in usd
         'L': L,  # LRNA imbalance
-        'D': D,  # quantity of LRNA owned by the protocol
+        'C': C,  # TVL soft cap
         'O': omega_values,  # per-asset cap on what fraction of TVL can be stored
         'fee_assets': fee_assets,
         'fee_LRNA': fee_lrna,
@@ -128,7 +129,6 @@ def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
     agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
     state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
 
-    state['D'] = 0
     state['T'] = init_d['T'] if 'T' in init_d else None
     state['H'] = init_d['H'] if 'H' in init_d else None
 
@@ -280,7 +280,7 @@ def swap_assets(
         #     swap_lrna(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets, fee_lrna)
         # delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
         # # swap LRNA back in for second asset
-        # new_state, new_agents = swap_lrna(first_state, first_agents, trader_id, 0, -delta_q, i_buy, fee_assets, fee_lrna)
+        # new_state, new_agents = swap_lrna(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
         #
         # delta_Qi = new_state['Q'][i_sell] - old_state['Q'][i_sell]
         # delta_Qj = new_state['Q'][i_buy] - old_state['Q'][i_buy]
@@ -335,6 +335,10 @@ def add_risk_liquidity(
     new_state['R'][i] += delta_R
     if LP_id:
         new_agents[LP_id]['r'][i] -= delta_R
+        if new_agents[LP_id]['r'][i] < 0:
+            print('Transaction rejected because agent has insufficient funds.')
+            print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+            return old_state, old_agents
 
     # Share update
     if new_state['S']:
@@ -362,7 +366,12 @@ def add_risk_liquidity(
     delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
     new_state['T'][i] += delta_t
 
-    if 'C' in new_state and new_state['T'] > new_state['C']:
+    if 'O' in new_state and new_state['Q'][i] / sum(new_state['Q']) > new_state['O'][i]:
+        print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
+        print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+        return old_state, old_agents
+
+    if 'C' in new_state and sum(new_state['T']) > new_state['C']:
         print('Transaction rejected because it would exceed the TVL cap.')
         print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
