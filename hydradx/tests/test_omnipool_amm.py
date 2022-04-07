@@ -257,13 +257,14 @@ def test_swap_lrna(initial_state, fee):
     delta_Q = 1000
     i = 0
 
-
     # Test with trader selling asset i
-    new_state, new_agents = oamm.swap_lrna(old_state, old_agents, trader_id, delta_R, 0, i, fee, fee)
+    feeless_state, feeless_agents = oamm.swap_lrna(old_state, old_agents, trader_id, delta_R, 0, i, 0, 0)
+    assert oamm.asset_invariant(feeless_state, i) == pytest.approx(oamm.asset_invariant(old_state, i))
 
     # Test with trader selling LRNA
     new_state, new_agents = oamm.swap_lrna(old_state, old_agents, trader_id, 0, delta_Q, i, fee, fee)
     feeless_state, feeless_agents = oamm.swap_lrna(old_state, old_agents, trader_id, 0, delta_Q, i, 0, 0)
+    assert oamm.asset_invariant(feeless_state, i) == pytest.approx(oamm.asset_invariant(old_state, i))
     for j in range(len(old_state['R'])):
         # assert oamm.price_i(feeless_state, j) == pytest.approx(oamm.price_i(new_state, j))
         assert min(new_state['R'][j] - feeless_state['R'][j], 0) == pytest.approx(0)
