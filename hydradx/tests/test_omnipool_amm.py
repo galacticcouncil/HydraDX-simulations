@@ -147,6 +147,9 @@ def test_add_risk_liquidity(old_state):
         assert oamm.price_i(old_state, j) == pytest.approx(oamm.price_i(new_state, j))
     assert old_state['R'][i] / old_state['S'][i] == pytest.approx(new_state['R'][i] / new_state['S'][i])
 
+    assert old_state['Q'][i] / old_state['R'][i] * (sum(old_state['Q']) + old_state['L']) / sum(old_state['Q']) == \
+        pytest.approx(new_state['Q'][i] / new_state['R'][i] * (sum(new_state['Q']) + new_state['L']) / sum(new_state['Q']))
+
 
 @given(QR_strat)
 def test_remove_risk_liquidity(old_state):
