@@ -362,7 +362,7 @@ def add_risk_liquidity(
     delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
     new_state['T'][i] += delta_t
 
-    if new_state['C'] and new_state['T'] > new_state['C']:
+    if 'C' in new_state and new_state['T'] > new_state['C']:
         print('Transaction rejected because it would exceed the TVL cap.')
         print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
