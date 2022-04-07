@@ -6,13 +6,13 @@ import pytest
 
 
 def state_dict(
-        token_list: list[str],
-        r_values: list[float],
-        q_values: list[float] = None,
-        p_values: list[float] = None,
-        b_values: list[float] = None,
-        s_values: list[float] = None,
-        omega_values: list[float] = None,
+        token_list: list,
+        r_values: list,
+        q_values: list = None,
+        p_values: list = None,
+        b_values: list = None,
+        s_values: list = None,
+        omega_values: list = None,
         L: float = 0,
         C: float = math.inf,
         fee_assets: float = 0.0,
