@@ -148,8 +148,8 @@ def swap_lrna(
         old_state: dict,
         old_agents: dict,
         trader_id: string,
-        delta_R: float,
-        delta_Q: float,
+        delta_Ra: float,
+        delta_Qa: float,
         i: int,
         fee_assets: float = 0,
         fee_lrna: float = 0
@@ -159,19 +159,19 @@ def swap_lrna(
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
-    if delta_Q > 0:
+    if delta_Qa < 0:
+        delta_Q = -delta_Qa
         delta_R = old_state['R'][i] * -delta_Q / (delta_Q + old_state['Q'][i]) * (1 - fee_assets)
         delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state['Q'][i] / (old_state['Q'][i] + delta_Q))
         delta_Ra = -delta_R
-        delta_Qa = delta_Q
-    elif delta_R > 0:
-        delta_Ra = delta_R
+    elif delta_Ra > 0:
         delta_R = -delta_Ra
         delta_Q = old_state['Q'][i] * -delta_R / (old_state['R'][i] * (1 - fee_assets) + delta_R)
         delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state['Q'][i] / (old_state['Q'][i] + delta_Q))
         delta_Qa = -delta_Q
     else:
-        raise ValueError('Either delta_q or delta_r must be positive.')
+        print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
+        return old_state, old_agents
 
     new_agents[trader_id]['q'] += delta_Qa
     new_agents[trader_id]['r'][i] += delta_Ra
