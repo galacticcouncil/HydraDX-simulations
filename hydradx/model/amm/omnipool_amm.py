@@ -336,7 +336,6 @@ def add_risk_liquidity(
     if LP_id:
         new_agents[LP_id]['r'][i] -= delta_R
 
-    # TODO: does it make any sense to refer to agents[x]['r'][i]? maybe, but look into it
     # Share update
     if new_state['S']:
         new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
@@ -363,9 +362,12 @@ def add_risk_liquidity(
     delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
     new_state['T'][i] += delta_t
 
+    if new_state['C'] and new_state['T'] > new_state['C']:
+        print('Transaction rejected because it would exceed the TVL cap.')
+        print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
+        return old_state, old_agents
+
     # set price at which liquidity was added
-    # TODO: should this be averaged with existing price, if this agent has provided liquidity before?
-    # e.g. p[i] = (old_p[i] * r[i] + new_p[i] * delta_r) / (r[i] + delta_r)
     if LP_id:
         new_agents[LP_id]['p'][i] = price_i(new_state, i)
 
