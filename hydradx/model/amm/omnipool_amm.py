@@ -58,7 +58,8 @@ def state_dict(
         'O': omega_values,  # per-asset cap on what fraction of TVL can be stored
         'fee_assets': fee_assets,
         'fee_LRNA': fee_lrna,
-        'preferred_stablecoin': preferred_stablecoin
+        'preferred_stablecoin': preferred_stablecoin,
+        'stablecoin_index': stablecoin_index
     }
     return state
 
@@ -362,7 +363,7 @@ def add_risk_liquidity(
     new_state['L'] += delta_L
 
     # T update: TVL soft cap
-    stable_index = new_state['token_list'].index(new_state['preferred_stablecoin'])
+    stable_index = new_state['stablecoin_index']
     delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
     new_state['T'][i] += delta_t
 
