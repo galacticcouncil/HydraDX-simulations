@@ -45,6 +45,9 @@ def state_dict(
         for n in range(len(token_list))
     ]
 
+    assert len(r_values) == len(q_values) == len(b_values) == len(s_values) ==\
+           len(t_values) == len(omega_values) == len(p_values)
+
     state = {
         'token_list': token_list,
         'R': r_values,  # Risk asset quantities
