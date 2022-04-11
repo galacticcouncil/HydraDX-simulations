@@ -1,13 +1,79 @@
 import copy
 import pytest
 from ..modular_amm import amm
-from ..modular_amm.amm import Market
+
+
+class OmnipoolShareToken(amm.Asset):
+    def __init__(self, name: str, price: float, pool: amm.RiskAssetPool):
+        super().__init__(name, price)
+        self.pool = pool
+
+    @staticmethod
+    def token_name(token: str):
+        return f'omnipool shares ({token})'
+
+
+class OmnipoolRiskAsset(amm.RiskAssetPool):
+
+    @property
+    def shareToken(self) -> OmnipoolShareToken:
+        return OmnipoolShareToken(
+            name=OmnipoolShareToken.token_name(self.positions[0].name),
+            price=self.price,
+            pool=self
+        )
+
+    @property
+    def lrnaQuantity(self):
+        return self.positions[1].price
+
+    @lrnaQuantity.setter
+    def lrnaQuantity(self, value):
+        self.positions[1].quantity = value
+
+    @property
+    def assetQuantity(self):
+        return self.positions[0].price
+
+    @assetQuantity.setter
+    def assetQuantity(self, value):
+        self.positions[0].quantity = value
 
 
 class OmniPool(amm.Exchange):
+    def __init__(self,
+                 tvl_cap_usd: float,
+                 asset_fee: float,
+                 lrna_fee: float,
+                 preferred_stablecoin: amm.Asset
+                 ):
+        super().__init__(tvl_cap_usd, asset_fee)
+        self.lrnaFee = lrna_fee
+        self.lrna = amm.Asset('LRNA', 1)
+        self.lrnaImbalance = 0
+        self.stableCoin = preferred_stablecoin
 
-    def set_initial_liquidity(self, asset: amm.Asset, agent: amm.Agent, quantity: float):
-        super().set_initial_liquidity(asset, agent, quantity)
+    def add_pool(self, risk_asset: amm.Asset, initial_quantity: float, weight_cap: float = 1.0) -> OmnipoolRiskAsset:
+        new_pool = OmnipoolRiskAsset(
+            positions=[
+                amm.Position(risk_asset, quantity=initial_quantity),
+                amm.Position(self.lrna, quantity=initial_quantity * risk_asset.price / self.lrna.price)
+            ],
+            weight_cap=weight_cap
+        )
+        self._asset_pools_list.append(new_pool)
+        self._asset_pools_dict[risk_asset] = new_pool
+        self._asset_pools_dict[risk_asset.name] = new_pool
+        self._asset_pools_dict[risk_asset.index] = new_pool
+        self._asset_pools_dict[set(new_pool.positions)] = new_pool
+        return new_pool
+
+    def pool(self, index: int or str or amm.Asset) -> OmnipoolRiskAsset:
+        """
+        given the name or index of an asset, a reference to that asset,
+        or an (asset, lrna) set, returns the associated pool
+        """
+        return self._asset_pools_dict[{self.asset(index), self.lrna}]
 
     def W(self, index: int or str) -> float:
         """ the percentage of total LRNA contained in each asset pool """
@@ -43,8 +109,12 @@ class OmniPool(amm.Exchange):
     def add_delta_S(self, index: int or str, value):
         self.pool(index).shares += value
 
-    def T(self, index: int or str):
-        return self.pool(index).assetQuantity * self.pool(index).asset.price
+    def T(self, index: int or str) -> float:
+        pool = self.pool(index)
+        if pool:
+            return pool.assetQuantity * pool.positions[0].price
+        else:
+            return 0
 
     def T_total(self):
         return sum([self.T(index) for index in self.asset_list])
@@ -71,51 +141,39 @@ class OmniPool(amm.Exchange):
 
 
 class OmnipoolAgent(amm.Agent):
-    omnipool: amm.Exchange
-    external_market: amm.Market
-
-    def __init__(self,
-                 name: str,
-                 ):
-        super().__init__(name=name)
 
     # noinspection PyTypeChecker
-    def add_asset(self, market: Market, asset: amm.Asset, quantity: float):
-        # auto-detect these parameters
-        if type(market) == OmniPool:
-            self.omnipool = market
-            self.add_liquidity(market, asset, quantity)
-        else:
-            self.external_market = market
-        super().add_asset(market=market, asset=asset, quantity=quantity)
-        return self
-
     def add_liquidity(self, market: amm.Exchange, asset: amm.Asset, quantity: float):
         market.set_initial_liquidity(asset=asset, agent=self, quantity=quantity)
 
+    def pool_asset(self, index: int or str):
+        for asset in filter(lambda a: isinstance(a, OmnipoolShareToken), self.asset_list):
+            if asset.name == OmnipoolShareToken.token_name(index) or asset.index == index:
+                return asset
+
     def s(self, index: int or str) -> float:
         """ quantity of shares in pool[index] owned by the agent """
-        return self.holdings(self.omnipool, index)
+        return self.holdings(self.pool_asset(index))
 
     def r(self, index: int or str) -> float:
         """ quantity of asset[index] owned by the agent external to the omnipool """
-        return self.holdings(self.external_market, index)
+        return self.holdings(index)
 
     def add_delta_r(self, index: int or str, value):
         """ add value to agent's asset holding in external market """
-        self.add_asset(self.external_market, index, value)
+        self.add_position(index, value)
 
     def add_delta_s(self, index: int or str, value):
-        self.add_asset(self.omnipool, index, value)
+        self.add_position(index, value)
 
     def p(self, index: int or str) -> float:
         """ price at which the agent's holdings in pool[index] were acquired """
-        return self.price(self.omnipool, index)
+        return self.price(self.pool_asset(index))
 
     @property
     def q(self):
         """ quantity of LRNA held by the agent """
-        return self.holdings(self.omnipool, 'LRNA')
+        return self.holdings('LRNA')
 
 
 # noinspection PyArgumentList
@@ -134,7 +192,6 @@ def swap_assets(
     for n in [i, j]:
         if not market_state.pool(n):
             raise IndexError('asset {n} not found')
-    old_state = market_state
     assert sell_quantity > 0, 'sell amount must be greater than zero'
 
     delta_Ri = sell_quantity
