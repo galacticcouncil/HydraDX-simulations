@@ -1,24 +1,26 @@
 class Asset:
-    index: int
+    _ids = 0
 
     def __init__(self, name: str, price: float):
         """ price is denominated in USD, probably ¯\_(ツ)_/¯ """
         self.name = name
         self.price = price
+        self.index = Asset._ids
+        Asset._ids += 1
 
 
 class Market:
-    def __init__(self, assets: list, price_denomination: Asset or None = None):
+    def __init__(self, assets: list, price_denominator: Asset or None = None):
         """ Base class of all markets. Accepts a list of assets and a price denominator """
         self._asset_list = list()
         self._asset_dict = dict()
         for asset in assets:
             self.add_asset(asset)
-        if not price_denomination:
+        if not price_denominator:
             # choose whichever asset has a price of 1
             self.priceDenomination = list(filter(lambda a: a.price == 1, self.asset_list))[0]
         else:
-            self.priceDenomination = self.asset(price_denomination)
+            self.priceDenomination = self.asset(price_denominator)
 
     def add_asset(self, new_asset: Asset):
         """ add an asset to the market """
@@ -67,21 +69,27 @@ class Agent:
         self.name = name
         self._positions = {}
 
+    def position(self, index: int or str or Asset) -> Position:
+        return self._positions[index] if index in self._positions else None
+
+    def asset(self, index: int or str or Asset) -> Asset:
+        return self._position[index].asset if index in self._positions else None
+
     def holdings(self, index: int or str or Asset) -> float:
         """ get this agent's holdings in the specified market, asset pair """
-        return self._positions[index]
+        return self.position(index).quantity if self.position(index) else 0
 
     def price(self, index: int or str or Asset) -> float:
         """ get this agent's buy-in price for the specified market, asset pair """
-        return self._positions[index].price
+        return self.position(index).price if self.position(index) else None
 
     @property
     def asset_list(self):
-        return [position.asset for position in self._positions]
+        return list(filter(lambda key: isinstance(key, Asset), self._positions))
 
     def add_position(self, asset: Asset, quantity: float, price: float = 0):
         """ add specified quantity to the agent's asset holdings in market """
-        if self._positions[asset]:
+        if asset in self._positions:
             self._positions[asset].quantity += quantity
             return self
 
@@ -97,12 +105,23 @@ class Agent:
         return self
 
 
+class ShareToken(Asset):
+    def __init__(self, name: str, price: float, assets: list):
+        super().__init__(name, price)
+        self.assets = assets
+
+    @staticmethod
+    def token_name(asset_str: str):
+        return f'pool shares ({asset_str})'
+
+
 class RiskAssetPool:
     index: int
 
     def __init__(self,
                  positions: list,  # of positions
-                 weight_cap: float = 1
+                 weight_cap: float = 1,
+                 unique_id: str = ""
                  ):
         """
         The state of one asset pool.
@@ -111,21 +130,33 @@ class RiskAssetPool:
         self.weightCap = weight_cap
         self.shares = self.positions[0].quantity
         self.sharesOwnedByProtocol = self.shares
-        self.totalValue = 0
+        self.totalValue = sum([position.quantity * position.price for position in positions])
+        self.unique_id = unique_id or self.poolName([position.asset for position in self.positions])
+
+        self.shareToken = ShareToken(
+            name=ShareToken.token_name(self.unique_id),
+            price=self.price,
+            assets=[position.asset for position in self.positions]
+        )
 
     @property
     def price(self) -> float:
-        return self.positions[0].quantity / self.positions[1].quantity
+        return self.positions[1].quantity / self.positions[0].quantity
+
+    @staticmethod
+    def poolName(assets: list) -> str:
+        return ", ".join([asset.name for asset in sorted(assets, key=lambda asset: asset.name)])
 
 
 class Exchange(Market):
     def __init__(self,
                  tvl_cap_usd: float,
                  asset_fee: float,
-                 assets: list = []
+                 assets: list,
+                 price_denominator: Asset
                  ):
 
-        super().__init__(assets)
+        super().__init__(assets, price_denominator=price_denominator)
 
         self._asset_pools_list = list()
         self._asset_pools_dict = dict()
@@ -146,28 +177,21 @@ class Exchange(Market):
             )
             self._asset_pools_list.append(new_pool)
             # maintain a reference to both name and index in _asset_pools_dict, for convenience
-            self._asset_pools_dict[set(position.asset for position in positions)] = new_pool
+            self._asset_pools_dict[new_pool.unique_id] = new_pool
 
-    def pool(self, *args) -> RiskAssetPool:
-        index = set(args)
+    def pool(self, assets: list) -> RiskAssetPool:
+        """ get the pool containing the specified assets """
+        index = RiskAssetPool.poolName(assets)
         return self._asset_pools_dict[index] if index in self._asset_pools_dict else None
 
     @property
     def pool_list(self) -> list:
         return self._asset_pools_list
 
-    # def set_initial_liquidity(self, asset: Asset, agent: Agent or None, quantity: float):
-    #     # (naively) add asset to pool
-    #     if not self.pool(asset):
-    #         self.add_pool(asset, quantity)
-    #     else:
-    #         delta_s = self.pool(asset).shares * quantity / self.pool(asset).assetQuantity \
-    #             if self.pool(asset).assetQuantity > 0 else quantity
-    #         self.pool(asset).shares += delta_s
-    #         if not agent:
-    #             self.pool(asset).sharesOwnedByProtocol += delta_s
-    #         self.pool(asset).assetQuantity += quantity
-    #         self.pool(asset).lrnaQuantity += quantity * asset.price / self.lrna.price
+    def add_liquidity(self, agent: Agent, pool: RiskAssetPool, quantity: float):
+
+        for position in pool.positions:
+            position.quantity += quantity
 
     def price(self, index: int or str):
         return self.pool(index).price
