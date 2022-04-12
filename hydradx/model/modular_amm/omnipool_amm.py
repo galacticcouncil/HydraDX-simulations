@@ -10,6 +10,10 @@ class OmnipoolRiskAssetPool(amm.RiskAssetPool):
         super().__init__(positions, weight_cap, unique_id=positions[0].name)
 
     @property
+    def name(self):
+        return self.positions[0].name
+
+    @property
     def lrnaQuantity(self):
         return self.positions[1].quantity
 
@@ -88,6 +92,26 @@ class OmniPool(amm.Exchange):
         self.lrnaImbalance = 0
         self.stableCoin = preferred_stablecoin
 
+    def __repr__(self):
+        return (
+            f'Omnipool\n'
+            f'tvl cap: {self.tvlCapUSD}\n'
+            f'lrna fee: {self.lrnaFee}\n'
+            f'asset fee: {self.assetFee}\n'
+            f'asset pools: (\n'
+        ) + ')\n(\n'.join(
+            [(
+                f'    {pool.name}\n'
+                f'    asset quantity: {pool.assetQuantity}\n'
+                f'    lrna quantity: {pool.lrnaQuantity}\n'
+                f'    price: {pool.price}\n'
+                f'    weight: {pool.totalValue}/{self.T_total} ({pool.totalValue / self.T_total})\n'
+                f'    weight cap: {pool.weightCap}\n'
+                f'    total shares: {pool.shares}\n'
+                f'    protocol shares: {pool.sharesOwnedByProtocol}\n'
+            ) for pool in self.pool_list]
+        ) + '\n)'
+
     def add_lrna_pool(self,
                       risk_asset: amm.Asset,
                       initial_quantity: float,
@@ -157,6 +181,7 @@ class OmniPool(amm.Exchange):
     def add_delta_T(self, index: int or str, value):
         self.pool(index).totalValue += value
 
+    @property
     def T_total(self):
         return sum([self.T(index) for index in self.asset_list])
 
@@ -178,7 +203,7 @@ class OmniPool(amm.Exchange):
 
     def algebraic_symbols(self):
         """ usage: P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = Omnipool.algebraic_symbols() """
-        return self.P, self.Q, self.R, self.S, self.T, self.L, self.lrnaFee, self.assetFee, self.Q_total, self.T_total()
+        return self.P, self.Q, self.R, self.S, self.T, self.L, self.lrnaFee, self.assetFee, self.Q_total, self.T_total
 
     # noinspection PyArgumentList
     def add_liquidity(self, agent: OmnipoolAgent, pool: OmnipoolRiskAssetPool, quantity: float):
@@ -188,8 +213,8 @@ class OmniPool(amm.Exchange):
         delta_r = quantity
 
         if agent.r(i) < delta_r:
-            print('Transaction rejected because agent has insufficient funds.')
-            print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
+            # print('Transaction rejected because agent has insufficient funds.')
+            # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
             return self
 
         # math
@@ -199,13 +224,14 @@ class OmniPool(amm.Exchange):
         delta_t = (Q(i) + delta_q) * R(U) / Q(U) - T(i)
 
         if T_total + delta_t > self.tvlCapUSD:
-            print('Transaction rejected because it would exceed allowable market cap.')
-            print(f'(asset {i}, agent {agent.name}), quantity {delta_r}')
+            # print('Transaction rejected because it would exceed allowable market cap.')
+            # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
             return self
 
         if (T(i) + delta_t) / T_total > self.pool(i).weightCap:
-            print('Transaction rejected because it would exceed pool weight cap.')
-            print(f'(asset {i}, agent {agent.name}), quantity {delta_r}')
+            # print('Transaction rejected because it would exceed pool weight cap.')
+            # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
+            # print(repr(self))
             return self
 
         self.add_delta_Q(i, delta_q)
@@ -213,10 +239,13 @@ class OmniPool(amm.Exchange):
         self.add_delta_S(i, delta_s)
         self.add_delta_L(delta_l)
 
-        agent.add_delta_s(i, delta_s)
+        # agent.add_delta_s(i, delta_s)
+        agent.add_position(self.pool(i).shareToken, delta_s)
         agent.add_delta_r(i, -delta_r)
         agent.set_p(i, self.price(i))
 
+        # print('Liquidity provision succeeded.')
+        # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
         return self
 
     # noinspection PyArgumentList
@@ -243,6 +272,8 @@ class OmniPool(amm.Exchange):
         agent.add_delta_r(i, -delta_Ri)
         agent.add_delta_r(j, -delta_Rj)
 
+        print('Asset swap succeeded.')
+        print(f'({i} -> {j}, agent {agent.name}, quantity {sell_quantity})')
         return self
 
 
@@ -254,13 +285,13 @@ def swap_assets(
         buy_index: int or str,
         trader_id: int,
         sell_quantity: float
-        ) -> tuple[amm.Exchange, list[OmnipoolAgent]]:
+        ) -> tuple[OmniPool, list[OmnipoolAgent]]:
 
     new_agents = copy.deepcopy(agents_list)
     new_state = copy.deepcopy(market_state).swap_assets(
         agent=agents_list[trader_id],
         sell_asset=market_state.asset(sell_index),
-        buy_index=market_state.asset(buy_index),
+        buy_asset=market_state.asset(buy_index),
         sell_quantity=sell_quantity
     )
 

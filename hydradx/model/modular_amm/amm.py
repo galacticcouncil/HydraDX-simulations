@@ -8,6 +8,10 @@ class Asset:
         self.index = Asset._ids
         Asset._ids += 1
 
+    @classmethod
+    def clear(cls):
+        cls._ids = 0
+
 
 class Market:
     def __init__(self, assets: list, price_denominator: Asset or None = None):
