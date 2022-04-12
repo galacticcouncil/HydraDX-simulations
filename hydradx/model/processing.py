@@ -84,7 +84,6 @@ def get_state_from_row(row) -> dict:
         'Q': [0] * row['n'],
         'R': [0] * row['n'],
         'A': [0] * row['n'],
-        'D': row['D'],
         'S': [0] * row['n'],
         'B': [0] * row['n'],
         'L': row['L']
