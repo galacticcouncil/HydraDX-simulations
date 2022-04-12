@@ -154,6 +154,10 @@ def swap_lrna(
 ) -> tuple:
     """Compute new state after LRNA swap"""
 
+    if delta_Ra >= old_state['R'][i] * (1 - fee_assets):
+        # insufficient assets in pool, transaction fails
+        return old_state, old_agents
+
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
