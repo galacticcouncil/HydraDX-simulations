@@ -32,7 +32,7 @@ def get_state_from_strat(x, key_list):
 
 # States with R, Q lists
 QiRi_strat = get_tkn_ct_strat(2)
-QR_strat = st.lists(QiRi_strat, min_size=2, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R']))
+QR_strat = st.lists(QiRi_strat, min_size=3, max_size=5).map(lambda x: get_state_from_strat(x, ['Q', 'R']))
 
 @given(QR_strat)
 def test_swap(old_state) -> tuple:
@@ -40,7 +40,7 @@ def test_swap(old_state) -> tuple:
     old_state['token_list'] = ['DOT', 'DAI', 'HDX']
     old_state['fee_assets'] = 0
     old_state['fee_LRNA'] = 0
-    old_state['D'] = 0
+    old_state['L'] = 0
 
     trader_id = 'trader'
     LP_id = 'LP'
