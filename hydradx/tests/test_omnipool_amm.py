@@ -181,11 +181,9 @@ def test_add_risk_liquidity(initial_state):
     old_agents[LP_id]['r'][i] = max_amount * 2
 
     new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount + 1, i)
-    if not (new_state, new_agents) == (old_state, old_agents):
-        raise ValueError(f'illegal transaction passed against weight limit in {i}')
+    assert new_state['R'][i] == old_state['R'][i], f'illegal transaction passed against weight limit in {i}'
     new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount - 1, i)
-    if not (new_state, new_agents) != (old_state, old_agents):
-        raise ValueError(f'legal transaction failed against weight limit in {i}')
+    assert new_state['R'][i] != old_state['R'][i], f'legal transaction failed against weight limit in {i}'
 
 
 @given(QR_strat)
