@@ -36,7 +36,7 @@ QR_strat = st.lists(QiRi_strat, min_size=3, max_size=5).map(lambda x: get_state_
 
 @given(QR_strat)
 def test_swap(old_state) -> tuple:
-    n = len(old_state['R'])
+    token_count = len(old_state['R'])
     old_state['token_list'] = ['DOT', 'DAI', 'HDX']
     old_state['fee_assets'] = 0
     old_state['fee_LRNA'] = 0
@@ -46,14 +46,14 @@ def test_swap(old_state) -> tuple:
     LP_id = 'LP'
     old_agents = {
         trader_id: {
-            'r': [10000] * n,
+            'r': [10000] * token_count,
             'q': 10000,
-            's': [0] * n
+            's': [0] * token_count
         },
         LP_id: {
-            'r': [0] * n,
+            'r': [0] * token_count,
             'q': 0,
-            's': [900] * n
+            's': [900] * token_count
         }
     }
 

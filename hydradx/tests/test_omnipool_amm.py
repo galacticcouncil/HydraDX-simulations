@@ -47,7 +47,7 @@ Q_strat = st.lists(tkn_ct_strat, min_size=1, max_size=5).map(lambda x: get_state
 # Indexes
 i_strat = st.integers(min_value=0)
 
-RQBSHD_strat = get_tkn_ct_strat(6).map(lambda x: get_state_from_strat(x, ['R', 'Q', 'B', 'S', 'H']))
+RQBSH_strat = get_tkn_ct_strat(6).map(lambda x: get_state_from_strat(x, ['R', 'Q', 'B', 'S', 'H']))
 
 
 # Tests over input space of Q, R, delta_TKN, i
@@ -123,13 +123,13 @@ def test_QR_strat(d):
 
 @given(QR_strat)
 def test_add_risk_liquidity(initial_state):
-    nof_tokens = len(initial_state['R'])
+    token_count = len(initial_state['R'])
     old_state = oamm.state_dict(
-        token_list=['HDX', 'USD'] + ['token'] * (nof_tokens-2),
+        token_list=['HDX', 'USD'] + ['token'] * (token_count-2),
         r_values=initial_state['R'],
-        s_values=[1500000] * nof_tokens,
-        p_values=[oamm.price_i(initial_state, j) for j in range(nof_tokens)],
-        omega_values=[0.5] * nof_tokens
+        s_values=[1500000] * token_count,
+        p_values=[oamm.price_i(initial_state, j) for j in range(token_count)],
+        omega_values=[0.5] * token_count
     )
 
     LP_id = 'LP'
@@ -169,13 +169,13 @@ def test_add_risk_liquidity(initial_state):
 
     # check enforcement of per-asset weight limit
     total_Q = sum(old_state['Q'])
-    for i in range(nof_tokens):
-        old_state['Q'][i] = total_Q / nof_tokens
-        old_state['R'][i] = total_Q / nof_tokens
-        old_state['T'][i] = total_Q / nof_tokens
+    for i in range(token_count):
+        old_state['Q'][i] = total_Q / token_count
+        old_state['R'][i] = total_Q / token_count
+        old_state['T'][i] = total_Q / token_count
     i = 0
     asset_price = old_state['R'][i] / old_state['Q'][i]
-    max_amount = (old_state['O'][i] - 1 / nof_tokens) / old_state['O'][i] * total_Q * asset_price
+    max_amount = (old_state['O'][i] - 1 / token_count) / old_state['O'][i] * total_Q * asset_price
     # make sure checks other than weight limit will pass
     old_state['C'] = total_Q * 2
     old_agents[LP_id]['r'][i] = max_amount * 2
@@ -188,23 +188,22 @@ def test_add_risk_liquidity(initial_state):
 
 @given(QR_strat)
 def test_remove_risk_liquidity(initial_state):
-    n = len(initial_state['R'])
-    n = len(initial_state['R'])
+    token_count = len(initial_state['R'])
     old_state = oamm.state_dict(
-        token_list=['HDX', 'USD'] + ['token'] * (n-2),
+        token_list=['HDX', 'USD'] + ['token'] * (token_count-2),
         r_values=initial_state['R'],
-        s_values=[1500000] * n,
-        p_values=[oamm.price_i(initial_state, j) for j in range(n)],
-        b_values=[0] * n
+        s_values=[1500000] * token_count,
+        p_values=[oamm.price_i(initial_state, j) for j in range(token_count)],
+        b_values=[0] * token_count
     )
 
     LP_id = 'LP'
     p_init = 1
     old_agents = {
         LP_id: {
-            'r': [0] * n,
-            's': [1000] * n,
-            'p': [p_init] * n,
+            'r': [0] * token_count,
+            's': [1000] * token_count,
+            'p': [p_init] * token_count,
             'q': 0
         }
     }
@@ -231,24 +230,24 @@ fee_strat = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_in
 
 @given(QR_strat, fee_strat)
 def test_swap_lrna(initial_state, fee):
-    n = len(initial_state['R'])
+    token_count = len(initial_state['R'])
     old_state = oamm.state_dict(
         q_values=initial_state['Q'],
         r_values=initial_state['R'],
-        token_list=['HDX', 'USD'] + ['?'] * (n - 2),
+        token_list=['HDX', 'USD'] + ['?'] * (token_count - 2),
     )
     trader_id = 'trader'
     LP_id = 'lp'
     old_agents = {
         trader_id: {
-            'r': [1000] * n,
+            'r': [1000] * token_count,
             'q': 1000,
-            's': [0] * n
+            's': [0] * token_count
         },
         LP_id: {
-            'r': [0] * n,
+            'r': [0] * token_count,
             'q': 0,
-            's': [900] * n
+            's': [900] * token_count
         }
     }
     delta_Ra = 1000
@@ -275,13 +274,13 @@ def test_swap_lrna(initial_state, fee):
 @given(QR_strat, fee_strat, fee_strat)
 def test_swap_assets(initial_state, fee_lrna, fee_assets):
 
-    n = len(initial_state['R'])
+    token_count = len(initial_state['R'])
     old_state = oamm.state_dict(
         r_values=initial_state['R'],
-        p_values=[1]*n,
-        s_values=[1000] * n,
-        b_values=[100] * n,
-        token_list=['HDX', 'USD'] + ['?'] * (n-2),
+        p_values=[1]*token_count,
+        s_values=[1000] * token_count,
+        b_values=[100] * token_count,
+        token_list=['HDX', 'USD'] + ['?'] * (token_count-2),
         preferred_stablecoin='USD',
         fee_assets=fee_assets,
         fee_lrna=fee_lrna
@@ -292,14 +291,14 @@ def test_swap_assets(initial_state, fee_lrna, fee_assets):
 
     old_agents = {
         trader_id: {
-            'r': [10000] * n,
+            'r': [10000] * token_count,
             'q': 10000,
-            's': [0] * n
+            's': [0] * token_count
         },
         LP_id: {
-            'r': [0] * n,
+            'r': [0] * token_count,
             'q': 0,
-            's': [900] * n
+            's': [900] * token_count
         }
     }
     delta_R = 1000
