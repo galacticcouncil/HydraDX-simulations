@@ -8,6 +8,7 @@ import ipdb
 def complete_initial_values(values: dict, agent_d: dict = None) -> dict:
     state = amm.initialize_state(values, values['token_list'], agent_d)
     state['token_list'] = values['token_list']
+    state['L'] = values['L'] if 'L' in values else 0
     state['fee_assets'] = values['fee_assets']
     state['fee_LRNA'] = values['fee_LRNA']
     if 'burn_rate' in values:

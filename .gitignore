@@ -7,3 +7,4 @@
 *-checkpoint.ipynb
 /venv/
 /.idea/
+/hydradx/tests/.hypothesis/
