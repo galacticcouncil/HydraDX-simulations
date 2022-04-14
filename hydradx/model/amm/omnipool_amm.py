@@ -18,7 +18,7 @@ def state_dict(
         preferred_stablecoin: str = 'USD'
 ) -> dict:
     assert 'HDX' in token_list, 'HDX not included in token list'
-    assert len(r_values) == len(token_list), 'list lengths do not match'
+    assert len(r_values) == len(token_list), 'lengths of token_list and r_values do not match'
     # get initial value of T (total value locked)
 
     if not omega_values:
@@ -27,7 +27,7 @@ def state_dict(
     if not q_values:
         q_values = [r_values[i] * p_values[i] for i in range(len(token_list))]
     elif not p_values:
-        p_values = [r_values[i] / q_values[i] for i in range(len(token_list))]
+        p_values = [q_values[i] / r_values[i] for i in range(len(token_list))]
     else:
         assert False, 'Either LRNA quantities per pool or assets prices in LRNA must be specified.'
 
@@ -35,7 +35,7 @@ def state_dict(
         b_values = [0] * len(token_list)
 
     if not s_values:
-        s_values = [0] * len(token_list)
+        s_values = copy.copy(r_values)
 
     stablecoin_index = token_list.index(preferred_stablecoin)
     t_values = [
@@ -190,55 +190,6 @@ def swap_lrna(
 
     return new_state, new_agents
 
-    # if delta_Q == 0 and delta_R != 0:
-    #     delta_Q = swap_lrna_delta_Qi(old_state, delta_R, i)
-    # elif delta_R == 0 and delta_Q != 0:
-    #     delta_R = swap_lrna_delta_Ri(old_state, delta_Q, i)
-    # else:
-    #     return new_state, new_agents
-    #
-    # # Token amounts update
-    # if delta_Q < 0:
-    #     new_state['R'][i] += delta_R
-    #     new_state['Q'][i] += delta_Q
-    #     new_agents[trader_id]['r'][i] -= delta_R
-    #     new_agents[trader_id]['q'] -= delta_Q
-    #
-    # else:
-    #     new_state['R'][i] += delta_R
-    #     new_state['Q'][i] = (old_state['Q'][i] + delta_Q) / (old_state['R'][i] + delta_R) * new_state['R'][i]
-    #     new_agents[trader_id]['r'][i] -= delta_R
-    #     new_agents[trader_id]['q'] -= delta_Q
-
-# def swap_lrna_fee(
-#         old_state: dict,
-#         old_agents: dict,
-#         trader_id: string,
-#         delta_R: float,
-#         delta_Q: float,
-#         i: int,
-#         fee_assets: float = 0,
-#         fee_lrna: float = 0
-# ) -> tuple:
-#     """Computed new state for LRNA swap with fee"""
-#     new_state, new_agents = swap_lrna(old_state, old_agents, trader_id, delta_R, delta_Q, i)
-#     delta_Q = new_state['Q'][i] - old_state['Q'][i]
-#     if delta_Q < 0:
-#         # LRNA fee
-#         new_agents[trader_id]['q'] += delta_Q * fee_lrna
-#         new_state['D'] -= delta_Q * fee_lrna
-#     else:
-#         delta_R = new_state['R'][i] - old_state['R'][i]  # delta_R is negative
-#         # asset fee
-#         new_agents[trader_id]['r'][i] += delta_R * fee_assets
-#         # fee added back as liquidity, distributed to existing LPs (i.e. no new shares minted)
-#         # eventually, can mint protocol shares to take some cut as POL
-#         p = price_i(new_state, i)
-#         new_state['R'][i] -= delta_R * fee_assets
-#         # LRNA minted so that asset fee level does not change price and increase IL
-#         new_state['Q'][i] = p * new_state['R'][i]
-#     return new_state, new_agents
-
 
 def swap_assets_direct(
         old_state: dict,
@@ -288,22 +239,8 @@ def swap_assets(
         fee_lrna: float = 0
 ) -> tuple:
     if trade_type == 'sell':
-        # swap asset in for LRNA
-        # first_state, first_agents = \
-        #     swap_lrna(old_state, old_agents, trader_id, delta_token, 0, i_sell, fee_assets, fee_lrna)
-        # delta_q = first_agents[trader_id]['q'] - old_agents[trader_id]['q']
-        # # swap LRNA back in for second asset
-        # new_state, new_agents = swap_lrna(first_state, first_agents, trader_id, 0, delta_q, i_buy, fee_assets, fee_lrna)
-        #
-        # delta_Qi = new_state['Q'][i_sell] - old_state['Q'][i_sell]
-        # delta_Qj = new_state['Q'][i_buy] - old_state['Q'][i_buy]
-        # delta_L = min(-delta_Qi * fee_lrna, -old_state['L'])
-        # new_state['L'] += delta_L
-        #
-        # delta_QH = -fee_lrna * delta_Qi - delta_L
-        # new_state['R'][new_state['token_list'].index('HDX')] += delta_QH
 
-        alternative_state, alternative_agents = swap_assets_direct(
+        new_state, new_agents = swap_assets_direct(
             old_state=old_state,
             old_agents=old_agents,
             trader_id=trader_id,
@@ -314,10 +251,7 @@ def swap_assets(
             fee_lrna=fee_lrna
         )
 
-        # if alternative_state['Q'][i_sell] != new_state['Q'][i_sell]:
-        #     er = 1
-
-        return alternative_state, alternative_agents
+        return new_state, new_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
         delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
