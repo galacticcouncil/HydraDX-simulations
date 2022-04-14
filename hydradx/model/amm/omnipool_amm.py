@@ -175,6 +175,13 @@ def swap_lrna(
         # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
         return old_state, old_agents
 
+    if delta_Qa + old_agents[trader_id]['q'] < 0:
+        # agent doesn't have enough lrna
+        return old_state, old_agents
+    elif delta_Ra + old_agents[trader_id]['r'][i] < 0:
+        # agent doesn't have enough asset[i]
+        return old_state, old_agents
+
     new_agents[trader_id]['q'] += delta_Qa
     new_agents[trader_id]['r'][i] += delta_Ra
     new_state['Q'][i] += delta_Q
