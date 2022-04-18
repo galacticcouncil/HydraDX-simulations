@@ -141,7 +141,7 @@ class RiskAssetPool:
         self.weightCap = weight_cap
         self.shares = self.positions[0].quantity
         self.sharesOwnedByProtocol = self.shares
-        self.totalValue = sum([position.quantity * position.ratio for position in positions])
+        self.totalValue = sum([position.quantity * position.price for position in positions])
         self.unique_id = unique_id
 
         self.shareToken = ShareToken(
