@@ -1,11 +1,13 @@
 import pytest
 from hypothesis import given, strategies as st, assume
 from hydradx.model.modular_amm.omnipool_amm import *
+from hydradx.model.modular_amm.amm import Market
 import random
 
 
 def test_market_construction():
     # noinspection SpellCheckingInspection
+    lrna = amm.Asset(name='LRNA', price=0.5)
     hdx = amm.Asset(name='HDX', price=0.08)
     usd = amm.Asset(name='USD', price=1)
     doge = amm.Asset(name='DOGE', price=0.001)
@@ -15,9 +17,9 @@ def test_market_construction():
         tvl_cap_usd=1000000,
         lrna_fee=0.001,
         asset_fee=0.002,
-        asset_list=[hdx, usd, doge, eth],
-        preferred_stablecoin=usd
-    )
+        preferred_stablecoin='USD'
+    ).initializeAssetList([lrna, hdx, usd, doge, eth])
+
     omnipool.add_lrna_pool(eth, 10)
     omnipool.add_lrna_pool(usd, 100)
     omnipool.add_lrna_pool(hdx, 1000)
@@ -25,55 +27,56 @@ def test_market_construction():
 
     agents = [
         OmnipoolAgent(name='LP')
-            .add_liquidity(omnipool, doge, 1000)
-            .add_liquidity(omnipool, hdx, 1000),
+        .add_liquidity(omnipool, doge, 1000)
+        .add_liquidity(omnipool, hdx, 1000),
         OmnipoolAgent(name='trader')
-            .add_position(usd, 1000)
-            .add_position(eth, 1000),
+        .add_position(usd, 1000)
+        .add_position(eth, 1000),
         OmnipoolAgent(name='arbitrager')
-            .add_position(usd, 1000)
-            .add_position(hdx, 1000)
+        .add_position(usd, 1000)
+        .add_position(hdx, 1000)
     ]
 
-    assert omnipool.pool(2) == omnipool.pool(doge) == omnipool.pool('DOGE')
     assert omnipool.B('HDX') == pytest.approx(1 / 2 * omnipool.S('HDX'))
     assert agents[2].r('USD') == 1000
     assert agents[0].s(doge) == 1000
-    assert omnipool.Q(2) == omnipool.R(2) * omnipool.price(2)
+    assert omnipool.Q(doge) == omnipool.R(doge) * omnipool.ratio(doge) / omnipool.ratio(lrna)
 
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=1000)
-asset_number_strategy = st.integers(min_value=3, max_value=6)
+asset_number_strategy = st.integers(min_value=3, max_value=5)
 asset_quantity_strategy = st.floats(min_value=1, max_value=1000)
 
 
 @st.composite
 def assets_config(draw) -> list[amm.Asset]:
-    nof_assets = draw(asset_number_strategy)
+    asset_count = draw(asset_number_strategy)
     amm.Asset.clear()
     return [
+               amm.Asset('LRNA', draw(asset_price_strategy)),
                amm.Asset('HDX', draw(asset_price_strategy)),
                amm.Asset('USD', 1)
            ] + [
                amm.Asset(
                    name=''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)),
                    price=draw(asset_price_strategy))
-               for _ in range(nof_assets - 2)
+               for _ in range(asset_count - 3)
            ]
 
 
 @st.composite
 def omnipool_config(draw, asset_list=None, lrna_fee=None, asset_fee=None, tvl_cap_usd=0):
     asset_list = asset_list or draw(assets_config())
+    Market.reset()
     omnipool = OmniPool(
         lrna_fee=lrna_fee or draw(st.floats(min_value=0, max_value=0.1)),
         asset_fee=asset_fee or draw(st.floats(min_value=0, max_value=0.1)),
         preferred_stablecoin=asset_list[1],
         tvl_cap_usd=tvl_cap_usd or 1000000,
-        asset_list=asset_list
-    )
+    ).initializeAssetList(asset_list)
     for asset in asset_list:
-        omnipool.add_lrna_pool(asset, draw(asset_quantity_strategy), )
+        if asset != omnipool.lrna:
+            omnipool.add_lrna_pool(asset, draw(asset_quantity_strategy))
 
     return omnipool
 
@@ -83,21 +86,23 @@ def omnipool_config(draw, asset_list=None, lrna_fee=None, asset_fee=None, tvl_ca
        sell_index=st.integers(min_value=1, max_value=5),
        delta_r=asset_quantity_strategy)
 def test_swap_asset(market_state, buy_index, sell_index, delta_r):
-    assume(sell_index < len(market_state.asset_list))
-    assume(buy_index < len(market_state.asset_list))
+    assume(sell_index < len(market_state.pool_list))
+    assume(buy_index < len(market_state.pool_list))
+    sell_asset = market_state.pool_list[sell_index].asset
+    buy_asset = market_state.pool_list[buy_index].asset
     assume(buy_index != sell_index)
     old_state = market_state
     old_agents = [
         OmnipoolAgent('trader')
-            .add_position(old_state.asset(buy_index), 0)
-            .add_position(old_state.asset(sell_index), 1000000)
+        .add_position(buy_asset, 0)
+        .add_position(sell_asset, 1000000)
     ]
     new_state, new_agents = swap_assets(old_state, old_agents, sell_index, buy_index, trader_id=0,
                                         sell_quantity=delta_r)
 
     # do some algebraic checks
-    i = sell_index
-    j = buy_index
+    i = sell_asset.index
+    j = buy_asset.index
     delta_L = new_state.L - old_state.L
     delta_Qj = new_state.Q(j) - old_state.Q(j)
     delta_Qi = new_state.Q(i) - old_state.Q(i)
@@ -110,17 +115,23 @@ def test_swap_asset(market_state, buy_index, sell_index, delta_r):
 
 
 @given(market_state=omnipool_config(tvl_cap_usd=5000000),
-       asset_index=st.integers(min_value=0, max_value=5),
+       pool_index=st.integers(min_value=1, max_value=5),
        quantity=asset_quantity_strategy)
-def test_add_liquidity(market_state, asset_index, quantity):
-    assume(asset_index < len(market_state.asset_list))
+def test_add_liquidity(market_state, pool_index, quantity):
+    assume(pool_index < len(market_state.pool_list))
+    asset_index = market_state.pool_list[pool_index].name
     old_state = market_state
     old_agents = [
         OmnipoolAgent(name='LP')
         .add_position(old_state.asset(asset_index), 10000000)
     ]
-    new_state, new_agents = add_liquidity(old_state, old_agents, agent_index=0, asset_index=asset_index,
-                                          delta_r=quantity)
+    new_state, new_agents = add_liquidity(
+        old_state,
+        old_agents,
+        agent_index=0,
+        asset_name=asset_index,
+        delta_r=quantity
+    )
 
     i = asset_index
     if pytest.approx(old_state.R(i) / old_state.S(i)) != new_state.R(i) / new_state.S(i):
