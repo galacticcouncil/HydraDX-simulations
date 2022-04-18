@@ -146,6 +146,36 @@ def test_add_liquidity(market_state, pool_index, quantity):
         raise ValueError("Target price has changed.")
 
 
+@given(market_state=omnipool_config(tvl_cap_usd=5000000),
+       pool_index=st.integers(min_value=1, max_value=5),
+       quantity=asset_quantity_strategy)
+def test_remove_liquidity(market_state, pool_index, quantity):
+    assume(pool_index < len(market_state.pool_list))
+    asset_index = market_state.pool_list[pool_index].name
+    old_state = market_state
+    old_agents = [
+        OmnipoolAgent(name='LP')
+        .add_liquidity(old_state, asset_index, 1000000)
+    ]
+    new_state, new_agents = add_liquidity(
+        old_state,
+        old_agents,
+        agent_index=0,
+        asset_name=asset_index,
+        delta_r=quantity
+    )
+    i = asset_index
+    if pytest.approx(old_state.R(i) / old_state.S(i)) != new_state.R(i) / new_state.S(i):
+        raise ValueError("Incorrect ratio of assets to shares.")
+
+    elif pytest.approx(old_state.Q(i) / old_state.R(i)) != new_state.Q(i) / new_state.R(i):
+        raise ValueError("Asset price should not change when liquidity is added.")
+
+    elif pytest.approx(old_state.Q(i) / old_state.R(i) * (old_state.Q_total + old_state.L) / old_state.Q_total) != \
+            new_state.Q(i) / new_state.R(i) * (new_state.Q_total + new_state.L) / new_state.Q_total:
+        raise ValueError("Target price has changed.")
+
+
 if __name__ == "__main__":
     test_market_construction()
     test_add_liquidity()
