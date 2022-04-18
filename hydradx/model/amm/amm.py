@@ -65,7 +65,7 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
         raise
 
     if i_buy < 0 or i_sell < 0:
-        return oamm.swap_lrna_fee(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
+        return oamm.swap_lrna(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
                                   old_state['fee_assets'],
                                   old_state['fee_LRNA'])
     elif trade_type == 'sell':
@@ -117,7 +117,7 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
 
     for i in range(n):
         transaction = {
-            'token_remove': 'R' + str(i + 1),
+            'token_remove': new_state['token_list'][i],
             'agent_id': agent_id,
             'shares_remove': -agent_d['s'][i]
         }
