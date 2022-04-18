@@ -40,17 +40,17 @@ def test_market_construction():
     assert omnipool.B('HDX') == pytest.approx(1 / 2 * omnipool.S('HDX'))
     assert agents[2].r('USD') == 1000
     assert agents[0].s(doge) == 1000
-    assert omnipool.Q(doge) == omnipool.R(doge) * omnipool.ratio(doge) / omnipool.ratio(lrna)
+    assert omnipool.Q(doge) == omnipool.R(doge) * omnipool.price(doge) / omnipool.price(lrna)
 
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
-asset_quantity_strategy = st.floats(min_value=1, max_value=1000)
+asset_quantity_strategy = st.floats(min_value=1, max_value=1000000)
 
 
 @st.composite
-def assets_config(draw) -> list[amm.Asset]:
-    asset_count = draw(asset_number_strategy)
+def assets_config(draw, asset_count: int = 0) -> list[amm.Asset]:
+    asset_count = asset_count or draw(asset_number_strategy)
     amm.Asset.clear()
     return [
                amm.Asset('LRNA', draw(asset_price_strategy)),
@@ -65,8 +65,8 @@ def assets_config(draw) -> list[amm.Asset]:
 
 
 @st.composite
-def omnipool_config(draw, asset_list=None, lrna_fee=None, asset_fee=None, tvl_cap_usd=0):
-    asset_list = asset_list or draw(assets_config())
+def omnipool_config(draw, asset_list=None, asset_count=0, lrna_fee=None, asset_fee=None, tvl_cap_usd=0):
+    asset_list = asset_list or draw(assets_config(asset_count))
     Market.reset()
     omnipool = OmniPool(
         lrna_fee=lrna_fee or draw(st.floats(min_value=0, max_value=0.1)),
@@ -81,7 +81,7 @@ def omnipool_config(draw, asset_list=None, lrna_fee=None, asset_fee=None, tvl_ca
     return omnipool
 
 
-@given(market_state=omnipool_config(),
+@given(market_state=omnipool_config(asset_count=6),
        buy_index=st.integers(min_value=1, max_value=5),
        sell_index=st.integers(min_value=1, max_value=5),
        delta_r=asset_quantity_strategy)
@@ -97,12 +97,12 @@ def test_swap_asset(market_state, buy_index, sell_index, delta_r):
         .add_position(buy_asset, 0)
         .add_position(sell_asset, 1000000)
     ]
-    new_state, new_agents = swap_assets(old_state, old_agents, sell_index, buy_index, trader_id=0,
+    new_state, new_agents = swap_assets(old_state, old_agents, sell_asset, buy_asset, trader_id=0,
                                         sell_quantity=delta_r)
 
     # do some algebraic checks
-    i = sell_asset.index
-    j = buy_asset.index
+    i = sell_asset.name
+    j = buy_asset.name
     delta_L = new_state.L - old_state.L
     delta_Qj = new_state.Q(j) - old_state.Q(j)
     delta_Qi = new_state.Q(i) - old_state.Q(i)
@@ -176,7 +176,38 @@ def test_remove_liquidity(market_state, pool_index, quantity):
         raise ValueError("Target price has changed.")
 
 
+@given(market_state=omnipool_config(asset_count=4))
+def test_buy_lrna(market_state: OmniPool):
+    asset_name = market_state.pool_list[2].name
+    agents = [
+        OmnipoolAgent(name='trader')
+        .add_position(asset_name='LRNA', quantity=1000000)
+    ]
+    old_state, old_agents = market_state, agents
+    buy_state, buy_agents = sell_lrna(
+        market_state=old_state,
+        agents_list=agents,
+        agent_index=0,
+        asset_name=asset_name,
+        buy_asset_quantity=1000
+    )
+    delta_q = buy_state.Q(asset_name) - old_state.Q(asset_name)
+    if delta_q > 0:
+        sell_state, sell_agents = sell_lrna(
+            market_state=old_state,
+            agents_list=agents,
+            agent_index=0,
+            asset_name=asset_name,
+            sell_lrna_quantity=-delta_q
+        )
+        assert sell_agents[0].q == pytest.approx(buy_agents[0].q)
+        assert sell_agents[0].r(asset_name) == pytest.approx(buy_agents[0].r(asset_name))
+        assert sell_state.Q(asset_name) == pytest.approx(buy_state.Q(asset_name))
+        assert sell_state.R(asset_name) == pytest.approx(buy_state.R(asset_name))
+
+
 if __name__ == "__main__":
     test_market_construction()
     test_add_liquidity()
     test_swap_asset()
+    test_buy_lrna()
