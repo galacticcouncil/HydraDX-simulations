@@ -60,7 +60,7 @@ class OmnipoolAgent(amm.Agent):
 
     def add_delta_r(self, asset_name: str, value: float):
         """ add value to agent's holding in asset """
-        self.position(asset_name).quantity += value
+        self.add_position(asset_name, value)
 
     def add_delta_s(self, asset_name: str, value: float):
         """ change quantity of shares in pool[index] owned by the agent """
@@ -284,8 +284,8 @@ class OmniPool(amm.Exchange):
         agent.add_delta_r(i, -delta_Ri)
         agent.add_delta_r(j, -delta_Rj)
 
-        print('Asset swap succeeded.')
-        print(f'({i} -> {j}, agent {agent.name}, quantity {sell_quantity})')
+        # print('Asset swap succeeded.')
+        # print(f'({i} -> {j}, agent {agent.name}, quantity {sell_quantity})')
         return self
 
     # noinspection PyArgumentList
@@ -316,6 +316,60 @@ class OmniPool(amm.Exchange):
         agent.add_delta_q(
             -pool.ratio * (2 * pool.ratio / (pool.ratio + agent.p(i)) * delta_sa / S(i) - delta_r)
         )
+        return self
+
+    # noinspection PyArgumentList
+    def sell_lrna(self,
+                  agent: OmnipoolAgent,
+                  asset_name: str,
+                  buy_asset_quantity: float,
+                  sell_lrna_quantity: float
+                  ):
+        delta_qa = sell_lrna_quantity
+        delta_ra = buy_asset_quantity
+        i = asset_name
+        P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = self.algebraic_symbols()
+
+        if delta_qa < 0:
+            # transaction specified in terms of LRNA sold
+            delta_qi = -delta_qa
+            delta_ri = R(i) * -delta_qi / (Q(i) + delta_qi) * (1 - Fa)
+            delta_ra = -delta_ri
+        elif delta_ra > 0:
+            # transaction specified in terms of asset bought
+            delta_ri = -delta_ra
+            delta_qi = Q(i) * -delta_ri / (R(i) * (1 - Fa) + delta_ri)
+            delta_qa = -delta_qi
+        else:
+            raise ValueError(
+                f'Invalid transaction (asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})'
+            )
+
+        delta_l = delta_qi * (1 + (1 - Fa) * Q(i) / (Q(i) + delta_qi))
+
+        if delta_ri + R(i) < 0:
+            # print("LRNA sell failed: there is not enough asset in the pool.")
+            # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
+            return self
+
+        if delta_qi < 0:
+            raise ValueError("Buying LRNA is not currently allowed.")
+
+        if delta_qa + agent.q < 0:
+            # print("Agent has insufficient LRNA to complete transaction.")
+            # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
+            return self
+
+        self.add_delta_Q(i, delta_qi)
+        self.add_delta_R(i, delta_ri)
+        self.add_delta_L(delta_l)
+
+        agent.add_delta_r(i, delta_ra)
+        agent.add_delta_q(delta_qa)
+
+        # print("Lrna sold for asset.")
+        # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
+
         return self
 
 
@@ -376,6 +430,23 @@ def remove_liquidity(market_state: OmniPool,
         quantity=delta_r
     )
 
+    return new_state, new_agents
+
+
+def sell_lrna(market_state: OmniPool,
+              agents_list: list[OmnipoolAgent],
+              agent_index: int,
+              asset_name: str,
+              buy_asset_quantity: float=0,
+              sell_lrna_quantity: float=0
+              ) -> tuple[OmniPool, list[OmnipoolAgent]]:
+    new_agents = copy.deepcopy(agents_list)
+    new_state = copy.deepcopy(market_state).sell_lrna(
+        agent=new_agents[agent_index],
+        asset_name=asset_name,
+        buy_asset_quantity=buy_asset_quantity,
+        sell_lrna_quantity=sell_lrna_quantity
+    )
     return new_state, new_agents
 
 # def add_asset(
