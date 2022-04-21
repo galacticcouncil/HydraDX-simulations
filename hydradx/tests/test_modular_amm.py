@@ -29,7 +29,7 @@ def test_market_construction():
         OmnipoolAgent(name='LP')
         .add_liquidity(omnipool, 'DOGE', 1000)
         .add_liquidity(omnipool, 'HDX', 1000),
-        OmnipoolAgent(name='trader', trade_strategy=random_swaps)
+        OmnipoolAgent(name='trader')
         .add_position('USD', 1000)
         .add_position(eth, 1000),
         OmnipoolAgent(name='arbitrager')
@@ -93,7 +93,7 @@ def test_swap_asset(market_state, buy_index, sell_index, delta_r):
     assume(buy_index != sell_index)
     old_state = market_state
     old_agents = [
-        OmnipoolAgent('trader', trade_strategy=amm.random_swaps)
+        OmnipoolAgent('trader')
         .add_position(buy_asset, 0)
         .add_position(sell_asset, 1000000)
     ]
