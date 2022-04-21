@@ -27,13 +27,13 @@ def test_market_construction():
 
     agents = [
         OmnipoolAgent(name='LP')
-        .add_liquidity(omnipool, doge, 1000)
-        .add_liquidity(omnipool, hdx, 1000),
-        OmnipoolAgent(name='trader')
-        .add_position(usd, 1000)
+        .add_liquidity(omnipool, 'DOGE', 1000)
+        .add_liquidity(omnipool, 'HDX', 1000),
+        OmnipoolAgent(name='trader', trade_strategy=random_swaps)
+        .add_position('USD', 1000)
         .add_position(eth, 1000),
         OmnipoolAgent(name='arbitrager')
-        .add_position(usd, 1000)
+        .add_position('USD', 1000)
         .add_position(hdx, 1000)
     ]
 
@@ -93,12 +93,11 @@ def test_swap_asset(market_state, buy_index, sell_index, delta_r):
     assume(buy_index != sell_index)
     old_state = market_state
     old_agents = [
-        OmnipoolAgent('trader')
+        OmnipoolAgent('trader', trade_strategy=amm.random_swaps)
         .add_position(buy_asset, 0)
         .add_position(sell_asset, 1000000)
     ]
-    new_state, new_agents = swap_assets(old_state, old_agents, sell_asset, buy_asset, trader_id=0,
-                                        sell_quantity=delta_r)
+    new_state, new_agents = swap_assets(old_state, old_agents, sell_asset, buy_asset, trader_id=0, sell_quantity=delta_r)
 
     # do some algebraic checks
     i = sell_asset.name
@@ -204,6 +203,21 @@ def test_buy_lrna(market_state: OmniPool):
         assert sell_agents[0].r(asset_name) == pytest.approx(buy_agents[0].r(asset_name))
         assert sell_state.Q(asset_name) == pytest.approx(buy_state.Q(asset_name))
         assert sell_state.R(asset_name) == pytest.approx(buy_state.R(asset_name))
+
+
+@given(market_state=omnipool_config(asset_count=4))
+def test_trade_strategies(market_state: OmniPool):
+    agents = [
+        OmnipoolAgent(
+            name='trader',
+            trade_strategy=OmnipoolTradeStrategies.random_swaps
+        )
+        .add_position(asset_name=market_state.pool_list[1].assetName, quantity=1000)
+        .add_position(asset_name=market_state.pool_list[2].assetName, quantity=1000)
+    ]
+    for _ in range(10):
+        for agent in agents:
+            agent.tradeStrategy.execute(agent, market_state)
 
 
 if __name__ == "__main__":
