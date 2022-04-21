@@ -1,3 +1,8 @@
+import copy
+import typing
+import random
+
+
 class Asset:
     _ids = 0
 
@@ -64,10 +69,12 @@ class Position:
 
     @property
     def asset(self):
+        """ A reference to the asset object. """
         return self._asset
 
     @property
     def assetName(self):
+        """ The name of the asset. """
         return self._asset.name
 
     @property
@@ -75,10 +82,19 @@ class Position:
         return self.asset.index
 
 
+class TradeStrategy:
+    def __init__(self, strategy_function: typing.Callable):
+        self.function = strategy_function
+
+    def execute(self, agent, market) -> tuple:
+        return self.function(agent, market)
+
+
 class Agent:
-    def __init__(self, name: str):
+    def __init__(self, name: str, trade_strategy: TradeStrategy = None):
 
         self.name = name
+        self.tradeStrategy = trade_strategy
         self._positions = {}
 
     def position(self, asset_name: str) -> Position:
@@ -151,6 +167,11 @@ class RiskAssetPool:
         )
         Market.add_asset(self.shareToken)
 
+    def position(self, asset_name: str) -> Position:
+        for position in self.positions:
+            if position.assetName == asset_name:
+                return position
+
     @property
     def ratio(self) -> float:
         return self.positions[1].quantity / self.positions[0].quantity
@@ -177,6 +198,7 @@ class Exchange(Market):
             )
             # maintain a reference to both name and index in _asset_pools_dict, for convenience
             self._asset_pools_dict[new_pool.unique_id] = new_pool
+        return self
 
     def pool(self, asset_names: list) -> RiskAssetPool:
         """ get the pool containing the specified assets """
@@ -184,7 +206,7 @@ class Exchange(Market):
         return self._asset_pools_dict[index] if index in self._asset_pools_dict else None
 
     @property
-    def pool_list(self):
+    def pool_list(self) -> list:
         return [pool for pool in self._asset_pools_dict.values()]
 
     @staticmethod
@@ -192,6 +214,39 @@ class Exchange(Market):
         return ", ".join(sorted(asset_names))
 
     def add_liquidity(self, agent: Agent, pool: RiskAssetPool, quantity: float):
-
+        """ very naive default implementation of add_liquidity. override. """
         for position in pool.positions:
             position.quantity += quantity
+
+    def remove_liquidity(self, agent: Agent, pool: RiskAssetPool, quantity: float):
+        """ very naive default implementation of add_liquidity. override. """
+        for position in pool.positions:
+            if position.quantity < quantity:
+                return
+
+        for position in pool.positions:
+            position.quantity -= quantity
+
+    def swap_assets(self, agent: Agent, sell_asset: str, buy_asset: str, sell_quantity):
+        """ very naive default implementation of swap_assets. override. """
+        pool = self.pool([buy_asset, sell_asset])
+        if pool.position(sell_asset).quantity < sell_quantity:
+            return
+        pool.position(sell_asset).quantity -= sell_quantity
+        pool.position(sell_asset).quantity += sell_quantity
+
+
+class WorldState:
+    def __init__(self, assets: list, exchange: Exchange, agents: list):
+        self._assets = assets
+        Market.initializeAssetList(exchange, assets)
+        self.exchange = exchange
+        self.agents = agents
+        # # let the agents know about all their options
+        # for asset in assets:
+        #     for agent in agents:
+        #         agent.add_position(asset, 0)
+
+    def copy(self):
+        returnCopy = copy.deepcopy(self)
+        return returnCopy
