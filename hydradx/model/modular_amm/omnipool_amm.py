@@ -1,5 +1,7 @@
 import copy
 from ..modular_amm import amm
+from ..modular_amm.amm import TradeStrategy
+import random
 
 
 class OmnipoolRiskAssetPool(amm.RiskAssetPool):
@@ -89,10 +91,11 @@ class OmniPool(amm.Exchange):
                  lrna_fee: float,
                  preferred_stablecoin: str = "USD"
                  ):
+        """ The Omnipool class. Derives from amm.Exchange """
         super().__init__(tvl_cap_usd, asset_fee)
         self.lrnaFee = lrna_fee
         self.lrnaImbalance = 0
-        self.stableCoin_index = preferred_stablecoin
+        self.preferred_stablecoin = preferred_stablecoin
 
     def __repr__(self):
         return (
@@ -115,10 +118,10 @@ class OmniPool(amm.Exchange):
         ) + '\n)'
 
     def add_lrna_pool(self,
-                      risk_asset: int or str or amm.Asset,
+                      risk_asset: str,
                       initial_quantity: float,
                       weight_cap: float = 1.0
-                      ) -> OmnipoolRiskAssetPool:
+                      ):
         asset = self.asset(risk_asset)
 
         new_pool = OmnipoolRiskAssetPool(
@@ -130,7 +133,7 @@ class OmniPool(amm.Exchange):
             unique_id=asset.name
         )
         self._asset_pools_dict[asset.name] = new_pool
-        return new_pool
+        return self
 
     def pool(self, index: int or str or amm.Asset) -> OmnipoolRiskAssetPool:
         """
@@ -220,7 +223,7 @@ class OmniPool(amm.Exchange):
     # noinspection PyArgumentList
     def add_liquidity(self, agent: OmnipoolAgent, pool: OmnipoolRiskAssetPool, quantity: float):
         P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = self.algebraic_symbols()
-        U = self.stableCoin_index
+        U = self.preferred_stablecoin
         i = pool.assetIndex
         delta_r = quantity
 
@@ -262,8 +265,8 @@ class OmniPool(amm.Exchange):
 
     # noinspection PyArgumentList
     def swap_assets(self, agent: OmnipoolAgent, sell_asset: str, buy_asset: str, sell_quantity):
-        i = sell_asset
-        j = buy_asset
+        i = self.asset(sell_asset).name
+        j = self.asset(buy_asset).name
         P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = self.algebraic_symbols()
         assert sell_quantity > 0, 'sell amount must be greater than zero'
 
@@ -291,7 +294,7 @@ class OmniPool(amm.Exchange):
     # noinspection PyArgumentList
     def remove_liquidity(self, agent: OmnipoolAgent, pool: OmnipoolRiskAssetPool, quantity: float):
         i = pool.name
-        u = self.stableCoin_index
+        u = self.preferred_stablecoin
         P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = self.algebraic_symbols()
 
         if agent.s(i) < quantity or quantity < 0:
@@ -437,8 +440,8 @@ def sell_lrna(market_state: OmniPool,
               agents_list: list[OmnipoolAgent],
               agent_index: int,
               asset_name: str,
-              buy_asset_quantity: float=0,
-              sell_lrna_quantity: float=0
+              buy_asset_quantity: float = 0,
+              sell_lrna_quantity: float = 0
               ) -> tuple[OmniPool, list[OmnipoolAgent]]:
     new_agents = copy.deepcopy(agents_list)
     new_state = copy.deepcopy(market_state).sell_lrna(
@@ -449,30 +452,19 @@ def sell_lrna(market_state: OmniPool,
     )
     return new_state, new_agents
 
-# def add_asset(
-#     state: State,
-#     asset_name,
-#     asset_quantity,
-#     asset_price
-# ) -> State:
-#
-#     new_state = copy.deepcopy(state)
-#     return new_state
-#
-# def buy_lrna(
-#      state: State,
-#      sell_asset: int or str or amm.RiskAssetPool,
-#      quantity: float
-# ) -> State:
-#
-#     new_state = copy.deepcopy(state)
-#     return new_state
-#
-# def sell_lrna(
-#     state: State,
-#     buy_asset: int or str or amm.RiskAssetPool,
-#     sell_asset
-# ) -> State:
-#
-#     new_state = copy.deepcopy(state)
-#     return new_state
+
+@TradeStrategy
+def random_swaps(agent: OmnipoolAgent, market: OmniPool):
+    buy_asset = random.choice(agent.asset_list)
+    sell_asset = random.choice(agent.asset_list)
+    if buy_asset == sell_asset:
+        return market, agent
+    else:
+        return swap_assets(
+            market_state=market,
+            agents_list=[agent],
+            sell_asset=sell_asset,
+            buy_asset=buy_asset,
+            trader_id=0,
+            sell_quantity=random.random() * agent.holdings(sell_asset.name)
+        )
