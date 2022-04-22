@@ -7,8 +7,6 @@ from .partial_state_update_block import partial_state_update_block
 
 
 def config(config_dict, initial_state) -> None:
-    config_dict = config_dict
-    initial_state = initial_state
 
     exp = Experiment()
 
@@ -20,10 +18,10 @@ def config(config_dict, initial_state) -> None:
 
 
 def run() -> list:
-    '''
+    """
     Definition:
     Run simulation
-    '''
+    """
     # config = input_config
     # Single
     exec_mode = ExecutionMode()

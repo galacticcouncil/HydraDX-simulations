@@ -1,4 +1,5 @@
 from .system import *
+from .simulation_updates import execute_trades
 
 partial_state_update_block = [
     {
@@ -6,27 +7,28 @@ partial_state_update_block = [
         'policies': {
         },
         'variables': {
-            'external': externalHub
+            # 'external': externalHub
+            'WorldState': execute_trades
         }
     },
 
-    {
-        # system.py 
-        'policies': {
-            'user_action': actionDecoder
-        },
-        'variables': {
-            'AMM': mechanismHub_AMM,
-            'uni_agents': agenthub,
-        }
-    },
-
-    {
-        'policies': {
-        },
-        'variables': {
-            'AMM': posthub
-        }
-    },
+    # {
+    #     # system.py
+    #     'policies': {
+    #         'user_action': actionDecoder
+    #     },
+    #     'variables': {
+    #         'AMM': mechanismHub_AMM,
+    #         'uni_agents': agenthub,
+    #     }
+    # },
+    #
+    # {
+    #     'policies': {
+    #     },
+    #     'variables': {
+    #         'AMM': posthub
+    #     }
+    # },
 
 ]

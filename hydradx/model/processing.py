@@ -1,59 +1,81 @@
 import pandas as pd
 
-from . import init_utils as iu
-from .amm import amm
+import init_utils as iu
+from modular_amm.amm import WorldState
+from modular_amm.omnipool_amm import OmniPool
 
 
 def postprocessing(events, count=True, count_tkn='R', count_k='n'):
-    '''
+    """
     Definition:
     Refine and extract metrics from the simulation
 
     Parameters:
     df: simulation dataframe
-    '''
-    d = {}
-    n = len(events[0]['AMM']['R'])
+    """
+    token_count = len(events[0]['WorldState'].pool_list)
+    # n = len(events[0]['AMM']['R'])
     agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': []}
 
+    d = {
+        "time step": [],
+        "L": [],
+    }
+    d.update({f'R-{i}': [] for i in range(token_count)})
+    d.update({f'Q-{i}': [] for i in range(token_count)})
+    d.update({f'B-{i}': [] for i in range(token_count)})
+    d.update({f'S-{i}': [] for i in range(token_count)})
+
     # build the DFs
-    for step in events:
-        for k in step:
-            # expand AMM structure
-            if k == 'AMM':
-                for k in step['AMM']:
-                    expand_state_var(k, step['AMM'][k], d)
-                if count and count_tkn in step['AMM']:
-                    d[count_k] = len(step['AMM'][count_tkn])
+    for (n, step) in enumerate(events):
+        omnipool: OmniPool = step['WorldState'].exchange
+        for i in range(token_count):
+            d[f'R-{i}'].append(omnipool.pool_list[i].assetQuantity)
+            d[f'Q-{i}'].append(omnipool.pool_list[i].lrnaQuantity)
+            d[f'B-{i}'].append(omnipool.pool_list[i].sharesOwnedByProtocol)
+            d[f'S-{i}'].append(omnipool.pool_list[i].shares)
+        d['L'].append(omnipool.L)
+        d['time step'].append(n)
 
-            elif k == 'external':
-                for k in step['external']:
-                    expand_state_var(k, step['external'][k], d)
-
-            elif k == 'uni_agents':
-                for agent_k in step['uni_agents']:
-                    agent_state = step['uni_agents'][agent_k]
-
-                    if 'agent_label' not in agent_d:
-                        agent_d['agent_label'] = list()
-                    agent_d['agent_label'].append(agent_k)
-
-                    for k in agent_state:
-                        expand_state_var(k, agent_state[k], agent_d)
-
-                    # add simulation columns
-                    for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
-                        agent_d[key].append(step[key])
-
-            else:
-                expand_state_var(k, step[k], d)
+        # state: WorldState = step['WorldState']
+        # d[count_k] = len(state.exchange.pool_list)
+        # d.update()
+        # for k in step:
+        #     # expand AMM structure
+        #     if k == 'AMM':
+        #         for k in step['AMM']:
+        #             expand_state_var(k, step['AMM'][k], d)
+        #         if count and count_tkn in step['AMM']:
+        #             d[count_k] = len(step['AMM'][count_tkn])
+        #
+        #     elif k == 'external':
+        #         for k in step['external']:
+        #             expand_state_var(k, step['external'][k], d)
+        #
+        #     elif k == 'uni_agents':
+        #         for agent_k in step['uni_agents']:
+        #             agent_state = step['uni_agents'][agent_k]
+        #
+        #             if 'agent_label' not in agent_d:
+        #                 agent_d['agent_label'] = list()
+        #             agent_d['agent_label'].append(agent_k)
+        #
+        #             for k in agent_state:
+        #                 expand_state_var(k, agent_state[k], agent_d)
+        #
+        #             # add simulation columns
+        #             for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
+        #                 agent_d[key].append(step[key])
+        #
+        #     else:
+        #         expand_state_var(k, step[k], d)
 
     df = pd.DataFrame(d)
     agent_df = pd.DataFrame(agent_d)
 
-    # subset to last substep
-    df = df[df['substep'] == df.substep.max()]
-    agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
+    # # subset to last substep
+    # df = df[df['substep'] == df.substep.max()]
+    # agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
 
     #     # Clean substeps
     #     first_ind = (df.substep == 0) & (df.timestep == 0)
