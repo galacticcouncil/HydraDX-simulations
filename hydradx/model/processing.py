@@ -1,92 +1,84 @@
+import copy
+
 import pandas as pd
 
-import init_utils as iu
-from modular_amm.amm import WorldState
-from modular_amm.omnipool_amm import OmniPool
+# from amm.amm import WorldState
+from .amm import omnipool_amm
+from .amm.amm import Agent
 
 
-def postprocessing(events, count=True, count_tkn='R', count_k='n'):
+def postprocessing(events, params_to_include: list[str] = ()):
     """
     Definition:
     Refine and extract metrics from the simulation
 
-    Parameters:
-    df: simulation dataframe
+    optional parameters:
+     * 'pool_holdings_value': adds a ['val_pool'] key to each agent in the dataframe, equal to the total value of all that agent's liquidity provisions if sold and then denominated in LRNA.
     """
-    token_count = len(events[0]['WorldState'].pool_list)
+    token_count = len(events[0]['WorldState'].exchange.pool_list)
     # n = len(events[0]['AMM']['R'])
-    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': []}
+    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'q': [], 'agent_label': []}
 
-    d = {
-        "time step": [],
+    exchange_d = {
+        "timestep": [],
         "L": [],
+        'simulation': [],
+        'substep': [],
+        'subset': [],
+        'run': []
     }
-    d.update({f'R-{i}': [] for i in range(token_count)})
-    d.update({f'Q-{i}': [] for i in range(token_count)})
-    d.update({f'B-{i}': [] for i in range(token_count)})
-    d.update({f'S-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'R-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'Q-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'B-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'S-{i}': [] for i in range(token_count)})
+
+    agent_d.update({f'p-{i}': [] for i in range(token_count)})
+    agent_d.update({f'r-{i}': [] for i in range(token_count)})
+    agent_d.update({f's-{i}': [] for i in range(token_count)})
 
     # build the DFs
     for (n, step) in enumerate(events):
-        omnipool: OmniPool = step['WorldState'].exchange
+        omnipool: omnipool_amm.OmniPool = step['WorldState'].exchange
+        agents: dict[str, omnipool_amm.OmnipoolAgent] = step['WorldState'].agents
         for i in range(token_count):
-            d[f'R-{i}'].append(omnipool.pool_list[i].assetQuantity)
-            d[f'Q-{i}'].append(omnipool.pool_list[i].lrnaQuantity)
-            d[f'B-{i}'].append(omnipool.pool_list[i].sharesOwnedByProtocol)
-            d[f'S-{i}'].append(omnipool.pool_list[i].shares)
-        d['L'].append(omnipool.L)
-        d['time step'].append(n)
+            exchange_d[f'R-{i}'].append(omnipool.pool_list[i].assetQuantity)
+            exchange_d[f'Q-{i}'].append(omnipool.pool_list[i].lrnaQuantity)
+            exchange_d[f'B-{i}'].append(omnipool.pool_list[i].sharesOwnedByProtocol)
+            exchange_d[f'S-{i}'].append(omnipool.pool_list[i].shares)
+        exchange_d['L'].append(omnipool.L)
+        for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
+            exchange_d[key].append(step[key])
 
-        # state: WorldState = step['WorldState']
-        # d[count_k] = len(state.exchange.pool_list)
-        # d.update()
-        # for k in step:
-        #     # expand AMM structure
-        #     if k == 'AMM':
-        #         for k in step['AMM']:
-        #             expand_state_var(k, step['AMM'][k], d)
-        #         if count and count_tkn in step['AMM']:
-        #             d[count_k] = len(step['AMM'][count_tkn])
-        #
-        #     elif k == 'external':
-        #         for k in step['external']:
-        #             expand_state_var(k, step['external'][k], d)
-        #
-        #     elif k == 'uni_agents':
-        #         for agent_k in step['uni_agents']:
-        #             agent_state = step['uni_agents'][agent_k]
-        #
-        #             if 'agent_label' not in agent_d:
-        #                 agent_d['agent_label'] = list()
-        #             agent_d['agent_label'].append(agent_k)
-        #
-        #             for k in agent_state:
-        #                 expand_state_var(k, agent_state[k], agent_d)
-        #
-        #             # add simulation columns
-        #             for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
-        #                 agent_d[key].append(step[key])
-        #
-        #     else:
-        #         expand_state_var(k, step[k], d)
+        for (a, agent_name) in enumerate(agents):
+            for i in range(token_count):
+                agent_d[f'p-{i}'].append(
+                    agents[agent_name].position(omnipool.pool_list[i].shareToken).price
+                    if agents[agent_name].position(omnipool.pool_list[i].shareToken) else 0
+                )
+                agent_d[f's-{i}'].append(agents[agent_name].holdings(omnipool.pool_list[i].shareToken) or 0)
+                agent_d[f'r-{i}'].append(agents[agent_name].holdings(omnipool.asset(i).name) or 0)
+            agent_d['agent_label'].append(agent_name)
+            agent_d['q'].append(agents[agent_name].q)
+            for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
+                agent_d[key].append(step[key])
 
-    df = pd.DataFrame(d)
+            # optional parameters
+            if 'pool_holdings_value' in params_to_include:
+                market_copy = copy.deepcopy(omnipool)
+                agent_d['val_pool'] = (
+                    agents[agent_name]
+                    .erase_external_holdings()
+                    .remove_all_liquidity(market_copy)
+                    .value_holdings(omnipool)
+                )
+
+    df = pd.DataFrame(exchange_d)
     agent_df = pd.DataFrame(agent_d)
 
-    # # subset to last substep
-    # df = df[df['substep'] == df.substep.max()]
-    # agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
+    # subset to last substep
+    df = df[df['substep'] == df.substep.max()]
+    agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
 
-    #     # Clean substeps
-    #     first_ind = (df.substep == 0) & (df.timestep == 0)
-    #     last_ind = df.substep == max(df.substep)
-    #     inds_to_drop = (first_ind | last_ind)
-    #     df = df.loc[inds_to_drop].drop(columns=['substep'])
-
-    #     # Attribute parameters to each row
-    #     df = df.assign(**configs[0].sim_config['M'])
-    #     for i, (_, n_df) in enumerate(df.groupby(['simulation', 'subset', 'run'])):
-    #         df.loc[n_df.index] = n_df.assign(**configs[i].sim_config['M'])
     return df, agent_df
 
 
@@ -143,7 +135,7 @@ def get_agent_from_row(row) -> dict:
     return agent_d
 
 
-def val_pool(row):
+def val_pool(agent: Agent, market: Market):
     state = get_state_from_row(row)
     agent_d = get_agent_from_row(row)
     return amm.value_holdings(state, agent_d, row['agent_label'])
