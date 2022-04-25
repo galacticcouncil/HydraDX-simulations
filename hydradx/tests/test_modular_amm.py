@@ -1,7 +1,7 @@
 import pytest
 from hypothesis import given, strategies as st, assume
-from hydradx.model.modular_amm.omnipool_amm import *
-from hydradx.model.modular_amm.amm import Market
+from hydradx.model.amm.omnipool_amm import *
+from hydradx.model.amm.amm import Market
 import random
 
 
@@ -18,8 +18,7 @@ def test_market_construction():
         lrna_fee=0.001,
         asset_fee=0.002,
         preferred_stablecoin='USD'
-    ).initializeAssetList([lrna, hdx, usd, doge, eth])
-
+    )
     omnipool.add_lrna_pool(eth, 10)
     omnipool.add_lrna_pool(usd, 100)
     omnipool.add_lrna_pool(hdx, 1000)
@@ -97,7 +96,8 @@ def test_swap_asset(market_state, buy_index, sell_index, delta_r):
         .add_position(buy_asset, 0)
         .add_position(sell_asset, 1000000)
     ]
-    new_state, new_agents = swap_assets(old_state, old_agents, sell_asset, buy_asset, trader_id=0, sell_quantity=delta_r)
+    new_state, new_agents = \
+        swap_assets(old_state, old_agents, sell_asset, buy_asset, trader_id=0, sell_quantity=delta_r)
 
     # do some algebraic checks
     i = sell_asset.name
@@ -220,8 +220,38 @@ def test_trade_strategies(market_state: OmniPool):
             agent.tradeStrategy.execute(agent, market_state)
 
 
+def test_simulation():
+    Market.reset()
+    # Dependencies
+    import pandas
+
+    # Experiments
+    from hydradx.model import run, processing, plot_utils, init_utils
+
+    worldState = init_utils.initialize_basic_omnipool()
+
+    timesteps = 5000
+    state = {'WorldState': worldState}
+    config_dict = {
+        'N': 1,  # number of monte carlo runs
+        'T': range(timesteps),  # number of timesteps - 147439 is the length of uniswap_events
+        'M': {'timesteps': [timesteps]},  # simulation parameters
+    }
+
+    pandas.options.mode.chained_assignment = None  # default='warn'
+    pandas.options.display.float_format = '{:.2f}'.format
+
+    run.config(config_dict, state)
+    events = run.run()
+    from hydradx.model import processing
+    rdf, agent_df = processing.postprocessing(events)
+    print('done!')
+
+
 if __name__ == "__main__":
     test_market_construction()
     test_add_liquidity()
     test_swap_asset()
     test_buy_lrna()
+    test_remove_liquidity()
+    test_trade_strategies()
