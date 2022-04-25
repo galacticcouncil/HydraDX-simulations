@@ -1,4 +1,5 @@
-from .modular_amm import amm
+from .amm import amm
+
 
 # Behaviors
 def actionDecoder(params, step, history, prev_state) -> dict:
@@ -15,8 +16,7 @@ def actionDecoder(params, step, history, prev_state) -> dict:
 
 def execute_trades(params, substep, state_history, prev_state, policy_input):
     new_state: amm.WorldState = prev_state['WorldState']
-    for agent in new_state.agents:
+    for agent in new_state.agents.values():
         if agent.tradeStrategy:
             agent.tradeStrategy.execute(agent=agent, market=new_state.exchange)
     return 'WorldState', new_state
-
