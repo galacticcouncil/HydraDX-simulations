@@ -89,64 +89,6 @@ class Position:
         return self.asset.index
 
 
-class TradeStrategy:
-    def __init__(self, strategy_function: typing.Callable):
-        self.function = strategy_function
-
-    def execute(self, agent, market) -> tuple:
-        return self.function(agent, market)
-
-
-class Agent:
-    def __init__(self, name: str, trade_strategy: TradeStrategy = None):
-
-        self.name = name
-        self.tradeStrategy = trade_strategy
-        self._positions = {}
-
-    def position(self, asset_name: str) -> Position:
-        """ Given the name of (or a reference to) an asset, returns the agent's position as regards that asset. """
-        asset_name = Market.asset(asset_name).name
-        return self._positions[asset_name] if asset_name in self._positions else None
-
-    def asset(self, asset_name: str) -> Asset:
-        """ Given the name of an asset, returns a reference to that asset. """
-        asset_name = Market.asset(asset_name).name
-        return self.position(asset_name).asset
-
-    def holdings(self, asset_name: str) -> float:
-        """ get this agent's holdings in the specified market, asset pair """
-        asset_name = Market.asset(asset_name).name
-        return self.position(asset_name).quantity if self.position(asset_name) else 0
-
-    def price(self, asset_name: str) -> float:
-        asset_name = Market.asset(asset_name).name
-        """ Returns this agent's buy-in price for the specified asset. """
-        return self.position(asset_name).price if self.position(asset_name) else None
-
-    @property
-    def asset_list(self) -> list:
-        """ Returns a list of all assets that are owned by this agent. """
-        return [Market.asset(asset) for asset in self._positions.keys()]
-
-    def add_position(self, asset_name: str, quantity: float, price: float = 0):
-        asset_name = Market.asset(asset_name).name
-        """ add specified quantity to the agent's asset holdings in market """
-        asset_name = Market.asset(asset_name).name
-        if self.position(asset_name):
-            self.position(asset_name).quantity += quantity
-            return self
-
-        # if (market, asset) position was not found, create one
-        newPosition = Position(
-            asset_name=asset_name,
-            quantity=quantity,
-            price=price
-        )
-        self._positions[asset_name] = newPosition
-        return self
-
-
 class ShareToken(Asset):
     def __init__(self, name: str, price: float, asset_names: list):
         super().__init__(name, price)
@@ -190,6 +132,71 @@ class RiskAssetPool:
     @property
     def ratio(self) -> float:
         return self.positions[1].quantity / self.positions[0].quantity
+
+
+class TradeStrategy:
+    def __init__(self, strategy_function: typing.Callable):
+        self.function = strategy_function
+
+    def execute(self, agent, market) -> tuple:
+        return self.function(agent, market)
+
+
+class Agent:
+    def __init__(self, name: str, trade_strategy: TradeStrategy = None):
+
+        self.name = name
+        self.tradeStrategy = trade_strategy
+        self._positions = {}
+
+    def erase_external_holdings(self):
+        """ agent loses all their money that is not in an exchange """
+        for asset in self.asset_list:
+            if type(asset) == Asset:
+                self.position(asset).quantity = 0
+        return self
+
+    def position(self, asset_name: str) -> Position:
+        """ Given the name of (or a reference to) an asset, returns the agent's position as regards that asset. """
+        asset_name = Market.asset(asset_name).name
+        return self._positions[asset_name] if asset_name in self._positions else None
+
+    def asset(self, asset_name: str) -> Asset:
+        """ Given the name of an asset, returns a reference to that asset. """
+        asset_name = Market.asset(asset_name).name
+        return self.position(asset_name).asset
+
+    def holdings(self, asset_name: str) -> float:
+        """ get this agent's holdings in the specified market, asset pair """
+        asset_name = Market.asset(asset_name).name
+        return self.position(asset_name).quantity if self.position(asset_name) else 0
+
+    def price(self, asset_name: str) -> float:
+        asset_name = Market.asset(asset_name).name
+        """ Returns this agent's buy-in price for the specified asset. """
+        return self.position(asset_name).price if self.position(asset_name) else None
+
+    @property
+    def asset_list(self) -> list[Asset]:
+        """ Returns a list of all assets that are owned by this agent. """
+        return [Market.asset(asset) for asset in self._positions.keys()]
+
+    def add_position(self, asset_name: str, quantity: float, price: float = 0):
+        asset_name = Market.asset(asset_name).name
+        """ add specified quantity to the agent's asset holdings in market """
+        asset_name = Market.asset(asset_name).name
+        if self.position(asset_name):
+            self.position(asset_name).quantity += quantity
+            return self
+
+        # if (market, asset) position was not found, create one
+        newPosition = Position(
+            asset_name=asset_name,
+            quantity=quantity,
+            price=price
+        )
+        self._positions[asset_name] = newPosition
+        return self
 
 
 class Exchange(Market):
