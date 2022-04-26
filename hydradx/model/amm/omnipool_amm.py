@@ -50,28 +50,27 @@ class OmnipoolAgent(amm.Agent):
     def remove_liquidity(self, market: amm.Exchange, asset_name: str, quantity: float):
         """ sell off the specified quantity of asset from the exchange """
         asset = market.asset(asset_name)
-        if not self.position(asset.name):
-            self.add_position(asset.name, quantity)
-            self.add_position(market.pool(asset.name).shareToken.name, 0)
         market.remove_liquidity(agent=self, pool=market.pool(asset.name), quantity=quantity)
         return self
 
     def remove_all_liquidity(self, market: amm.Exchange):
         """ sell off all assets that are in the exchange """
         for pool_asset in self.pool_asset_list:
-            self.remove_liquidity(market, pool_asset.name, self.s(pool_asset.name))
-        return self
-
-    def erase_external_holdings(self):
-        """ agent loses all their money that is not in the exchange """
-        for asset in self.asset_list:
-            if asset not in self.pool_asset_list:
-                self.position(asset).quantity = 0
+            self.remove_liquidity(market, pool_asset.name, self.holdings(pool_asset))
         return self
 
     def value_holdings(self, market: amm.Exchange) -> float:
         """ returns the value of all this agent's combined holdings, denominated in LRNA """
-        return sum(self.holdings(asset) * market.pool(asset).ratio for asset in self.asset_list)
+        return sum(
+            self.holdings(asset) / market.pool(asset).shares * market.pool(asset).lrnaQuantity
+            if isinstance(asset, amm.ShareToken)
+            else (
+                self.holdings(asset) * market.pool(asset).ratio
+                if market.pool(asset)
+                else self.holdings(asset)
+            )
+            for asset in self.asset_list
+        )
 
     def pool_asset(self, asset_name: str) -> str:
         asset_name = amm.Market.asset(asset_name).name
@@ -171,7 +170,10 @@ class OmniPool(amm.Exchange):
         Given the name or index of an asset or a reference to that asset, returns the associated pool.
         Since an omnipool pool only has one risk asset, only the first function argument counts.
         """
-        pool_id = self.asset(index).name
+        asset = self.asset(index)
+        if isinstance(asset, amm.ShareToken):
+            return self.pool(*asset.asset_names)
+        pool_id = asset.name
         return self._asset_pools_dict[pool_id] if pool_id in self._asset_pools_dict else None
 
     @property
@@ -280,7 +282,7 @@ class OmniPool(amm.Exchange):
             # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
             return self
 
-        if (T(i) + delta_t) / T_total > self.pool(i).weightCap:
+        if (T(i) + delta_t) / (T_total + delta_t) > self.pool(i).weightCap:
             # print('Transaction rejected because it would exceed pool weight cap.')
             # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
             # print(repr(self))
@@ -349,15 +351,16 @@ class OmniPool(amm.Exchange):
 
         self.add_delta_R(i, delta_r)
         self.add_delta_Q(i, delta_q)
-        self.add_delta_L(i, delta_l)
+        self.add_delta_L(delta_l)
         self.add_delta_B(i, delta_b)
 
         delta_t = Q(i) * R(u) / Q(u) - T(i)
         self.add_delta_T(i, delta_t)
 
+        agent.add_delta_s(i, delta_sa)
         agent.add_delta_r(i, -delta_r)
         agent.add_delta_q(
-            -pool.ratio * (2 * pool.ratio / (pool.ratio + agent.p(i)) * delta_sa / S(i) - delta_r)
+            -pool.ratio * (2 * pool.ratio / (pool.ratio + agent.p(i)) * delta_sa / S(i) * R(i) - delta_r)
         )
         return self
 
