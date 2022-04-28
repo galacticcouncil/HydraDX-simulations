@@ -62,7 +62,7 @@ class OmnipoolAgent(amm.Agent):
     def value_holdings(self, market: amm.Exchange) -> float:
         """ returns the value of all this agent's combined holdings, denominated in LRNA """
         return sum(
-            self.holdings(asset) / market.pool(asset).shares * market.pool(asset).lrnaQuantity
+            self.holdings(asset) * market.pool(asset).ratio
             if isinstance(asset, amm.ShareToken)
             else (
                 self.holdings(asset) * market.pool(asset).ratio
@@ -296,7 +296,7 @@ class OmniPool(amm.Exchange):
         # agent.add_delta_s(i, delta_s)
         agent.add_position(self.pool(i).shareToken.name, delta_s)
         agent.add_delta_r(i, -delta_r)
-        agent.set_p(i, self.price(i))
+        agent.set_p(i, pool.ratio)
 
         # print('Liquidity provision succeeded.')
         # print(f'(asset {i}, agent {agent.name}, quantity {delta_r})')
@@ -345,23 +345,27 @@ class OmniPool(amm.Exchange):
         delta_sa = -quantity
         delta_b = max((pool.ratio - agent.p(i)) / (pool.ratio + agent.p(i)) * delta_sa, 0)
         delta_si = delta_sa + delta_b
-        delta_r = R(i) / S(i) * delta_si
-        delta_q = Q(i) * delta_r / R(i)
-        delta_l = delta_r * Q(i) / R(i) * L / Q_total
+        delta_ri = R(i) / S(i) * delta_si
+        delta_q = Q(i) * delta_ri / R(i)
+        delta_l = delta_ri * Q(i) / R(i) * L / Q_total
 
-        self.add_delta_R(i, delta_r)
+        delta_ra = -delta_ri
+
+        agent.add_delta_s(i, delta_sa)
+        agent.add_delta_r(i, delta_ra)
+        agent.add_delta_q(
+            -pool.ratio * (2 * pool.ratio / (pool.ratio + agent.p(i)) * delta_sa / S(i) * R(i) + delta_ra)
+        )
+
+        self.add_delta_R(i, delta_ri)
         self.add_delta_Q(i, delta_q)
         self.add_delta_L(delta_l)
         self.add_delta_B(i, delta_b)
+        self.add_delta_S(i, delta_si)
 
         delta_t = Q(i) * R(u) / Q(u) - T(i)
         self.add_delta_T(i, delta_t)
 
-        agent.add_delta_s(i, delta_sa)
-        agent.add_delta_r(i, -delta_r)
-        agent.add_delta_q(
-            -pool.ratio * (2 * pool.ratio / (pool.ratio + agent.p(i)) * delta_sa / S(i) * R(i) - delta_r)
-        )
         return self
 
     # noinspection PyArgumentList
@@ -498,16 +502,18 @@ def sell_lrna(market_state: OmniPool,
 
 class OmnipoolTradeStrategies:
     @staticmethod
-    @TradeStrategy
-    def random_swaps(agent: OmnipoolAgent, market: OmniPool):
-        buy_asset = random.choice(agent.asset_list)
-        sell_asset = random.choice(agent.asset_list)
-        if buy_asset == sell_asset:
-            return market, agent
-        else:
-            return market.swap_assets(
-                agent=agent,
-                sell_asset=sell_asset,
-                buy_asset=buy_asset,
-                sell_quantity=random.random() * agent.holdings(sell_asset.name)
-            ), agent
+    def random_swaps(amount: float = 1):
+        @TradeStrategy
+        def strategy(agent: OmnipoolAgent, market: OmniPool):
+            buy_asset = random.choice(agent.asset_list)
+            sell_asset = random.choice(agent.asset_list)
+            if buy_asset == sell_asset:
+                return market, agent
+            else:
+                return market.swap_assets(
+                    agent=agent,
+                    sell_asset=sell_asset,
+                    buy_asset=buy_asset,
+                    sell_quantity=amount  # random.random() * agent.holdings(sell_asset.name)
+                ), agent
+        return strategy
