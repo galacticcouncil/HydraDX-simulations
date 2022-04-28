@@ -40,6 +40,7 @@ def test_market_construction():
     assert agents[2].r('USD') == 1000
     assert agents[0].s(doge) == 1000
     assert omnipool.Q(doge) == omnipool.R(doge) * omnipool.price(doge) / omnipool.price(lrna)
+    assert agents[0].holdings(agents[0].pool_asset('DOGE')) == 1000
 
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=1000)
@@ -210,7 +211,7 @@ def test_trade_strategies(market_state: OmniPool):
     agents = [
         OmnipoolAgent(
             name='trader',
-            trade_strategy=OmnipoolTradeStrategies.random_swaps
+            trade_strategy=OmnipoolTradeStrategies.random_swaps(amount=50)
         )
         .add_position(asset_name=market_state.pool_list[1].assetName, quantity=1000)
         .add_position(asset_name=market_state.pool_list[2].assetName, quantity=1000)
@@ -218,34 +219,6 @@ def test_trade_strategies(market_state: OmniPool):
     for _ in range(10):
         for agent in agents:
             agent.tradeStrategy.execute(agent, market_state)
-
-
-def test_simulation():
-    Market.reset()
-    # Dependencies
-    import pandas
-
-    # Experiments
-    from hydradx.model import run, processing, plot_utils, init_utils
-
-    worldState = init_utils.initialize_basic_omnipool()
-
-    timesteps = 5000
-    state = {'WorldState': worldState}
-    config_dict = {
-        'N': 1,  # number of monte carlo runs
-        'T': range(timesteps),  # number of timesteps - 147439 is the length of uniswap_events
-        'M': {'timesteps': [timesteps]},  # simulation parameters
-    }
-
-    pandas.options.mode.chained_assignment = None  # default='warn'
-    pandas.options.display.float_format = '{:.2f}'.format
-
-    run.config(config_dict, state)
-    events = run.run()
-    from hydradx.model import processing
-    rdf, agent_df = processing.postprocessing(events)
-    print('done!')
 
 
 if __name__ == "__main__":
