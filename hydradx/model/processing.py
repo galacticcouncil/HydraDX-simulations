@@ -22,7 +22,7 @@ def postprocessing(events, params_to_include: list[str] = ()):
      * 'pool_val': adds a ['pool_val'] key to each step in the dataframe, indicating the total protocol-owned
       value held by all pools in the omnipool, denominated in LRNA
     """
-    token_count = len(events[0]['WorldState'].exchange.pool_list)
+    token_names = [pool.name for pool in events[0]['WorldState'].exchange.pool_list]
     # n = len(events[0]['AMM']['R'])
     agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'q': [], 'agent_label': []}
 
@@ -34,15 +34,15 @@ def postprocessing(events, params_to_include: list[str] = ()):
         'subset': [],
         'run': []
     }
-    exchange_d.update({f'R-{i}': [] for i in range(token_count)})
-    exchange_d.update({f'Q-{i}': [] for i in range(token_count)})
-    exchange_d.update({f'B-{i}': [] for i in range(token_count)})
-    exchange_d.update({f'S-{i}': [] for i in range(token_count)})
-    exchange_d.update({f'P-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'R-{i}': [] for i in token_names})
+    exchange_d.update({f'Q-{i}': [] for i in token_names})
+    exchange_d.update({f'B-{i}': [] for i in token_names})
+    exchange_d.update({f'S-{i}': [] for i in token_names})
+    exchange_d.update({f'P-{i}': [] for i in token_names})
 
-    # agent_d.update({f'p-{i}': [] for i in range(token_count)})
-    agent_d.update({f'r-{i}': [] for i in range(token_count)})
-    agent_d.update({f's-{i}': [] for i in range(token_count)})
+    # agent_d.update({f'p-{i}': [] for i in range(token_names)})
+    agent_d.update({f'r-{i}': [] for i in token_names})
+    agent_d.update({f's-{i}': [] for i in token_names})
 
     params_to_include = set(params_to_include)
     agent_params = {
@@ -70,12 +70,12 @@ def postprocessing(events, params_to_include: list[str] = ()):
         agents: dict[str, omnipool_amm.OmnipoolAgent] = step['WorldState'].agents
 
         # add items to exchange dictionary
-        for i, token in enumerate(pool_tokens):
-            exchange_d[f'R-{i}'].append(omnipool.pool(token).assetQuantity)
-            exchange_d[f'Q-{i}'].append(omnipool.pool(token).lrnaQuantity)
-            exchange_d[f'B-{i}'].append(omnipool.pool(token).sharesOwnedByProtocol)
-            exchange_d[f'S-{i}'].append(omnipool.pool(token).shares)
-            exchange_d[f'P-{i}'].append(omnipool.pool(token).ratio)
+        for token in pool_tokens:
+            exchange_d[f'R-{token}'].append(omnipool.pool(token).assetQuantity)
+            exchange_d[f'Q-{token}'].append(omnipool.pool(token).lrnaQuantity)
+            exchange_d[f'B-{token}'].append(omnipool.pool(token).sharesOwnedByProtocol)
+            exchange_d[f'S-{token}'].append(omnipool.pool(token).shares)
+            exchange_d[f'P-{token}'].append(omnipool.pool(token).ratio)
         exchange_d['L'].append(omnipool.L)
         for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
             exchange_d[key].append(step[key])
@@ -86,13 +86,13 @@ def postprocessing(events, params_to_include: list[str] = ()):
 
         # add items to agents dictionary
         for (a, agent_name) in enumerate(agents):
-            for i, token in enumerate(pool_tokens):
+            for token in pool_tokens:
                 # agent_d[f'p-{i}'].append(
                 #     agents[agent_name].position(omnipool.pool(token).shareToken).price
                 #     if agents[agent_name].position(omnipool.pool(token).shareToken) else 0
                 # )
-                agent_d[f's-{i}'].append(agents[agent_name].holdings(omnipool.pool(token).shareToken) or 0)
-                agent_d[f'r-{i}'].append(agents[agent_name].holdings(token) or 0)
+                agent_d[f's-{token}'].append(agents[agent_name].holdings(omnipool.pool(token).shareToken) or 0)
+                agent_d[f'r-{token}'].append(agents[agent_name].holdings(token) or 0)
             agent_d['agent_label'].append(agent_name)
             agent_d['q'].append(agents[agent_name].q)
             for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
