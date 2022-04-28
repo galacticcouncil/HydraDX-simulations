@@ -1,9 +1,7 @@
-from .system import *
 from .simulation_updates import execute_trades
 
 partial_state_update_block = [
     {
-        # system.py
         'policies': {
         },
         'variables': {
@@ -13,7 +11,6 @@ partial_state_update_block = [
     },
 
     # {
-    #     # system.py
     #     'policies': {
     #         'user_action': actionDecoder
     #     },
@@ -22,13 +19,4 @@ partial_state_update_block = [
     #         'uni_agents': agenthub,
     #     }
     # },
-    #
-    # {
-    #     'policies': {
-    #     },
-    #     'variables': {
-    #         'AMM': posthub
-    #     }
-    # },
-
 ]
