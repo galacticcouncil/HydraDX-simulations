@@ -502,7 +502,11 @@ def sell_lrna(market_state: OmniPool,
 
 class OmnipoolTradeStrategies:
     @staticmethod
-    def random_swaps(amount: float = 1):
+    def random_swaps(amount: float = 0, percent: float = 0, randomize_amount: bool = False):
+        percent = min(percent, 100)
+        if percent == 100:
+            randomize_amount = True
+
         @TradeStrategy
         def strategy(agent: OmnipoolAgent, market: OmniPool):
             buy_asset = random.choice(agent.asset_list)
@@ -512,8 +516,11 @@ class OmnipoolTradeStrategies:
             else:
                 return market.swap_assets(
                     agent=agent,
-                    sell_asset=sell_asset,
-                    buy_asset=buy_asset,
-                    sell_quantity=amount  # random.random() * agent.holdings(sell_asset.name)
+                    sell_asset=sell_asset.name,
+                    buy_asset=buy_asset.name,
+                    sell_quantity=((amount / market.price(sell_asset)
+                                    or agent.holdings(sell_asset.name) * percent / 100)
+                                   * (random.random() if randomize_amount else 1)
+                                   ) or 1
                 ), agent
         return strategy
