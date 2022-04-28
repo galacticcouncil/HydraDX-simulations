@@ -38,8 +38,9 @@ def postprocessing(events, params_to_include: list[str] = ()):
     exchange_d.update({f'Q-{i}': [] for i in range(token_count)})
     exchange_d.update({f'B-{i}': [] for i in range(token_count)})
     exchange_d.update({f'S-{i}': [] for i in range(token_count)})
+    exchange_d.update({f'P-{i}': [] for i in range(token_count)})
 
-    agent_d.update({f'p-{i}': [] for i in range(token_count)})
+    # agent_d.update({f'p-{i}': [] for i in range(token_count)})
     agent_d.update({f'r-{i}': [] for i in range(token_count)})
     agent_d.update({f's-{i}': [] for i in range(token_count)})
 
@@ -74,6 +75,7 @@ def postprocessing(events, params_to_include: list[str] = ()):
             exchange_d[f'Q-{i}'].append(omnipool.pool(token).lrnaQuantity)
             exchange_d[f'B-{i}'].append(omnipool.pool(token).sharesOwnedByProtocol)
             exchange_d[f'S-{i}'].append(omnipool.pool(token).shares)
+            exchange_d[f'P-{i}'].append(omnipool.pool(token).ratio)
         exchange_d['L'].append(omnipool.L)
         for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
             exchange_d[key].append(step[key])
@@ -85,10 +87,10 @@ def postprocessing(events, params_to_include: list[str] = ()):
         # add items to agents dictionary
         for (a, agent_name) in enumerate(agents):
             for i, token in enumerate(pool_tokens):
-                agent_d[f'p-{i}'].append(
-                    agents[agent_name].position(omnipool.pool(token).shareToken).price
-                    if agents[agent_name].position(omnipool.pool(token).shareToken) else 0
-                )
+                # agent_d[f'p-{i}'].append(
+                #     agents[agent_name].position(omnipool.pool(token).shareToken).price
+                #     if agents[agent_name].position(omnipool.pool(token).shareToken) else 0
+                # )
                 agent_d[f's-{i}'].append(agents[agent_name].holdings(omnipool.pool(token).shareToken) or 0)
                 agent_d[f'r-{i}'].append(agents[agent_name].holdings(token) or 0)
             agent_d['agent_label'].append(agent_name)
@@ -140,6 +142,6 @@ def val_hold(agent: Agent, market: Market):
 def pool_val(market: omnipool_amm.OmniPool):
     """ The total value of all pool shares owned by the protocol, denominated in LRNA. """
     return sum([
-        pool.sharesOwnedByProtocol / pool.shares * pool.ratio * (1 - market.assetFee)
+        pool.sharesOwnedByProtocol / pool.shares * pool.ratio  # * (1 - market.assetFee)
         for pool in market.pool_list
     ])
