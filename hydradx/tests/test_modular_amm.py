@@ -53,9 +53,9 @@ def assets_config(draw, asset_count: int = 0) -> list[amm.Asset]:
     asset_count = asset_count or draw(asset_number_strategy)
     amm.Asset.clear()
     return [
-               amm.Asset('LRNA', draw(asset_price_strategy)),
-               amm.Asset('HDX', draw(asset_price_strategy)),
-               amm.Asset('USD', 1)
+               amm.Asset('LRNA', price=draw(asset_price_strategy)),
+               amm.Asset('HDX', price=draw(asset_price_strategy)),
+               amm.Asset('USD', price=1)
            ] + [
                amm.Asset(
                    name=''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)),
@@ -177,33 +177,86 @@ def test_remove_liquidity(market_state, pool_index, quantity):
 
 
 @given(market_state=omnipool_config(asset_count=4))
-def test_buy_lrna(market_state: OmniPool):
+def test_swap_lrna(market_state: OmniPool):
     asset_name = market_state.pool_list[2].name
     agents = [
         OmnipoolAgent(name='trader')
         .add_position(asset_name='LRNA', quantity=1000000)
+        .add_position(asset_name=asset_name, quantity=1000)
     ]
     old_state, old_agents = market_state, agents
-    buy_state, buy_agents = sell_lrna(
+    sell_r_state, sell_r_agents = swap_lrna(
         market_state=old_state,
-        agents_list=agents,
+        agents_list=old_agents,
         agent_index=0,
         asset_name=asset_name,
-        buy_asset_quantity=1000
+        delta_r=1000
     )
-    delta_q = buy_state.Q(asset_name) - old_state.Q(asset_name)
+    delta_q = sell_r_state.Q(asset_name) - old_state.Q(asset_name)
     if delta_q > 0:
-        sell_state, sell_agents = sell_lrna(
+        buy_q_state, buy_q_agents = swap_lrna(
             market_state=old_state,
-            agents_list=agents,
+            agents_list=old_agents,
             agent_index=0,
             asset_name=asset_name,
-            sell_lrna_quantity=-delta_q
+            delta_q=-delta_q
         )
-        assert sell_agents[0].q == pytest.approx(buy_agents[0].q)
-        assert sell_agents[0].r(asset_name) == pytest.approx(buy_agents[0].r(asset_name))
-        assert sell_state.Q(asset_name) == pytest.approx(buy_state.Q(asset_name))
-        assert sell_state.R(asset_name) == pytest.approx(buy_state.R(asset_name))
+        assert sell_r_agents[0].q == pytest.approx(buy_q_agents[0].q)
+        assert sell_r_agents[0].r(asset_name) == pytest.approx(buy_q_agents[0].r(asset_name))
+        assert sell_r_state.Q(asset_name) == pytest.approx(buy_q_state.Q(asset_name))
+        assert sell_r_state.R(asset_name) == pytest.approx(buy_q_state.R(asset_name))
+
+    sell_q_state, sell_q_agents = swap_lrna(
+        market_state=old_state,
+        agents_list=old_agents,
+        agent_index=0,
+        asset_name=asset_name,
+        delta_r=1000
+    )
+    delta_q = sell_q_state.Q(asset_name) - old_state.Q(asset_name)
+    if delta_q > 0:
+        buy_r_state, buy_r_agents = swap_lrna(
+            market_state=old_state,
+            agents_list=old_agents,
+            agent_index=0,
+            asset_name=asset_name,
+            delta_q=-delta_q
+        )
+        assert sell_q_agents[0].q == pytest.approx(buy_r_agents[0].q)
+        assert sell_q_agents[0].r(asset_name) == pytest.approx(buy_r_agents[0].r(asset_name))
+        assert sell_q_state.Q(asset_name) == pytest.approx(buy_r_state.Q(asset_name))
+        assert sell_q_state.R(asset_name) == pytest.approx(buy_r_state.R(asset_name))
+
+    # test whether a two-part asset-lrna-asset swap can be equivalent to a direct swap
+    swap_state, swap_agents = swap_lrna(
+            market_state=old_state,
+            agents_list=old_agents,
+            agent_index=0,
+            asset_name=asset_name,
+            delta_r=1
+        )
+    delta_q = swap_state.Q(asset_name) - old_state.Q(asset_name)
+    if delta_q < 0:
+        other_asset = market_state.pool_list[1].name
+        swap_state, swap_agents = swap_lrna(
+                market_state=swap_state,
+                agents_list=swap_agents,
+                agent_index=0,
+                asset_name=other_asset,
+                delta_q=-delta_q
+            )
+        direct_swap_state, direct_swap_agents = swap_assets(
+            market_state=old_state,
+            agents_list=old_agents,
+            sell_asset=asset_name,
+            buy_asset=other_asset,
+            trader_id=0,
+            sell_quantity=1
+        )
+        assert direct_swap_agents[0].value_holdings(direct_swap_state) == \
+            pytest.approx(swap_agents[0].value_holdings(swap_state))
+        assert direct_swap_state.T_total == pytest.approx(swap_state.T_total)
+        assert direct_swap_state.Q_total == pytest.approx(swap_state.Q_total)
 
 
 @given(market_state=omnipool_config(asset_count=4))
@@ -225,6 +278,6 @@ if __name__ == "__main__":
     test_market_construction()
     test_add_liquidity()
     test_swap_asset()
-    test_buy_lrna()
+    test_swap_lrna()
     test_remove_liquidity()
     test_trade_strategies()
