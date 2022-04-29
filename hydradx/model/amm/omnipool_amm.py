@@ -319,6 +319,12 @@ class OmniPool(amm.Exchange):
         if agent.r(i) + delta_Ri < 0:
             return self
 
+        if Q(i) + delta_Qi < 0 or Q(j) + delta_Qj < 0:
+            return self
+
+        if R(i) + delta_Ri < 0 or R(j) + delta_Rj < 0:
+            return self
+
         self.add_delta_Q(i, delta_Qi)
         self.add_delta_Q(j, delta_Qj)
         self.add_delta_R(i, delta_Ri)
@@ -369,26 +375,45 @@ class OmniPool(amm.Exchange):
         return self
 
     # noinspection PyArgumentList
-    def sell_lrna(self,
+    def swap_lrna(self,
                   agent: OmnipoolAgent,
                   asset_name: str,
-                  buy_asset_quantity: float,
-                  sell_lrna_quantity: float
+                  delta_r: float = 0,
+                  delta_q: float = 0
                   ):
-        delta_qa = sell_lrna_quantity
-        delta_ra = buy_asset_quantity
+        delta_qa = -delta_q
+        delta_ra = -delta_r
+        delta_qi = delta_q
+        delta_ri = delta_r
         i = asset_name
         P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = self.algebraic_symbols()
+
+        if delta_ri + R(i) <= 0:
+            # print("LRNA sell failed: there is not enough asset in the pool.")
+            # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
+            return self
+        if delta_qi + Q(i) <= 0:
+            return self
 
         if delta_qa < 0:
             # transaction specified in terms of LRNA sold
             delta_qi = -delta_qa
             delta_ri = R(i) * -delta_qi / (Q(i) + delta_qi) * (1 - Fa)
             delta_ra = -delta_ri
+        elif delta_qa > 0:
+            # transaction specified in terms of LRNA bought
+            delta_qi = -delta_qa * (1 - Fp)
+            delta_ri = R(i) * -delta_qi / (Q(i) + delta_qi)
+            delta_ra = -delta_ri
         elif delta_ra > 0:
             # transaction specified in terms of asset bought
             delta_ri = -delta_ra
             delta_qi = Q(i) * -delta_ri / (R(i) * (1 - Fa) + delta_ri)
+            delta_qa = -delta_qi
+        elif delta_ra < 0:
+            # transaction specified in terms of asset sold
+            delta_ri = -delta_ra * (1 - Fp)
+            delta_qi = Q(i) * -delta_ri / (R(i) + delta_ri)
             delta_qa = -delta_qi
         else:
             raise ValueError(
@@ -397,14 +422,12 @@ class OmniPool(amm.Exchange):
 
         delta_l = delta_qi * (1 + (1 - Fa) * Q(i) / (Q(i) + delta_qi))
 
-        if delta_ri + R(i) < 0:
-            # print("LRNA sell failed: there is not enough asset in the pool.")
-            # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
+        if delta_ra + agent.r(i) < 0:
             return self
 
-        if delta_qi < 0:
-            raise ValueError("Buying LRNA is not currently allowed.")
-
+        # if delta_qi < 0:
+        #     raise ValueError("Buying LRNA is not currently allowed.")
+        #
         if delta_qa + agent.q < 0:
             # print("Agent has insufficient LRNA to complete transaction.")
             # print(f'(asset {i}, agent {agent.name}, asset bought {delta_ra}, LRNA sold {delta_qa})')
@@ -471,7 +494,7 @@ def remove_liquidity(market_state: OmniPool,
                      asset_name: str,
                      delta_r: float
                      ) -> tuple[OmniPool, list[OmnipoolAgent]]:
-    """ compute new state after agent[agent_index] removes liquidity from pool[asset_index] in quantity delta_r """
+    """ Compute new state after agent[agent_index] removes liquidity from pool[asset_index] in quantity delta_r. """
 
     new_agents = copy.deepcopy(agents_list)
     new_state = copy.deepcopy(market_state).remove_liquidity(
@@ -483,19 +506,22 @@ def remove_liquidity(market_state: OmniPool,
     return new_state, new_agents
 
 
-def sell_lrna(market_state: OmniPool,
+def swap_lrna(market_state: OmniPool,
               agents_list: list[OmnipoolAgent],
               agent_index: int,
               asset_name: str,
-              buy_asset_quantity: float = 0,
-              sell_lrna_quantity: float = 0
+              delta_r: float = 0,
+              delta_q: float = 0
               ) -> tuple[OmniPool, list[OmnipoolAgent]]:
+    """
+    Compute new state after swapping LRNA for an asset. Delta_q and delta_r are from the perspective of the market.
+    """
     new_agents = copy.deepcopy(agents_list)
-    new_state = copy.deepcopy(market_state).sell_lrna(
+    new_state = copy.deepcopy(market_state).swap_lrna(
         agent=new_agents[agent_index],
         asset_name=asset_name,
-        buy_asset_quantity=buy_asset_quantity,
-        sell_lrna_quantity=sell_lrna_quantity
+        delta_r=delta_r,
+        delta_q=delta_q
     )
     return new_state, new_agents
 
@@ -509,18 +535,25 @@ class OmnipoolTradeStrategies:
 
         @TradeStrategy
         def strategy(agent: OmnipoolAgent, market: OmniPool):
-            buy_asset = random.choice(agent.asset_list)
-            sell_asset = random.choice(agent.asset_list)
+            buy_asset = random.choice(agent.asset_list).name
+            sell_asset = random.choice(agent.asset_list).name
+            sell_quantity = (
+                             (amount / market.price(sell_asset)
+                              or agent.holdings(sell_asset) * percent / 100
+                              )
+                             * (random.random() if randomize_amount else 1)
+                             ) or 1
             if buy_asset == sell_asset:
                 return market, agent
+            elif buy_asset == market.lrna.name:
+                return market.swap_lrna(agent=agent, asset_name=sell_asset, delta_r=sell_quantity)
+            elif sell_asset == market.lrna.name:
+                return market.swap_lrna(agent=agent, asset_name=buy_asset, delta_q=sell_quantity)
             else:
                 return market.swap_assets(
                     agent=agent,
-                    sell_asset=sell_asset.name,
-                    buy_asset=buy_asset.name,
-                    sell_quantity=((amount / market.price(sell_asset)
-                                    or agent.holdings(sell_asset.name) * percent / 100)
-                                   * (random.random() if randomize_amount else 1)
-                                   ) or 1
+                    sell_asset=sell_asset,
+                    buy_asset=buy_asset,
+                    sell_quantity=sell_quantity
                 ), agent
         return strategy
