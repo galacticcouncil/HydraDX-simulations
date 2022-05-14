@@ -4,7 +4,7 @@ import pandas as pd
 
 # from amm.amm import WorldState
 from .amm import omnipool_amm
-from .amm.amm import Agent, Market
+from .amm.amm import Agent, Exchange
 
 
 def postprocessing(events, params_to_include: list[str] = ()):
@@ -66,7 +66,7 @@ def postprocessing(events, params_to_include: list[str] = ()):
 
     # build the DFs
     for (n, step) in enumerate(events):
-        omnipool: omnipool_amm.OmniPool = step['WorldState'].exchange
+        omnipool: omnipool_amm.Omnipool = step['WorldState'].exchange
         agents: dict[str, omnipool_amm.OmnipoolAgent] = step['WorldState'].agents
 
         # add items to exchange dictionary
@@ -114,7 +114,7 @@ def postprocessing(events, params_to_include: list[str] = ()):
     return df, agent_df
 
 
-def val_pool(agent: Agent, market: Market) -> float:
+def val_pool(agent: Agent, market: Exchange) -> float:
     """ How much are all this agent's exchange shares worth if sold off, denominated in (pre-sale) LRNA? """
     market_copy = copy.deepcopy(market)
     agent_copy = copy.deepcopy(agent)
@@ -125,7 +125,7 @@ def val_pool(agent: Agent, market: Market) -> float:
     )
 
 
-def val_hold(agent: Agent, market: Market):
+def val_hold(agent: Agent, market: Exchange):
     """ How much are this agent's holdings in the exchange worth at the current spot price? """
     agent_copy = copy.deepcopy(agent)
     return (
@@ -139,7 +139,7 @@ def val_hold(agent: Agent, market: Market):
     # return value
 
 
-def pool_val(market: omnipool_amm.OmniPool):
+def pool_val(market: omnipool_amm.Omnipool):
     """ The total value of all pool shares owned by the protocol, denominated in LRNA. """
     return sum([
         pool.sharesOwnedByProtocol / pool.shares * pool.ratio  # * (1 - market.assetFee)

@@ -15,6 +15,12 @@ class Asset:
         Asset._ids += 1
         Asset.dict[name] = self
         Asset.list.append(self)
+        
+    def __eq__(self, other):
+        if isinstance(other, Asset):
+            return self.name == other.name
+        else:
+            return self.name == other
 
     @staticmethod
     def clear():
@@ -23,70 +29,40 @@ class Asset:
         Asset.list = []
 
 
-class Market:
-    def initializeAssetList(self, assets: list):
-        """
-        Reset and initialize a list of assets. The list is initialized on the Asset class itself,
-        so it is universal among this and all other instances of Market or Agent.
-        """
-        for asset in assets:
-            Market.add_asset(asset)
-        return self
-
-    @staticmethod
-    def reset():
-        Asset.clear()
-
-    @staticmethod
-    def add_asset(new_asset: Asset):
-        """ Add an asset to the Market class. It will be visible to all instances of Market or Agent. """
-        # no two assets should have the same name, so check that
-        if not Market.asset(new_asset.name):
-            Asset.dict[new_asset.name] = new_asset
-        else:
-            Market.asset(new_asset.name).price = new_asset.price
+class AssetHolder:
+    def __init__(self):
+        self._asset_dict = Asset.dict
 
     @property
     def asset_list(self) -> list[Asset]:
-        return list(Asset.dict.values())
+        return [self.asset(asset) for asset in self._asset_dict.values()]
 
-    @staticmethod
-    def asset(asset_name: str or int) -> Asset:
-        if isinstance(asset_name, Asset):
-            return Asset.dict[asset_name.name] if asset_name.name in Asset.dict else None
-        elif type(asset_name) == int:
-            return Asset.list[asset_name]
-        return Asset.dict[asset_name] if asset_name in Asset.dict else None
+    @asset_list.setter
+    def asset_list(self, value: list[Asset]):
+        self._asset_dict = {asset.name: asset for asset in sorted(value, key=lambda x: x.index)}
 
-    @staticmethod
-    def price(asset_index: int or str):
-        return Market.asset(asset_index).price
+    def asset(self, asset: str or int or Asset) -> Asset:
+        if isinstance(asset, Asset):
+            return self._asset_dict[asset.name] if asset.name in self._asset_dict else None
+        elif type(asset) == int:
+            return self.asset_list[asset]
+        return self._asset_dict[asset] if asset in self._asset_dict else None
 
 
 class Position:
     def __init__(self,
-                 asset_name: int or str,
+                 asset: Asset,
                  quantity: float = 0,
-                 price: float = 0):
+                 buy_in_price: float = 0):
 
-        asset = Market.asset(asset_name)
         self.quantity = quantity
-        self.price = price or asset.price
-        self._asset = asset
-
-    @property
-    def asset(self):
-        """ A reference to the asset object. """
-        return self._asset
+        self.buy_in_price = buy_in_price or asset.price
+        self.asset = asset
 
     @property
     def assetName(self):
         """ The name of the asset. """
-        return self._asset.name
-
-    @property
-    def index(self):
-        return self.asset.index
+        return self.asset.name
 
 
 class ShareToken(Asset):
@@ -114,7 +90,7 @@ class RiskAssetPool:
         self.weightCap = weight_cap
         self.shares = self.positions[0].quantity
         self.sharesOwnedByProtocol = self.shares
-        self.totalValue = sum([position.quantity * position.price for position in positions])
+        self.totalValue = sum([position.quantity * position.buy_in_price for position in positions])
         self.unique_id = unique_id
 
         self.shareToken = ShareToken(
@@ -142,69 +118,56 @@ class TradeStrategy:
         return self.function(agent, market)
 
 
-class Agent:
+class Agent(AssetHolder):
     def __init__(self, name: str, trade_strategy: TradeStrategy = None):
-
+        super().__init__()
         self.name = name
         self.tradeStrategy = trade_strategy
-        self._positions = {}
+        self.positions = {}
 
     def erase_external_holdings(self):
         """ agent loses all their money that is not in an exchange """
         for asset in self.asset_list:
-            if type(asset) == Asset:
-                self.position(asset).quantity = 0
+            if type(asset) == Asset and self.position(asset):
+                self.position(asset.name).quantity = 0
         return self
 
-    def position(self, asset_name: str) -> Position:
+    def position(self, asset: str or Asset) -> Position:
         """ Given the name of (or a reference to) an asset, returns the agent's position as regards that asset. """
-        asset_name = Market.asset(asset_name).name
-        return self._positions[asset_name] if asset_name in self._positions else None
+        asset_name = self.asset(asset).name
+        return self.positions[asset_name] if asset_name in self.positions else None
 
-    def asset(self, asset_name: str) -> Asset:
-        """ Given the name of an asset, returns a reference to that asset. """
-        asset_name = Market.asset(asset_name).name
-        return self.position(asset_name).asset
+    def holdings(self, asset: str or Asset) -> float:
+        """ get this agent's holdings in the specified asset """
+        return self.position(asset).quantity if self.position(asset) else 0
 
-    def holdings(self, asset_name: str) -> float:
-        """ get this agent's holdings in the specified market, asset pair """
-        asset_name = Market.asset(asset_name).name
-        return self.position(asset_name).quantity if self.position(asset_name) else 0
-
-    def price(self, asset_name: str) -> float:
-        asset_name = Market.asset(asset_name).name
+    def price(self, asset: str or Asset) -> float:
         """ Returns this agent's buy-in price for the specified asset. """
-        return self.position(asset_name).price if self.position(asset_name) else None
+        return self.position(asset).buy_in_price if self.position(asset) else None
 
-    @property
-    def asset_list(self) -> list[Asset]:
-        """ Returns a list of all assets that are owned by this agent. """
-        return [Market.asset(asset) for asset in self._positions.keys()]
-
-    def add_position(self, asset_name: str, quantity: float, price: float = 0):
-        asset_name = Market.asset(asset_name).name
+    def add_position(self, asset: str or Asset, quantity: float, price: float = 0):
         """ add specified quantity to the agent's asset holdings in market """
-        asset_name = Market.asset(asset_name).name
-        if self.position(asset_name):
-            self.position(asset_name).quantity += quantity
+        asset = self.asset(asset)
+        if self.position(asset):
+            self.position(asset).quantity += quantity
             return self
 
         # if (market, asset) position was not found, create one
         newPosition = Position(
-            asset_name=asset_name,
+            asset=asset,
             quantity=quantity,
-            price=price
+            buy_in_price=price
         )
-        self._positions[asset_name] = newPosition
+        self.positions[asset.name] = newPosition
         return self
 
 
-class Exchange(Market):
+class Exchange(AssetHolder):
     def __init__(self,
                  tvl_cap_usd: float,
                  asset_fee: float,
                  ):
-
+        super().__init__()
         self._asset_pools_dict = dict()
 
         self.tvlCapUSD = tvl_cap_usd
@@ -249,7 +212,7 @@ class Exchange(Market):
         for position in pool.positions:
             position.quantity -= quantity
 
-    def swap_assets(self, agent: Agent, sell_asset: str, buy_asset: str, sell_quantity):
+    def swap_assets(self, agent: Agent, sell_asset: str or Asset, buy_asset: str or Asset, sell_quantity):
         """ very naive default implementation of swap_assets. override. """
         pool = self.pool([buy_asset, sell_asset])
         if pool.position(sell_asset).quantity < sell_quantity:
@@ -259,15 +222,26 @@ class Exchange(Market):
 
 
 class WorldState:
-    def __init__(self, exchange: Exchange, agents: dict):
-        self._assets = exchange.asset_list
+    def __init__(self, exchange: Exchange, agents: dict[str: Agent]):
+        self.asset_list = exchange.asset_list
         self.exchange = exchange
         self.agents = agents
-        # # let the agents know about all their options
-        # for asset in assets:
-        #     for agent in agents:
-        #         agent.add_position(asset, 0)
+        self.syncAssets()
 
     def copy(self):
+        """ Returns a copy of the world state with assets synced to the common list. Use instead of copy.deepcopy. """
         returnCopy = copy.deepcopy(self)
+        returnCopy.syncAssets()
         return returnCopy
+
+    def syncAssets(self):
+        # make sure everyone is working from the same list of assets in an object-identity sense
+        for holder in [self.exchange] + list(self.agents.values()):
+            holder.asset_list = self.asset_list
+        for pool in self.exchange.pool_list:
+            for position in pool.positions:
+                position.asset = self.exchange.asset(position.assetName)
+        for agent in self.agents.values():
+            for position in agent.positions.values():
+                position.asset = agent.asset(position.assetName)
+

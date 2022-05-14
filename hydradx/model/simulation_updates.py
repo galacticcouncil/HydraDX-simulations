@@ -15,7 +15,7 @@ def actionDecoder(params, step, history, prev_state) -> dict:
 
 
 def execute_trades(params, substep, state_history, prev_state, policy_input):
-    new_state: amm.WorldState = prev_state['WorldState']
+    new_state: amm.WorldState = prev_state['WorldState'].copy()
     for agent in new_state.agents.values():
         if agent.tradeStrategy:
             agent.tradeStrategy.execute(agent=agent, market=new_state.exchange)
