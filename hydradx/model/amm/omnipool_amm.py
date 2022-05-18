@@ -126,24 +126,6 @@ class MarketState:
         """ total LRNA in all pools combined, denominated in preferred_stablecoin """
         return sum(self.Q(token) for token in self.pools)
 
-    def algebraic_symbols(self) -> tuple:
-        """ usage: B, C, O, P, Q, R, S, T, L, Fp, Fa, Q_total, T_total = Omnipool.algebraic_symbols() """
-        return (
-            self.B,
-            self.C,
-            self.O,
-            self.P,
-            self.Q,
-            self.R,
-            self.S,
-            self.T,
-            self.L,
-            self.lrna_fee,
-            self.asset_fee,
-            self.Q_total,
-            self.T_total
-        )
-
     def copy(self):
         return copy.deepcopy(self)
 
@@ -171,42 +153,6 @@ def price_i(state: MarketState, i: str, fee: float = 0) -> float:
         return 0
     else:
         return (state.Q(i) / state.R(i)) * (1 - fee)
-
-# 
-# def initialize_token_counts(init_d=None) -> dict:
-#     if init_d is None:
-#         init_d = {}
-#     state = {
-#         'R': copy.deepcopy(init_d['R']),
-#         'Q': [init_d['P'][i] * init_d.R(i) for i in range(len(init_d['R']))]
-#     }
-#     return state
-# 
-# 
-# def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
-#     if agent_d is None:
-#         agent_d = {}
-#     if init_d is None:
-#         init_d = {}
-# 
-#     n = len(token_counts['R'])
-#     state = copy.deepcopy(token_counts)
-#     state['S'] = copy.deepcopy(state['R'])
-#     state['A'] = [0] * n
-# 
-#     agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
-#     state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
-# 
-#     state['T'] = init_d['T'] if 'T' in init_d else None
-#     state['H'] = init_d['H'] if 'H' in init_d else None
-# 
-#     return state
-# 
-# 
-# def initialize_pool_state(init_d=None, agent_d=None) -> dict:
-#     token_counts = initialize_token_counts(init_d)
-#     return initialize_shares(token_counts, init_d)
-# 
 
 
 def swap_lrna(
