@@ -4,32 +4,20 @@ import string
 from ..amm import omnipool_amm as oamm
 
 
-def initialize_LPs(state_d: dict, init_LPs: list) -> dict:
-    agent_d = {}
-    for i in range(len(init_LPs)):
-        s = [0] * len(state_d['S'])
-        s[i] = state_d['S'][i]
-        agent_d[init_LPs[i]] = {
-            's': s,  # simply assigning each LP all of an asset
-            'h': 0  # no HDX shares to start
-        }
-    return agent_d
+# def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> dict:
+#     # initialize tokens
+#     tokens_state = oamm.initialize_token_counts(init_d)  # shares will be wrong here, but it doesn't matter
+#     # initialize LPs
+#     if agents_d is not None:
+#         converted_agents_d = convert_agents(tokens_state, token_list, agents_d)
+#     else:
+#         converted_agents_d = None
+#     # initialize AMM shares
+#     state = oamm.initialize_shares(tokens_state, init_d, converted_agents_d)  # shares will be correct here
+#     return state
 
 
-def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> dict:
-    # initialize tokens
-    tokens_state = oamm.initialize_token_counts(init_d)  # shares will be wrong here, but it doesn't matter
-    # initialize LPs
-    if agents_d is not None:
-        converted_agents_d = convert_agents(tokens_state, token_list, agents_d)
-    else:
-        converted_agents_d = None
-    # initialize AMM shares
-    state = oamm.initialize_shares(tokens_state, init_d, converted_agents_d)  # shares will be correct here
-    return state
-
-
-def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
+def swap(old_state: oamm.MarketState, old_agents: dict, trade: dict) -> tuple:
     """Translates from user-friendly trade API to internal API
 
     swap['token_buy'] is the token being bought
@@ -38,12 +26,8 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     swap['amount_sell'] is the amount of the token being sold
     """
     assert trade['token_buy'] != trade['token_sell'], "Cannot trade a token for itself"
-    i_buy = -1
-    i_sell = -1
-    if trade['token_buy'] != 'LRNA':
-        i_buy = old_state['token_list'].index(trade['token_buy'])
-    if trade['token_sell'] != 'LRNA':
-        i_sell = old_state['token_list'].index(trade['token_sell'])
+    i_buy = trade['token_buy']
+    i_sell = trade['token_sell']
 
     if 'amount_sell' in trade:
         trade_type = 'sell'
@@ -64,58 +48,62 @@ def swap(old_state: dict, old_agents: dict, trade: dict) -> tuple:
     else:
         raise
 
-    if i_buy < 0 or i_sell < 0:
-        return oamm.swap_lrna(old_state, old_agents, trade['agent_id'], delta_R, delta_Q, max(i_buy, i_sell),
-                                  old_state['fee_assets'],
-                                  old_state['fee_LRNA'])
+    if i_buy == 'LRNA' or i_sell == 'LRNA':
+        return oamm.swap_lrna(
+            old_state=old_state,
+            old_agents=old_agents,
+            trader_id=trade['agent_id'],
+            delta_ra=delta_R,
+            delta_qa=delta_Q,
+            i=i_buy if i_sell == 'LRNA' else i_sell,
+            fee_assets=old_state.asset_fee,
+            fee_lrna=old_state.lrna_fee)
     elif trade_type == 'sell':
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, trade['amount_sell'], i_buy, i_sell,
-                                old_state['fee_assets'], old_state['fee_LRNA'])
+        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, trade['amount_sell'],
+                                i_buy, i_sell,
+                                old_state.asset_fee, old_state.lrna_fee)
 
     elif trade_type == 'buy':
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, -trade['amount_buy'], i_buy, i_sell,
-                                old_state['fee_assets'], old_state['fee_LRNA'])
+        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, -trade['amount_buy'],
+                                i_buy, i_sell,
+                                old_state.asset_fee, old_state.lrna_fee)
 
     else:
         raise
 
 
-def price_i(state: dict, i: int) -> float:
+def price_i(state: oamm.MarketState, i: str) -> float:
     return oamm.price_i(state, i)
 
 
-def adjust_supply(state: dict) -> dict:
-    return oamm.adjust_supply(state)
-
-
-def remove_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
-    assert transaction['token_remove'] in old_state['token_list']
+def remove_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction: dict) -> tuple:
+    assert transaction['token_remove'] in old_state.asset_list
     agent_id = transaction['agent_id']
     shares_burn = transaction['shares_remove']
-    i = old_state['token_list'].index(transaction['token_remove'])
+    i = transaction['token_remove']
     return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_burn, i)
 
 
-def add_liquidity(old_state: dict, old_agents: dict, transaction: dict) -> tuple:
-    assert transaction['token_add'] in old_state['token_list']
+def add_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction: dict) -> tuple:
+    assert transaction['token_add'] in old_state.asset_list
     agent_id = transaction['agent_id']
     amount_add = transaction['amount_add']
-    i = old_state['token_list'].index(transaction['token_add'])
+    i = transaction['token_add']
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
-def value_assets(state: dict, assets: dict, prices: list = None) -> float:
+def value_assets(state: oamm.MarketState, assets: dict, prices: list = None) -> float:
     if prices is None:
-        prices = [price_i(state, i) for i in range(len(state['R']))]
-    return assets['q'] + sum([assets['r'][i] * prices[i] for i in range(len(state['R']))])
+        prices = [price_i(state, i) for i in state.asset_list]
+    return assets['q'] + sum([assets['r'][i] * prices[i] for i in state.asset_list])
 
 
-def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tuple:
-    n = len(state['R'])
+def withdraw_all_liquidity(state: oamm.MarketState, agent_d: dict, agent_id: string) -> tuple:
+    token_count = len(state.asset_list)
     new_agents = {agent_id: agent_d}
     new_state = copy.deepcopy(state)
 
-    for i in range(n):
+    for i in range(token_count):
         transaction = {
             'token_remove': new_state['token_list'][i],
             'agent_id': agent_id,
@@ -126,32 +114,32 @@ def withdraw_all_liquidity(state: dict, agent_d: dict, agent_id: string) -> tupl
     return new_state, new_agents
 
 
-def value_holdings(state: dict, agent_d: dict, agent_id: string) -> float:
-    prices = [price_i(state, i) for i in range(len(state['R']))]
+def value_holdings(state: oamm.MarketState, agent_d: dict, agent_id: string) -> float:
+    prices = [price_i(state, i) for i in state.asset_list]
     new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
     return value_assets(new_state, new_agents[agent_id], prices)
 
 
-def convert_agent(state: dict, token_list: list, agent_dict: dict) -> dict:
+def convert_agent(state: oamm.MarketState, token_list: list, agent_dict: dict) -> dict:
     """Return agent dict compatible with this amm"""
-    n = len(state['R'])
-    d = {'q': 0, 's': [0] * n, 'r': [0] * n, 'p': [0] * n}
+    token_count = len(state.asset_list)
+    d = {'q': 0, 's': [0] * token_count, 'r': [0] * token_count, 'p': [0] * token_count}
 
     # iterate through tokens held by AMM, look for both tokens and shares. Ignore the rest
     if 'LRNA' in agent_dict:
         d['q'] = agent_dict['LRNA']
-    for i in range(n):
+    for i in range(token_count):
         if token_list[i] in agent_dict:
             d['r'][i] = agent_dict[token_list[i]]
         if 'omni' + token_list[i] in agent_dict:
             d['s'][i] = agent_dict['omni' + token_list[i]]
             # absent other information, assumes LPs contributed at current prices
-            d['p'][i] = price_i(state, i)
+            d['p'][i] = price_i(state, state.asset_list[i])
 
     return d
 
 
-def convert_agents(state: dict, token_list: list, agents_dict: dict) -> dict:
+def convert_agents(state: oamm.MarketState, token_list: list, agents_dict: dict) -> dict:
     d = {}
     for agent_id in agents_dict:
         d[agent_id] = convert_agent(state, token_list, agents_dict[agent_id])
