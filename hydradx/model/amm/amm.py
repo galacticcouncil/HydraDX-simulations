@@ -17,7 +17,7 @@ from ..amm import omnipool_amm as oamm
 #     return state
 
 
-def swap(old_state: oamm.MarketState, old_agents: dict, trade: dict) -> tuple:
+def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple:
     """Translates from user-friendly trade API to internal API
 
     swap['token_buy'] is the token being bought
@@ -72,11 +72,11 @@ def swap(old_state: oamm.MarketState, old_agents: dict, trade: dict) -> tuple:
         raise
 
 
-def price_i(state: oamm.MarketState, i: str) -> float:
+def price_i(state: oamm.OmnipoolState, i: str) -> float:
     return oamm.price_i(state, i)
 
 
-def remove_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction: dict) -> tuple:
+def remove_liquidity(old_state: oamm.OmnipoolState, old_agents: dict, transaction: dict) -> tuple:
     assert transaction['token_remove'] in old_state.asset_list
     agent_id = transaction['agent_id']
     shares_burn = transaction['shares_remove']
@@ -84,7 +84,7 @@ def remove_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction:
     return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_burn, i)
 
 
-def add_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction: dict) -> tuple:
+def add_liquidity(old_state: oamm.OmnipoolState, old_agents: dict, transaction: dict) -> tuple:
     assert transaction['token_add'] in old_state.asset_list
     agent_id = transaction['agent_id']
     amount_add = transaction['amount_add']
@@ -92,13 +92,13 @@ def add_liquidity(old_state: oamm.MarketState, old_agents: dict, transaction: di
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
-def value_assets(state: oamm.MarketState, assets: dict, prices: list = None) -> float:
+def value_assets(state: oamm.OmnipoolState, assets: dict, prices: list = None) -> float:
     if prices is None:
         prices = [price_i(state, i) for i in state.asset_list]
     return assets['q'] + sum([assets['r'][i] * prices[i] for i in state.asset_list])
 
 
-def withdraw_all_liquidity(state: oamm.MarketState, agent_d: dict, agent_id: string) -> tuple:
+def withdraw_all_liquidity(state: oamm.OmnipoolState, agent_d: dict, agent_id: string) -> tuple:
     token_count = len(state.asset_list)
     new_agents = {agent_id: agent_d}
     new_state = copy.deepcopy(state)
@@ -114,13 +114,13 @@ def withdraw_all_liquidity(state: oamm.MarketState, agent_d: dict, agent_id: str
     return new_state, new_agents
 
 
-def value_holdings(state: oamm.MarketState, agent_d: dict, agent_id: string) -> float:
+def value_holdings(state: oamm.OmnipoolState, agent_d: dict, agent_id: string) -> float:
     prices = [price_i(state, i) for i in state.asset_list]
     new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
     return value_assets(new_state, new_agents[agent_id], prices)
 
 
-def convert_agent(state: oamm.MarketState, token_list: list, agent_dict: dict) -> dict:
+def convert_agent(state: oamm.OmnipoolState, token_list: list, agent_dict: dict) -> dict:
     """Return agent dict compatible with this amm"""
     token_count = len(state.asset_list)
     d = {'q': 0, 's': [0] * token_count, 'r': [0] * token_count, 'p': [0] * token_count}
@@ -139,7 +139,7 @@ def convert_agent(state: oamm.MarketState, token_list: list, agent_dict: dict) -
     return d
 
 
-def convert_agents(state: oamm.MarketState, token_list: list, agents_dict: dict) -> dict:
+def convert_agents(state: oamm.OmnipoolState, token_list: list, agents_dict: dict) -> dict:
     d = {}
     for agent_id in agents_dict:
         d[agent_id] = convert_agent(state, token_list, agents_dict[agent_id])
