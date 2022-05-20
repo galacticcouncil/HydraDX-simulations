@@ -2,7 +2,7 @@ import copy
 import string
 
 
-class MarketState:
+class OmnipoolState:
     def __init__(self,
                  tokens: dict[str: dict],
                  tvl_cap: float,
@@ -68,24 +68,24 @@ class MarketState:
         return copy.deepcopy(self)
 
 
-def asset_invariant(state: MarketState, i: str) -> float:
+def asset_invariant(state: OmnipoolState, i: str) -> float:
     """Invariant for specific asset"""
     return state.liquidity[i] * state.lrna[i]
 
 
-def swap_lrna_delta_Qi(state: MarketState, delta_ri: float, i: str) -> float:
+def swap_lrna_delta_Qi(state: OmnipoolState, delta_ri: float, i: str) -> float:
     return state.lrna[i] * (- delta_ri / (state.liquidity[i] + delta_ri))
 
 
-def swap_lrna_delta_Ri(state: MarketState, delta_qi: float, i: str) -> float:
+def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
     return state.liquidity[i] * (- delta_qi / (state.lrna[i] + delta_qi))
 
 
-def weight_i(state: MarketState, i: str) -> float:
+def weight_i(state: OmnipoolState, i: str) -> float:
     return state.lrna[i] / sum(state.lrna)
 
 
-def price_i(state: MarketState, i: str, fee: float = 0) -> float:
+def price_i(state: OmnipoolState, i: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
     if state.liquidity[i] == 0:
         return 0
@@ -94,7 +94,7 @@ def price_i(state: MarketState, i: str, fee: float = 0) -> float:
 
 
 def swap_lrna(
-        old_state: MarketState,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
         delta_ra: float,
@@ -102,7 +102,7 @@ def swap_lrna(
         i: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after LRNA swap"""
 
     if delta_ra >= old_state.liquidity[i] * (1 - fee_assets):
@@ -143,7 +143,7 @@ def swap_lrna(
 
 
 def swap_assets_direct(
-        old_state: MarketState,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
         delta_token: float,
@@ -151,7 +151,7 @@ def swap_assets_direct(
         i_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     i = i_sell
     j = i_buy
     delta_Ri = delta_token
@@ -179,7 +179,7 @@ def swap_assets_direct(
 
 
 def swap_assets(
-        old_state: MarketState,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
         trade_type: string,
@@ -188,7 +188,7 @@ def swap_assets(
         i_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     if trade_type == 'sell':
 
         new_state, new_agents = swap_assets_direct(
@@ -215,12 +215,12 @@ def swap_assets(
 
 
 def add_risk_liquidity(
-        old_state: MarketState,
+        old_state: OmnipoolState,
         old_agents: dict,
         lp_id: string,
         delta_r: float,
         i: str
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after liquidity addition"""
 
     assert delta_r > 0, f"delta_R must be positive: {delta_r}"
@@ -279,12 +279,12 @@ def add_risk_liquidity(
 
 
 def remove_risk_liquidity(
-        old_state: MarketState,
+        old_state: OmnipoolState,
         old_agents: dict,
         lp_id: string,
         delta_s: float,
         i: str
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after liquidity removal"""
     assert delta_s <= 0, f"delta_S cannot be positive: {delta_s}"
     assert i in old_state.asset_list, f"invalid value for i: {i}"
