@@ -64,6 +64,14 @@ class OmnipoolState:
                 self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
             )
 
+    @property
+    def lrna_total(self):
+        return sum(self.lrna.values())
+
+    @property
+    def tvl_total(self):
+        return sum(self.tvl.values())
+
     def copy(self):
         return copy.deepcopy(self)
 
@@ -80,7 +88,7 @@ class OmnipoolState:
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    price: {price_i(self, token)}\n'
-                f'    weight: {self.tvl}/{sum(self.tvl)} ({self.tvl / sum(self.tvl)})\n'
+                f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
                 f'    protocol shares: {self.protocol_shares[token]}\n'
@@ -102,7 +110,7 @@ def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
 
 
 def weight_i(state: OmnipoolState, i: str) -> float:
-    return state.lrna[i] / sum(state.lrna)
+    return state.lrna[i] / state.lrna_total
 
 
 def price_i(state: OmnipoolState, i: str, fee: float = 0) -> float:
@@ -124,10 +132,6 @@ def swap_lrna(
         fee_lrna: float = 0
 ) -> tuple[OmnipoolState, dict]:
     """Compute new state after LRNA swap"""
-
-    if delta_ra >= old_state.liquidity[i] * (1 - fee_assets):
-        # insufficient assets in pool, transaction fails
-        return old_state, old_agents
 
     new_state = old_state.copy()
     new_agents = copy.deepcopy(old_agents)
@@ -151,6 +155,12 @@ def swap_lrna(
         return old_state, old_agents
     elif delta_ra + old_agents[trader_id]['r'][i] < 0:
         # agent doesn't have enough asset[i]
+        return old_state, old_agents
+    elif delta_R + old_state.liquidity[i] <= 0:
+        # insufficient assets in pool, transaction fails
+        return old_state, old_agents
+    elif delta_Q + old_state.lrna[i] <= 0:
+        # insufficient lrna in pool, transaction fails
         return old_state, old_agents
 
     new_agents[trader_id]['q'] += delta_qa
@@ -273,7 +283,7 @@ def add_risk_liquidity(
     new_state.lrna[i] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_r * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / sum(old_state.lrna)
+    delta_L = delta_r * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / old_state.lrna_total
     new_state.lrna_imbalance += delta_L
 
     # T update: TVL soft cap
@@ -281,12 +291,12 @@ def add_risk_liquidity(
     delta_t = new_state.lrna[i] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[i]
     new_state.tvl[i] += delta_t
 
-    if new_state.lrna[i] / sum(new_state.lrna) > new_state.weight_cap[i]:
+    if new_state.lrna[i] / new_state.lrna_total > new_state.weight_cap[i]:
         # print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
 
-    if sum(new_state.tvl) > new_state.tvl_cap:
+    if new_state.tvl_total > new_state.tvl_cap:
         # print('Transaction rejected because it would exceed the TVL cap.')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
         return old_state, old_agents
@@ -338,7 +348,7 @@ def remove_risk_liquidity(
     new_state.lrna[i] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_R * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / sum(old_state.lrna)
+    delta_L = delta_R * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / old_state.lrna_total
     new_state.lrna_imbalance += delta_L
 
     return new_state, new_agents
