@@ -5,7 +5,7 @@ import string
 class OmnipoolState:
     def __init__(self,
                  tokens: dict[str: dict],
-                 tvl_cap: float,
+                 tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
                  asset_fee: float = 0,
                  lrna_fee: float = 0,
@@ -66,6 +66,26 @@ class OmnipoolState:
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def __repr__(self):
+        return (
+            f'Omnipool\n'
+            f'tvl cap: {self.tvl_cap}\n'
+            f'lrna fee: {self.lrna_fee}\n'
+            f'asset fee: {self.asset_fee}\n'
+            f'asset pools: (\n'
+        ) + ')\n(\n'.join(
+            [(
+                f'    {token}\n'
+                f'    asset quantity: {self.liquidity[token]}\n'
+                f'    lrna quantity: {self.lrna[token]}\n'
+                f'    price: {price_i(self, token)}\n'
+                f'    weight: {self.tvl}/{sum(self.tvl)} ({self.tvl / sum(self.tvl)})\n'
+                f'    weight cap: {self.weight_cap[token]}\n'
+                f'    total shares: {self.shares[token]}\n'
+                f'    protocol shares: {self.protocol_shares[token]}\n'
+            ) for token in self.asset_list]
+        ) + '\n)'
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
