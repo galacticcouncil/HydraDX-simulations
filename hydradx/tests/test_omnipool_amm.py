@@ -105,6 +105,29 @@ def test_weights(initial_state):
         assert oamm.weight_i(initial_state, i) >= 0
     assert sum([oamm.weight_i(initial_state, i) for i in initial_state.asset_list]) == pytest.approx(1.0)
 
+    # # check enforcement of per-asset weight limit
+    # token_count = len(old_state.asset_list)
+    # total_Q = old_state.lrna_total
+    # weight_state = oamm.OmnipoolState(
+    #     {
+    #         token: {
+    #             'liquidity': total_Q / token_count,
+    #             'LRNA': total_Q / token_count
+    #         }
+    #         for token in old_state.asset_list
+    #     }
+    # )
+    # asset_price = weight_state.liquidity[i] / weight_state.lrna[i]
+    # max_amount = (weight_state.weight_cap[i] - 1 / token_count) / weight_state.weight_cap[i] * total_Q * asset_price
+    # # make sure checks other than weight limit will pass
+    # weight_state.tvl_cap = total_Q * 2
+    # old_agents[LP_id]['r'][i] = max_amount * 2
+    #
+    # new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount * 1.0001, i)
+    # assert new_state.liquidity[i] == old_state.liquidity[i], f'illegal transaction passed against weight limit in {i}'
+    # new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount * 0.9999, i)
+    # assert new_state.liquidity[i] != old_state.liquidity[i], f'legal transaction failed against weight limit in {i}'
+
 
 @given(omnipool_config())
 def test_QR_strat(market_state: oamm.OmnipoolState):
@@ -112,33 +135,38 @@ def test_QR_strat(market_state: oamm.OmnipoolState):
         assert oamm.price_i(market_state, i) > 0
 
 
-@given(omnipool_config(token_count=3))
+@given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
 def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
     old_state = initial_state
     LP_id = 'LP'
+    i = old_state.asset_list[2]
+
     old_agents = {
         LP_id: {
-            'r': [1000, 0],
-            's': [0, 0],
-            'p': [None, None]
+            'r': {i: 1000},
+            's': {i: 0},
+            'p': {i: old_state.liquidity[i] / old_state.lrna[i]}
         }
     }
     delta_R = 1000
-    i = initial_state.asset_list[2]
 
     new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, delta_R, i)
     for j in initial_state.asset_list:
         assert oamm.price_i(old_state, j) == pytest.approx(oamm.price_i(new_state, j))
-    assert old_state.liquidity(i) / old_state.shares(i) == \
-           pytest.approx(new_state.liquidity[i] / new_state.shares[i])
+    if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
+        raise ValueError(f'Price change in {i}'
+                         f'({old_state.liquidity[i] / old_state.shares[i]}) -->'
+                         f'({pytest.approx(new_state.liquidity[i] / new_state.shares[i])})'
+                         )
 
-    assert old_state.lrna_imbalance / new_state.lrna_total == \
-           pytest.approx(new_state.lrna_imbalance / new_state.lrna_total)
+    if old_state.lrna_imbalance / old_state.lrna_total != \
+           pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise ValueError(f'LRNA imbalance did not remain constant.')
 
     # check enforcement of agent's spending limit
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][0] + 1, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][i] + 1, i)
     assert new_state, new_agents == (old_state, old_agents)
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][0] - 1, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][i] - 1, i)
     assert new_state, new_agents != (old_state, old_agents)
 
     # check enforcement of overall TVL cap
@@ -146,34 +174,10 @@ def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
         old_state.lrna[i] * old_state.liquidity[old_state.stablecoin] / old_state.lrna[old_state.stablecoin]
         for i in old_state.asset_list
     ])
-    assert TVL == new_state.tvl_total
+    assert TVL == old_state.tvl_total
     old_state.tvl_cap = TVL
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, 1, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, delta_r=1, i=i)
     assert new_state, new_agents == (old_state, old_agents)
-
-    # check enforcement of per-asset weight limit
-    token_count = len(old_state.asset_list)
-    total_Q = old_state.lrna_total
-    weight_state = oamm.OmnipoolState(
-        {
-            token: {
-                'liquidity': total_Q / token_count,
-                'LRNA': total_Q / token_count
-            }
-            for token in old_state.asset_list
-        }
-    )
-    i = 'HDX'
-    asset_price = weight_state.liquidity[i] / weight_state.lrna[i]
-    max_amount = (weight_state.weight_cap[i] - 1 / token_count) / weight_state.weight_cap[i] * total_Q * asset_price
-    # make sure checks other than weight limit will pass
-    weight_state.tvl_cap = total_Q * 2
-    old_agents[LP_id]['r'][0] = max_amount * 2
-
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount + 1, i)
-    assert new_state.liquidity[i] == old_state.liquidity[i], f'illegal transaction passed against weight limit in {i}'
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount - 1, i)
-    assert new_state.liquidity[i] != old_state.liquidity[i], f'legal transaction failed against weight limit in {i}'
 
 
 @given(omnipool_config(token_count=3))
@@ -196,11 +200,14 @@ def test_remove_risk_liquidity(initial_state: oamm.OmnipoolState):
     new_state, new_agents = oamm.remove_risk_liquidity(old_state, old_agents, LP_id, delta_S, i)
     for j in new_state.asset_list:
         assert oamm.price_i(old_state, j) == pytest.approx(oamm.price_i(new_state, j))
-    assert old_state.liquidity[i] / old_state.shares[i] == pytest.approx(new_state.liquidity[i] / new_state.shares[i])
+    if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
+        raise ValueError('')
     delta_r = new_agents[LP_id]['r'][i] - old_agents[LP_id]['r'][i]
     delta_q = new_agents[LP_id]['q'] - old_agents[LP_id]['q']
-    assert delta_q >= 0 or delta_q == pytest.approx(0)
-    assert delta_r >= 0 or delta_r == pytest.approx(0)
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise ValueError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise ValueError('Delta R < 0')
 
     piq = oamm.price_i(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
@@ -210,6 +217,10 @@ def test_remove_risk_liquidity(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3), fee_strategy)
 def test_swap_lrna(initial_state, fee):
+    # This example fails. (Also fails in original.) TODO: figure out why
+    # initial_state = oamm.OmnipoolState(
+    #     tokens={token: {'liquidity': 1.0, 'LRNA': 0.0001} for token in ['HDX', 'USD', 'MYN']}
+    # )
     old_state = initial_state
     trader_id = 'trader'
     LP_id = 'lp'
@@ -231,21 +242,30 @@ def test_swap_lrna(initial_state, fee):
 
     # Test with trader selling asset i
     feeless_state, feeless_agents = oamm.swap_lrna(old_state, old_agents, trader_id, delta_Ra, 0, i, 0, 0)
-    assert oamm.asset_invariant(feeless_state, i) == pytest.approx(oamm.asset_invariant(old_state, i))
+    if oamm.asset_invariant(feeless_state, i) != pytest.approx(oamm.asset_invariant(old_state, i)):
+        raise
 
     # Test with trader selling LRNA
     new_state, new_agents = oamm.swap_lrna(old_state, old_agents, trader_id, 0, delta_Qa, i, fee, fee)
     feeless_state, feeless_agents = oamm.swap_lrna(old_state, old_agents, trader_id, 0, delta_Qa, i, 0, 0)
-    assert oamm.asset_invariant(feeless_state, i) == pytest.approx(oamm.asset_invariant(old_state, i))
+    if oamm.asset_invariant(feeless_state, i) != pytest.approx(oamm.asset_invariant(old_state, i)):
+        raise
     for j in old_state.asset_list:
-        assert min(new_state.liquidity[j] - feeless_state.liquidity[j], 0) == pytest.approx(0)
-    assert min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) == pytest.approx(1)
+        if min(new_state.liquidity[j] - feeless_state.liquidity[j], 0) != pytest.approx(0):
+            raise
+    if min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) != pytest.approx(1):
+        raise
 
-    assert old_state.lrna[i] / old_state.liquidity[i] == \
-           pytest.approx((new_state.lrna[i] + new_state.lrna_imbalance) / new_state.liquidity[i])
+    if old_state.lrna[i] / old_state.liquidity[i] != \
+           pytest.approx((new_state.lrna[i] + new_state.lrna_imbalance) / new_state.liquidity[i]):
+        raise ValueError(f'Impermanent loss calculation incorrect. '
+                         f'{old_state.lrna[i] / old_state.liquidity[i]} != '
+                         f'{(new_state.lrna[i] + new_state.lrna_imbalance) / new_state.liquidity[i]}')
+    else:
+        pass
 
 
-@given(omnipool_config(token_count=3), fee_strategy, fee_strategy, st.integers(min_value=1, max_value=4))
+@given(omnipool_config(token_count=3), fee_strategy, fee_strategy, st.integers(min_value=1, max_value=2))
 def test_swap_assets(initial_state: oamm.OmnipoolState, fee_lrna, fee_assets, i):
 
     i_buy = initial_state.asset_list[i]
@@ -268,7 +288,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, fee_lrna, fee_assets, i)
     }
     delta_R = 1000
     sellable_tokens = len(old_state.asset_list) - 1
-    i_sell = old_state.asset_list[i_buy % sellable_tokens + 1]
+    i_sell = old_state.asset_list[i % sellable_tokens + 1]
 
     # Test with trader selling asset i, no LRNA fee... price should match feeless
     new_state, new_agents = \
@@ -279,25 +299,26 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, fee_lrna, fee_assets, i)
         oamm.swap_assets(old_state, old_agents, trader_id, 'sell', delta_R, i_buy, i_sell, 0, 0)
     for j in old_state.asset_list:
         # assets in pools only go up compared to asset_fee_only_state
-        assert min(asset_fee_only_state.liquidity[j] - feeless_state.liquidity[j], 0) == pytest.approx(0), \
-            f"asset in pool {j} is lesser when compared with no-fee case"
+        if min(asset_fee_only_state.liquidity[j] - feeless_state.liquidity[j], 0) != pytest.approx(0):
+            raise ValueError("asset in pool {j} is lesser when compared with no-fee case")
         # asset in pool goes up from asset_fee_only_state -> new_state (i.e. introduction of LRNA fee)
-        assert min(new_state.liquidity[j] - asset_fee_only_state.liquidity[j], 0) == pytest.approx(0), \
-            f"asset in pool {j} is lesser when LRNA fee is added vs only asset fee"
+        if min(new_state.liquidity[j] - asset_fee_only_state.liquidity[j], 0) != pytest.approx(0):
+            raise ValueError("asset in pool {j} is lesser when LRNA fee is added vs only asset fee")
         # invariant does not decrease
-        assert min(oamm.asset_invariant(new_state, j) / oamm.asset_invariant(old_state, j), 1) == pytest.approx(1), \
-            "invariant ratio less than zero"
+        if min(oamm.asset_invariant(new_state, j) / oamm.asset_invariant(old_state, j), 1) != pytest.approx(1):
+            raise ValueError("invariant ratio less than zero")
         # total quantity of R_i remains unchanged
-        assert (old_state.liquidity[j] + old_agents[trader_id]['r'][j]
-                == pytest.approx(new_state.liquidity[j] + new_agents[trader_id]['r'][j])), \
-            f"total quantity of R[{j}] changed"
+        if (old_state.liquidity[j] + old_agents[trader_id]['r'][j]
+                != pytest.approx(new_state.liquidity[j] + new_agents[trader_id]['r'][j])):
+            raise ValueError("total quantity of R[{j}] changed")
 
     # test that no LRNA is lost
     delta_Qi = new_state.lrna[i_sell] - old_state.lrna[i_sell]
     delta_Qj = new_state.lrna[i_buy] - old_state.lrna[i_buy]
     delta_Qh = new_state.lrna['HDX'] - old_state.lrna['HDX']
     delta_L = new_state.lrna_imbalance - old_state.lrna_imbalance
-    assert delta_L + delta_Qj + delta_Qi + delta_Qh == pytest.approx(0, abs=1e10), 'Some LRNA was lost along the way.'
+    if delta_L + delta_Qj + delta_Qi + delta_Qh != pytest.approx(0, abs=1e10):
+        raise ValueError('Some LRNA was lost along the way.')
 
     delta_out_new = new_agents[trader_id]['r'][i_buy] - old_agents[trader_id]['r'][i_buy]
 
@@ -306,7 +327,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, fee_lrna, fee_assets, i)
         old_state, old_agents, trader_id, 'buy', -delta_out_new, i_buy, i_sell, fee_assets, fee_lrna
     )
 
-    for j in range(len(old_state.liquidity)):
+    for j in old_state.asset_list:
         assert buy_state.liquidity[j] == pytest.approx(new_state.liquidity[j])
         assert buy_state.lrna[j] == pytest.approx(new_state.lrna[j])
         assert old_state.liquidity[j] + old_agents[trader_id]['r'][j] == \
