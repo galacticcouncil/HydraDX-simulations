@@ -60,8 +60,7 @@ class OmnipoolState:
         # count TVL for each pool once all values are set
         for token in self.asset_list:
             self.tvl[token] = (
-                self.liquidity[token] / self.lrna[token] *
-                self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
+                self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
             )
 
     @property
@@ -269,7 +268,10 @@ def add_risk_liquidity(
             return old_state, old_agents
 
     # Share update
-    new_state.shares[i] += (new_state.shares[i] * new_state.liquidity[i] / old_state.liquidity[i] or 1)
+    if new_state.shares[i]:
+        new_state.shares[i] *= new_state.liquidity[i] / old_state.liquidity[i]
+    else:
+        new_state.shares[i] = new_state.liquidity[i]
 
     if lp_id:
         # shares go to provisioning agent
