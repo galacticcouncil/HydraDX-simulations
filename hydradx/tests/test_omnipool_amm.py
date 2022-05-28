@@ -5,29 +5,30 @@ from hypothesis import given, strategies as st, assume
 
 from hydradx.model.amm import omnipool_amm as oamm
 
-asset_price_strategy = st.floats(min_value=0.0001, max_value=1000)
+asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
-asset_quantity_strategy = st.floats(min_value=1, max_value=1000000)
+asset_quantity_strategy = st.floats(min_value=10000, max_value=10000000)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
 
 
 @st.composite
 def assets_config(draw, token_count: int = 0) -> dict:
     token_count = token_count or draw(asset_number_strategy)
+    lrna_price_usd = draw(asset_price_strategy)
     return_dict = {
         'HDX': {
             'liquidity': draw(asset_quantity_strategy),
-            'LRNA_price': draw(asset_price_strategy)
+            'LRNA': draw(asset_quantity_strategy)
         },
         'USD': {
             'liquidity': draw(asset_quantity_strategy),
-            'LRNA_price': draw(asset_price_strategy)
+            'LRNA_price': 1/lrna_price_usd
         }
     }
     return_dict.update({
         ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
             'liquidity': draw(asset_quantity_strategy),
-            'LRNA_price': draw(asset_price_strategy)
+            'LRNA': draw(asset_quantity_strategy)
         } for _ in range(token_count - 2)
     })
     return return_dict
@@ -99,34 +100,41 @@ def test_swap_lrna_delta_TKN_respects_invariant(d, delta_tkn):
 
 # Tests over input space of a list of token quantities
 
-@given(omnipool_config())
-def test_weights(initial_state):
-    for i in initial_state.asset_list:
-        assert oamm.weight_i(initial_state, i) >= 0
-    assert sum([oamm.weight_i(initial_state, i) for i in initial_state.asset_list]) == pytest.approx(1.0)
+@given(omnipool_config(asset_fee=0, lrna_fee=0))
+def test_weights(initial_state: oamm.OmnipoolState):
+    old_state = initial_state
+    for i in old_state.asset_list:
+        assert oamm.weight_i(old_state, i) >= 0
+    assert sum([oamm.weight_i(old_state, i) for i in old_state.asset_list]) == pytest.approx(1.0)
 
-    # # check enforcement of per-asset weight limit
-    # token_count = len(old_state.asset_list)
-    # total_Q = old_state.lrna_total
-    # weight_state = oamm.OmnipoolState(
-    #     {
-    #         token: {
-    #             'liquidity': total_Q / token_count,
-    #             'LRNA': total_Q / token_count
-    #         }
-    #         for token in old_state.asset_list
-    #     }
-    # )
-    # asset_price = weight_state.liquidity[i] / weight_state.lrna[i]
-    # max_amount = (weight_state.weight_cap[i] - 1 / token_count) / weight_state.weight_cap[i] * total_Q * asset_price
-    # # make sure checks other than weight limit will pass
-    # weight_state.tvl_cap = total_Q * 2
-    # old_agents[LP_id]['r'][i] = max_amount * 2
-    #
-    # new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount * 1.0001, i)
-    # assert new_state.liquidity[i] == old_state.liquidity[i], f'illegal transaction passed against weight limit in {i}'
-    # new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, max_amount * 0.9999, i)
-    # assert new_state.liquidity[i] != old_state.liquidity[i], f'legal transaction failed against weight limit in {i}'
+    # check enforcement of per-asset weight limit
+    old_agents = {
+        'LP': {
+            'r': {i: 1000000},
+            's': {i: 0},
+            'p': {i: old_state.liquidity[i] / old_state.lrna[i]}
+        }
+    }
+    lp_id = 'LP'
+
+    token_count = len(old_state.asset_list)
+    i = old_state.asset_list[-1]
+    old_state.weight_cap[i] = old_state.tvl[i] / old_state.tvl_total * 1.00001
+
+    # calculate what should be the maximum allowable liquidity provision
+    max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
+                  * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
+                  / oamm.price_i(old_state, i))
+
+    # make sure agent has enough funds
+    old_agents[lp_id]['r'][i] = max_amount * 2
+
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 1.0001, i)
+    if new_state.liquidity[i] != pytest.approx(old_state.liquidity[i]):
+        raise ValueError(f'illegal transaction passed against weight limit in {i}')
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 0.9999, i)
+    if new_state.liquidity[i] == old_state.liquidity[i]:
+        raise ValueError(f'legal transaction failed against weight limit in {i}')
 
 
 @given(omnipool_config())
