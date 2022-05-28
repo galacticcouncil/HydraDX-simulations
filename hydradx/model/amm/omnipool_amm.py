@@ -147,20 +147,20 @@ def swap_lrna(
         delta_qa = -delta_Q
     else:
         # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
     if delta_qa + old_agents[trader_id]['q'] < 0:
         # agent doesn't have enough lrna
-        return old_state, old_agents
+        return fail(old_state, old_agents)
     elif delta_ra + old_agents[trader_id]['r'][i] < 0:
         # agent doesn't have enough asset[i]
-        return old_state, old_agents
+        return fail(old_state, old_agents)
     elif delta_R + old_state.liquidity[i] <= 0:
         # insufficient assets in pool, transaction fails
-        return old_state, old_agents
+        return fail(old_state, old_agents)
     elif delta_Q + old_state.lrna[i] <= 0:
         # insufficient lrna in pool, transaction fails
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
     new_agents[trader_id]['q'] += delta_qa
     new_agents[trader_id]['r'][i] += delta_ra
@@ -265,7 +265,7 @@ def add_risk_liquidity(
         if new_agents[lp_id]['r'][i] < 0:
             # print('Transaction rejected because agent has insufficient funds.')
             # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-            return old_state, old_agents
+            return fail(old_state, old_agents)
 
     # Share update
     if new_state.shares[i]:
@@ -296,12 +296,12 @@ def add_risk_liquidity(
     if new_state.lrna[i] / new_state.lrna_total > new_state.weight_cap[i]:
         # print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
     if new_state.tvl_total > new_state.tvl_cap:
         # print('Transaction rejected because it would exceed the TVL cap.')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
     # set price at which liquidity was added
     if lp_id:
@@ -354,3 +354,7 @@ def remove_risk_liquidity(
     new_state.lrna_imbalance += delta_L
 
     return new_state, new_agents
+
+
+def fail(old_state: OmnipoolState, old_agents: dict) -> tuple[OmnipoolState, dict]:
+    return old_state.copy(), copy.deepcopy(old_agents)
