@@ -1,100 +1,32 @@
-import copy
-import string
-
 from . import actions
 from .amm import amm
+from .amm import omnipool_amm as oamm
 import ipdb
-
-def complete_initial_values(values: dict, agent_d: dict = None) -> dict:
-    state = amm.initialize_state(values, values['token_list'], agent_d)
-    state['token_list'] = values['token_list']
-    state['L'] = values['L'] if 'L' in values else 0
-    state['fee_assets'] = values['fee_assets']
-    state['fee_LRNA'] = values['fee_LRNA']
-    if 'burn_rate' in values:
-        state['burn_rate'] = values['burn_rate']
-    return state
 
 
 def get_configuration(config_d: dict) -> tuple:
-    initial_values = complete_initial_values(config_d['initial_values'], config_d['agent_d'])
+
+    initial_state: oamm.OmnipoolState = config_d['initial_state']
+    # add liquidity held by agents to the pool
+    for agent in config_d['agent_d'].values():
+        for asset in agent:
+            if asset[:4] == 'omni':
+                poolName = asset[4:]
+                add_liquidity = agent[asset]
+                initial_state.shares[poolName] += ((initial_state.shares[poolName] / initial_state.liquidity[poolName])
+                                                   * add_liquidity)
+                initial_state.lrna[poolName] += add_liquidity * oamm.price_i(initial_state, poolName)
+                initial_state.liquidity[poolName] += add_liquidity
+    converted_agent_d = amm.convert_agents(initial_state, config_d['agent_d'])
     timesteps = sum([x[1] for x in config_d['action_ls']])
     action_list = actions.get_action_list(config_d['action_ls'], config_d['prob_dict'])
     params = {'action_list': [action_list],
               'action_dict': [config_d['action_dict']],
               'timesteps': [timesteps]}
-    converted_agent_d = amm.convert_agents(initial_values, config_d['initial_values']['token_list'], config_d['agent_d'])
-    state = {'external': {}, 'AMM': initial_values, 'uni_agents': converted_agent_d}
+    state = {'external': {}, 'AMM': initial_state, 'uni_agents': converted_agent_d}
     config_dict = {
         'N': 1,  # number of monte carlo runs
         'T': range(timesteps),  # number of timesteps - 147439 is the length of uniswap_events
         'M': params,  # simulation parameters
     }
     return config_dict, state
-
-
-'''
-
-
-def init_uniswap_lp(d_init, n) -> dict:
-    d = {
-        'r': [0]*n,
-        's': [[0]*n for i in range(n)],
-        'p': [0] * n,
-        'h': 0
-    }
-    for k in d_init:
-        x = k.split('-')
-        if x[0] != 's':
-            raise Exception
-        i = int(x[1])
-        j = int(x[2])
-        d['s'][i][j] = d_init[k]
-        d['s'][j][i] = d_init[k]
-    return d
-
-
-def init_lp(d_init: dict, n: int, opt:int=0) -> dict:
-    d = {
-        'r': [0]*n,
-        's': [0]*n,
-        'h': 0
-    }
-    if opt == 0:
-        d['b'] = [0] * n
-    else:  # TODO remove
-        d['p'] = [0] * n
-    for k in d_init:
-        x = k.split('-')
-        if x[0] != 's':
-            raise Exception
-        i = int(x[1])
-        d['s'][i] = d_init[k]
-    return d
-
-
-#Uniswap
-def init_trader(d_init, n) -> dict:
-    d = {
-        's': [[0] * n for i in range(n)],
-        'p': [0] * n
-    }
-    d['r'] = copy.deepcopy(d_init['r'])
-    d['h'] = d_init['h']
-    return d
-
-
-def init_balancer_trader(d_init:dict, n:int, opt:int=0) -> dict:
-    d = {
-        's': [0] * n,
-    }
-    if opt == 0:
-        d['b'] = [0] * n
-    else:  # TODO remove
-        d['p'] = [0] * n
-
-    d['r'] = copy.deepcopy(d_init['r'])
-    d['h'] = d_init['h']
-    return d
-
-'''
