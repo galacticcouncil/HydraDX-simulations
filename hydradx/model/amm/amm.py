@@ -1,6 +1,4 @@
 import copy
-import string
-
 from ..amm import omnipool_amm as oamm
 
 
@@ -72,16 +70,12 @@ def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple:
         raise
 
 
-def price_i(state: oamm.OmnipoolState, i: str) -> float:
-    return oamm.price_i(state, i)
-
-
 def remove_liquidity(old_state: oamm.OmnipoolState, old_agents: dict, transaction: dict) -> tuple:
     assert transaction['token_remove'] in old_state.asset_list
     agent_id = transaction['agent_id']
-    shares_burn = transaction['shares_remove']
+    shares_remove = transaction['shares_remove']
     i = transaction['token_remove']
-    return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_burn, i)
+    return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_remove, i)
 
 
 def add_liquidity(old_state: oamm.OmnipoolState, old_agents: dict, transaction: dict) -> tuple:
@@ -92,55 +86,47 @@ def add_liquidity(old_state: oamm.OmnipoolState, old_agents: dict, transaction: 
     return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
-def value_assets(state: oamm.OmnipoolState, assets: dict, prices: list = None) -> float:
-    if prices is None:
-        prices = [price_i(state, i) for i in state.asset_list]
-    return assets['q'] + sum([assets['r'][i] * prices[i] for i in state.asset_list])
+def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:
+    return agent['q'] + sum([
+        agent['r'][i] * oamm.price_i(state, i)
+        for i in state.asset_list
+    ])
 
 
-def withdraw_all_liquidity(state: oamm.OmnipoolState, agent_d: dict, agent_id: string) -> tuple:
-    token_count = len(state.asset_list)
-    new_agents = {agent_id: agent_d}
+def cash_out(state: oamm.OmnipoolState, agent: dict) -> float:
+    new_agents = {1: agent}
     new_state = copy.deepcopy(state)
 
-    for i in range(token_count):
+    for i in new_state.asset_list:
         transaction = {
-            'token_remove': new_state['token_list'][i],
-            'agent_id': agent_id,
-            'shares_remove': -agent_d['s'][i]
+            'token_remove': i,
+            'agent_id': 1,
+            'shares_remove': -agent['s'][i]
         }
 
         new_state, new_agents = remove_liquidity(new_state, new_agents, transaction)
-    return new_state, new_agents
+    return value_assets(new_state, new_agents[1])
 
 
-def value_holdings(state: oamm.OmnipoolState, agent_d: dict, agent_id: string) -> float:
-    prices = [price_i(state, i) for i in state.asset_list]
-    new_state, new_agents = withdraw_all_liquidity(state, agent_d, agent_id)
-    return value_assets(new_state, new_agents[agent_id], prices)
-
-
-def convert_agent(state: oamm.OmnipoolState, token_list: list, agent_dict: dict) -> dict:
+def convert_agent(state: oamm.OmnipoolState, agent_dict: dict) -> dict:
     """Return agent dict compatible with this amm"""
     token_count = len(state.asset_list)
-    d = {'q': 0, 's': [0] * token_count, 'r': [0] * token_count, 'p': [0] * token_count}
+    d = {'q': 0, 's': {}, 'r': {}, 'p': {}}
 
     # iterate through tokens held by AMM, look for both tokens and shares. Ignore the rest
     if 'LRNA' in agent_dict:
         d['q'] = agent_dict['LRNA']
-    for i in range(token_count):
-        if token_list[i] in agent_dict:
-            d['r'][i] = agent_dict[token_list[i]]
-        if 'omni' + token_list[i] in agent_dict:
-            d['s'][i] = agent_dict['omni' + token_list[i]]
-            # absent other information, assumes LPs contributed at current prices
-            d['p'][i] = price_i(state, state.asset_list[i])
+    for i in state.asset_list:
+        d['r'][i] = agent_dict[i] if i in agent_dict else 0
+        d['s'][i] = agent_dict['omni' + i] if 'omni' + i in agent_dict else 0
+        # absent other information, assumes LPs contributed at current prices
+        d['p'][i] = oamm.price_i(state, i) if 'omni' + i in agent_dict else 0
 
     return d
 
 
-def convert_agents(state: oamm.OmnipoolState, token_list: list, agents_dict: dict) -> dict:
+def convert_agents(state: oamm.OmnipoolState, agents_dict: dict) -> dict:
     d = {}
     for agent_id in agents_dict:
-        d[agent_id] = convert_agent(state, token_list, agents_dict[agent_id])
+        d[agent_id] = convert_agent(state, agents_dict[agent_id])
     return d
