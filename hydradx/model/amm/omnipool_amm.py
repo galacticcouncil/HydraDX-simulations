@@ -30,7 +30,7 @@ class OmnipoolState:
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
 
-        self.asset_list = []
+        self.asset_list: list[str] = []
         self.liquidity = {}
         self.lrna = {}
         self.shares = {}
@@ -62,6 +62,9 @@ class OmnipoolState:
             self.tvl[token] = (
                 self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
             )
+
+    def price(self, i: str):
+        return self.lrna[i] / self.liquidity[i]
 
     @property
     def lrna_total(self):
