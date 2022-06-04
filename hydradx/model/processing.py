@@ -9,10 +9,22 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
     Definition:
     Refine and extract metrics from the simulation
 
-    Parameters:
-    df: simulation dataframe
+    Optional parameters:
+    'withdraw_val': tracks the actual value of each agent's assets if they were withdrawn from the pool at each step
+    'deposit_val': tracks the theoretical value of each agent's original assets at each step's current spot prices,
+        if they had been held outside the pool from the beginning
+    'pool_val': tracks the value of all assets held in the pool
     """
     tokens = events[0]['AMM'].asset_list
+    # save initial state
+    initial_state = events[0]['AMM']
+    initial_agents = events[0]['uni_agents']
+    withdraw_agents: dict[dict] = {}
+    if 'deposit_val' in optional_params:
+        # move the agents' liquidity deposits back into
+        for agent_id in initial_agents:
+            _, withdraw_agents[agent_id] = amm.withdraw_all_liquidity(initial_state, initial_agents[agent_id])
+
     keys = 'PQRST'
     state_d = {key: [] for key in [item for sublist in [
         [f'{key}-{token}' for key in keys]
@@ -25,7 +37,7 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
 
     optional_params = set(optional_params)
     agent_params = {
-        'hold_val',
+        'deposit_val',
         'withdraw_val',
     }
     exchange_params = {
@@ -45,7 +57,7 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
     for step in events:
         step_state: oamm.OmnipoolState = step['AMM']
         for token in step_state.asset_list:
-            state_d[f'P-{token}'].append(step_state.liquidity[token] / step_state.lrna[token])
+            state_d[f'P-{token}'].append(step_state.lrna[token] / step_state.liquidity[token])
             state_d[f'Q-{token}'].append(step_state.lrna[token])
             state_d[f'R-{token}'].append(step_state.liquidity[token])
             state_d[f'S-{token}'].append(step_state.shares[token])
@@ -76,9 +88,11 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
                     for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
                         agent_d[key].append(step[key])
 
-                    if 'hold_val' in agent_d:
-                        agent_d['hold_val'].append(amm.value_assets(step_state, agent_state))
+                    if 'deposit_val' in agent_d:
+                        # what are this agent's original holdings theoretically worth at current spot prices?
+                        agent_d['deposit_val'].append(amm.value_assets(step_state, withdraw_agents[agent_id]))
                     if 'withdraw_val' in agent_d:
+                        # what are this agent's holdings worth if sold?
                         agent_d['withdraw_val'].append(amm.cash_out(step_state, agent_state))
 
             else:
@@ -108,6 +122,6 @@ def expand_state_var(k, var, d) -> None:
 
 def pool_val(state: oamm.OmnipoolState):
     return state.lrna_total + sum([
-        state.liquidity[i] * state.protocol_shares[i] / state.shares[i] * oamm.price_i(state, i)
+        state.liquidity[i] * state.protocol_shares[i] / state.shares[i] * state.price(i)
         for i in state.asset_list
     ])
