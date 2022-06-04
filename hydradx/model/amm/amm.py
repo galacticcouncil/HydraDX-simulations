@@ -93,7 +93,7 @@ def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:
     ])
 
 
-def cash_out(state: oamm.OmnipoolState, agent: dict) -> float:
+def withdraw_all_liquidity(state: oamm.OmnipoolState, agent: dict) -> tuple:
     new_agents = {1: agent}
     new_state = copy.deepcopy(state)
 
@@ -105,8 +105,12 @@ def cash_out(state: oamm.OmnipoolState, agent: dict) -> float:
         }
 
         new_state, new_agents = remove_liquidity(new_state, new_agents, transaction)
-    return value_assets(new_state, new_agents[1])
+    return new_state, new_agents[1]
 
+
+def cash_out(state: oamm.OmnipoolState, agent: dict) -> float:
+    new_state, new_agent = withdraw_all_liquidity(state, agent)
+    return value_assets(new_state, new_agent)
 
 def convert_agent(state: oamm.OmnipoolState, agent_dict: dict) -> dict:
     """Return agent dict compatible with this amm"""
