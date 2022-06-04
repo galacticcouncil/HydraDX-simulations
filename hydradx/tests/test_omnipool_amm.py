@@ -132,7 +132,7 @@ def test_weights(initial_state: oamm.OmnipoolState):
     illegal_state, illegal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 1.0001, i)
     if illegal_state.liquidity[i] != pytest.approx(old_state.liquidity[i]):
         raise AssertionError(f'illegal transaction passed against weight limit in {i}')
-    legal_state, legal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 1.9999, i)
+    legal_state, legal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 0.9999, i)
     if legal_state.liquidity[i] == old_state.liquidity[i]:
         raise AssertionError(f'legal transaction failed against weight limit in {i}')
 
