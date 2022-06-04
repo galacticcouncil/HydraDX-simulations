@@ -90,6 +90,7 @@ class OmnipoolState:
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    price: {price_i(self, token)}\n'
+                f'    tvl: {self.tvl}'
                 f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
