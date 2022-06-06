@@ -117,25 +117,6 @@ def test_weights(initial_state: oamm.OmnipoolState):
     }
     lp_id = 'LP'
 
-    i = old_state.asset_list[-1]
-    old_state.weight_cap[i] = old_state.tvl[i] / old_state.tvl_total * 1.00001
-
-    # calculate what should be the maximum allowable liquidity provision
-    max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
-                  * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
-                  / oamm.price_i(old_state, i))
-
-    # make sure agent has enough funds
-    old_agents[lp_id]['r'][i] = max_amount * 2
-
-    # try one just above and just below the maximum allowable amount
-    illegal_state, illegal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 1.0001, i)
-    if illegal_state.liquidity[i] != pytest.approx(old_state.liquidity[i]):
-        raise AssertionError(f'illegal transaction passed against weight limit in {i}')
-    legal_state, legal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 0.9999, i)
-    if legal_state.liquidity[i] == old_state.liquidity[i]:
-        raise AssertionError(f'legal transaction failed against weight limit in {i}')
-
 
 @given(omnipool_config())
 def test_QR_strat(market_state: oamm.OmnipoolState):
@@ -145,12 +126,16 @@ def test_QR_strat(market_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
 def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
+    initial_state.tvl_cap = initial_state.tvl_total * 2
+    for i in initial_state.asset_list:
+        initial_state.weight_cap[i] = min(initial_state.tvl[i] / initial_state.tvl_total * 1.1, .99)
+
     old_state = initial_state
-    LP_id = 'LP'
-    i = old_state.asset_list[2]
+    lp_id = 'LP'
+    i = old_state.asset_list[-1]
 
     old_agents = {
-        LP_id: {
+        lp_id: {
             'r': {i: 1000},
             's': {i: 0},
             'p': {i: old_state.liquidity[i] / old_state.lrna[i]}
@@ -158,7 +143,7 @@ def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
     }
     delta_R = 1000
 
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, delta_R, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, delta_R, i)
     for j in initial_state.asset_list:
         assert oamm.price_i(old_state, j) == pytest.approx(oamm.price_i(new_state, j))
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
@@ -172,9 +157,9 @@ def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
     # check enforcement of agent's spending limit
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][i] + 1, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, old_agents[lp_id]['r'][i] + 1, i)
     assert new_state, new_agents == (old_state, old_agents)
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, old_agents[LP_id]['r'][i] - 1, i)
+    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, old_agents[lp_id]['r'][i] - 1, i)
     assert new_state, new_agents != (old_state, old_agents)
 
     # check enforcement of overall TVL cap
@@ -183,9 +168,37 @@ def test_add_risk_liquidity(initial_state: oamm.OmnipoolState):
         for i in old_state.asset_list
     ])
     assert TVL == old_state.tvl_total
-    old_state.tvl_cap = TVL
-    new_state, new_agents = oamm.add_risk_liquidity(old_state, old_agents, LP_id, delta_r=1, i=i)
-    assert new_state, new_agents == (old_state, old_agents)
+    max_amount = (old_state.price(old_state.stablecoin) / old_state.price(i)
+                  * (old_state.tvl_cap - old_state.tvl_total))
+    new_state, new_agents = oamm.add_risk_liquidity(
+        old_state=old_state, old_agents=old_agents, lp_id=lp_id, delta_r=max_amount * 1.001, i=i
+    )
+    # transaction should fail
+    assert new_state.liquidity[i] == old_state.liquidity[i]
+
+    new_state, new_agents = oamm.add_risk_liquidity(
+        old_state=old_state, old_agents=old_agents, lp_id=lp_id, delta_r=max_amount * 0.999, i=i
+    )
+    # transaction should succeed
+    assert new_state.liquidity[i] == old_state.liquidity[i]
+
+    # calculate what should be the maximum allowable liquidity provision
+    max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
+                   * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
+                  / oamm.price_i(old_state, i))
+
+    # make sure agent has enough funds
+    old_agents[lp_id]['r'][i] = max_amount * 2
+    # eliminate general tvl cap so we can test just the weight cap
+    old_state.tvl_cap = float('inf')
+
+    # try one just above and just below the maximum allowable amount
+    illegal_state, illegal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 1.001, i)
+    if illegal_state.liquidity[i] != pytest.approx(old_state.liquidity[i]):
+        raise AssertionError(f'illegal transaction passed against weight limit in {i}')
+    legal_state, legal_agents = oamm.add_risk_liquidity(old_state, old_agents, lp_id, max_amount * 0.999, i)
+    if legal_state.liquidity[i] == old_state.liquidity[i]:
+        raise AssertionError(f'legal transaction failed against weight limit in {i}')
 
 
 @given(omnipool_config(token_count=3))
