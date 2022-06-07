@@ -366,7 +366,7 @@ if __name__ == '__main__':
     test_swap_lrna_delta_TKN_respects_invariant()
     test_swap_lrna()
     test_weights()
-    test_QR_strat()
+    test_prices()
     test_add_risk_liquidity()
     test_remove_risk_liquidity()
     test_swap_assets()
