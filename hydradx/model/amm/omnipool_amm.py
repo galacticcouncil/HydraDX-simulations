@@ -14,7 +14,7 @@ class OmnipoolState:
         tokens should be a dict in the form of [str: dict]
         the nested dict needs the following parameters:
         {
-          'liquidity': float  # starting liquidity in the pool
+          'liquidity': float  # starting risk asset liquidity in the pool
           (
           'LRNA': float  # starting LRNA on the other side of the pool
           or
