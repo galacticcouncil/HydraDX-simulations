@@ -90,7 +90,7 @@ class OmnipoolState:
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    price: {price_i(self, token)}\n'
-                f'    tvl: {self.tvl}'
+                f'    tvl: {self.tvl[token]}\n'
                 f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
@@ -128,9 +128,9 @@ def swap_lrna(
         old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
-        delta_ra: float,
-        delta_qa: float,
-        i: str,
+        delta_ra: float = 0,
+        delta_qa: float = 0,
+        i: str = '',
         fee_assets: float = 0,
         fee_lrna: float = 0
 ) -> tuple[OmnipoolState, dict]:
@@ -180,13 +180,13 @@ def swap_assets_direct(
         old_agents: dict,
         trader_id: string,
         delta_token: float,
-        i_buy: str,
-        i_sell: str,
+        tkn_buy: str,
+        tkn_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
 ) -> tuple[OmnipoolState, dict]:
-    i = i_sell
-    j = i_buy
+    i = tkn_sell
+    j = tkn_buy
     delta_Ri = delta_token
     assert delta_Ri > 0, 'sell amount must be greater than zero'
 
@@ -217,8 +217,8 @@ def swap_assets(
         trader_id: string,
         trade_type: string,
         delta_token: float,
-        i_buy: str,
-        i_sell: str,
+        tkn_buy: str,
+        tkn_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
 ) -> tuple[OmnipoolState, dict]:
@@ -229,8 +229,8 @@ def swap_assets(
             old_agents=old_agents,
             trader_id=trader_id,
             delta_token=delta_token,
-            i_buy=i_buy,
-            i_sell=i_sell,
+            tkn_buy=tkn_buy,
+            tkn_sell=tkn_sell,
             fee_assets=fee_assets,
             fee_lrna=fee_lrna
         )
@@ -238,10 +238,10 @@ def swap_assets(
         return new_state, new_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
-        delta_Qj = -old_state.lrna[i_buy] * delta_token / (old_state.liquidity[i_buy] * (1 - fee_assets) + delta_token)
+        delta_Qj = -old_state.lrna[tkn_buy] * delta_token / (old_state.liquidity[tkn_buy] * (1 - fee_assets) + delta_token)
         delta_Qi = -delta_Qj/(1 - fee_lrna)
-        delta_Ri = -old_state.liquidity[i_sell] * delta_Qi / (old_state.lrna[i_sell] + delta_Qi)
-        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, i_buy, i_sell, fee_assets, fee_lrna)
+        delta_Ri = -old_state.liquidity[tkn_sell] * delta_Qi / (old_state.lrna[tkn_sell] + delta_Qi)
+        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, tkn_buy, tkn_sell, fee_assets, fee_lrna)
 
     else:
         raise
