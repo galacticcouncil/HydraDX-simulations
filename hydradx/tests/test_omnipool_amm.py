@@ -91,10 +91,11 @@ def test_swap_lrna_delta_Ri_respects_invariant(d: oamm.OmnipoolState, delta_qi: 
 
 
 # Combining these two tests because the valid input space is the same
-@given(omnipool_config(asset_fee=0, lrna_fee=0), asset_quantity_strategy)
-def test_swap_lrna_delta_TKN_respects_invariant(d, delta_tkn):
-    test_swap_lrna_delta_Qi_respects_invariant(d, delta_tkn, 'HDX')
-    test_swap_lrna_delta_Ri_respects_invariant(d, delta_tkn, 'HDX')
+@given(omnipool_config(asset_fee=0, lrna_fee=0, token_count=3), asset_quantity_strategy)
+def test_swap_lrna_delta_TKN_respects_invariant(d: oamm.OmnipoolState, delta_tkn):
+    i = d.asset_list[-1]
+    test_swap_lrna_delta_Qi_respects_invariant(d, delta_tkn, i)
+    test_swap_lrna_delta_Ri_respects_invariant(d, delta_tkn, i)
 
 
 # Tests over input space of a list of token quantities
@@ -119,7 +120,7 @@ def test_weights(initial_state: oamm.OmnipoolState):
 
 
 @given(omnipool_config())
-def test_QR_strat(market_state: oamm.OmnipoolState):
+def test_prices(market_state: oamm.OmnipoolState):
     for i in market_state.asset_list:
         assert oamm.price_i(market_state, i) > 0
 
