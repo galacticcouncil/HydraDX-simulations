@@ -2,19 +2,6 @@ import copy
 from ..amm import omnipool_amm as oamm
 
 
-# def initialize_state(init_d: dict, token_list: list, agents_d: dict = None) -> dict:
-#     # initialize tokens
-#     tokens_state = oamm.initialize_token_counts(init_d)  # shares will be wrong here, but it doesn't matter
-#     # initialize LPs
-#     if agents_d is not None:
-#         converted_agents_d = convert_agents(tokens_state, token_list, agents_d)
-#     else:
-#         converted_agents_d = None
-#     # initialize AMM shares
-#     state = oamm.initialize_shares(tokens_state, init_d, converted_agents_d)  # shares will be correct here
-#     return state
-
-
 def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple[oamm.OmnipoolState, dict]:
     """Translates from user-friendly trade API to internal API
 
