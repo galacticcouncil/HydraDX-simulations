@@ -1,224 +1,208 @@
 import copy
-import math
 import string
 
 
-def state_dict(
-        token_list: list,
-        r_values: list,
-        q_values: list = None,
-        p_values: list = None,
-        b_values: list = None,
-        s_values: list = None,
-        omega_values: list = None,
-        L: float = 0,
-        C: float = math.inf,
-        fee_assets: float = 0.0,
-        fee_lrna: float = 0.0,
-        preferred_stablecoin: str = 'USD'
-) -> dict:
-    assert 'HDX' in token_list, 'HDX not included in token list'
-    assert len(r_values) == len(token_list), 'lengths of token_list and r_values do not match'
-    # get initial value of T (total value locked)
+class OmnipoolState:
+    def __init__(self,
+                 tokens: dict[str: dict],
+                 tvl_cap: float = float('inf'),
+                 preferred_stablecoin: str = "USD",
+                 asset_fee: float = 0,
+                 lrna_fee: float = 0,
+                 ):
+        """
+        tokens should be a dict in the form of [str: dict]
+        the nested dict needs the following parameters:
+        {
+          'liquidity': float  # starting risk asset liquidity in the pool
+          (
+          'LRNA': float  # starting LRNA on the other side of the pool
+          or
+          'LRNA_price': float  # price of the asset denominated in LRNA
+          )
 
-    if not omega_values:
-        omega_values = [1 for _ in range(len(token_list))]
+          optional:
+          'weight_cap': float  # maximum fraction of TVL that may be held in this pool
+        }
+        """
+        # TODO: consider what these fields should actually be called, in light of compatibility with Basilisk
 
-    if not q_values:
-        q_values = [r_values[i] * p_values[i] for i in range(len(token_list))]
-    elif not p_values:
-        p_values = [q_values[i] / r_values[i] for i in range(len(token_list))]
-    else:
-        assert False, 'Either LRNA quantities per pool or assets prices in LRNA must be specified.'
+        if 'HDX' not in tokens:
+            raise ValueError('HDX not included in tokens.')
 
-    if not b_values:
-        b_values = [0] * len(token_list)
+        self.asset_list: list[str] = []
+        self.liquidity = {}
+        self.lrna = {}
+        self.shares = {}
+        self.protocol_shares = {}
+        self.tvl = {}
+        self.weight_cap = {}
+        for token, pool in tokens.items():
+            assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
+            if not ('LRNA' in pool or 'LRNA_price' in pool):
+                raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
+            self.asset_list.append(token)
+            self.liquidity[token] = (pool['liquidity'])
+            self.shares[token] = (pool['liquidity'])
+            self.protocol_shares[token] = (pool['liquidity'])
+            self.weight_cap[token] = (pool['weight_cap'] if 'weight_cap' in pool else 1)
+            if 'LRNA' in pool:
+                self.lrna[token] = (pool['LRNA'])
+            else:
+                self.lrna[token] = (pool['LRNA_price'] * pool['liquidity'])
 
-    if not s_values:
-        s_values = copy.copy(r_values)
+        self.asset_fee = asset_fee
+        self.lrna_fee = lrna_fee
+        self.lrna_imbalance = 0  # AKA "L"
+        self.tvl_cap = tvl_cap
+        self.stablecoin = preferred_stablecoin
 
-    stablecoin_index = token_list.index(preferred_stablecoin)
-    t_values = [
-        q_values[n] * r_values[stablecoin_index] / q_values[stablecoin_index]
-        for n in range(len(token_list))
-    ]
+        # count TVL for each pool once all values are set
+        for token in self.asset_list:
+            self.tvl[token] = (
+                self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
+            )
 
-    assert len(r_values) == len(q_values) == len(b_values) == len(s_values) ==\
-           len(t_values) == len(omega_values) == len(p_values)
+    def price(self, i: str):
+        return self.lrna[i] / self.liquidity[i]
 
-    state = {
-        'token_list': token_list,
-        'R': r_values,  # Risk asset quantities
-        'P': p_values,  # prices of risks assets denominated in LRNA
-        'Q': q_values,  # LRNA quantities in each pool
-        'B': b_values,  # quantity of shares in each asset owned by the protocol
-        'S': s_values,  # quantity of LP shares in each pool
-        'T': t_values,  # tvl per pool in usd
-        'L': L,  # LRNA imbalance
-        'C': C,  # TVL soft cap
-        'O': omega_values,  # per-asset cap on what fraction of TVL can be stored
-        'fee_assets': fee_assets,
-        'fee_LRNA': fee_lrna,
-        'preferred_stablecoin': preferred_stablecoin,
-        'stablecoin_index': stablecoin_index
-    }
-    return state
+    @property
+    def lrna_total(self):
+        return sum(self.lrna.values())
+
+    @property
+    def tvl_total(self):
+        return sum(self.tvl.values())
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def __repr__(self):
+        return (
+            f'Omnipool\n'
+            f'tvl cap: {self.tvl_cap}\n'
+            f'lrna fee: {self.lrna_fee}\n'
+            f'asset fee: {self.asset_fee}\n'
+            f'asset pools: (\n'
+        ) + ')\n(\n'.join(
+            [(
+                f'    {token}\n'
+                f'    asset quantity: {self.liquidity[token]}\n'
+                f'    lrna quantity: {self.lrna[token]}\n'
+                f'    price: {price_i(self, token)}\n'
+                f'    tvl: {self.tvl[token]}\n'
+                f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
+                f'    weight cap: {self.weight_cap[token]}\n'
+                f'    total shares: {self.shares[token]}\n'
+                f'    protocol shares: {self.protocol_shares[token]}\n'
+            ) for token in self.asset_list]
+        ) + '\n)'
 
 
-def asset_invariant(state: dict, i: int) -> float:
+def asset_invariant(state: OmnipoolState, i: str) -> float:
     """Invariant for specific asset"""
-    return state['R'][i] * state['Q'][i]
+    return state.liquidity[i] * state.lrna[i]
 
 
-def swap_lrna_delta_Qi(old_state: dict, delta_Ri: float, i: int) -> float:
-    return old_state['Q'][i] * (- delta_Ri / (old_state['R'][i] + delta_Ri))
+def swap_lrna_delta_Qi(state: OmnipoolState, delta_ri: float, i: str) -> float:
+    return state.lrna[i] * (- delta_ri / (state.liquidity[i] + delta_ri))
 
 
-def swap_lrna_delta_Ri(old_state: dict, delta_Qi: float, i: int) -> float:
-    return old_state['R'][i] * (- delta_Qi / (old_state['Q'][i] + delta_Qi))
+def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
+    return state.liquidity[i] * (- delta_qi / (state.lrna[i] + delta_qi))
 
 
-def weight_i(state: dict, i: int) -> float:
-    return state['Q'][i] / sum(state['Q'])
+def weight_i(state: OmnipoolState, i: str) -> float:
+    return state.lrna[i] / state.lrna_total
 
 
-def price_i(state: dict, i: int, fee: float = 0) -> float:
+def price_i(state: OmnipoolState, i: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
-    if state['R'][i] == 0:
+    if state.liquidity[i] == 0:
         return 0
     else:
-        return (state['Q'][i] / state['R'][i]) * (1 - fee)
-
-
-def adjust_supply(old_state: dict):
-    if old_state['H'] <= old_state['T']:
-        return old_state
-
-    over_supply = old_state['H'] - old_state['T']
-    Q = sum(old_state['Q'])
-    Q_burn = min(over_supply, old_state['burn_rate'] * Q)
-
-    new_state = copy.deepcopy(old_state)
-    for i in range(len(new_state['Q'])):
-        new_state['Q'][i] += Q_burn * old_state['Q'][i] / Q
-
-    new_state['H'] -= Q_burn
-
-    return new_state
-
-
-def initialize_token_counts(init_d=None) -> dict:
-    if init_d is None:
-        init_d = {}
-    state = {
-        'R': copy.deepcopy(init_d['R']),
-        'Q': [init_d['P'][i] * init_d['R'][i] for i in range(len(init_d['R']))]
-    }
-    return state
-
-
-def initialize_shares(token_counts, init_d=None, agent_d=None) -> dict:
-    if agent_d is None:
-        agent_d = {}
-    if init_d is None:
-        init_d = {}
-
-    n = len(token_counts['R'])
-    state = copy.deepcopy(token_counts)
-    state['S'] = copy.deepcopy(state['R'])
-    state['A'] = [0] * n
-
-    agent_shares = [sum([agent_d[agent_id]['s'][i] for agent_id in agent_d]) for i in range(n)]
-    state['B'] = [state['S'][i] - agent_shares[i] for i in range(n)]
-
-    state['T'] = init_d['T'] if 'T' in init_d else None
-    state['H'] = init_d['H'] if 'H' in init_d else None
-
-    return state
-
-
-def initialize_pool_state(init_d=None, agent_d=None) -> dict:
-    token_counts = initialize_token_counts(init_d)
-    return initialize_shares(token_counts, init_d)
+        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
 
 
 def swap_lrna(
-        old_state: dict,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
-        delta_Ra: float,
-        delta_Qa: float,
-        i: int,
+        delta_ra: float = 0,
+        delta_qa: float = 0,
+        i: str = '',
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after LRNA swap"""
 
-    if delta_Ra >= old_state['R'][i] * (1 - fee_assets):
-        # insufficient assets in pool, transaction fails
-        return old_state, old_agents
-
-    new_state = copy.deepcopy(old_state)
+    new_state = old_state.copy()
     new_agents = copy.deepcopy(old_agents)
 
-    if delta_Qa < 0:
-        delta_Q = -delta_Qa
-        delta_R = old_state['R'][i] * -delta_Q / (delta_Q + old_state['Q'][i]) * (1 - fee_assets)
-        delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state['Q'][i] / (old_state['Q'][i] + delta_Q))
-        delta_Ra = -delta_R
-    elif delta_Ra > 0:
-        delta_R = -delta_Ra
-        delta_Q = old_state['Q'][i] * -delta_R / (old_state['R'][i] * (1 - fee_assets) + delta_R)
-        delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state['Q'][i] / (old_state['Q'][i] + delta_Q))
-        delta_Qa = -delta_Q
+    if delta_qa < 0:
+        delta_Q = -delta_qa
+        delta_R = old_state.liquidity[i] * -delta_Q / (delta_Q + old_state.lrna[i]) * (1 - fee_assets)
+        delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state.lrna[i] / (old_state.lrna[i] + delta_Q))
+        delta_ra = -delta_R
+    elif delta_ra > 0:
+        delta_R = -delta_ra
+        delta_Q = old_state.lrna[i] * -delta_R / (old_state.liquidity[i] * (1 - fee_assets) + delta_R)
+        delta_L = -delta_Q * (1 + (1 - fee_assets) * old_state.lrna[i] / (old_state.lrna[i] + delta_Q))
+        delta_qa = -delta_Q
     else:
         # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
-    if delta_Qa + old_agents[trader_id]['q'] < 0:
+    if delta_qa + old_agents[trader_id]['q'] < 0:
         # agent doesn't have enough lrna
-        return old_state, old_agents
-    elif delta_Ra + old_agents[trader_id]['r'][i] < 0:
+        return fail(old_state, old_agents)
+    elif delta_ra + old_agents[trader_id]['r'][i] < 0:
         # agent doesn't have enough asset[i]
-        return old_state, old_agents
+        return fail(old_state, old_agents)
+    elif delta_R + old_state.liquidity[i] <= 0:
+        # insufficient assets in pool, transaction fails
+        return fail(old_state, old_agents)
+    elif delta_Q + old_state.lrna[i] <= 0:
+        # insufficient lrna in pool, transaction fails
+        return fail(old_state, old_agents)
 
-    new_agents[trader_id]['q'] += delta_Qa
-    new_agents[trader_id]['r'][i] += delta_Ra
-    new_state['Q'][i] += delta_Q
-    new_state['R'][i] += delta_R
-    new_state['L'] += delta_L
+    new_agents[trader_id]['q'] += delta_qa
+    new_agents[trader_id]['r'][i] += delta_ra
+    new_state.lrna[i] += delta_Q
+    new_state.liquidity[i] += delta_R
+    new_state.lrna_imbalance += delta_L
 
     return new_state, new_agents
 
 
 def swap_assets_direct(
-        old_state: dict,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
         delta_token: float,
-        i_buy: int,
-        i_sell: int,
+        tkn_buy: str,
+        tkn_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
-    i = i_sell
-    j = i_buy
+) -> tuple[OmnipoolState, dict]:
+    i = tkn_sell
+    j = tkn_buy
     delta_Ri = delta_token
     assert delta_Ri > 0, 'sell amount must be greater than zero'
 
-    delta_Qi = old_state['Q'][i] * -delta_Ri / (old_state['R'][i] + delta_Ri)
+    delta_Qi = old_state.lrna[i] * -delta_Ri / (old_state.liquidity[i] + delta_Ri)
     delta_Qj = -delta_Qi * (1 - fee_lrna)
-    delta_Rj = old_state['R'][j] * -delta_Qj / (old_state['Q'][j] + delta_Qj) * (1 - fee_assets)
-    delta_L = min(-delta_Qi * fee_lrna, -old_state['L'])
+    delta_Rj = old_state.liquidity[j] * -delta_Qj / (old_state.lrna[j] + delta_Qj) * (1 - fee_assets)
+    delta_L = min(-delta_Qi * fee_lrna, -old_state.lrna_imbalance)
     delta_QH = -fee_lrna * delta_Qi - delta_L
 
-    new_state = copy.deepcopy(old_state)
-    new_state['Q'][i] += delta_Qi
-    new_state['Q'][j] += delta_Qj
-    new_state['R'][i] += delta_Ri
-    new_state['R'][j] += delta_Rj
-    new_state['Q'][new_state['token_list'].index('HDX')] += delta_QH
-    new_state['L'] += delta_L
+    new_state = old_state.copy()
+    new_state.lrna[i] += delta_Qi
+    new_state.lrna[j] += delta_Qj
+    new_state.liquidity[i] += delta_Ri
+    new_state.liquidity[j] += delta_Rj
+    new_state.lrna['HDX'] += delta_QH
+    new_state.lrna_imbalance += delta_L
 
     new_agents = copy.deepcopy(old_agents)
     new_agents[trader_id]['r'][i] -= delta_Ri
@@ -228,16 +212,16 @@ def swap_assets_direct(
 
 
 def swap_assets(
-        old_state: dict,
+        old_state: OmnipoolState,
         old_agents: dict,
         trader_id: string,
         trade_type: string,
         delta_token: float,
-        i_buy: int,
-        i_sell: int,
+        tkn_buy: str,
+        tkn_sell: str,
         fee_assets: float = 0,
         fee_lrna: float = 0
-) -> tuple:
+) -> tuple[OmnipoolState, dict]:
     if trade_type == 'sell':
 
         new_state, new_agents = swap_assets_direct(
@@ -245,8 +229,8 @@ def swap_assets(
             old_agents=old_agents,
             trader_id=trader_id,
             delta_token=delta_token,
-            i_buy=i_buy,
-            i_sell=i_sell,
+            tkn_buy=tkn_buy,
+            tkn_sell=tkn_sell,
             fee_assets=fee_assets,
             fee_lrna=fee_lrna
         )
@@ -254,123 +238,127 @@ def swap_assets(
         return new_state, new_agents
     elif trade_type == 'buy':
         # back into correct delta_Ri, then execute sell
-        delta_Qj = -old_state['Q'][i_buy] * delta_token / (old_state['R'][i_buy]*(1 - fee_assets) + delta_token)
+        delta_Qj = -old_state.lrna[tkn_buy] * delta_token / (old_state.liquidity[tkn_buy] * (1 - fee_assets) + delta_token)
         delta_Qi = -delta_Qj/(1 - fee_lrna)
-        delta_Ri = -old_state['R'][i_sell] * delta_Qi / (old_state['Q'][i_sell] + delta_Qi)
-        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, i_buy, i_sell, fee_assets, fee_lrna)
+        delta_Ri = -old_state.liquidity[tkn_sell] * delta_Qi / (old_state.lrna[tkn_sell] + delta_Qi)
+        return swap_assets(old_state, old_agents, trader_id, 'sell', delta_Ri, tkn_buy, tkn_sell, fee_assets, fee_lrna)
 
     else:
         raise
 
 
 def add_risk_liquidity(
-        old_state: dict,
+        old_state: OmnipoolState,
         old_agents: dict,
-        LP_id: string,
-        delta_R: float,
-        i: int
-) -> tuple:
+        lp_id: string,
+        delta_r: float,
+        i: str
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after liquidity addition"""
 
-    assert delta_R > 0, "delta_R must be positive: " + str(delta_R)
-    assert i >= 0, "invalid value for i: " + str(i)
+    assert delta_r > 0, f"delta_R must be positive: {delta_r}"
+    assert i in old_state.asset_list, f"invalid value for i: {i}"
 
-    new_state = copy.deepcopy(old_state)
+    new_state = old_state.copy()
     new_agents = copy.deepcopy(old_agents)
 
     # Token amounts update
-    new_state['R'][i] += delta_R
-    if LP_id:
-        new_agents[LP_id]['r'][i] -= delta_R
-        if new_agents[LP_id]['r'][i] < 0:
+    new_state.liquidity[i] += delta_r
+    if lp_id:
+        new_agents[lp_id]['r'][i] -= delta_r
+        if new_agents[lp_id]['r'][i] < 0:
             # print('Transaction rejected because agent has insufficient funds.')
             # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-            return old_state, old_agents
+            return fail(old_state, old_agents)
 
     # Share update
-    if new_state['S']:
-        new_state['S'][i] *= new_state['R'][i] / old_state['R'][i]
+    if new_state.shares[i]:
+        new_state.shares[i] *= new_state.liquidity[i] / old_state.liquidity[i]
     else:
-        new_state['S'] = 1
+        new_state.shares[i] = new_state.liquidity[i]
 
-    if LP_id:
+    if lp_id:
         # shares go to provisioning agent
-        new_agents[LP_id]['s'][i] += new_state['S'][i] - old_state['S'][i]
+        new_agents[lp_id]['s'][i] += new_state.shares[i] - old_state.shares[i]
     else:
         # shares go to protocol
-        new_state['B'] += new_state['S'][i] - old_state['S'][i]
+        new_state.protocol_shares[i] += new_state.shares[i] - old_state.shares[i]
 
     # LRNA add (mint)
-    delta_Q = price_i(old_state, i) * delta_R
-    new_state['Q'][i] += delta_Q
+    delta_Q = price_i(old_state, i) * delta_r
+    new_state.lrna[i] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_R * old_state['Q'][i]/old_state['R'][i] * old_state['L']/sum(old_state['Q'])
-    new_state['L'] += delta_L
+    delta_L = delta_r * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / old_state.lrna_total
+    new_state.lrna_imbalance += delta_L
 
     # T update: TVL soft cap
-    stable_index = new_state['stablecoin_index']
-    delta_t = new_state['Q'][i] * new_state['R'][stable_index]/new_state['Q'][stable_index] - new_state['T'][i]
-    new_state['T'][i] += delta_t
+    usd = new_state.stablecoin
+    delta_t = new_state.lrna[i] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[i]
+    new_state.tvl[i] += delta_t
 
-    if 'O' in new_state and new_state['Q'][i] / sum(new_state['Q']) > new_state['O'][i]:
+    if new_state.lrna[i] / new_state.lrna_total > new_state.weight_cap[i]:
         # print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
-    if 'C' in new_state and sum(new_state['T']) > new_state['C']:
+    if new_state.tvl_total > new_state.tvl_cap:
         # print('Transaction rejected because it would exceed the TVL cap.')
         # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return old_state, old_agents
+        return fail(old_state, old_agents)
 
     # set price at which liquidity was added
-    if LP_id:
-        new_agents[LP_id]['p'][i] = price_i(new_state, i)
+    if lp_id:
+        new_agents[lp_id]['p'][i] = price_i(new_state, i)
 
     return new_state, new_agents
 
 
 def remove_risk_liquidity(
-        old_state: dict,
+        old_state: OmnipoolState,
         old_agents: dict,
-        LP_id: string,
-        delta_S: float,
-        i: int
-) -> tuple:
+        lp_id: string,
+        delta_s: float,
+        i: str
+) -> tuple[OmnipoolState, dict]:
     """Compute new state after liquidity removal"""
-    assert delta_S <= 0, "delta_S cannot be positive: " + str(delta_S)
-    assert i >= 0, "invalid value for i: " + str(i)
+    assert delta_s <= 0, f"delta_S cannot be positive: {delta_s}"
+    assert i in old_state.asset_list, f"invalid value for i: {i}"
 
     new_state = copy.deepcopy(old_state)
     new_agents = copy.deepcopy(old_agents)
 
-    if delta_S == 0:
+    if delta_s == 0:
         return new_state, new_agents
 
     piq = price_i(old_state, i)
-    p0 = new_agents[LP_id]['p'][i]
+    p0 = new_agents[lp_id]['p'][i]
     mult = (piq - p0) / (piq + p0)
 
     # Share update
-    delta_B = max(mult * delta_S, 0)
-    new_state['B'][i] += delta_B
-    new_state['S'][i] += delta_S + delta_B
-    new_agents[LP_id]['s'][i] += delta_S
+    delta_B = max(mult * delta_s, 0)
+    new_state.protocol_shares[i] += delta_B
+    new_state.shares[i] += delta_s + delta_B
+    new_agents[lp_id]['s'][i] += delta_s
 
     # Token amounts update
-    delta_R = old_state['R'][i] * max((delta_S + delta_B) / old_state['S'][i], -1)
-    new_state['R'][i] += delta_R
-    new_agents[LP_id]['r'][i] -= delta_R
+    delta_R = old_state.liquidity[i] * max((delta_s + delta_B) / old_state.shares[i], -1)
+    new_state.liquidity[i] += delta_R
+    new_agents[lp_id]['r'][i] -= delta_R
     if piq >= p0:  # prevents rounding errors
-        new_agents[LP_id]['q'] -= piq * (
-                2 * piq / (piq + p0) * delta_S / old_state['S'][i] * old_state['R'][i] - delta_R)
+        new_agents[lp_id]['q'] -= piq * (
+                2 * piq / (piq + p0) * delta_s / old_state.shares[i] * old_state.liquidity[i] - delta_R)
 
     # LRNA burn
     delta_Q = price_i(old_state, i) * delta_R
-    new_state['Q'][i] += delta_Q
+    new_state.lrna[i] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_R * old_state['Q'][i]/old_state['R'][i] * old_state['L']/sum(old_state['Q'])
-    new_state['L'] += delta_L
+    delta_L = delta_R * old_state.lrna[i] / old_state.liquidity[i] * old_state.lrna_imbalance / old_state.lrna_total
+    new_state.lrna_imbalance += delta_L
 
     return new_state, new_agents
+
+
+def fail(old_state: OmnipoolState, old_agents: dict) -> tuple[OmnipoolState, dict]:
+    return old_state.copy(), copy.deepcopy(old_agents)

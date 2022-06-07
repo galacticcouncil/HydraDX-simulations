@@ -1,42 +1,85 @@
 import pandas as pd
 
-from . import init_utils as iu
 from .amm import amm
+from .amm import omnipool_amm as oamm
 
 
-def postprocessing(events, count=True, count_tkn='R', count_k='n'):
-    '''
+def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_params=()):
+    """
     Definition:
     Refine and extract metrics from the simulation
 
-    Parameters:
-    df: simulation dataframe
-    '''
-    d = {}
-    n = len(events[0]['AMM']['R'])
-    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': []}
+    Optional parameters:
+    'withdraw_val': tracks the actual value of each agent's assets if they were withdrawn from the pool at each step
+    'deposit_val': tracks the theoretical value of each agent's original assets at each step's current spot prices,
+        if they had been held outside the pool from the beginning
+    'pool_val': tracks the value of all assets held in the pool
+    """
+    tokens = events[0]['AMM'].asset_list
+    # save initial state
+    initial_state = events[0]['AMM']
+    initial_agents = events[0]['uni_agents']
+    withdraw_agents: dict[dict] = {}
+    if 'deposit_val' in optional_params:
+        # move the agents' liquidity deposits back into
+        for agent_id in initial_agents:
+            _, withdraw_agents[agent_id] = amm.withdraw_all_liquidity(initial_state, initial_agents[agent_id])
+
+    keys = 'PQRST'
+    state_d = {key: [] for key in [item for sublist in [
+        [f'{key}-{token}' for key in keys]
+        for token in tokens
+    ] for item in sublist]}
+    # result: {'P-USD': [], 'Q-USD': [], 'R-USD': [], 'S-USD': [], 'P-HDX': [], 'Q-HDX': []...}
+    state_d.update({'L': []})
+
+    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'agent_id': []}
+
+    optional_params = set(optional_params)
+    agent_params = {
+        'deposit_val',
+        'withdraw_val',
+    }
+    exchange_params = {
+        'pool_val'
+    }
+    unrecognized_params = optional_params.difference(agent_params | exchange_params)
+    if unrecognized_params:
+        raise ValueError(f'Unrecognized parameter {unrecognized_params}')
+
+    # add optional params to the dictionaries
+    for key in optional_params & agent_params:
+        agent_d[key] = []
+    for key in optional_params & exchange_params:
+        state_d[key] = []
 
     # build the DFs
     for step in events:
+        step_state: oamm.OmnipoolState = step['AMM']
+        for token in step_state.asset_list:
+            state_d[f'P-{token}'].append(step_state.lrna[token] / step_state.liquidity[token])
+            state_d[f'Q-{token}'].append(step_state.lrna[token])
+            state_d[f'R-{token}'].append(step_state.liquidity[token])
+            state_d[f'S-{token}'].append(step_state.shares[token])
+            state_d[f'T-{token}'].append(step_state.tvl[token])
+        state_d['L'].append(step_state.lrna_imbalance)
+        if count:
+            state_d[count_k] = len(step_state.asset_list)
+        if 'pool_val' in state_d:
+            state_d['pool_val'].append(pool_val(step_state))
+
         for k in step:
             # expand AMM structure
             if k == 'AMM':
-                for k in step['AMM']:
-                    expand_state_var(k, step['AMM'][k], d)
-                if count and count_tkn in step['AMM']:
-                    d[count_k] = len(step['AMM'][count_tkn])
-
+                pass
             elif k == 'external':
                 for k in step['external']:
-                    expand_state_var(k, step['external'][k], d)
+                    expand_state_var(k, step['external'][k], state_d)
 
             elif k == 'uni_agents':
-                for agent_k in step['uni_agents']:
-                    agent_state = step['uni_agents'][agent_k]
-
-                    if 'agent_label' not in agent_d:
-                        agent_d['agent_label'] = list()
-                    agent_d['agent_label'].append(agent_k)
+                for agent_id in step['uni_agents']:
+                    agent_state = step['uni_agents'][agent_id]
+                    agent_d['agent_id'].append(agent_id)
 
                     for k in agent_state:
                         expand_state_var(k, agent_state[k], agent_d)
@@ -45,109 +88,40 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n'):
                     for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
                         agent_d[key].append(step[key])
 
-            else:
-                expand_state_var(k, step[k], d)
+                    if 'deposit_val' in agent_d:
+                        # what are this agent's original holdings theoretically worth at current spot prices?
+                        agent_d['deposit_val'].append(amm.value_assets(step_state, withdraw_agents[agent_id]))
+                    if 'withdraw_val' in agent_d:
+                        # what are this agent's holdings worth if sold?
+                        agent_d['withdraw_val'].append(amm.cash_out(step_state, agent_state))
 
-    df = pd.DataFrame(d)
+            else:
+                expand_state_var(k, step[k], state_d)
+
+    # print({key: len(agent_d[key]) for key in agent_d})
+    # print({key: len(state_d[key]) if isinstance(state_d[key], list) else 0 for key in state_d})
+    df = pd.DataFrame(state_d)
     agent_df = pd.DataFrame(agent_d)
 
     # subset to last substep
     df = df[df['substep'] == df.substep.max()]
     agent_df = agent_df[agent_df['substep'] == agent_df.substep.max()]
 
-    #     # Clean substeps
-    #     first_ind = (df.substep == 0) & (df.timestep == 0)
-    #     last_ind = df.substep == max(df.substep)
-    #     inds_to_drop = (first_ind | last_ind)
-    #     df = df.loc[inds_to_drop].drop(columns=['substep'])
-
-    #     # Attribute parameters to each row
-    #     df = df.assign(**configs[0].sim_config['M'])
-    #     for i, (_, n_df) in enumerate(df.groupby(['simulation', 'subset', 'run'])):
-    #         df.loc[n_df.index] = n_df.assign(**configs[i].sim_config['M'])
     return df, agent_df
 
 
 def expand_state_var(k, var, d) -> None:
-    if isinstance(var, list):
-        for i in range(len(var)):
-            expand_state_var(k + "-" + str(i), var[i], d)
+    if isinstance(var, dict):
+        for i in var.keys():
+            expand_state_var(f"{k}-{i}", var[i], d)
     else:
         if k not in d:
             d[k] = []
         d[k].append(var)
 
 
-def get_state_from_row(row) -> dict:
-    state = {
-        'token_list': [None] * row['n'],
-        'Q': [0] * row['n'],
-        'R': [0] * row['n'],
-        'A': [0] * row['n'],
-        'S': [0] * row['n'],
-        'B': [0] * row['n'],
-        'L': row['L']
-    }
-
-    if 'H' in row:
-        state['H'] = row['H']
-    if 'T' in row:
-        state['T'] = row['T']
-
-    for i in range(row['n']):
-        state['R'][i] = row['R-' + str(i)]
-        state['S'][i] = row['S-' + str(i)]
-        state['B'][i] = row['B-' + str(i)]
-        state['Q'][i] = row['Q-' + str(i)]
-        state['A'][i] = row['A-' + str(i)]
-        state['token_list'][i] = row['token_list-' + str(i)]
-
-    return state
-
-
-def get_agent_from_row(row) -> dict:
-    agent_d = {
-        'r': [0] * row['n'],
-        's': [0] * row['n'],
-        'p': [0] * row['n'],
-        'q': row['q']
-    }
-
-    for i in range(row['n']):
-        agent_d['r'][i] = row['r-' + str(i)]
-        agent_d['s'][i] = row['s-' + str(i)]
-        agent_d['p'][i] = row['p-' + str(i)]
-
-    return agent_d
-
-
-def val_pool(row):
-    state = get_state_from_row(row)
-    agent_d = get_agent_from_row(row)
-    return amm.value_holdings(state, agent_d, row['agent_label'])
-
-
-def val_hold(row, orig_agent_d):
-    state = get_state_from_row(row)
-    agent = orig_agent_d[row['agent_label']]
-    value = amm.value_assets(state, agent)
-    return value
-
-
-def get_withdraw_agent_d(initial_values: dict, agent_d: dict) -> dict:
-    # Calculate withdrawal based on initial state
-    withdraw_agent_d = {}
-    initial_state = iu.complete_initial_values(initial_values, agent_d)
-    agents_init_d = amm.convert_agents(initial_state, initial_values['token_list'], agent_d)
-    for agent_id in agents_init_d:
-        new_state, new_agents = amm.withdraw_all_liquidity(initial_state, agents_init_d[agent_id], agent_id)
-        withdraw_agent_d[agent_id] = new_agents[agent_id]
-    return withdraw_agent_d
-
-
-def pool_val(row):
-    state = get_state_from_row(row)
-    value = sum(state['Q'])
-    for i in range(len(state['R'])):
-        value += state['R'][i] * state['B'][i] / state['S'][i] * amm.price_i(state, i)
-    return value
+def pool_val(state: oamm.OmnipoolState):
+    return state.lrna_total + sum([
+        state.liquidity[i] * state.protocol_shares[i] / state.shares[i] * state.price(i)
+        for i in state.asset_list
+    ])
