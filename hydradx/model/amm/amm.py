@@ -2,6 +2,16 @@ import copy
 from ..amm import omnipool_amm as oamm
 
 
+def agent_dict(token_list: list = (), r_values: dict = None, s_values: dict = None, p_values: dict = None) -> dict:
+    if r_values is None:
+        r_values = {}
+    return {
+        'r': r_values or {token: 0 for token in token_list},
+        's': s_values or {},
+        'p': p_values or {}
+    }
+
+
 def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple[oamm.OmnipoolState, dict]:
     """Translates from user-friendly trade API to internal API
 
