@@ -8,6 +8,7 @@ from hydradx.model.amm.amm import agent_dict
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=10000000)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 
 
 @st.composite
@@ -38,8 +39,8 @@ def test_basilisk_construction(initial_state):
     assert isinstance(initial_state, bamm.BasiliskPoolState)
 
 
-@given(basilisk_config())
-def test_swap(initial_state: bamm.BasiliskPoolState):
+@given(basilisk_config(), trade_quantity_strategy)
+def test_swap(initial_state: bamm.BasiliskPoolState, delta_r):
     old_state = initial_state
     trader = {
         'r': {token: 100 for token in initial_state.asset_list}
@@ -50,10 +51,10 @@ def test_swap(initial_state: bamm.BasiliskPoolState):
     tkn_sell = initial_state.asset_list[0]
     tkn_buy = initial_state.asset_list[1]
     new_state, new_agents = bamm.swap(
-        old_state,
-        old_agents,
-        'trader',
-        sell_quantity=100,
+        old_state=old_state,
+        old_agents=old_agents,
+        trader_id='trader',
+        sell_quantity=delta_r,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy
     )
@@ -61,6 +62,23 @@ def test_swap(initial_state: bamm.BasiliskPoolState):
          + old_state.liquidity[tkn_buy] + old_state.liquidity[tkn_sell])
             != pytest.approx(new_agents['trader']['r'][tkn_buy] + new_agents['trader']['r'][tkn_sell]
                              + new_state.liquidity[tkn_buy] + new_state.liquidity[tkn_sell])):
+        raise AssertionError('Asset quantity is not constant after swap!')
+
+    # swap back, specifying buy_quantity this time
+    delta_r = new_state.liquidity[tkn_sell] - old_state.liquidity[tkn_sell]
+    revert_state, revert_agents = bamm.swap(
+        old_state=old_state,
+        old_agents=old_agents,
+        trader_id='trader',
+        buy_quantity=delta_r,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy
+    )
+    # should still total the same
+    if ((old_agents['trader']['r'][tkn_buy] + old_agents['trader']['r'][tkn_sell]
+         + old_state.liquidity[tkn_buy] + old_state.liquidity[tkn_sell])
+            != pytest.approx(revert_agents['trader']['r'][tkn_buy] + revert_agents['trader']['r'][tkn_sell]
+                             + revert_state.liquidity[tkn_buy] + revert_state.liquidity[tkn_sell])):
         raise AssertionError('Asset quantity is not constant after swap!')
 
 
