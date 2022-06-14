@@ -12,8 +12,8 @@ def plot_vars(df, var_list: list, sim_labels: list = ('0', '1')) -> None:
             bounds = (1, 3, 1)
             ax = plt.subplot(*bounds, title=var)
             for i in simulations:
-                df[[var, 'timestep']][df['simulation'] == i].astype(float).plt(ax=ax, y=[var], x='timestep',
-                                                                               label=[sim_labels[i]])
+                df[[var, 'timestep']][df['simulation'] == i].astype(float).plot(ax=ax, y=[var], x='timestep',
+                                                                                label=[sim_labels[i]])
         else:
             matches = list(filter(lambda s: re.match(f'{var}-.+', s), df.columns))
 
@@ -23,5 +23,5 @@ def plot_vars(df, var_list: list, sim_labels: list = ('0', '1')) -> None:
                 ax = plt.subplot(*bounds, title=label)
                 for j in simulations:
                     df[[label, 'timestep']][df['simulation'] == j]\
-                        .astype(float).plt(ax=ax, y=[label], x='timestep', label=[sim_labels[j]])
+                        .astype(float).plot(ax=ax, y=[label], x='timestep', label=[sim_labels[j]])
     plt.show()
