@@ -2,16 +2,6 @@ import copy
 from ..amm import omnipool_amm as oamm
 
 
-def agent_dict(token_list: list = (), r_values: dict = None, s_values: dict = None, p_values: dict = None) -> dict:
-    if r_values is None:
-        r_values = {}
-    return {
-        'r': r_values or {token: 0 for token in token_list},
-        's': s_values or {},
-        'p': p_values or {}
-    }
-
-
 def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple[oamm.OmnipoolState, dict]:
     """Translates from user-friendly trade API to internal API
 
@@ -92,7 +82,7 @@ def add_liquidity(
 def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:
     return agent['q'] + sum([
         agent['r'][i] * oamm.price_i(state, i)
-        for i in state.asset_list
+        for i in agent['r'].keys()
     ])
 
 
@@ -100,7 +90,7 @@ def withdraw_all_liquidity(state: oamm.OmnipoolState, agent: dict) -> tuple:
     new_agents = {1: agent}
     new_state = copy.deepcopy(state)
 
-    for i in new_state.asset_list:
+    for i in agent['s'].keys():
         transaction = {
             'token_remove': i,
             'agent_id': 1,
