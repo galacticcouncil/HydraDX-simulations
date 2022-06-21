@@ -4,6 +4,14 @@ from typing import Callable
 import random
 
 
+class TradeStrategy:
+    def __init__(self, strategy_function: Callable):
+        self.function = strategy_function
+
+    def execute(self, agents, agent_id, market) -> tuple:
+        return self.function(agents, agent_id, market)
+
+
 def agent_dict(
         token_list: list = None,
         r_values: dict = {},
@@ -12,7 +20,6 @@ def agent_dict(
         q: float = 0,
         trade_strategy: Callable = None
 ) -> dict:
-
     if token_list is None:
         token_list = list(set(list(p_values.keys()) + list(r_values.keys()) + list(s_values.keys())))
     return {
@@ -24,12 +31,29 @@ def agent_dict(
     }
 
 
-class TradeStrategy:
-    def __init__(self, strategy_function: Callable):
-        self.function = strategy_function
-
-    def execute(self, agents, agent_id, market) -> tuple:
-        return self.function(agents, agent_id, market)
+class Agent:
+    def __init__(self,
+                 holdings: dict[str: float],
+                 shares: dict[str: float],
+                 share_prices: dict[str: float],
+                 trade_strategy: TradeStrategy
+                 ):
+        """
+        holdings should be in the form of:
+        {
+            asset_name: quantity
+        }
+        shares should be in the form of:
+        {
+            pool_name: share quantity
+        }
+        share_prices should be in the same form as shares, and the keys should match.
+        The values of share_prices reflect the price at which those shares were acquired.
+        """
+        self.holdings = holdings
+        self.shares = shares
+        self.share_prices = share_prices
+        self.trade_strategy = trade_strategy
 
 
 class TradeStrategies:
@@ -47,8 +71,8 @@ class TradeStrategies:
             buy_asset = random.choice(list(amount.keys()))
             sell_asset = random.choice(list(amount.keys()))
             sell_quantity = (
-                             amount[sell_asset] * (random.random() if randomize_amount else 1)
-                             ) or 1
+                                    amount[sell_asset] * (random.random() if randomize_amount else 1)
+                            ) or 1
             if buy_asset == sell_asset:
                 return market, agents
             elif isinstance(market, bamm.ConstantProductPoolState):
@@ -71,4 +95,5 @@ class TradeStrategies:
                     fee_assets=market.asset_fee,
                     fee_lrna=market.lrna_fee
                 )
+
         return strategy
