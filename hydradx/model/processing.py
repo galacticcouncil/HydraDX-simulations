@@ -2,9 +2,9 @@ import pandas as pd
 
 from .amm import amm
 from .amm import omnipool_amm as oamm
+from .amm import basilisk_amm as bamm
 
-
-def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_params=()):
+def postprocessing(events, optional_params=()):
     """
     Definition:
     Refine and extract metrics from the simulation
@@ -15,23 +15,27 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
         if they had been held outside the pool from the beginning
     'pool_val': tracks the value of all assets held in the pool
     """
-    tokens = events[0]['AMM'].asset_list
+    tokens = events[0]['state']['amm'].asset_list
     # save initial state
-    initial_state = events[0]['AMM']
-    initial_agents = events[0]['uni_agents']
+    initial_state = events[0]['state']['amm']
+    initial_agents = events[0]['state']['agents']
     withdraw_agents: dict[dict] = {}
     if 'deposit_val' in optional_params:
         # move the agents' liquidity deposits back into
         for agent_id in initial_agents:
             _, withdraw_agents[agent_id] = amm.withdraw_all_liquidity(initial_state, initial_agents[agent_id])
 
-    keys = 'PQRST'
-    state_d = {key: [] for key in [item for sublist in [
-        [f'{key}-{token}' for key in keys]
-        for token in tokens
-    ] for item in sublist]}
-    # result: {'P-USD': [], 'Q-USD': [], 'R-USD': [], 'S-USD': [], 'P-HDX': [], 'Q-HDX': []...}
-    state_d.update({'L': []})
+    if isinstance(initial_state, oamm.OmnipoolState):
+        keys = 'PQRST'
+        state_d = {key: [] for key in [item for sublist in [
+            [f'{key}-{token}' for key in keys]
+            for token in tokens
+        ] for item in sublist]}
+        # result: {'P-USD': [], 'Q-USD': [], 'R-USD': [], 'S-USD': [], 'P-HDX': [], 'Q-HDX': []...}
+        state_d.update({'L': []})
+    elif isinstance(initial_state, bamm.ConstantProductPoolState):
+        state_d = {f'R-{tkn}': [] for tkn in initial_state.asset_list}
+        state_d.update({'S': []})
 
     agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'agent_id': []}
 
@@ -53,48 +57,63 @@ def postprocessing(events, count=True, count_tkn='R', count_k='n', optional_para
     for key in optional_params & exchange_params:
         state_d[key] = []
 
+    # the mysterious list-flattening comprehension
+    agent_assets = list(set([x for agent in initial_agents.values() for x in agent['r'].keys()]))
+
     # build the DFs
     for step in events:
-        step_state: oamm.OmnipoolState = step['AMM']
-        for token in step_state.asset_list:
-            state_d[f'P-{token}'].append(step_state.lrna[token] / step_state.liquidity[token])
-            state_d[f'Q-{token}'].append(step_state.lrna[token])
-            state_d[f'R-{token}'].append(step_state.liquidity[token])
-            state_d[f'S-{token}'].append(step_state.shares[token])
-            state_d[f'T-{token}'].append(step_state.tvl[token])
-        state_d['L'].append(step_state.lrna_imbalance)
-        if count:
-            state_d[count_k] = len(step_state.asset_list)
-        if 'pool_val' in state_d:
-            state_d['pool_val'].append(pool_val(step_state))
+        state = step['state']
+        market = state['amm']
 
+        # amm market
+        if isinstance(market, oamm.OmnipoolState):
+            for token in market.asset_list:
+                state_d[f'P-{token}'].append(float(market.lrna[token] / market.liquidity[token]))
+                state_d[f'Q-{token}'].append(float(market.lrna[token]))
+                state_d[f'R-{token}'].append(float(market.liquidity[token]))
+                state_d[f'S-{token}'].append(float(market.shares[token]))
+                state_d[f'T-{token}'].append(float(market.tvl[token]))
+            state_d['L'].append(float(market.lrna_imbalance))
+        elif isinstance(market, bamm.ConstantProductPoolState):
+            for token in market.asset_list:
+                state_d[f'R-{token}'].append(market.liquidity[token])
+            state_d['S'].append(market.shares)
+
+        if 'pool_val' in state_d:
+            state_d['pool_val'].append(pool_val(market))
+
+        # external market
+        for key, value in state['external'].items():
+            expand_state_var(key, value, state_d)
+
+        # agents
+        for agent_id in state['agents']:
+            agent_state = state['agents'][agent_id]
+            agent_d['agent_id'].append(agent_id)
+            for tkn in agent_assets:
+                for key in 'prs':
+                    if tkn not in agent_state[key].keys():
+                        agent_state[key][tkn] = 0
+
+            for key, value in agent_state.items():
+                expand_state_var(key, value, agent_d)
+
+            # add simulation columns
+            for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
+                agent_d[key].append(step[key])
+
+            if 'deposit_val' in agent_d:
+                # what are this agent's original holdings theoretically worth at current spot prices?
+                agent_d['deposit_val'].append(amm.value_assets(market, withdraw_agents[agent_id]))
+            if 'withdraw_val' in agent_d:
+                # what are this agent's holdings worth if sold?
+                agent_d['withdraw_val'].append(amm.cash_out(market, agent_state))
+
+        # other cadCAD stuff
         for k in step:
             # expand AMM structure
-            if k == 'AMM':
+            if k == 'state':
                 pass
-            elif k == 'external':
-                for k in step['external']:
-                    expand_state_var(k, step['external'][k], state_d)
-
-            elif k == 'uni_agents':
-                for agent_id in step['uni_agents']:
-                    agent_state = step['uni_agents'][agent_id]
-                    agent_d['agent_id'].append(agent_id)
-
-                    for k in agent_state:
-                        expand_state_var(k, agent_state[k], agent_d)
-
-                    # add simulation columns
-                    for key in ['simulation', 'subset', 'run', 'substep', 'timestep']:
-                        agent_d[key].append(step[key])
-
-                    if 'deposit_val' in agent_d:
-                        # what are this agent's original holdings theoretically worth at current spot prices?
-                        agent_d['deposit_val'].append(amm.value_assets(step_state, withdraw_agents[agent_id]))
-                    if 'withdraw_val' in agent_d:
-                        # what are this agent's holdings worth if sold?
-                        agent_d['withdraw_val'].append(amm.cash_out(step_state, agent_state))
-
             else:
                 expand_state_var(k, step[k], state_d)
 

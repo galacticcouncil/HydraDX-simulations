@@ -6,27 +6,27 @@ partial_state_update_block = [
         'policies': {
         },
         'variables': {
-            'external': externalHub
+            'state': execute_trades
         }
     },
 
-    {
-        # system.py 
-        'policies': {
-            'user_action': actionDecoder
-        },
-        'variables': {
-            'AMM': mechanismHub_AMM,
-            'uni_agents': agenthub,
-        }
-    },
-
-    {
-        'policies': {
-        },
-        'variables': {
-            'AMM': posthub
-        }
-    },
+    # {
+    #     # system.py
+    #     'policies': {
+    #         'user_action': actionDecoder
+    #     },
+    #     'variables': {
+    #         'AMM': mechanismHub_AMM,
+    #         'uni_agents': agenthub,
+    #     }
+    # },
+    #
+    # {
+    #     'policies': {
+    #     },
+    #     'variables': {
+    #         'AMM': posthub
+    #     }
+    # },
 
 ]

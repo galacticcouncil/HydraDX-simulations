@@ -82,7 +82,7 @@ def add_liquidity(
 def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:
     return agent['q'] + sum([
         agent['r'][i] * oamm.price_i(state, i)
-        for i in state.asset_list
+        for i in agent['r'].keys()
     ])
 
 
@@ -90,7 +90,7 @@ def withdraw_all_liquidity(state: oamm.OmnipoolState, agent: dict) -> tuple:
     new_agents = {1: agent}
     new_state = copy.deepcopy(state)
 
-    for i in new_state.asset_list:
+    for i in agent['s'].keys():
         transaction = {
             'token_remove': i,
             'agent_id': 1,
