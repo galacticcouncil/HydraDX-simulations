@@ -51,7 +51,7 @@ class TradeStrategies:
                              ) or 1
             if buy_asset == sell_asset:
                 return market, agents
-            elif isinstance(market, bamm.BasiliskPoolState):
+            elif isinstance(market, bamm.ConstantProductPoolState):
                 return bamm.swap(
                     old_state=market,
                     old_agents=agents,

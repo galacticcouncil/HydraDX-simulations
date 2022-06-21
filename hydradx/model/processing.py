@@ -33,7 +33,7 @@ def postprocessing(events, optional_params=()):
         ] for item in sublist]}
         # result: {'P-USD': [], 'Q-USD': [], 'R-USD': [], 'S-USD': [], 'P-HDX': [], 'Q-HDX': []...}
         state_d.update({'L': []})
-    elif isinstance(initial_state, bamm.BasiliskPoolState):
+    elif isinstance(initial_state, bamm.ConstantProductPoolState):
         state_d = {f'R-{tkn}': [] for tkn in initial_state.asset_list}
         state_d.update({'S': []})
 
@@ -74,7 +74,7 @@ def postprocessing(events, optional_params=()):
                 state_d[f'S-{token}'].append(float(market.shares[token]))
                 state_d[f'T-{token}'].append(float(market.tvl[token]))
             state_d['L'].append(float(market.lrna_imbalance))
-        elif isinstance(market, bamm.BasiliskPoolState):
+        elif isinstance(market, bamm.ConstantProductPoolState):
             for token in market.asset_list:
                 state_d[f'R-{token}'].append(market.liquidity[token])
             state_d['S'].append(market.shares)

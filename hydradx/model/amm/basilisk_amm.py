@@ -2,12 +2,12 @@ import copy
 import math
 
 
-class BasiliskPoolState:
+class ConstantProductPoolState:
     unique_ids = {''}
 
-    def __init__(self, tokens: dict[str: float], trade_fee: float = 0):
+    def __init__(self, tokens: dict[str: float], trade_fee: float = 0, unique_id=''):
         """
-        tokens should be in the form of:
+        Tokens should be in the form of:
         {
             token1: quantity,
             token2: quantity
@@ -25,11 +25,7 @@ class BasiliskPoolState:
 
         self.shares = self.liquidity[self.asset_list[0]]
 
-        self.unique_id = ''
-        i = 0
-        while self.unique_id in BasiliskPoolState.unique_ids:
-            self.unique_id = '-'.join(self.asset_list + [str(i)])
-            i += 1
+        self.unique_id = unique_id
 
     def copy(self):
         new_self = copy.deepcopy(self)
@@ -42,7 +38,7 @@ class BasiliskPoolState:
 
     def __repr__(self):
         return (
-            f'BasiliskPool\n'
+            f'Constant Product Pool\n'
             f'trade fee: {self.trade_fee}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
@@ -54,13 +50,13 @@ class BasiliskPoolState:
         ) + '\n)'
 
 
-def add_risk_liquidity(
-        old_state: BasiliskPoolState,
+def add_liquidity(
+        old_state: ConstantProductPoolState,
         old_agents: dict,
         lp_id: str,
         quantity: float,
         tkn_add: str
-) -> tuple[BasiliskPoolState, dict]:
+) -> tuple[ConstantProductPoolState, dict]:
     new_agents = copy.deepcopy(old_agents)
     new_state = old_state.copy()
 
@@ -85,14 +81,14 @@ def add_risk_liquidity(
 
 
 def remove_liquidity(
-        old_state: BasiliskPoolState,
+        old_state: ConstantProductPoolState,
         old_agents: dict,
         lp_id: str,
         quantity: float,
         tkn_remove: str
-) -> tuple[BasiliskPoolState, dict]:
+) -> tuple[ConstantProductPoolState, dict]:
     quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
-    new_state, new_agents = add_risk_liquidity(
+    new_state, new_agents = add_liquidity(
         old_state, old_agents, lp_id, -quantity, tkn_remove
     )  # does this work? test
     if min(new_state.liquidity.values()) < 0:
@@ -102,7 +98,7 @@ def remove_liquidity(
 
 
 def swap(
-        old_state: BasiliskPoolState,
+        old_state: ConstantProductPoolState,
         old_agents: dict,
         trader_id: str,
         tkn_sell: str,
@@ -120,7 +116,7 @@ def swap(
 
     if buy_quantity != 0:
         new_state.liquidity[tkn_buy] -= buy_quantity
-        sell_quantity = old_state.invariant / new_state.liquidity[tkn_buy] - new_state.liquidity[tkn_sell]
+        sell_quantity = old_state.invariant / new_state.liquidity[tkn_buy] - old_state.liquidity[tkn_sell]
         trade_fee = abs(sell_quantity) * new_state.trade_fee
         trader['r'][tkn_sell] -= trade_fee + sell_quantity
         trader['r'][tkn_buy] += buy_quantity
@@ -128,7 +124,7 @@ def swap(
 
     elif sell_quantity != 0:
         new_state.liquidity[tkn_sell] += sell_quantity
-        buy_quantity = new_state.liquidity[tkn_buy] - old_state.invariant / new_state.liquidity[tkn_sell]
+        buy_quantity = old_state.liquidity[tkn_buy] - old_state.invariant / new_state.liquidity[tkn_sell]
         trade_fee = abs(buy_quantity) * new_state.trade_fee
         trader['r'][tkn_buy] -= trade_fee - buy_quantity
         trader['r'][tkn_sell] -= sell_quantity
@@ -146,7 +142,7 @@ def swap(
     return new_state, new_agents
 
 
-def fail(old_state: BasiliskPoolState, old_agents: dict, error: str = 'fail') -> tuple[BasiliskPoolState, dict]:
+def fail(old_state: ConstantProductPoolState, old_agents: dict, error: str = 'fail') -> tuple[ConstantProductPoolState, dict]:
     failed_state = old_state.copy()
     failed_state.fail = error
     return failed_state, copy.deepcopy(old_agents)
