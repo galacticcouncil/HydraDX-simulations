@@ -4,6 +4,7 @@ from .amm import amm
 from .amm import omnipool_amm as oamm
 from .amm import basilisk_amm as bamm
 
+
 def postprocessing(events, optional_params=()):
     """
     Definition:
@@ -13,6 +14,7 @@ def postprocessing(events, optional_params=()):
     'withdraw_val': tracks the actual value of each agent's assets if they were withdrawn from the pool at each step
     'deposit_val': tracks the theoretical value of each agent's original assets at each step's current spot prices,
         if they had been held outside the pool from the beginning
+    'holdings_val': the total value of the agent's outside holdings
     'pool_val': tracks the value of all assets held in the pool
     """
     tokens = events[0]['state']['amm'].asset_list
@@ -25,6 +27,8 @@ def postprocessing(events, optional_params=()):
         for agent_id in initial_agents:
             _, withdraw_agents[agent_id] = amm.withdraw_all_liquidity(initial_state, initial_agents[agent_id])
 
+    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'agent_id': []}
+    state_d = {}
     if isinstance(initial_state, oamm.OmnipoolState):
         keys = 'PQRST'
         state_d = {key: [] for key in [item for sublist in [
@@ -37,12 +41,11 @@ def postprocessing(events, optional_params=()):
         state_d = {f'R-{tkn}': [] for tkn in initial_state.asset_list}
         state_d.update({'S': []})
 
-    agent_d = {'simulation': [], 'subset': [], 'run': [], 'substep': [], 'timestep': [], 'agent_id': []}
-
     optional_params = set(optional_params)
     agent_params = {
         'deposit_val',
         'withdraw_val',
+        'holdings_val'
     }
     exchange_params = {
         'pool_val'
@@ -108,6 +111,9 @@ def postprocessing(events, optional_params=()):
             if 'withdraw_val' in agent_d:
                 # what are this agent's holdings worth if sold?
                 agent_d['withdraw_val'].append(amm.cash_out(market, agent_state))
+            if 'holdings_val' in agent_d:
+                # crude. Todo: update this to take asset price into account.
+                agent_d['holdings_val'].append(sum(agent_state['r'].values()))
 
         # other cadCAD stuff
         for k in step:
