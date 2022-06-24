@@ -1,11 +1,14 @@
 import copy
 import math
+from typing import Callable
+from mpmath import mpf, mp
+mp.dps = 50
 
 
 class ConstantProductPoolState:
     unique_ids = {''}
 
-    def __init__(self, tokens: dict[str: float], trade_fee: float = 0, unique_id=''):
+    def __init__(self, tokens: dict[str: float], trade_fee: float = 0, fee_function: Callable = None, unique_id=''):
         """
         Tokens should be in the form of:
         {
@@ -14,18 +17,29 @@ class ConstantProductPoolState:
         }
         There should only be two.
         """
-        self.trade_fee = trade_fee
+        self._base_fee = mpf(trade_fee)
+        self.fee_function = fee_function
         self.liquidity = dict()
         self.asset_list: list[str] = []
         self.fail = ''
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
-            self.liquidity[token] = quantity
+            self.liquidity[token] = mpf(quantity)
 
         self.shares = self.liquidity[self.asset_list[0]]
 
         self.unique_id = unique_id
+
+    def slip_fee(self, sell_asset: str, buy_asset: str, trade_size: float) -> float:
+        return trade_size ** 2 * self.liquidity[buy_asset] / (trade_size + self.liquidity[sell_asset]) ** 2
+
+    def trade_fee(self, sell_asset: str, buy_asset: str, trade_size: float) -> float:
+        fee = 0
+        if self.fee_function:
+            fee += self.fee_function(self, sell_asset, buy_asset, trade_size)
+        fee += self._base_fee * trade_size
+        return fee
 
     def copy(self):
         new_self = copy.deepcopy(self)
@@ -39,7 +53,7 @@ class ConstantProductPoolState:
     def __repr__(self):
         return (
             f'Constant Product Pool\n'
-            f'trade fee: {self.trade_fee}\n'
+            f'base trade fee: {self._base_fee}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
             [(
@@ -90,7 +104,7 @@ def remove_liquidity(
     quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
     new_state, new_agents = add_liquidity(
         old_state, old_agents, lp_id, -quantity, tkn_remove
-    )  # does this work? test
+    )
     if min(new_state.liquidity.values()) < 0:
         return fail(old_state, old_agents)
 
@@ -114,21 +128,24 @@ def swap(
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return fail(old_state, old_agents, 'invalid token name')
 
-    if buy_quantity != 0:
-        new_state.liquidity[tkn_buy] -= buy_quantity
-        sell_quantity = old_state.invariant / new_state.liquidity[tkn_buy] - old_state.liquidity[tkn_sell]
-        trade_fee = abs(sell_quantity) * new_state.trade_fee
-        trader['r'][tkn_sell] -= trade_fee + sell_quantity
-        trader['r'][tkn_buy] += buy_quantity
-        new_state.liquidity[tkn_sell] += trade_fee + sell_quantity
-
-    elif sell_quantity != 0:
-        new_state.liquidity[tkn_sell] += sell_quantity
-        buy_quantity = old_state.liquidity[tkn_buy] - old_state.invariant / new_state.liquidity[tkn_sell]
-        trade_fee = abs(buy_quantity) * new_state.trade_fee
+    if sell_quantity != 0:
+        # when amount to be paid in is specified, calculate payout
+        buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
         trader['r'][tkn_buy] -= trade_fee - buy_quantity
         trader['r'][tkn_sell] -= sell_quantity
+        new_state.liquidity[tkn_sell] += sell_quantity
         new_state.liquidity[tkn_buy] += trade_fee - buy_quantity
+
+    elif buy_quantity != 0:
+        # calculate input price from a given payout
+        sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(buy_quantity))
+        trader['r'][tkn_sell] -= trade_fee + sell_quantity
+        trader['r'][tkn_buy] += buy_quantity
+        new_state.liquidity[tkn_buy] -= buy_quantity
+        new_state.liquidity[tkn_sell] += trade_fee + sell_quantity
+        #
 
     else:
         return fail(old_state, old_agents)

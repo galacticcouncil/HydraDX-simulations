@@ -25,11 +25,13 @@ def constant_product_pool_config(
         draw,
         asset_dict=None,
         trade_fee=None,
+        fee_function=None
 ) -> bamm.ConstantProductPoolState:
     asset_dict = asset_dict or draw(assets_config())
     return bamm.ConstantProductPoolState(
         tokens=asset_dict,
         trade_fee=draw(st.floats(min_value=0, max_value=0.1)) if trade_fee is None else trade_fee,
+        fee_function=fee_function
     )
 
 
@@ -38,11 +40,11 @@ def test_basilisk_construction(initial_state):
     assert isinstance(initial_state, bamm.ConstantProductPoolState)
 
 
-@given(constant_product_pool_config(), trade_quantity_strategy)
+@given(constant_product_pool_config(trade_fee=0.1), trade_quantity_strategy)
 def test_swap(initial_state: bamm.ConstantProductPoolState, delta_r):
     old_state = initial_state
     trader = {
-        'r': {token: 100 for token in initial_state.asset_list}
+        'r': {token: 1000000 for token in initial_state.asset_list}
     }
     old_agents = {
         'trader': trader
@@ -58,10 +60,9 @@ def test_swap(initial_state: bamm.ConstantProductPoolState, delta_r):
         tkn_buy=tkn_buy
     )
     if (old_agents['trader']['r'][tkn_buy] + old_state.liquidity[tkn_buy]
-        != pytest.approx(swap_agents['trader']['r'][tkn_buy] + swap_state.liquidity[tkn_buy])
-        or old_state.liquidity[tkn_sell] + old_agents['trader']['r'][tkn_sell]
-        != pytest.approx(swap_state.liquidity[tkn_sell] + swap_agents['trader']['r'][tkn_sell])
-    ):
+            != pytest.approx(swap_agents['trader']['r'][tkn_buy] + swap_state.liquidity[tkn_buy])
+            or old_state.liquidity[tkn_sell] + old_agents['trader']['r'][tkn_sell]
+            != pytest.approx(swap_state.liquidity[tkn_sell] + swap_agents['trader']['r'][tkn_sell])):
         raise AssertionError('Asset quantity is not constant after swap!')
 
     # swap back, specifying buy_quantity this time
@@ -157,14 +158,14 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
             tkn_remove=tkn_add
         )
         if (
-            revert_state.liquidity[tkn_add] != pytest.approx(old_state.liquidity[tkn_add])
-            or revert_state.liquidity[other_tkn] != pytest.approx(old_state.liquidity[other_tkn])
-            or revert_state.shares != pytest.approx(old_state.shares)
-            or revert_agents['lp']['r'][tkn_add] != pytest.approx(revert_agents['lp']['r'][tkn_add])
-            or revert_agents['lp']['r'][other_tkn] != pytest.approx(revert_agents['lp']['r'][other_tkn])
-            or revert_agents['lp']['s'][old_state.unique_id] != pytest.approx(
-                revert_agents['lp']['s'][old_state.unique_id]
-            )
+                revert_state.liquidity[tkn_add] != pytest.approx(old_state.liquidity[tkn_add])
+                or revert_state.liquidity[other_tkn] != pytest.approx(old_state.liquidity[other_tkn])
+                or revert_state.shares != pytest.approx(old_state.shares)
+                or revert_agents['lp']['r'][tkn_add] != pytest.approx(revert_agents['lp']['r'][tkn_add])
+                or revert_agents['lp']['r'][other_tkn] != pytest.approx(revert_agents['lp']['r'][other_tkn])
+                or revert_agents['lp']['s'][old_state.unique_id] != pytest.approx(
+            revert_agents['lp']['s'][old_state.unique_id]
+        )
         ):
             raise AssertionError('Withdrawal failed to return to previous state.')
 
@@ -198,6 +199,109 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
             != pytest.approx(new_agents['lp']['r'][tkn_remove] + new_agents['lp']['r'][other_tkn]
                              + new_state.liquidity[tkn_remove] + new_state.liquidity[other_tkn])):
         raise AssertionError('Asset quantity is not constant after liquidity remove!')
+
+
+@given(constant_product_pool_config(trade_fee=0, fee_function=bamm.ConstantProductPoolState.slip_fee))
+def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
+    initial_state.fee_function = bamm.ConstantProductPoolState.slip_fee
+    initial_agents = {
+        'trader': agent_dict(r_values={token: 1000000 for token in initial_state.asset_list})
+    }
+    tkn_buy = initial_state.asset_list[1]
+    tkn_sell = initial_state.asset_list[0]
+    # buy half of the available asset with slip based fees
+    buy_quantity = initial_state.liquidity[tkn_buy] / 2
+    swap_state, swap_agents = bamm.swap(
+        old_state=initial_state,
+        old_agents=initial_agents,
+        trader_id='trader',
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+    # now buy the same quantity, but do it in two smaller trades
+    buy_quantity /= 2
+    half_swap_state, half_swap_agents = initial_state, initial_agents
+    next_state, next_agents = {}, {}
+    for i in range(2):
+        next_state[i], next_agents[i] = bamm.swap(
+            old_state=half_swap_state,
+            old_agents=half_swap_agents,
+            trader_id='trader',
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            buy_quantity=buy_quantity
+        )
+        half_swap_state, half_swap_agents = next_state[i], next_agents[i]
+
+    if swap_state.fail or half_swap_state.fail:
+        return
+
+    if (swap_state.liquidity[tkn_buy] != pytest.approx(half_swap_state.liquidity[tkn_buy]) or
+            pytest.approx(half_swap_agents['trader']['r'][tkn_buy]) != swap_agents['trader']['r'][tkn_buy]):
+        raise AssertionError('Buy quantities not equal.')
+
+    if (swap_state.liquidity[tkn_sell] <= half_swap_state.liquidity[tkn_sell] or
+            swap_agents['trader']['r'][tkn_sell] >= half_swap_agents['trader']['r'][tkn_sell]):
+        # show that when using slip-based fees,
+        # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
+        raise AssertionError('Fee balance different than expected.')
+
+    if ((initial_agents['trader']['r'][tkn_sell] + initial_agents['trader']['r'][tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(swap_agents['trader']['r'][tkn_sell] + swap_agents['trader']['r'][tkn_buy]
+                             + swap_state.liquidity[tkn_sell] + swap_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (one-part)')
+
+    if ((initial_agents['trader']['r'][tkn_sell] + initial_agents['trader']['r'][tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(half_swap_agents['trader']['r'][tkn_sell] + half_swap_agents['trader']['r'][tkn_buy]
+                             + half_swap_state.liquidity[tkn_sell] + half_swap_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (two-part)')
+
+    sell_quantity = swap_state.liquidity[tkn_sell] - initial_state.liquidity[tkn_sell]
+    sell_state, sell_agents = bamm.swap(
+        old_state=initial_state,
+        old_agents=initial_agents,
+        trader_id='trader',
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity
+    )
+
+    if ((initial_agents['trader']['r'][tkn_sell] + initial_agents['trader']['r'][tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(sell_agents['trader']['r'][tkn_sell] + sell_agents['trader']['r'][tkn_buy]
+                             + sell_state.liquidity[tkn_sell] + sell_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after sell trade')
+
+    # now sell the same quantity, but do it in two smaller trades
+    sell_quantity /= 2
+    half_sell_state, half_sell_agents = initial_state, initial_agents
+    next_state, next_agents = {}, {}
+    for i in range(2):
+        next_state[i], next_agents[i] = bamm.swap(
+            old_state=half_sell_state,
+            old_agents=half_sell_agents,
+            trader_id='trader',
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=sell_quantity
+        )
+        half_sell_state, half_sell_agents = next_state[i], next_agents[i]
+
+    if sell_state.fail or half_sell_state.fail:
+        raise AssertionError('sell swap failed!')
+
+    if (sell_state.liquidity[tkn_buy] <= half_sell_state.liquidity[tkn_buy] or
+            sell_agents['trader']['r'][tkn_buy] >= half_sell_agents['trader']['r'][tkn_buy]):
+        # show that when using slip-based fees,
+        # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
+        # this should apply regardless of how the trade is specified.
+        raise AssertionError('Fee balance different than expected.')
+
+    # if sell_state.liquidity[tkn_buy] != pytest.approx(swap_state.liquidity[tkn_buy]):
+    #     raise AssertionError('Buy transaction was not reversed accurately.')
 
 
 if __name__ == '__main__':

@@ -65,7 +65,7 @@ def remove_liquidity(
     agent_id = transaction['agent_id']
     shares_remove = transaction['shares_remove']
     i = transaction['token_remove']
-    return oamm.remove_risk_liquidity(old_state, old_agents, agent_id, shares_remove, i)
+    return oamm.remove_liquidity(old_state, old_agents, agent_id, shares_remove, i)
 
 
 def add_liquidity(
@@ -76,7 +76,7 @@ def add_liquidity(
     agent_id = transaction['agent_id']
     amount_add = transaction['amount_add']
     i = transaction['token_add']
-    return oamm.add_risk_liquidity(old_state, old_agents, agent_id, amount_add, i)
+    return oamm.add_liquidity(old_state, old_agents, agent_id, amount_add, i)
 
 
 def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:

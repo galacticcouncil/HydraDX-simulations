@@ -56,6 +56,7 @@ class OmnipoolState:
         self.lrna_imbalance = 0  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
+        self.fail = ''
 
         # count TVL for each pool once all values are set
         for token in self.asset_list:
@@ -75,7 +76,9 @@ class OmnipoolState:
         return sum(self.tvl.values())
 
     def copy(self):
-        return copy.deepcopy(self)
+        copy_state = copy.deepcopy(self)
+        copy_state.fail = ''
+        return copy_state
 
     def __repr__(self):
         return (
@@ -247,7 +250,7 @@ def swap_assets(
         raise
 
 
-def add_risk_liquidity(
+def add_liquidity(
         old_state: OmnipoolState,
         old_agents: dict,
         lp_id: string,
@@ -314,7 +317,7 @@ def add_risk_liquidity(
     return new_state, new_agents
 
 
-def remove_risk_liquidity(
+def remove_liquidity(
         old_state: OmnipoolState,
         old_agents: dict,
         lp_id: string,
@@ -360,5 +363,7 @@ def remove_risk_liquidity(
     return new_state, new_agents
 
 
-def fail(old_state: OmnipoolState, old_agents: dict) -> tuple[OmnipoolState, dict]:
-    return old_state.copy(), copy.deepcopy(old_agents)
+def fail(old_state: OmnipoolState, old_agents: dict, error_message='fail') -> tuple[OmnipoolState, dict]:
+    fail_state = old_state.copy()
+    fail_state.fail = error_message
+    return fail_state, copy.deepcopy(old_agents)
