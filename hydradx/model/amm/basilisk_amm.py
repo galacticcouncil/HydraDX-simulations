@@ -156,3 +156,8 @@ def swap(
         return AMM.fail(old_state, old_agent)
 
     return new_state, new_agent
+
+
+ConstantProductPoolState.swap = staticmethod(swap)
+ConstantProductPoolState.add_liquidity = staticmethod(add_liquidity)
+ConstantProductPoolState.remove_liquidity = staticmethod(remove_liquidity)

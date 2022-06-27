@@ -381,3 +381,7 @@ def remove_liquidity(
 
     return new_state, new_agent
 
+
+OmnipoolState.swap = staticmethod(swap)
+OmnipoolState.add_liquidity = staticmethod(add_liquidity)
+OmnipoolState.remove_liquidity = staticmethod(remove_liquidity)
