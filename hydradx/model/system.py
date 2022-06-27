@@ -2,9 +2,9 @@ from .amm import amm
 
 
 def execute_trades(params, substep, state_history, prev_state, policy_input):
-    market = prev_state['state']['amm']
-    agents = prev_state['state']['agents']
+    new_global_state = prev_state['state']
+    agents = prev_state['state'].agents
     for agent_id, agent in agents.items():
-        if 'trade_strategy' in agent and agent['trade_strategy']:
-            market, agents = agent['trade_strategy'].execute(agents=agents, agent_id=agent_id, market=market)
-    return 'state', {'amm': market, 'agents': agents, 'external': prev_state['state']['external']}
+        if agent.trade_strategy:
+            agent.trade_strategy.execute(new_global_state, agent)
+    return 'state', new_global_state
