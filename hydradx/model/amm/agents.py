@@ -28,5 +28,7 @@ class Agent:
         self.share_prices = share_prices or {}
         self.trade_strategy = trade_strategy
 
+        self.asset_list = list(set(list(self.holdings.keys()) + list(self.shares.keys())))
+
     def copy(self):
         return copy.deepcopy(self)
