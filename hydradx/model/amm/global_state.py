@@ -48,8 +48,8 @@ class GlobalState:
     def __init__(self, agents: dict[str: Agent], pools: dict[str: AMM], external_market: dict[str: float]):
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
-            [asset for pool in pools for asset in pool.liquidity.keys()]
-            + [asset for agent in agents for asset in agent.asset_list]
+            [asset for pool in pools.values() for asset in pool.liquidity.keys()]
+            + [asset for agent in agents.values() for asset in agent.asset_list]
             + list(external_market.keys())
         ))
         self.agents = agents
