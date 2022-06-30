@@ -155,20 +155,16 @@ def swap_lrna(
         delta_qa = -delta_Q
     else:
         # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction(), old_agent
 
     if delta_qa + old_agent.holdings['LRNA'] < 0:
-        # agent doesn't have enough lrna
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction("agent doesn't have enough lrna"), old_agent
     elif delta_ra + old_agent.holdings[tkn] < 0:
-        # agent doesn't have enough asset[i]
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction(f"agent doesn't have enough {tkn} holdings"), old_agent
     elif delta_R + old_state.liquidity[tkn] <= 0:
-        # insufficient assets in pool, transaction fails
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('insufficient assets in pool'), old_agent
     elif delta_Q + old_state.lrna[tkn] <= 0:
-        # insufficient lrna in pool, transaction fails
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('insufficient lrna in pool'), old_agent
 
     new_agent.holdings['LRNA'] += delta_qa
     new_agent.holdings[tkn] += delta_ra
@@ -292,7 +288,7 @@ def add_liquidity(
         if new_agent.holdings[tkn] < 0:
             # print('Transaction rejected because agent has insufficient funds.')
             # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-            return AMM.fail(old_state, old_agent)
+            return old_state.fail_transaction(), old_agent
 
     # Share update
     if new_state.shares[tkn]:
@@ -321,14 +317,13 @@ def add_liquidity(
     new_state.tvl[tkn] += delta_t
 
     if new_state.lrna[tkn] / new_state.lrna_total > new_state.weight_cap[tkn]:
-        # print(f'Transaction rejected because it would exceed the weight cap in pool[{i}].')
-        # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction(
+            'Transaction rejected because it would exceed the weight cap in pool[{i}].'
+        ), old_agent
 
     if new_state.tvl_total > new_state.tvl_cap:
-        # print('Transaction rejected because it would exceed the TVL cap.')
-        # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-        return AMM.fail(old_state, old_agent)
+
+        return old_state.fail_transaction('Transaction rejected because it would exceed the TVL cap.'), old_agent
 
     # set price at which liquidity was added
     if old_agent:

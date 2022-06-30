@@ -86,7 +86,7 @@ def add_liquidity(
 
         if new_agent.holdings[token] < 0:
             # fail
-            return AMM.fail(old_state, old_agent)
+            return old_state.fail_transaction('Agent has insufficient funds.'), old_agent
 
     new_shares = (new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add] - 1) * old_state.shares
     new_state.shares += new_shares
@@ -106,7 +106,7 @@ def remove_liquidity(
         old_state, old_agent, -quantity, tkn_remove
     )
     if min(new_state.liquidity.values()) < 0:
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('Tried to remove more liquidity than exists in the pool.'), old_agent
 
     return new_state, new_agent
 
@@ -124,7 +124,7 @@ def swap(
     new_state = old_state.copy()
 
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
-        return AMM.fail(old_state, old_agent, 'invalid token name')
+        return old_state.fail_transaction('Invalid token name.'), old_agent
 
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout
@@ -147,13 +147,13 @@ def swap(
         new_state.liquidity[tkn_sell] += sell_quantity
 
     else:
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('Must specify buy quantity or sell quantity.'), old_agent
 
     if new_state.liquidity[tkn_buy] <= 0 or new_state.liquidity[tkn_sell] <= 0:
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('Not enough liquidity in the pool.'), old_agent
 
     if new_agent.holdings[tkn_sell] < 0 or new_agent.holdings[tkn_buy] < 0:
-        return AMM.fail(old_state, old_agent)
+        return old_state.fail_transaction('Agent has insufficient holdings.'), old_agent
 
     return new_state, new_agent
 

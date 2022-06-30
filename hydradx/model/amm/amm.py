@@ -3,6 +3,9 @@ import copy
 
 
 class AMM:
+    asset_list: list[str]
+    liquidity: dict[str: float]
+
     def __init__(self):
         self.fail = ''
 
@@ -37,7 +40,7 @@ class AMM:
     ):
         return self.copy(), old_agent.copy()
 
-    def fail(self, agent: Agent, error: str = 'fail'):
+    def fail_transaction(self, error: str = 'fail'):
         failed_state = self.copy()
         failed_state.fail = error
-        return failed_state, agent.copy()
+        return failed_state
