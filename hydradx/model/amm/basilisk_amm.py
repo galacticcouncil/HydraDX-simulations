@@ -5,6 +5,8 @@ from .global_state import AMM
 from .agents import Agent
 from mpmath import mpf, mp
 mp.dps = 50
+# when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
+precision_level = 20
 
 
 class ConstantProductPoolState(AMM):
@@ -92,6 +94,10 @@ def add_liquidity(
     new_state.shares += new_shares
 
     new_agent.shares[new_state.unique_id] += new_shares
+    if new_agent.shares[new_state.unique_id] > 0:
+        new_agent.share_prices[new_state.unique_id] = (
+            new_state.liquidity[new_state.asset_list[1]] / new_state.liquidity[new_state.asset_list[0]]
+        )
     return new_state, new_agent
 
 
@@ -107,6 +113,10 @@ def remove_liquidity(
     )
     if min(new_state.liquidity.values()) < 0:
         return old_state.fail_transaction('Tried to remove more liquidity than exists in the pool.'), old_agent
+
+    # avoid fail due to rounding error.
+    if round(new_agent.shares[new_state.unique_id], precision_level) < 0:
+        return old_state.fail_transaction('Tried to remove more shares than agent owns.'), old_agent
 
     return new_state, new_agent
 
