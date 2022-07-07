@@ -5,7 +5,7 @@ from .amm import AMM
 
 
 class GlobalState:
-    def __init__(self, agents: dict[str: Agent], pools: dict[str: AMM], external_market: dict[str: float]):
+    def __init__(self, agents: dict[str: Agent], pools: dict[str: AMM], external_market: dict[str: float] = {}):
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
@@ -20,7 +20,7 @@ class GlobalState:
             self.pools[pool_name].unique_id = pool_name
         self.external_market = external_market
 
-    def price(self, asset):
+    def price(self, asset: str):
         return self.external_market[asset] if asset in self.external_market else 0
 
     def copy(self):
@@ -67,7 +67,7 @@ def add_liquidity(
     quantity: float,
     tkn_add: str
 ) -> GlobalState:
-    new_state = old_state  # .copy()
+    new_state = old_state.copy()
     new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].add_liquidity(
         old_state=new_state.pools[pool_id],
         old_agent=new_state.agents[agent_id],
@@ -84,8 +84,8 @@ def remove_liquidity(
         quantity: float,
         tkn_remove: str
 ) -> GlobalState:
-    new_state = old_state  # .copy()
-    new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].add_liquidity(
+    new_state = old_state.copy()
+    new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].remove_liquidity(
         old_state=new_state.pools[pool_id],
         old_agent=new_state.agents[agent_id],
         quantity=quantity,
@@ -94,21 +94,17 @@ def remove_liquidity(
     return new_state
 
 
-def withdraw_all_liquidity(state: GlobalState, agent: Agent) -> GlobalState:
-    # I am not currently having these functions make or return a copy of the state, because I found that makes it slow
-    for i in agent.shares.keys():
-        remove_liquidity(state, i, agent.unique_id, agent.shares[i], tkn_remove=i)
+def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
+    agent = state.agents[agent_id]
+    new_state = state
+    for key in agent.shares.keys():
+        # shares.keys might just be the pool name, or it might be a tuple (pool, token)
+        if isinstance(key, tuple):
+            pool_id = key[0]
+            tkn = key[1]
+        else:
+            pool_id = key
+            tkn = key
+        new_state = remove_liquidity(new_state, pool_id, agent.unique_id, agent.shares[key], tkn_remove=tkn)
 
-    return state
-
-
-def value_assets(state: GlobalState, agent: Agent) -> float:
-    return sum([
-        agent.holdings[i] * state.price(i)
-        for i in agent.holdings.keys()
-    ])
-
-
-def cash_out(state: GlobalState, agent: Agent) -> float:
-    withdraw_all_liquidity(state, agent)
-    return value_assets(state, agent)
+    return new_state
