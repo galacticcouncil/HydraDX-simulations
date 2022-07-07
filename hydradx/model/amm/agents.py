@@ -7,7 +7,7 @@ class Agent:
 
     def __init__(self,
                  holdings: dict[str: float] = None,
-                 shares: dict[str: float] = None,
+                 shares: dict[any: float] = None,
                  share_prices: dict[str: float] = None,
                  trade_strategy: Callable = None,
                  ):
@@ -28,7 +28,26 @@ class Agent:
         self.share_prices = share_prices or {}
         self.trade_strategy = trade_strategy
 
-        self.asset_list = list(set(list(self.holdings.keys()) + list(self.shares.keys())))
+        self.asset_list = list(set(list(self.holdings.keys()) + [share[1] for share in self.shares.keys()]))
+
+    def __repr__(self):
+        return (
+            f'Agent:\n' +
+            f'name: {self.unique_id}\n'
+            f'trade strategy: {self.trade_strategy.name if self.trade_strategy else "None"}\n' +
+            f'holdings: (\n' +
+            f')\n(\n'.join(
+                [(
+                    f'    {token}: {self.holdings[token]}\n'
+                ) for token in self.holdings]
+            ) + ')\n' +
+            f'shares: (\n' +
+            f')\n(\n'.join(
+                [(
+                    f'    {pool}: {self.shares[pool]}\n'
+                    f'    price: {self.share_prices[pool]}\n'
+                ) for pool in self.shares]
+            ) + ')\n')
 
     def copy(self):
         return copy.deepcopy(self)
