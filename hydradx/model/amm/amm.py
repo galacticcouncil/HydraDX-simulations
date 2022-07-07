@@ -3,6 +3,7 @@ import copy
 
 
 class AMM:
+    unique_id: str
     asset_list: list[str]
     liquidity: dict[str: float]
 
