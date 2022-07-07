@@ -1,12 +1,12 @@
 import pytest
 import random
-from hypothesis import given, strategies as st, assume
+from hypothesis import given, strategies as st
 from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=10000000)
-fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 
 
@@ -14,8 +14,8 @@ trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 def assets_config(draw) -> dict:
     token_count = 2
     return_dict = {
-        ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): draw(asset_quantity_strategy)
-        for _ in range(token_count)
+        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        for i in range(token_count)
     }
     return return_dict
 
@@ -30,7 +30,7 @@ def constant_product_pool_config(
     asset_dict = asset_dict or draw(assets_config())
     return bamm.ConstantProductPoolState(
         tokens=asset_dict,
-        trade_fee=draw(st.floats(min_value=0, max_value=0.1)) if trade_fee is None else trade_fee,
+        trade_fee=draw(fee_strategy) if trade_fee is None else trade_fee,
         fee_function=fee_function
     )
 
@@ -188,6 +188,15 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
                              + new_state.liquidity[tkn_remove] + new_state.liquidity[other_tkn])):
         raise AssertionError('Asset quantity is not constant after liquidity remove!')
 
+    cheat_state, cheat_agent = bamm.remove_liquidity(
+        old_state, old_agent,
+        quantity=delta_token + 1,
+        tkn_remove=tkn_remove
+    )
+
+    if not cheat_state.fail:
+        raise AssertionError('Agent was able to remove more shares than it owned!')
+
 
 @given(constant_product_pool_config(trade_fee=0, fee_function=bamm.ConstantProductPoolState.custom_slip_fee(0.1)))
 def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
@@ -287,6 +296,74 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
 
     # if sell_state.liquidity[tkn_buy] != pytest.approx(swap_state.liquidity[tkn_buy]):
     #     raise AssertionError('Buy transaction was not reversed accurately.')
+
+
+def test_simulation():
+    from hydradx.model import run
+    from hydradx.model.amm.global_state import GlobalState
+    from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
+    from hydradx.model.amm.agents import Agent
+    from hydradx.model.amm.trade_strategies import TradeStrategies
+    from hydradx.model import plot_utils
+
+    # same seed, same parameters = same simulation result
+    random.seed(42)
+
+    initial_state = GlobalState(
+        pools={
+            'R1/R2': ConstantProductPoolState(
+                tokens={
+                    'R1': 1000000,
+                    'R2': 1000000
+                },
+                trade_fee=0.001,
+                fee_function=ConstantProductPoolState.custom_slip_fee(0.1)
+            ),
+            'R2/R3': ConstantProductPoolState(
+                tokens={
+                    'R3': 1000000,
+                    'R2': 1000000
+                },
+                trade_fee=0.001,
+                fee_function=ConstantProductPoolState.custom_slip_fee(0.2)
+            ),
+            'R1/R3': ConstantProductPoolState(
+                tokens={
+                    'R1': 1000000,
+                    'R3': 1000000
+                },
+                trade_fee=0.001,
+                fee_function=ConstantProductPoolState.thorchain_fee
+            ),
+        },
+
+        agents={
+            'Trader1 (low volume)': Agent(
+                holdings={'R1': 10000, 'R2': 10000},
+                trade_strategy=TradeStrategies.random_swaps(pool='R1/R2', amount={'R1': 1000, 'R2': 1000},
+                                                            randomize_amount=True)
+            ),
+            'Trader2 (mid volume)': Agent(
+                holdings={'R2': 500000, 'R3': 500000},
+                trade_strategy=TradeStrategies.random_swaps(pool='R2/R3', amount={'R3': 50000, 'R2': 50000},
+                                                            randomize_amount=True)
+            ),
+            'Trader3 (high volume)': Agent(
+                holdings={'R1': 1000000, 'R3': 1000000},
+                trade_strategy=TradeStrategies.random_swaps(pool='R1/R3', amount={'R1': 100000, 'R3': 100000},
+                                                            randomize_amount=True)
+            )
+        },
+
+        external_market={
+            'R1': 1,
+            'R2': 1
+        }
+    )
+
+    events = run.run(initial_state, time_steps=500)
+
+    plot_utils.plot(events, pool='all', prop='liquidity')
 
 
 if __name__ == '__main__':
