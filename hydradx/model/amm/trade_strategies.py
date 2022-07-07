@@ -1,5 +1,4 @@
 from .global_state import GlobalState, swap, add_liquidity, remove_liquidity, AMM
-from .agents import Agent
 from typing import Callable
 import random
 
@@ -7,9 +6,10 @@ import random
 class TradeStrategy:
     def __init__(self, strategy_function: Callable):
         self.function = strategy_function
+        self.name = strategy_function.__name__
 
-    def execute(self, state: GlobalState, agent: Agent) -> GlobalState:
-        return self.function(state, agent_id=agent.unique_id)
+    def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
+        return self.function(state, agent_id=agent_id)
 
 
 class TradeStrategies:
@@ -40,5 +40,34 @@ class TradeStrategies:
                     tkn_buy=buy_asset,
                     sell_quantity=sell_quantity
                 )
+
+        return strategy
+
+    @staticmethod
+    def invest_all(pool: str):
+        """
+        amount should be a dict in the form of:
+        {
+            token_name: sell_quantity
+        }
+        """
+
+        @TradeStrategy
+        def strategy(state: GlobalState, agent_id: str):
+
+            agent = state.agents[agent_id]
+            for asset in agent.holdings:
+
+                state = add_liquidity(
+                    old_state=state,
+                    pool_id=pool,
+                    agent_id=agent_id,
+                    quantity=agent.holdings[asset],
+                    tkn_add=asset
+                )
+
+            # should only have to do this once
+            state.agents[agent_id].trade_strategy = None
+            return state
 
         return strategy
