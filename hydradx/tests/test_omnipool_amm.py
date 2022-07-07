@@ -109,29 +109,21 @@ def test_weights(initial_state: oamm.OmnipoolState):
 @given(omnipool_config())
 def test_prices(market_state: oamm.OmnipoolState):
     for i in market_state.asset_list:
-        assert oamm.price_i(market_state, i) > 0
+        assert oamm.lrna_price(market_state, i) > 0
 
 
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
 def test_add_liquidity(initial_state: oamm.OmnipoolState):
-    initial_state.tvl_cap = initial_state.tvl_total * 2
-    for i in initial_state.asset_list:
-        initial_state.weight_cap[i] = mpf(min(initial_state.lrna[i] / initial_state.lrna_total * 1.001, 1))
-
     old_state = initial_state
-    lp_id = 'LP'
-    i = old_state.asset_list[-1]
-
     old_agent = Agent(
-        holdings={i: 1000},
-        shares={i: 0},
-        share_prices={i: old_state.price(i)}
+        holdings={i: 1000 for i in old_state.asset_list}
     )
+    i = old_state.asset_list[-1]
     delta_R = 1000
 
     new_state, new_agents = oamm.add_liquidity(old_state, old_agent, delta_R, i)
     for j in initial_state.asset_list:
-        assert oamm.price_i(old_state, j) == pytest.approx(oamm.price_i(new_state, j))
+        assert oamm.lrna_price(old_state, j) == pytest.approx(oamm.lrna_price(new_state, j))
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
         raise AssertionError(f'Price change in {i}'
                              f'({old_state.liquidity[i] / old_state.shares[i]}) -->'
@@ -142,14 +134,18 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
             pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
-    # check enforcement of overall TVL cap
+    # check enforcement of weight caps
+    # first assign some weight caps
+    for i in initial_state.asset_list:
+        initial_state.weight_cap[i] = mpf(min(initial_state.lrna[i] / initial_state.lrna_total * 1.1, 1))
+
     # calculate what should be the maximum allowable liquidity provision
     max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
                    * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
-                  / old_state.price(i))
+                  / old_state.lrna_price[i])
 
     if max_amount < 0:
-        raise AssertionError('This calculation makes no sense.')
+        raise AssertionError('This calculation makes no sense.')  # but actually, it works :)
 
     # make sure agent has enough funds
     old_agent.holdings[i] = max_amount * 2
@@ -168,21 +164,14 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
 @given(omnipool_config(token_count=3))
 def test_remove_liquidity(initial_state: oamm.OmnipoolState):
     i = initial_state.asset_list[2]
-    p_init = 1
-    old_state = initial_state
-    old_agent = Agent(
+    initial_agent = Agent(
         holdings={token: mpf(1000) for token in initial_state.asset_list + ['LRNA']},
-        share_prices={token: mpf(p_init) for token in initial_state.asset_list},
-        shares={token: mpf(1000) for token in initial_state.asset_list}
     )
     # add LP shares to the pool
-    for tkn in old_agent.shares:
-        shares = old_agent.shares[tkn]
-        old_state.liquidity[tkn] += shares * old_state.liquidity[tkn] / old_state.shares[tkn]
-        old_state.lrna[tkn] += shares * old_state.lrna[tkn] / old_state.shares[tkn]
-        old_state.shares[tkn] += shares
+    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    p_init = old_state.lrna_price[i]
 
-    delta_S = -old_agent.shares[i]
+    delta_S = -old_agent.shares[('omnipool', i)]
 
     new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
@@ -197,11 +186,11 @@ def test_remove_liquidity(initial_state: oamm.OmnipoolState):
     if delta_r <= 0 and delta_r != pytest.approx(0):
         raise AssertionError('Delta R < 0')
 
-    piq = oamm.price_i(old_state, i)
+    piq = oamm.lrna_price(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
     if (-2 * piq / (piq + p_init) * delta_S / old_state.shares[i] * piq
-            * old_state.liquidity[i] != pytest.approx(val_withdrawn)) \
-            and not new_state.fail:
+            * old_state.liquidity[i] != pytest.approx(val_withdrawn)
+            and not new_state.fail):
         raise AssertionError('something is wrong')
 
 
