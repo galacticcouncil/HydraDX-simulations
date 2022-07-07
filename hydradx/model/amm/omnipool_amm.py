@@ -5,12 +5,14 @@ from .global_state import AMM
 
 
 class OmnipoolState(AMM):
+    unique_id: str = 'omnipool'
+
     def __init__(self,
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
                  asset_fee: float = 0,
-                 lrna_fee: float = 0,
+                 lrna_fee: float = 0
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -27,7 +29,6 @@ class OmnipoolState(AMM):
           'weight_cap': float  # maximum fraction of TVL that may be held in this pool
         }
         """
-        # TODO: consider what these fields should actually be called, in light of compatibility with Basilisk
 
         super().__init__()
 
