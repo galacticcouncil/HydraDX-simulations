@@ -43,8 +43,6 @@ class OmnipoolState(AMM):
         self.weight_cap = {}
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
-            if not ('LRNA' in pool or 'LRNA_price' in pool):
-                raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
             self.asset_list.append(token)
             self.liquidity[token] = (pool['liquidity'])
             self.shares[token] = (pool['liquidity'])
@@ -52,8 +50,10 @@ class OmnipoolState(AMM):
             self.weight_cap[token] = (pool['weight_cap'] if 'weight_cap' in pool else 1)
             if 'LRNA' in pool:
                 self.lrna[token] = (pool['LRNA'])
+            elif 'LRNA_price' in pool:
+                self.lrna[token] = pool['liquidity'] / pool['LRNA_price']
             else:
-                self.lrna[token] = (pool['LRNA_price'] * pool['liquidity'])
+                raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
 
         self.asset_fee = asset_fee
         self.lrna_fee = lrna_fee
@@ -69,7 +69,13 @@ class OmnipoolState(AMM):
             )
 
     def price(self, i: str):
-        return self.lrna[i] / self.liquidity[i]
+        # price of an asset in USD, according to current market conditions in the omnipool
+        return self.lrna[i] / self.liquidity[i] / self.lrna[self.stablecoin] * self.liquidity[self.stablecoin]
+
+    @property
+    def lrna_price(self) -> dict[str: float]:
+        # price of asset i in LRNA
+        return {i: self.lrna[i] / self.liquidity[i] for i in self.asset_list}
 
     @property
     def lrna_total(self):
@@ -96,7 +102,7 @@ class OmnipoolState(AMM):
                 f'    {token}\n'
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
-                f'    price: {price_i(self, token)}\n'
+                f'    price: {self.price(token)}\n'
                 f'    tvl: {self.tvl[token]}\n'
                 f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
@@ -123,7 +129,7 @@ def weight_i(state: OmnipoolState, i: str) -> float:
     return state.lrna[i] / state.lrna_total
 
 
-def price_i(state: OmnipoolState, i: str, fee: float = 0) -> float:
+def lrna_price(state: OmnipoolState, i: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
     if state.liquidity[i] == 0:
         return 0
@@ -269,54 +275,56 @@ def swap(
 def add_liquidity(
         old_state: OmnipoolState,
         old_agent: Agent = None,
-        delta_r: float = 0,
-        tkn: str = ''
+        quantity: float = 0,
+        tkn_add: str = ''
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
-    assert delta_r > 0, f"delta_R must be positive: {delta_r}"
-    assert tkn in old_state.asset_list, f"invalid value for i: {tkn}"
+    assert quantity > 0, f"delta_R must be positive: {quantity}"
+    assert tkn_add in old_state.asset_list, f"invalid value for i: {tkn_add}"
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
     # Token amounts update
-    new_state.liquidity[tkn] += delta_r
+    new_state.liquidity[tkn_add] += quantity
 
     if old_agent:
-        new_agent.holdings[tkn] -= delta_r
-        if new_agent.holdings[tkn] < 0:
+        new_agent.holdings[tkn_add] -= quantity
+        if new_agent.holdings[tkn_add] < 0:
             # print('Transaction rejected because agent has insufficient funds.')
             # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
             return old_state.fail_transaction(), old_agent
 
     # Share update
-    if new_state.shares[tkn]:
-        new_state.shares[tkn] *= new_state.liquidity[tkn] / old_state.liquidity[tkn]
+    if new_state.shares[tkn_add]:
+        new_state.shares[tkn_add] *= new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add]
     else:
-        new_state.shares[tkn] = new_state.liquidity[tkn]
+        new_state.shares[tkn_add] = new_state.liquidity[tkn_add]
 
     if old_agent:
         # shares go to provisioning agent
-        new_agent.shares[tkn] += new_state.shares[tkn] - old_state.shares[tkn]
+        if not (new_state.unique_id, tkn_add) in new_agent.shares:
+            new_agent.shares[(new_state.unique_id, tkn_add)] = 0
+        new_agent.shares[(new_state.unique_id, tkn_add)] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
     else:
         # shares go to protocol
-        new_state.protocol_shares[tkn] += new_state.shares[tkn] - old_state.shares[tkn]
+        new_state.protocol_shares[tkn_add] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
 
     # LRNA add (mint)
-    delta_Q = price_i(old_state, tkn) * delta_r
-    new_state.lrna[tkn] += delta_Q
+    delta_Q = lrna_price(old_state, tkn_add) * quantity
+    new_state.lrna[tkn_add] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_r * old_state.lrna[tkn] / old_state.liquidity[tkn] * old_state.lrna_imbalance / old_state.lrna_total
+    delta_L = quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add] * old_state.lrna_imbalance / old_state.lrna_total
     new_state.lrna_imbalance += delta_L
 
     # T update: TVL soft cap
     usd = new_state.stablecoin
-    delta_t = new_state.lrna[tkn] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[tkn]
-    new_state.tvl[tkn] += delta_t
+    delta_t = new_state.lrna[tkn_add] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[tkn_add]
+    new_state.tvl[tkn_add] += delta_t
 
-    if new_state.lrna[tkn] / new_state.lrna_total > new_state.weight_cap[tkn]:
+    if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
         return old_state.fail_transaction(
             'Transaction rejected because it would exceed the weight cap in pool[{i}].'
         ), old_agent
@@ -327,7 +335,7 @@ def add_liquidity(
 
     # set price at which liquidity was added
     if old_agent:
-        new_agent.share_prices[tkn] = new_state.price(tkn)
+        new_agent.share_prices[(new_state.unique_id, tkn_add)] = new_state.lrna_price[tkn_add]
 
     return new_state, new_agent
 
@@ -335,43 +343,46 @@ def add_liquidity(
 def remove_liquidity(
         old_state: OmnipoolState,
         old_agent: Agent,
-        delta_s: float,
-        tkn: str
+        quantity: float,
+        tkn_remove: str
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity removal"""
-    assert delta_s <= 0, f"delta_S cannot be positive: {delta_s}"
-    assert tkn in old_state.asset_list, f"invalid token name: {tkn}"
+    quantity = -abs(quantity)
+    assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
+    assert tkn_remove in old_state.asset_list, f"invalid token name: {tkn_remove}"
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    if delta_s == 0:
+    if quantity == 0:
         return new_state, new_agent
 
-    piq = price_i(old_state, tkn)
-    p0 = new_agent.share_prices[tkn]
+    piq = old_state.lrna_price[tkn_remove]
+    p0 = new_agent.share_prices[(new_state.unique_id, tkn_remove)]
     mult = (piq - p0) / (piq + p0)
 
     # Share update
-    delta_B = max(mult * delta_s, 0)
-    new_state.protocol_shares[tkn] += delta_B
-    new_state.shares[tkn] += delta_s + delta_B
-    new_agent.shares[tkn] += delta_s
+    delta_B = max(mult * quantity, 0)
+    new_state.protocol_shares[tkn_remove] += delta_B
+    new_state.shares[tkn_remove] += quantity + delta_B
+    new_agent.shares[(new_state.unique_id, tkn_remove)] += quantity
 
     # Token amounts update
-    delta_R = old_state.liquidity[tkn] * max((delta_s + delta_B) / old_state.shares[tkn], -1)
-    new_state.liquidity[tkn] += delta_R
-    new_agent.holdings[tkn] -= delta_R
+    delta_R = old_state.liquidity[tkn_remove] * max((quantity + delta_B) / old_state.shares[tkn_remove], -1)
+    new_state.liquidity[tkn_remove] += delta_R
+    new_agent.holdings[tkn_remove] -= delta_R
     if piq >= p0:  # prevents rounding errors
+        if 'LRNA' not in new_agent.holdings:
+            new_agent.holdings['LRNA'] = 0
         new_agent.holdings['LRNA'] -= piq * (
-                2 * piq / (piq + p0) * delta_s / old_state.shares[tkn] * old_state.liquidity[tkn] - delta_R)
+                2 * piq / (piq + p0) * quantity / old_state.shares[tkn_remove] * old_state.liquidity[tkn_remove] - delta_R)
 
     # LRNA burn
-    delta_Q = price_i(old_state, tkn) * delta_R
-    new_state.lrna[tkn] += delta_Q
+    delta_Q = lrna_price(old_state, tkn_remove) * delta_R
+    new_state.lrna[tkn_remove] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_R * old_state.lrna[tkn] / old_state.liquidity[tkn] * old_state.lrna_imbalance / old_state.lrna_total
+    delta_L = delta_R * old_state.lrna[tkn_remove] / old_state.liquidity[tkn_remove] * old_state.lrna_imbalance / old_state.lrna_total
     new_state.lrna_imbalance += delta_L
 
     return new_state, new_agent
