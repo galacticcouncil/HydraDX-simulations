@@ -42,7 +42,7 @@ def random_swaps(
                 sell_quantity=sell_quantity
             )
 
-    return TradeStrategy(strategy, name=f'random swaps ({list(amount.key())})')
+    return TradeStrategy(strategy, name=f'random swaps ({list(amount.keys())})')
 
 
 def invest_all(pool: str) -> TradeStrategy:
