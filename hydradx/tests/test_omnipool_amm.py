@@ -18,7 +18,7 @@ mp.dps = 50
 @st.composite
 def assets_config(draw, token_count: int = 0) -> dict:
     token_count = token_count or draw(asset_number_strategy)
-    lrna_price_usd = draw(asset_price_strategy)
+    usd_price_lrna = draw(asset_price_strategy)
     return_dict = {
         'HDX': {
             'liquidity': draw(asset_quantity_strategy),
@@ -26,7 +26,7 @@ def assets_config(draw, token_count: int = 0) -> dict:
         },
         'USD': {
             'liquidity': draw(asset_quantity_strategy),
-            'LRNA_price': 1 / lrna_price_usd
+            'LRNA_price': 1 / usd_price_lrna
         }
     }
     return_dict.update({
