@@ -2,10 +2,16 @@ from .agents import Agent
 import copy
 import random
 from .amm import AMM
+from typing import Callable
 
 
 class GlobalState:
-    def __init__(self, agents: dict[str: Agent], pools: dict[str: AMM], external_market: dict[str: float] = {}):
+    def __init__(self,
+                 agents: dict[str: Agent],
+                 pools: dict[str: AMM],
+                 external_market: dict[str: float] = {},
+                 evolve_function: Callable = None
+                 ):
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
@@ -19,24 +25,61 @@ class GlobalState:
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
         self.external_market = external_market
+        self._evolve_function = evolve_function
+        self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
 
     def price(self, asset: str):
-        return self.external_market[asset] if asset in self.external_market else 0
+        if asset in self.external_market:
+            return self.external_market[asset]
+        else:
+            return 0
+
+    def total_wealth(self):
+        return sum([
+            sum([
+                agent.holdings[tkn] * self.price(tkn) for tkn in agent.holdings
+            ])
+            for agent in self.agents.values()
+        ]) + sum([
+            sum([
+                pool.liquidity[tkn] for tkn in pool.asset_list
+            ])
+            for pool in self.pools.values()
+        ])
 
     def copy(self):
         self_copy = copy.deepcopy(self)
         return self_copy
 
+    def evolve(self):
+        if self._evolve_function:
+            self._evolve_function(self)
 
-def fluctuate_prices(state: GlobalState, percent: float, bias: float):
-    new_state = state.copy()
-    for asset in new_state.external_market:
-        new_state.external_market[asset] *= (
-                1 / (1 + percent / 100)
-                + random.random() * (1 / (1 + percent / 100) + percent / 100)
-                + bias
+    def __repr__(self):
+        newline = "\n"
+        return (
+            f'global state {newline}'
+            f'pools: {newline}{newline.join([pool for pool in self.pools.values])}'
+            f'{newline}'
+            f'agents: {newline}{newline.join([agent for agent in self.agents.values])}'
+            f'{newline}'
+            f'evolution function: {self.evolve_function}'
         )
-    return new_state
+
+
+def fluctuate_prices(percent: float, bias: float):
+
+    def transform(state: GlobalState):
+        new_state = state  # .copy()
+        for asset in new_state.external_market:
+            new_state.external_market[asset] *= (
+                    1 / (1 + percent / 100)
+                    + random.random() * (1 - 1 / (1 + percent / 100) + percent / 100)
+                    + bias / 100
+            )
+        return new_state
+
+    return transform
 
 
 def swap(
