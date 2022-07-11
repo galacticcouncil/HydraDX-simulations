@@ -6,8 +6,8 @@ def plot(
         pool: str = '',
         agent: str = '',
         asset: str = '',
-        prop: str = '',
-        key: str = 'all',
+        prop: str or list = '',
+        key: str or list = 'all',
         subplot: plt.Subplot = None
 ):
     """
@@ -37,51 +37,52 @@ def plot(
     if 'all' in [pool, agent, asset]:
         section = [key for key in getattr(events[0]['state'], group)]
 
-    if key == 'all':
-        key = None
-        if prop:
-            if isinstance(prop, str):
-                test_prop = getattr(getattr(events[0]['state'], group)[section[0]], prop)
-                if isinstance(test_prop, dict):
-                    # e.g. prop == liquidity, which is a dict. In this case we will graph all keys in the dict.
-                    keys = 'all'
-                else:
-                    # e.g. prop == market_cap, which is a float
-                    keys = ['']
-            else:
-                keys = ['']
-        else:
-            # e.g. asset is specified, meaning we don't need prop or key
-            keys = ['']
-    elif isinstance(key, list):
-        keys = key
-    else:
-        keys = [key]
-
-    if len(keys) == 1:
-        plt.figure(figsize=(20, 5))
-
-    for instance in section:
+    for i, instance in enumerate(section):
         if isinstance(prop, list):
             use_props = prop
         else:
             use_props = [prop]
 
-        for p, prop in enumerate(use_props):
+        if len(use_props) > 1 or i == 0:
+            plt.figure(figsize=(20, 5))
+
+        for p, use_prop in enumerate(use_props):
+
+            if key == 'all':
+                if use_prop:
+                    if isinstance(use_prop, str):
+                        test_prop = getattr(getattr(events[0]['state'], group)[section[0]], use_prop)
+                        if isinstance(test_prop, dict):
+                            # e.g. prop == liquidity, which is a dict. In this case we will graph all keys in the dict.
+                            keys = 'all'
+                        else:
+                            # e.g. prop == market_cap, which is a float
+                            keys = ['']
+                    else:
+                        keys = ['']
+                else:
+                    # e.g. asset is specified, meaning we don't need prop or key
+                    keys = ['']
+            elif isinstance(key, list):
+                keys = key
+            else:
+                keys = [key]
+
             if keys == 'all':
-                use_keys = getattr(getattr(events[0]['state'], group)[instance], prop).keys()
+                use_keys = getattr(getattr(events[0]['state'], group)[instance], use_prop).keys()
             else:
                 use_keys = keys
 
-            if len(use_keys) > 1 or keys == 'all':
+            if len(use_keys) > 1 and p > 0:
                 # start a new line if we are doing multiple graphs at a time
                 plt.figure(figsize=(20, 5))
 
-            for k, key in enumerate(use_keys):
+            for k, use_key in enumerate(use_keys):
                 ax: plt.Subplot = subplot or plt.subplot(
-                    1, max(len(use_keys), len(use_props)), max(p, k)+1, title=f'{label}: {instance} {prop} {key}'
+                    1, max(len(use_keys), len(use_props), len(section)), max(p, k, i)+1,
+                    title=f'{label}: {instance} {use_prop} {use_key}'
                 )
-                y = get_datastream(events=events, group=group, instance=instance, prop=prop, key=key)
+                y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
                 x = range(len(y))
                 ax.plot(x, y)
 
@@ -104,12 +105,15 @@ def get_datastream(
     if pool:
         group = 'pools'
         instance = pool
+
     if agent:
         group = 'agents'
         instance = agent
+
     if asset:
         group = 'external_market'
-        key = asset
+    if group == 'external_market':
+        key = asset or instance or key
 
     if not prop:
         return [getattr(event['state'], group)[instance or key] for event in events]
