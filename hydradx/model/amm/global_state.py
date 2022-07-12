@@ -42,10 +42,19 @@ class GlobalState:
             for agent in self.agents.values()
         ]) + sum([
             sum([
-                pool.liquidity[tkn] for tkn in pool.asset_list
+                pool.liquidity[tkn] * self.price(tkn) for tkn in pool.asset_list
             ])
             for pool in self.pools.values()
         ])
+
+    def total_asset(self, tkn):
+        return (
+            sum([pool.liquidity[tkn] if tkn in pool.liquidity else 0 for pool in self.pools.values()])
+            + sum([agent.holdings[tkn] if tkn in agent.holdings else 0 for agent in self.agents.values()])
+        )
+
+    def total_assets(self):
+        return {tkn: self.total_asset(tkn) for tkn in self.asset_list}
 
     def copy(self):
         self_copy = copy.deepcopy(self)
@@ -59,11 +68,12 @@ class GlobalState:
         newline = "\n"
         return (
             f'global state {newline}'
-            f'pools: {newline}{newline.join([pool for pool in self.pools.values])}'
+            f'pools: {newline}{newline.join([repr(pool) for pool in self.pools.values()])}'
             f'{newline}'
-            f'agents: {newline}{newline.join([agent for agent in self.agents.values])}'
+            f'agents: {newline}{newline.join([repr(agent) for agent in self.agents.values()])}'
             f'{newline}'
             f'evolution function: {self.evolve_function}'
+            f'{newline}'
         )
 
 
