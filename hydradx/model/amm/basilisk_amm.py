@@ -107,6 +107,18 @@ def remove_liquidity(
         quantity: float,
         tkn_remove: str
 ) -> tuple[ConstantProductPoolState, Agent]:
+    if tkn_remove not in old_state.asset_list:
+        # withdraw some of each
+        tkns = old_state.asset_list
+        total = sum(old_state.liquidity.values())
+        halves = [
+            quantity * old_state.liquidity[tkns[0]] / total,
+            quantity * old_state.liquidity[tkns[1]] / total
+        ]
+        next_state, next_agent = remove_liquidity(old_state, old_agent, halves[0], tkns[0])
+        new_state, new_agent = remove_liquidity(next_state, next_agent, halves[1], tkns[1])
+        return new_state, new_agent
+
     quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
     new_state, new_agent = add_liquidity(
         old_state, old_agent, -quantity, tkn_remove
