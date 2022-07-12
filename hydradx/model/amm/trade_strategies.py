@@ -6,7 +6,7 @@ import random
 class TradeStrategy:
     def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str):
         self.function = strategy_function
-        self.name = strategy_function.__name__
+        self.name = name
 
     def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
         return self.function(state, agent_id)
@@ -52,13 +52,14 @@ def invest_all(pool: str) -> TradeStrategy:
         agent = state.agents[agent_id]
         for asset in agent.holdings:
 
-            state = add_liquidity(
-                old_state=state,
-                pool_id=pool,
-                agent_id=agent_id,
-                quantity=agent.holdings[asset],
-                tkn_add=asset
-            )
+            if asset in state.pools[pool].asset_list:
+                state = add_liquidity(
+                    old_state=state,
+                    pool_id=pool,
+                    agent_id=agent_id,
+                    quantity=agent.holdings[asset],
+                    tkn_add=asset
+                )
 
         # should only have to do this once
         state.agents[agent_id].trade_strategy = None
