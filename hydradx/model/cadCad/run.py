@@ -2,7 +2,7 @@ from .amm.global_state import GlobalState
 import time
 
 
-def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> list:
+def run(initial_state: GlobalState, time_steps: int) -> list:
     """
     Definition:
     Run simulation
@@ -10,8 +10,7 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> li
 
     start_time = time.time()
     events = [{'state': initial_state}]
-    if not silent:
-        print('Starting simulation...')
+    print('Starting simulation...')
     for i in range(time_steps):
         new_global_state = events[-1]['state'].copy()
         # agent actions
@@ -23,6 +22,5 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> li
         new_global_state.evolve()
         events.append({'timestep': i, 'state': new_global_state})
 
-    if not silent:
-        print(f'Execution time: {round(time.time() - start_time, 3)} seconds.')
+    print(f'Execution time: {round(time.time() - start_time, 3)} seconds.')
     return events[1:]

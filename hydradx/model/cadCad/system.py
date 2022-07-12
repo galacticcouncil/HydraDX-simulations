@@ -1,4 +1,4 @@
-from .amm import amm
+from hydradx.model.amm import amm
 
 
 def execute_trades(params, substep, state_history, prev_state, policy_input):

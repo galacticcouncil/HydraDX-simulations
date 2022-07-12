@@ -1,106 +1,47 @@
+from .agents import Agent
 import copy
-from ..amm import omnipool_amm as oamm
 
 
-def swap(old_state: oamm.OmnipoolState, old_agents: dict, trade: dict) -> tuple[oamm.OmnipoolState, dict]:
-    """Translates from user-friendly trade API to internal API
+class AMM:
+    unique_id: str
+    asset_list: list[str]
+    liquidity: dict[str: float]
 
-    swap['token_buy'] is the token being bought
-    swap['tokens_sell'] is the list of tokens being sold
-    swap['token_sell'] is the token being sold
-    swap['amount_sell'] is the amount of the token being sold
-    """
-    assert trade['token_buy'] != trade['token_sell'], "Cannot trade a token for itself"
-    i_buy = trade['token_buy']
-    i_sell = trade['token_sell']
+    def __init__(self):
+        self.fail = ''
 
-    if 'amount_sell' in trade:
-        trade_type = 'sell'
-        if trade['token_sell'] == 'LRNA':
-            delta_Q = trade['amount_sell']
-            delta_R = 0
-        else:
-            delta_Q = 0
-            delta_R = trade['amount_sell']
-    elif 'amount_buy' in trade:
-        trade_type = 'buy'
-        if trade['token_buy'] == 'LRNA':
-            delta_Q = -trade['amount_buy']
-            delta_R = 0
-        else:
-            delta_Q = 0
-            delta_R = -trade['amount_buy']
-    else:
-        raise
+    def copy(self):
+        copy_self = copy.deepcopy(self)
+        copy_self.fail = ''
+        return copy_self
 
-    if i_buy == 'LRNA' or i_sell == 'LRNA':
-        return oamm.swap_lrna(
-            old_state=old_state,
-            old_agents=old_agents,
-            trader_id=trade['agent_id'],
-            delta_ra=delta_R,
-            delta_qa=delta_Q,
-            i=i_buy if i_sell == 'LRNA' else i_sell,
-            fee_assets=old_state.asset_fee,
-            fee_lrna=old_state.lrna_fee)
-    elif trade_type == 'sell':
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, trade['amount_sell'],
-                                i_buy, i_sell,
-                                old_state.asset_fee, old_state.lrna_fee)
+    def swap(
+        self,
+        old_agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
+    ):
+        return self.copy(), old_agent.copy()
 
-    elif trade_type == 'buy':
-        return oamm.swap_assets(old_state, old_agents, trade['agent_id'], trade_type, -trade['amount_buy'],
-                                i_buy, i_sell,
-                                old_state.asset_fee, old_state.lrna_fee)
+    def add_liquidity(
+        self,
+        old_agent: Agent,
+        quantity: float,
+        tkn_add: str
+    ):
+        return self.copy(), old_agent.copy()
 
-    else:
-        raise
+    def remove_liquidity(
+        self,
+        old_agent: Agent,
+        quantity: float,
+        tkn_remove: str
+    ):
+        return self.copy(), old_agent.copy()
 
-
-def remove_liquidity(
-        old_state: oamm.OmnipoolState,
-        old_agents: dict, transaction: dict
-        ) -> tuple[oamm.OmnipoolState, dict]:
-    assert transaction['token_remove'] in old_state.asset_list
-    agent_id = transaction['agent_id']
-    shares_remove = transaction['shares_remove']
-    i = transaction['token_remove']
-    return oamm.remove_liquidity(old_state, old_agents, agent_id, shares_remove, i)
-
-
-def add_liquidity(
-        old_state: oamm.OmnipoolState,
-        old_agents: dict, transaction: dict
-        ) -> tuple[oamm.OmnipoolState, dict]:
-    assert transaction['token_add'] in old_state.asset_list
-    agent_id = transaction['agent_id']
-    amount_add = transaction['amount_add']
-    i = transaction['token_add']
-    return oamm.add_liquidity(old_state, old_agents, agent_id, amount_add, i)
-
-
-def value_assets(state: oamm.OmnipoolState, agent: dict) -> float:
-    return agent['q'] + sum([
-        agent['r'][i] * oamm.price_i(state, i)
-        for i in agent['r'].keys()
-    ])
-
-
-def withdraw_all_liquidity(state: oamm.OmnipoolState, agent: dict) -> tuple:
-    new_agents = {1: agent}
-    new_state = copy.deepcopy(state)
-
-    for i in agent['s'].keys():
-        transaction = {
-            'token_remove': i,
-            'agent_id': 1,
-            'shares_remove': -agent['s'][i]
-        }
-
-        new_state, new_agents = remove_liquidity(new_state, new_agents, transaction)
-    return new_state, new_agents[1]
-
-
-def cash_out(state: oamm.OmnipoolState, agent: dict) -> float:
-    new_state, new_agent = withdraw_all_liquidity(state, agent)
-    return value_assets(new_state, new_agent)
+    def fail_transaction(self, error: str = 'fail'):
+        failed_state = self.copy()
+        failed_state.fail = error
+        return failed_state
