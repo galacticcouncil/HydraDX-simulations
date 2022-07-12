@@ -1,5 +1,4 @@
 import copy
-from typing import Callable
 
 
 class Agent:
@@ -9,7 +8,7 @@ class Agent:
                  holdings: dict[str: float] = None,
                  shares: dict[any: float] = None,
                  share_prices: dict[str: float] = None,
-                 trade_strategy: Callable = None,
+                 trade_strategy: any = None,
                  ):
         """
         holdings should be in the form of:
