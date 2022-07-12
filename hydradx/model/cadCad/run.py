@@ -1,26 +1,36 @@
-from .amm.global_state import GlobalState
-import time
+from cadCAD import configs
+from cadCAD.configuration import Experiment
+from cadCAD.configuration.utils import config_sim
+from cadCAD.engine import ExecutionMode, ExecutionContext, Executor
+
+from .partial_state_update_block import partial_state_update_block
 
 
-def run(initial_state: GlobalState, time_steps: int) -> list:
-    """
+def config(config_dict, initial_state) -> None:
+    config_dict = config_dict
+    initial_state = initial_state
+
+    exp = Experiment()
+
+    exp.append_configs(
+        sim_configs=config_sim(config_dict),
+        initial_state=initial_state,
+        partial_state_update_blocks=partial_state_update_block
+    )
+
+
+def run() -> list:
+    '''
     Definition:
     Run simulation
-    """
+    '''
+    # config = input_config
+    # Single
+    exec_mode = ExecutionMode()
+    local_mode_ctx = ExecutionContext(context=exec_mode.local_mode)
 
-    start_time = time.time()
-    events = [{'state': initial_state}]
-    print('Starting simulation...')
-    for i in range(time_steps):
-        new_global_state = events[-1]['state'].copy()
-        # agent actions
-        agents = new_global_state.agents
-        for agent_id, agent in agents.items():
-            if agent.trade_strategy:
-                new_global_state = agent.trade_strategy.execute(new_global_state, agent.unique_id)
-        # market evolutions
-        new_global_state.evolve()
-        events.append({'timestep': i, 'state': new_global_state})
+    simulation = Executor(exec_context=local_mode_ctx, configs=configs)
+    raw_system_events, tensor_field, sessions = simulation.execute()
 
-    print(f'Execution time: {round(time.time() - start_time, 3)} seconds.')
-    return events[1:]
+    # return postprocessing(raw_system_events)
+    return raw_system_events
