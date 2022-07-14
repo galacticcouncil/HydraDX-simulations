@@ -77,14 +77,16 @@ class GlobalState:
         )
 
 
-def fluctuate_prices(percent: float, bias: float = 0):
+def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = ()):
 
     def transform(state: GlobalState):
         new_state = state  # .copy()
         for asset in new_state.external_market:
+            change = volatility[asset] if asset in volatility else 0
+            bias = trend[asset] / 100 if asset in trend else 0
             new_state.external_market[asset] *= (
-                    1 / (1 + percent / 100)
-                    + random.random() * (1 - 1 / (1 + percent / 100) + percent / 100)
+                    1 / (1 + change / 100)
+                    + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
                     + bias / 100
             )
         return new_state
@@ -131,12 +133,13 @@ def add_liquidity(
 
 
 def remove_liquidity(
-        old_state: GlobalState,
-        pool_id: str,
-        agent_id: str,
-        quantity: float,
-        tkn_remove: str
+    old_state: GlobalState,
+    pool_id: str,
+    agent_id: str,
+    quantity: float,
+    tkn_remove: str
 ) -> GlobalState:
+
     new_state = old_state.copy()
     new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].remove_liquidity(
         old_state=new_state.pools[pool_id],
@@ -159,5 +162,43 @@ def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
             pool_id = key
             tkn = key
         new_state = remove_liquidity(new_state, pool_id, agent.unique_id, agent.shares[key], tkn_remove=tkn)
+
+    return new_state
+
+
+def external_market_trade(
+    state: GlobalState,
+    agent_id: str,
+    tkn_buy: str,
+    tkn_sell: str,
+    buy_quantity: float = 0,
+    sell_quantity: float = 0
+) -> GlobalState:
+
+    # do a trade at spot price on the external market
+    # this should maybe only work in USD, cause we're probably talking about coinbase or something
+    new_state = state  # .copy()
+    agent = new_state.agents[agent_id]
+    if buy_quantity:
+        sell_quantity = buy_quantity * new_state.price(tkn_buy) / new_state.price(tkn_sell)
+    elif sell_quantity:
+        buy_quantity = sell_quantity * new_state.price(tkn_sell) / new_state.price(tkn_buy)
+    else:
+        # raise TypeError('Must include either buy_quantity or sell_quantity.')
+        return state
+
+    if tkn_buy not in agent.holdings:
+        agent.holdings[tkn_buy] = 0
+
+    if tkn_sell not in agent.holdings or agent.holdings[tkn_sell] - sell_quantity < 0:
+        # insufficient funds
+        return state
+    elif agent.holdings[tkn_buy] + buy_quantity < 0:
+        # also insufficient funds
+        return state
+    else:
+        # there could probably be a fee or something here, but for now you can sell infinite quantities for free
+        agent.holdings[tkn_buy] += buy_quantity
+        agent.holdings[tkn_sell] -= sell_quantity
 
     return new_state
