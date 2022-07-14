@@ -62,7 +62,7 @@ class GlobalState:
 
     def evolve(self):
         if self._evolve_function:
-            self._evolve_function(self)
+            return self._evolve_function(self)
 
     def __repr__(self):
         newline = "\n"
@@ -77,9 +77,9 @@ class GlobalState:
         )
 
 
-def fluctuate_prices(percent: float, bias: float):
+def fluctuate_prices(percent: float, bias: float = 0):
 
-    def transform(state: GlobalState):
+    def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
         for asset in new_state.external_market:
             new_state.external_market[asset] *= (

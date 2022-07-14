@@ -5,13 +5,14 @@ import pytest
 from hypothesis import given, strategies as st
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
+from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
 from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
 from hydradx.model import plot_utils as pu
 from hydradx.model import processing
-from hydradx.model.amm.trade_strategies import random_swaps, invest_all
+from hydradx.model.amm.trade_strategies import random_swaps, invest_all, constant_product_arbitrage
 from hydradx.model.amm.amm import AMM
 
 import sys
@@ -120,7 +121,7 @@ def test_simulation(initial_state: GlobalState):
         pool: AMM = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
         agent.trade_strategy = [
             random_swaps(pool=pool.unique_id, amount={tkn: 1/initial_state.price(tkn) for tkn in pool.asset_list}),
-            invest_all(pool=pool.unique_id)
+            invest_all(pool_id=pool.unique_id)
         ][a % 2]
 
     # VVV -this would break the property test- VVV
@@ -137,6 +138,41 @@ def test_simulation(initial_state: GlobalState):
     final_state = events[-1]['state']
     if final_state.total_wealth() != pytest.approx(initial_wealth):
         raise AssertionError('total wealth quantity changed!')
+
+
+def test_arbitrage():
+    market_prices = {
+        'USD': 1,
+        'BSX': 2
+    }
+    initial_state = GlobalState(
+        pools={
+            'USD/BSX': ConstantProductPoolState(
+                {
+                    'USD': 2000000,
+                    'BSX': 1000000
+                }
+            )
+        },
+        agents={
+            'trader': Agent(
+                holdings={'USD': 1000, 'BSX': 1000},
+                trade_strategy=random_swaps(pool='USD/BSX', amount={'USD': 100, 'BSX': 50})
+            ),
+            'arbitrageur': Agent(
+                holdings={'USD': 100000, 'BSX': 50000},
+                trade_strategy=constant_product_arbitrage('USD/BSX')
+            )
+        },
+        external_market=market_prices,
+        evolve_function=fluctuate_prices(percent=1)
+    )
+    events = run.run(initial_state, time_steps=10)
+    final_state = events[-1]['state']
+    final_pool_state = final_state.pools['USD/BSX']
+    if (pytest.approx(final_pool_state.liquidity['USD'] / final_pool_state.liquidity['BSX'])
+            != final_state.price('BSX') / final_state.price('USD')):
+        raise AssertionError('Price ratio does not match ratio in the pool!')
 
 
 @given(global_state_config())

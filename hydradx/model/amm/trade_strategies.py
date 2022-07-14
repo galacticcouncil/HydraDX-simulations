@@ -1,4 +1,7 @@
-from .global_state import GlobalState, swap, add_liquidity, remove_liquidity, AMM
+import math
+
+from .global_state import GlobalState, swap, add_liquidity
+from .basilisk_amm import ConstantProductPoolState
 from typing import Callable
 import random
 
@@ -45,17 +48,17 @@ def random_swaps(
     return TradeStrategy(strategy, name=f'random swaps ({list(amount.keys())})')
 
 
-def invest_all(pool: str) -> TradeStrategy:
+def invest_all(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
         agent = state.agents[agent_id]
         for asset in agent.holdings:
 
-            if asset in state.pools[pool].asset_list:
+            if asset in state.pools[pool_id].asset_list:
                 state = add_liquidity(
                     old_state=state,
-                    pool_id=pool,
+                    pool_id=pool_id,
                     agent_id=agent_id,
                     quantity=agent.holdings[asset],
                     tkn_add=asset
@@ -65,4 +68,26 @@ def invest_all(pool: str) -> TradeStrategy:
         state.agents[agent_id].trade_strategy = None
         return state
 
-    return TradeStrategy(strategy, name=f'invest all ({pool})')
+    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
+
+
+def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+
+        agent = state.agents[agent_id]
+        pool = state.pools[pool_id]
+        old_pool = pool.copy()
+        if not(isinstance(pool, ConstantProductPoolState)):
+            raise TypeError(f'{pool_id} is not compatible with constant product arbitrage.')
+
+        x = pool.asset_list[0]
+        y = pool.asset_list[1]
+        p = state.price(x) / state.price(y)
+        y2 = math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p)
+
+        buy_quantity = pool.liquidity[y] - y2
+        state = swap(state, pool_id, agent_id, x, y, buy_quantity=buy_quantity)
+        return state
+
+    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
