@@ -8,7 +8,8 @@ def plot(
         asset: str = '',
         prop: str or list = '',
         key: str or list = 'all',
-        subplot: plt.Subplot = None
+        subplot: plt.Subplot = None,
+        label: str = ''
 ):
     """
     Given several specifiers, automatically create a graph or a series of graphs as appropriate.
@@ -22,15 +23,15 @@ def plot(
     if pool:
         group = "pools"
         section = [pool]
-        label = "pool"
+        title = "pool"
     elif agent:
         group = "agents"
         section = [agent]
-        label = "agent"
+        title = "agent"
     elif asset:
         group = "external_market"
         section = [asset]
-        label = "asset price"
+        title = "asset price"
     else:
         raise TypeError('plot() requires at least one of the following parameters: pool, agent, or asset.')
 
@@ -80,11 +81,11 @@ def plot(
             for k, use_key in enumerate(use_keys):
                 ax: plt.Subplot = subplot or plt.subplot(
                     1, max(len(use_keys), len(use_props), len(section)), max(p, k, i)+1,
-                    title=f'{label}: {instance} {use_prop} {use_key}'
+                    title=f'{title}: {instance} {use_prop} {use_key}'
                 )
                 y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
                 x = range(len(y))
-                ax.plot(x, y)
+                ax.plot(x, y, label=label)
 
 
 def get_datastream(
