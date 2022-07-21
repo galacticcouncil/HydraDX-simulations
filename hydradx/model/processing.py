@@ -65,7 +65,8 @@ def postprocessing(events, optional_params=()):
         'deposit_val',
         'withdraw_val',
         'holdings_val',
-        'impermanent_loss'
+        'impermanent_loss',
+        'token_count'
     }
     exchange_params = {
         'pool_val',
@@ -109,5 +110,7 @@ def postprocessing(events, optional_params=()):
                 agent.holdings_val = sum([quantity * state.price(asset) for asset, quantity in agent.holdings.items()])
             if 'impermanent_loss' in optional_params:
                 agent.impermanent_loss = agent.withdraw_val / agent.deposit_val - 1
+            if 'token_count' in optional_params:
+                agent.token_count = sum(agent.holdings.values())
 
     return events
