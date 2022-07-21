@@ -9,7 +9,8 @@ def plot(
         prop: str or list = '',
         key: str or list = 'all',
         subplot: plt.Subplot = None,
-        label: str = ''
+        label: str = '',
+        time_range: tuple = ()
 ):
     """
     Given several specifiers, automatically create a graph or a series of graphs as appropriate.
@@ -20,6 +21,12 @@ def plot(
             * plots R1 and R2 liquidity in all pools which have R1 or R2
         plot(events, pool='R1/R2', prop='impermanent_loss', key='all')
     """
+    if time_range:
+        events = events[time_range[0]: time_range[1]]
+        use_range = f'(time steps {time_range[0]} - {time_range[1]})'
+    else:
+        use_range = ''
+
     if pool:
         group = "pools"
         section = [pool]
@@ -81,7 +88,7 @@ def plot(
             for k, use_key in enumerate(use_keys):
                 ax: plt.Subplot = subplot or plt.subplot(
                     1, max(len(use_keys), len(use_props), len(section)), max(p, k, i)+1,
-                    title=f'{title}: {instance} {use_prop} {use_key}'
+                    title=f'{title}: {instance} {use_prop} {use_key} {use_range}'
                 )
                 y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
                 x = range(len(y))
