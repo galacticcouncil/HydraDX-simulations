@@ -1,6 +1,7 @@
 import math
 
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade
+from .amm import AMM
 from .basilisk_amm import ConstantProductPoolState
 from typing import Callable
 import random
@@ -75,15 +76,51 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
-        pool = state.pools[pool_id]
+        pool: ConstantProductPoolState = state.pools[pool_id]
         if not(isinstance(pool, ConstantProductPoolState)):
             raise TypeError(f'{pool_id} is not compatible with constant product arbitrage.')
 
         x = pool.asset_list[0]
         y = pool.asset_list[1]
-        p = state.price(x) / state.price(y)
-        y2 = math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p)
+        p_ratio = state.price(x) / state.price(y)
+        y2 = math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p_ratio)
         buy_quantity = pool.liquidity[y] - y2
+
+        agent = state.agents[agent_id]
+        if x not in agent.holdings:
+            agent.holdings[x] = 0
+        if y not in agent.holdings:
+            agent.holdings[y] = 0
+
+        def price_after_trade(buy_amount):
+            sell_amount = -(pool.liquidity[x] - (pool.liquidity[x] * pool.liquidity[y])
+                            / (pool.liquidity[y] - buy_amount)) * (1 + pool.trade_fee(x, y, buy_amount))
+            if pool.liquidity[y] - buy_amount == 0:
+                er = 1
+            return (pool.liquidity[y] - buy_amount) / (pool.liquidity[x] + sell_amount)
+
+        def find_b(target_price):
+            b = buy_quantity
+            previous_change = 1
+            if target_price > 1:
+                direct = 1
+            else:
+                direct = -1
+            p = price_after_trade(b)
+            previous_price = p
+            diff = p / target_price
+            while abs(1 - diff) > 0.000000001:
+                progress = (previous_price - p) / (previous_price - target_price) or 2
+                old_b = b
+                b -= previous_change * (1 - 1 / progress)
+                previous_price = p
+                previous_change = b - old_b
+                p = price_after_trade(b)
+                diff = p / target_price
+
+            return b
+
+        buy_quantity = find_b(target_price=state.price(x) / state.price(y))
 
         agent = state.agents[agent_id]
         if x not in agent.holdings:
@@ -101,7 +138,7 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
                 sell_quantity=buy_quantity
             )
 
-        # then swap
+        # swap
         new_state = swap(state, pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=buy_quantity)
 
         # immediately cash out everything for USD
@@ -112,4 +149,4 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
 
         return new_state
 
-    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
+    return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
