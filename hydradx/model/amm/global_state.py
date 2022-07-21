@@ -9,7 +9,7 @@ class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
-                 external_market: dict[str: float] = {},
+                 external_market: dict[str: float] = None,
                  evolve_function: Callable = None
                  ):
         # get a list of all assets contained in any member of the state
@@ -24,7 +24,9 @@ class GlobalState:
         self.pools = pools
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
-        self.external_market = external_market
+        self.external_market = external_market or {}
+        if 'USD' not in self.external_market:
+            self.external_market['USD'] = 1  # default denomination
         self._evolve_function = evolve_function
         self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
 
