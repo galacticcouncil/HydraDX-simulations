@@ -59,8 +59,12 @@ class GlobalState:
         return {tkn: self.total_asset(tkn) for tkn in self.asset_list}
 
     def copy(self):
-        self_copy = copy.deepcopy(self)
-        return self_copy
+        return GlobalState(
+            agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
+            pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
+            external_market=copy.copy(self.external_market),
+            evolve_function=copy.copy(self._evolve_function)
+        )
 
     def evolve(self):
         if self._evolve_function:
