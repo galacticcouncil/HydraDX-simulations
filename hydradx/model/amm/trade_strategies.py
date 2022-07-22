@@ -17,7 +17,7 @@ class TradeStrategy:
 
 
 def random_swaps(
-    pool: str,
+    pool_id: str,
     amount: dict[str: float],
     randomize_amount: bool = False
 ) -> TradeStrategy:
@@ -39,7 +39,7 @@ def random_swaps(
         else:
             return swap(
                 old_state=state,
-                pool_id=pool,
+                pool_id=pool_id,
                 agent_id=agent_id,
                 tkn_sell=sell_asset,
                 tkn_buy=buy_asset,
@@ -49,9 +49,46 @@ def random_swaps(
     return TradeStrategy(strategy, name=f'random swaps ({list(amount.keys())})')
 
 
+def steady_swaps(
+    pool_id: str,
+    usd_amount: float,
+    asset_list: list = ()
+) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+
+        strategy.buy_index = getattr(strategy, 'buy_index', -1)
+        strategy.buy_index += 1
+        agent = state.agents[agent_id]
+        assets = asset_list or list(agent.holdings.keys())
+        buy_index = strategy.buy_index % len(assets)
+        sell_index = (buy_index + 1) % len(assets)
+
+        buy_asset = assets[buy_index]
+        sell_asset = assets[sell_index]
+        sell_quantity = usd_amount / state.price(sell_asset)
+
+        return swap(
+            old_state=state,
+            pool_id=pool_id,
+            agent_id=agent_id,
+            tkn_sell=sell_asset,
+            tkn_buy=buy_asset,
+            sell_quantity=sell_quantity
+        )
+
+    return TradeStrategy(strategy, name=f'steady swaps (${usd_amount})')
+
+
 def invest_all(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
+
+        # should only do this once
+        strategy.done = getattr(strategy, 'done', False)
+        if strategy.done:
+            return state
+        strategy.done = True
 
         agent = state.agents[agent_id]
         for asset in agent.holdings:
@@ -65,8 +102,6 @@ def invest_all(pool_id: str) -> TradeStrategy:
                     tkn_add=asset
                 )
 
-        # should only have to do this once
-        state.agents[agent_id].trade_strategy = None
         return state
 
     return TradeStrategy(strategy, name=f'invest all ({pool_id})')
