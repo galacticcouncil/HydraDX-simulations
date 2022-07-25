@@ -281,7 +281,7 @@ def add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
-    assert quantity > 0, f"delta_R must be positive: {quantity}"
+    # assert quantity > 0, f"delta_R must be positive: {quantity}"
     assert tkn_add in old_state.asset_list, f"invalid value for i: {tkn_add}"
 
     new_state = old_state.copy()
