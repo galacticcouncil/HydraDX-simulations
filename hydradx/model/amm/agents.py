@@ -50,5 +50,6 @@ class Agent:
 
     def copy(self):
         copy_self = copy.deepcopy(self)
-        copy_self.trade_strategy = self.trade_strategy
+        # copy_self.trade_strategy = copy.deepcopy(self.trade_strategy)
+        # copy_self.trade_strategy.function = copy.deepcopy(self.trade_strategy.function)
         return copy_self
