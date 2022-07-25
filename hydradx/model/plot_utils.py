@@ -21,6 +21,9 @@ def plot(
             * plots R1 and R2 liquidity in all pools which have R1 or R2
         plot(events, pool='R1/R2', prop='impermanent_loss', key='all')
     """
+
+    ax: plt.Subplot = None
+
     if time_range:
         events = events[time_range[0]: time_range[1]]
         use_range = f'(time steps {time_range[0]} - {time_range[1]})'
@@ -51,7 +54,7 @@ def plot(
         else:
             use_props = [prop]
 
-        if len(use_props) > 1 or i == 0:
+        if (len(use_props) > 1 or i == 0) and not subplot:
             plt.figure(figsize=(20, 5))
 
         for p, use_prop in enumerate(use_props):
@@ -86,13 +89,15 @@ def plot(
                 plt.figure(figsize=(20, 5))
 
             for k, use_key in enumerate(use_keys):
-                ax: plt.Subplot = subplot or plt.subplot(
+                ax = subplot or plt.subplot(
                     1, max(len(use_keys), len(use_props), len(section)), max(p, k, i)+1,
                     title=f'{title}: {instance} {use_prop} {use_key} {use_range}'
                 )
                 y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
                 x = range(len(y))
                 ax.plot(x, y, label=label)
+
+    return ax
 
 
 def get_datastream(
