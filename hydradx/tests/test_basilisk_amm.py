@@ -188,6 +188,9 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
                              + new_state.liquidity[tkn_remove] + new_state.liquidity[other_tkn])):
         raise AssertionError('Asset quantity is not constant after liquidity remove!')
 
+    if new_agent.holdings[tkn_remove] != pytest.approx(initial_agent.holdings[tkn_remove]):
+        raise AssertionError('Agent did not get back what it put in.')
+
     cheat_state, cheat_agent = bamm.remove_liquidity(
         old_state, old_agent,
         quantity=delta_token + 1,
