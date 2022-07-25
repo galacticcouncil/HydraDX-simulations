@@ -8,11 +8,17 @@ import random
 
 
 class TradeStrategy:
-    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str):
+    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
         self.function = strategy_function
+        self.run_once = run_once
+        self.done = False
         self.name = name
 
     def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
+        if self.done:
+            return state
+        elif self.run_once:
+            self.done = True
         return self.function(state, agent_id)
 
 
@@ -85,10 +91,10 @@ def invest_all(pool_id: str) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str):
 
         # should only do this once
-        strategy.done = getattr(strategy, 'done', False)
-        if strategy.done:
-            return state
-        strategy.done = True
+        # strategy.done = getattr(strategy, 'done', False)
+        # if strategy.done:
+        #     return state
+        # strategy.done = True
 
         agent = state.agents[agent_id]
         for asset in agent.holdings:
@@ -98,13 +104,13 @@ def invest_all(pool_id: str) -> TradeStrategy:
                     old_state=state,
                     pool_id=pool_id,
                     agent_id=agent_id,
-                    quantity=agent.holdings[asset],
+                    quantity=state.agents[agent_id].holdings[asset],
                     tkn_add=asset
                 )
 
         return state
 
-    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
+    return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
 
 
 def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
