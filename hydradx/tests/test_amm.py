@@ -12,7 +12,8 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model import run
 from hydradx.model import plot_utils as pu
 from hydradx.model import processing
-from hydradx.model.amm.trade_strategies import random_swaps, invest_all, constant_product_arbitrage
+from hydradx.model.processing import cash_out
+from hydradx.model.amm.trade_strategies import random_swaps, steady_swaps, invest_all, constant_product_arbitrage
 from hydradx.model.amm.amm import AMM
 
 import sys
@@ -120,7 +121,7 @@ def test_simulation(initial_state: GlobalState):
     for a, agent in enumerate(initial_state.agents.values()):
         pool: AMM = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
         agent.trade_strategy = [
-            random_swaps(pool=pool.unique_id, amount={tkn: 1/initial_state.price(tkn) for tkn in pool.asset_list}),
+            steady_swaps(pool_id=pool.unique_id, usd_amount=100),
             invest_all(pool_id=pool.unique_id)
         ][a % 2]
 
@@ -128,11 +129,13 @@ def test_simulation(initial_state: GlobalState):
     # initial_state.evolve_function = fluctuate_prices()
 
     initial_wealth = initial_state.total_wealth()
-    events = run.run(initial_state, time_steps=10)
-    events = processing.postprocessing(events, optional_params=['pool_val', 'holdings_val', 'impermanent_loss'])
+    events = run.run(initial_state, time_steps=5, silent=True)
+    events = processing.postprocessing(events, optional_params=[
+        'pool_val', 'holdings_val', 'impermanent_loss', 'trade_volume'
+    ])
 
     # pu.plot(events, asset='all')
-    # pu.plot(events, agent='Trader', prop=['holdings', 'holdings_val'])
+    # pu.plot(events, agent='Agent1', prop=['holdings', 'holdings_val'])
 
     # property test: is there still the same total wealth held by all pools + agents?
     final_state = events[-1]['state']
@@ -140,9 +143,71 @@ def test_simulation(initial_state: GlobalState):
         raise AssertionError('total wealth quantity changed!')
 
 
+@given(global_state_config(
+    asset_dict={
+        'HDX': 0.08,
+        'USD': 1
+    },
+    agents={
+        'LP': Agent(
+            holdings={
+                'HDX': 0,
+                'USD': 0
+            },
+            trade_strategy=invest_all('HDX/USD')
+        ),
+        'Trader1': Agent(
+            holdings={
+                'HDX': 80000,
+                'USD': 1000
+            },
+            trade_strategy=steady_swaps('HDX/USD', 100, asset_list=['USD', 'HDX'])
+        ),
+        'Trader2': Agent(
+            holdings={
+                'HDX': 80000,
+                'USD': 1000
+            },
+            trade_strategy=steady_swaps('HDX/USD', 100, asset_list=['HDX', 'USD'])
+        )
+    }
+))
+def test_LP(initial_state):
+    initial_state.agents['LP'].holdings = {
+        tkn: quantity for tkn, quantity in initial_state.pools['HDX/USD'].liquidity.items()
+    }
+    initial_state.agents['LP'].trade_strategy.done = False
+    old_state = initial_state.copy()
+    events = run.run(old_state, time_steps=10, silent=True)
+    events = processing.postprocessing(events, optional_params=['withdraw_val', 'deposit_val'])
+    final_state: GlobalState = events[-1]['state']
+    if sum(final_state.agents['LP'].holdings.values()) > 0:
+        print('failed, not invested')
+        raise AssertionError('Why does this LP not have all its assets in the pool???')
+    if final_state.agents['LP'].withdraw_val < cash_out(initial_state, initial_state.agents['LP']):
+        print('failed, lost money.')
+        raise AssertionError('The LP lost money!')
+
+
 def test_arbitrage():
+
+    class UpDown:
+        trend = 1
+        inertia = 0
+        period = 100
+
+    def oscillate(state: GlobalState) -> GlobalState:
+        if abs(UpDown.inertia) < UpDown.period:
+            state.external_market['BSX'] += UpDown.trend / 100
+            UpDown.inertia += 1
+        else:
+            # reverse trend
+            UpDown.trend = (UpDown.trend + 1) * -1 + 1
+            UpDown.inertia = 0
+        return state
+
     market_prices = {
-        'USD': 1,
+        'HDX': 1,
         'BSX': 2
     }
     initial_state = GlobalState(
@@ -151,23 +216,24 @@ def test_arbitrage():
                 {
                     'USD': 2000000,
                     'BSX': 1000000
-                }
+                },
+                trade_fee=0.1
             )
         },
         agents={
             'trader': Agent(
                 holdings={'USD': 1000, 'BSX': 1000},
-                trade_strategy=random_swaps(pool='USD/BSX', amount={'USD': 100, 'BSX': 50})
+                trade_strategy=random_swaps(pool_id='USD/BSX', amount={'USD': 100, 'BSX': 50})
             ),
             'arbitrageur': Agent(
-                holdings={'USD': 100000, 'BSX': 50000},
+                holdings={'USD': 100000, 'BSX': 100000},
                 trade_strategy=constant_product_arbitrage('USD/BSX')
             )
         },
         external_market=market_prices,
-        evolve_function=fluctuate_prices(percent=1)
+        evolve_function=fluctuate_prices(volatility={'BSX': 1})
     )
-    events = run.run(initial_state, time_steps=10)
+    events = run.run(initial_state, time_steps=100)
     final_state = events[-1]['state']
     final_pool_state = final_state.pools['USD/BSX']
     if (pytest.approx(final_pool_state.liquidity['USD'] / final_pool_state.liquidity['BSX'])
