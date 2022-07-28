@@ -1,10 +1,17 @@
-from hydradx.model.amm import amm
+from ..amm.global_state import GlobalState
 
 
 def execute_trades(params, substep, state_history, prev_state, policy_input):
-    market = prev_state['state']['amm']
-    agents = prev_state['state']['agents']
+    state: GlobalState = prev_state['state']
+    agents = state.agents
     for agent_id, agent in agents.items():
-        if 'trade_strategy' in agent and agent['trade_strategy']:
-            market, agents = agent['trade_strategy'].execute(agents=agents, agent_id=agent_id, market=market)
-    return 'state', {'amm': market, 'agents': agents, 'external': prev_state['state']['external']}
+        if agent.trade_strategy:
+            state = agent.trade_strategy.execute(state=state, agent_id=agent.unique_id)
+    return 'state', state
+
+
+def evolve_market(params, substep, state_history, prev_state, policy_input):
+    state: GlobalState = prev_state['state']
+    if state.evolve_function:
+        state = state.evolve()
+    return 'state', state

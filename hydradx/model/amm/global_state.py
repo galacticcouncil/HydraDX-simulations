@@ -68,7 +68,7 @@ class GlobalState:
 
     def evolve(self):
         if self._evolve_function:
-            self._evolve_function(self)
+            return self._evolve_function(self)
 
     def __repr__(self):
         newline = "\n"
@@ -87,7 +87,7 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
     trend = trend or {}
 
-    def transform(state: GlobalState):
+    def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
         for asset in new_state.external_market:
             change = volatility[asset] if asset in volatility else 0
