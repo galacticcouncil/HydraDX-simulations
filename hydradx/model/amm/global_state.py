@@ -83,7 +83,9 @@ class GlobalState:
         )
 
 
-def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = ()):
+def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
+
+    trend = trend or {}
 
     def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
@@ -96,6 +98,40 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = ())
                     + bias / 100
             )
         return new_state
+
+    return transform
+
+
+def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = None, period: int = 1) -> Callable:
+    # steadily oscillate, no unpredictable motion
+    class UpDown:
+        def __init__(self, magnitude, wavelength, bias):
+            self.bias = bias
+            self.inertia = 0
+            self.wavelength = wavelength
+            self.direction = magnitude
+
+    trend = trend or {}
+    updown: dict[str: UpDown] = {}
+    for token in volatility:
+        updown[token] = UpDown(
+            wavelength=period,
+            magnitude=volatility[token],
+            bias=trend[token] if token in trend else 0
+        )
+
+    def transform(state: GlobalState) -> GlobalState:
+        for tkn in updown:
+            if abs(updown[tkn].inertia) >= updown[tkn].wavelength:
+                # reverse trend
+                updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
+                updown[tkn].inertia = 0
+            state.external_market[tkn] += (
+                updown[tkn].direction / 100 / updown[tkn].wavelength
+                + updown[tkn].bias / 100 / updown[tkn].wavelength
+            )
+            updown[tkn].inertia += 1
+        return state
 
     return transform
 
