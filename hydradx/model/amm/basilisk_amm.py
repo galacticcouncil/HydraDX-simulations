@@ -22,7 +22,7 @@ class ConstantProductPoolState(AMM):
         There should only be two.
         """
         super().__init__()
-        self._base_fee = mpf(trade_fee)
+        self.base_fee = mpf(trade_fee)
         self.fee_function = fee_function
         self.liquidity = dict()
         self.asset_list: list[str] = []
@@ -44,11 +44,11 @@ class ConstantProductPoolState(AMM):
             return trade_size * slip_factor / exchange.liquidity[sell_asset]
         return fee_function
 
-    def trade_fee(self, sell_asset: str, buy_asset: str, trade_size: float) -> float:
+    def trade_fee(self, tkn_sell: str, tkn_buy: str, trade_size: float) -> float:
         fee = 0
         if self.fee_function:
-            fee += self.fee_function(self, sell_asset, buy_asset, trade_size)
-        fee += self._base_fee
+            fee += self.fee_function(self, tkn_sell, tkn_buy, trade_size)
+        fee += self.base_fee
         return fee
 
     @property
@@ -58,7 +58,7 @@ class ConstantProductPoolState(AMM):
     def __repr__(self):
         return (
             f'Constant Product Pool\n'
-            f'base trade fee: {self._base_fee}\n'
+            f'base trade fee: {self.base_fee}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
             [(
@@ -161,7 +161,7 @@ def swap(
     elif buy_quantity != 0:
         # calculate input price from a given payout
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(buy_quantity))
         sell_quantity *= 1 + trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity
         new_agent.holdings[tkn_buy] += buy_quantity
