@@ -37,7 +37,7 @@ def pool_val(state: GlobalState, pool: AMM):
     return total
 
 
-def postprocessing(events, optional_params=()):
+def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:
     """
     Definition:
     Compute more abstract metrics from the simulation
@@ -50,10 +50,8 @@ def postprocessing(events, optional_params=()):
     'pool_val': tracks the value of all assets held in the pool
     'impermanent_loss': computes loss for LPs due to price movements in either direction
     """
-    tokens = events[0]['state'].asset_list
     # save initial state
     initial_state: GlobalState = events[0]['state']
-    initial_agents = initial_state.agents
     withdraw_state: GlobalState = initial_state.copy()
 
     optional_params = set(optional_params)
