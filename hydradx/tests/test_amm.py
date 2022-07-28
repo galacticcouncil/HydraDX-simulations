@@ -2,11 +2,11 @@ import copy
 import random
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
-from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
+from hydradx.model.amm.global_state import GlobalState, oscillate_prices, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
@@ -62,7 +62,8 @@ def global_state_config(
         draw,
         asset_dict: dict[str: float] = None,
         pools=None,
-        agents=None
+        agents=None,
+        evolve_function=None
 ) -> GlobalState:
     market_prices = asset_dict or draw(assets_config())
     asset_list = list(market_prices.keys())
@@ -108,11 +109,13 @@ def global_state_config(
             for _ in range(5)
         }
 
-    return GlobalState(
+    config = GlobalState(
         pools=pools,
         agents=agents,
-        external_market=market_prices
+        external_market=market_prices,
+        evolve_function=evolve_function
     )
+    return config
 
 
 @given(global_state_config())
@@ -143,6 +146,7 @@ def test_simulation(initial_state: GlobalState):
         raise AssertionError('total wealth quantity changed!')
 
 
+@settings(deadline=500)
 @given(global_state_config(
     asset_dict={
         'HDX': 0.08,
@@ -172,39 +176,28 @@ def test_simulation(initial_state: GlobalState):
         )
     }
 ))
-def test_LP(initial_state):
+def test_LP(initial_state: GlobalState):
     initial_state.agents['LP'].holdings = {
         tkn: quantity for tkn, quantity in initial_state.pools['HDX/USD'].liquidity.items()
     }
-    initial_state.agents['LP'].trade_strategy.done = False
+
     old_state = initial_state.copy()
-    events = run.run(old_state, time_steps=10, silent=True)
-    events = processing.postprocessing(events, optional_params=['withdraw_val', 'deposit_val'])
+    events = run.run(old_state, time_steps=100, silent=True)
     final_state: GlobalState = events[-1]['state']
+
+    # post-process
+    events = processing.postprocessing(events, optional_params=['withdraw_val', 'deposit_val'])
+
     if sum(final_state.agents['LP'].holdings.values()) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
     if final_state.agents['LP'].withdraw_val < cash_out(initial_state, initial_state.agents['LP']):
         print('failed, lost money.')
         raise AssertionError('The LP lost money!')
+    # print('test passed.')
 
 
 def test_arbitrage():
-
-    class UpDown:
-        trend = 1
-        inertia = 0
-        period = 100
-
-    def oscillate(state: GlobalState) -> GlobalState:
-        if abs(UpDown.inertia) < UpDown.period:
-            state.external_market['BSX'] += UpDown.trend / 100
-            UpDown.inertia += 1
-        else:
-            # reverse trend
-            UpDown.trend = (UpDown.trend + 1) * -1 + 1
-            UpDown.inertia = 0
-        return state
 
     market_prices = {
         'HDX': 1,
