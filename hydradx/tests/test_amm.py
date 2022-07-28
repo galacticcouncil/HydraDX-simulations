@@ -225,6 +225,7 @@ def test_arbitrage():
         },
         external_market=market_prices,
         evolve_function=fluctuate_prices(volatility={'BSX': 1})
+
     )
     events = run.run(initial_state, time_steps=100)
     final_state = events[-1]['state']
