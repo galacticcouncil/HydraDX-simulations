@@ -123,9 +123,15 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
 
         x = pool.asset_list[0]
         y = pool.asset_list[1]
+
+        # why does this eliminate all negative profits?? todo: find out
+        # if state.price(pool.asset_list[0]) > state.price(pool.asset_list[1]):
+        #     x = pool.asset_list[1]
+        #     y = pool.asset_list[0]
+
         p_ratio = state.price(x) / state.price(y)
-        y2 = math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p_ratio)
-        buy_quantity = pool.liquidity[y] - y2
+        # VVV this would be correct if there is no fee VVV
+        buy_quantity = pool.liquidity[y] - math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p_ratio)
 
         agent = state.agents[agent_id]
         if x not in agent.holdings:
@@ -136,17 +142,11 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
         def price_after_trade(buy_amount):
             sell_amount = -(pool.liquidity[x] - (pool.liquidity[x] * pool.liquidity[y])
                             / (pool.liquidity[y] - buy_amount)) * (1 + pool.trade_fee(x, y, buy_amount))
-            if pool.liquidity[y] - buy_amount == 0:
-                er = 1
             return (pool.liquidity[y] - buy_amount) / (pool.liquidity[x] + sell_amount)
 
         def find_b(target_price):
             b = buy_quantity
             previous_change = 1
-            if target_price > 1:
-                direct = 1
-            else:
-                direct = -1
             p = price_after_trade(b)
             previous_price = p
             diff = p / target_price
@@ -162,12 +162,32 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
             return b
 
         buy_quantity = find_b(target_price=state.price(x) / state.price(y))
+        holdings = agent.holdings['USD']
+        pool_delta_x = buy_quantity * pool.liquidity[x] / (pool.liquidity[y] - buy_quantity)
+        # pool.invariant / (pool.liquidity[y] - buy_quantity) - pool.liquidity[x]
+        # buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
+        agent_delta_x = -pool_delta_x * (1 + pool.trade_fee(x, y, abs(buy_quantity)))
 
-        agent = state.agents[agent_id]
-        if x not in agent.holdings:
-            agent.holdings[x] = 0
-        if y not in agent.holdings:
-            agent.holdings[y] = 0
+        projected_profit = (
+            buy_quantity * state.price(y)
+            + agent_delta_x * state.price(x)
+        )
+
+        # hypothesis: when the asset1 price > asset2 price, and
+        # asset1 / asset2 liquidity < asset2 / asset1 market price
+        # the trade will always be rejected.
+
+        er = 0
+        if pool.liquidity[x] / pool.liquidity[y] < state.price(y) / state.price(x) \
+                and state.price(x) > state.price(y) and projected_profit > 0:
+            er = 1
+
+        agent.projected_profit = projected_profit
+
+        if projected_profit <= 0:
+            # don't do it
+            agent.trade_rejected += 1
+            return state
 
         # buy just enough of non-USD asset
         if buy_quantity > 0 and x != 'USD' or buy_quantity < 0 and y != 'USD':
@@ -176,7 +196,8 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
                 agent_id=agent_id,
                 tkn_buy=x if buy_quantity > 0 else 'USD',
                 tkn_sell=y if buy_quantity < 0 else 'USD',
-                sell_quantity=buy_quantity
+                sell_quantity=buy_quantity if buy_quantity < 0 else 0,
+                buy_quantity=-agent_delta_x if buy_quantity > 0 else 0
             )
 
         # swap
@@ -187,6 +208,22 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
         for tkn, quantity in new_agent.holdings.items():
             if new_agent.holdings[tkn] > 0 and tkn != 'USD':
                 new_state = external_market_trade(state, agent_id, tkn_buy='USD', tkn_sell=tkn, sell_quantity=quantity)
+
+        actual_profit = new_state.agents[agent_id].holdings['USD'] - holdings
+
+        if projected_profit < 0:
+            # don't do it
+            new_agent.trade_rejected += 1
+        #     return state
+
+        if abs(projected_profit - actual_profit) > 0.000000000001 and abs(actual_profit) > 0.000000000001:
+            er = 1
+        elif actual_profit > 0.000000000001:
+            er = 3
+        elif actual_profit < -0.000000000001:
+            er = 4
+        else:
+            er = 2
 
         return new_state
 
