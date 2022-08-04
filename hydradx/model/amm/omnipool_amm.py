@@ -34,6 +34,8 @@ class OmnipoolState(AMM):
 
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
+        if preferred_stablecoin not in tokens:
+            raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
 
         self.asset_list: list[str] = []
         self.liquidity = {}
