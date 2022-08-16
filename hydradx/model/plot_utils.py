@@ -90,7 +90,7 @@ def plot(
 
             for k, use_key in enumerate(use_keys):
                 ax = subplot or plt.subplot(
-                    1, max(len(use_keys), len(use_props), len(section)), max(p, k, i)+1,
+                    1, max(len(use_keys), len(use_props), len(section)), max(p, k, i) + 1,
                     title=f'{title}: {instance} {use_prop} {use_key} {use_range}'
                 )
                 y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
@@ -138,3 +138,18 @@ def get_datastream(
     except KeyError:
         # this may occur, for example, if a certain pool doesn't contain the assets specified by *key*
         return []
+
+
+def best_fit_line(data_array: list[float]):
+    """
+    Calculate the best fit line for the given array. The x coordinates are assumed to be the indices of the array.
+    Usage: pyplot.plot(*best_fit_line(data_array))
+    """
+    avg_x = len(data_array) / 2
+    avg_y = sum(data_array) / len(data_array)
+
+    slope = (sum([(i - avg_x) * (data_array[i] - avg_y) for i in range(len(data_array))]) /
+             sum([(i - avg_x) ** 2 for i in range(len(data_array))]))
+    intercept = avg_y - slope * avg_x
+
+    return [range(len(data_array)), [x * slope + intercept for x in range(len(data_array))]]
