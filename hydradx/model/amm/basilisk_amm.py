@@ -148,6 +148,19 @@ def swap(
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return old_state.fail_transaction('Invalid token name.'), old_agent
 
+    if buy_quantity < 0 or sell_quantity < 0:
+        sell_quantity = -buy_quantity
+        buy_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
+    elif sell_quantity < 0:
+        buy_quantity = -sell_quantity
+        sell_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
+
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
