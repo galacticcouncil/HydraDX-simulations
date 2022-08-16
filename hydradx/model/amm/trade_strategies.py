@@ -131,21 +131,24 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
 
         p_ratio = state.price(x) / state.price(y)
         # VVV this would be correct if there is no fee VVV
-        buy_quantity = pool.liquidity[y] - math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p_ratio)
+        agent_delta_y = pool.liquidity[y] - math.sqrt(pool.liquidity[x] * pool.liquidity[y] * p_ratio)
 
         agent = state.agents[agent_id]
-        if x not in agent.holdings:
-            agent.holdings[x] = 0
-        if y not in agent.holdings:
-            agent.holdings[y] = 0
 
-        def price_after_trade(buy_amount):
-            sell_amount = -(pool.liquidity[x] - (pool.liquidity[x] * pool.liquidity[y])
-                            / (pool.liquidity[y] - buy_amount)) * (1 + pool.trade_fee(x, y, buy_amount))
-            return (pool.liquidity[y] - buy_amount) / (pool.liquidity[x] + sell_amount)
+        def price_after_trade(buy_amount=0, sell_amount=0):
+            if buy_amount:
+                sell_amount = -(pool.liquidity[x] - pool.invariant
+                                / (pool.liquidity[y] - buy_amount)) \
+                                * (1 + pool.trade_fee(x, y, buy_amount))
+                return (pool.liquidity[y] - buy_amount) / (pool.liquidity[x] + sell_amount)
+            elif sell_amount:
+                buy_amount = (pool.liquidity[x] - pool.invariant
+                              / (pool.liquidity[y] + sell_amount)) \
+                              * (1 - pool.trade_fee(x, y, sell_amount))
+                return (pool.liquidity[y] + sell_amount) / (pool.liquidity[x] - buy_amount)
 
         def find_b(target_price):
-            b = buy_quantity
+            b = agent_delta_y
             previous_change = 1
             p = price_after_trade(b)
             previous_price = p
@@ -156,31 +159,24 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
                 b -= previous_change * (1 - 1 / progress)
                 previous_price = p
                 previous_change = b - old_b
-                p = price_after_trade(b)
+                p = price_after_trade(b if b >= 0 else 0, -b if b < 0 else 0)
                 diff = p / target_price
 
             return b
 
-        buy_quantity = find_b(target_price=state.price(x) / state.price(y))
+        agent_delta_y = find_b(target_price=state.price(x)/state.price(y))
+
         holdings = agent.holdings['USD']
-        pool_delta_x = buy_quantity * pool.liquidity[x] / (pool.liquidity[y] - buy_quantity)
-        # pool.invariant / (pool.liquidity[y] - buy_quantity) - pool.liquidity[x]
-        # buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
-        agent_delta_x = -pool_delta_x * (1 + pool.trade_fee(x, y, abs(buy_quantity)))
+        agent_delta_x = -agent_delta_y * pool.liquidity[x] / (pool.liquidity[y] - agent_delta_y)
+        if agent_delta_y > 0:
+            agent_delta_x *= 1 + pool.trade_fee(x, y, abs(agent_delta_y))
+        else:
+            agent_delta_x *= 1 - pool.trade_fee(x, y, abs(agent_delta_y))
 
         projected_profit = (
-            buy_quantity * state.price(y)
+            agent_delta_y * state.price(y)
             + agent_delta_x * state.price(x)
         )
-
-        # hypothesis: when the asset1 price > asset2 price, and
-        # asset1 / asset2 liquidity < asset2 / asset1 market price
-        # the trade will always be rejected.
-
-        er = 0
-        if pool.liquidity[x] / pool.liquidity[y] < state.price(y) / state.price(x) \
-                and state.price(x) > state.price(y) and projected_profit > 0:
-            er = 1
 
         agent.projected_profit = projected_profit
 
@@ -188,20 +184,22 @@ def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
             # don't do it
             agent.trade_rejected += 1
             return state
+        elif agent_delta_y < 0:
+            er = 1
 
         # buy just enough of non-USD asset
-        if buy_quantity > 0 and x != 'USD' or buy_quantity < 0 and y != 'USD':
+        if agent_delta_y > 0 and x != 'USD' or agent_delta_y < 0 and y != 'USD':
             state = external_market_trade(
                 state=state,
                 agent_id=agent_id,
-                tkn_buy=x if buy_quantity > 0 else 'USD',
-                tkn_sell=y if buy_quantity < 0 else 'USD',
-                sell_quantity=buy_quantity if buy_quantity < 0 else 0,
-                buy_quantity=-agent_delta_x if buy_quantity > 0 else 0
+                tkn_buy=x if agent_delta_y > 0 else 'USD',
+                tkn_sell=y if agent_delta_y < 0 else 'USD',
+                sell_quantity=agent_delta_y if agent_delta_y < 0 else 0,
+                buy_quantity=-agent_delta_x if agent_delta_y > 0 else 0
             )
 
         # swap
-        new_state = swap(state, pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=buy_quantity)
+        new_state = swap(state, pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=agent_delta_y)
 
         # immediately cash out everything for USD
         new_agent = new_state.agents[agent_id]
