@@ -90,6 +90,12 @@ def invest_all(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
+        # should only do this once
+        # strategy.done = getattr(strategy, 'done', False)
+        # if strategy.done:
+        #     return state
+        # strategy.done = True
+
         agent = state.agents[agent_id]
         for asset in agent.holdings:
 
@@ -107,7 +113,7 @@ def invest_all(pool_id: str) -> TradeStrategy:
     return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
 
 
-def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> TradeStrategy:
+def constant_product_arbitrage(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
@@ -117,6 +123,11 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> Trade
 
         x = pool.asset_list[0]
         y = pool.asset_list[1]
+
+        # why does this eliminate all negative profits?? todo: find out
+        # if state.price(pool.asset_list[0]) > state.price(pool.asset_list[1]):
+        #     x = pool.asset_list[1]
+        #     y = pool.asset_list[0]
 
         p_ratio = state.price(x) / state.price(y)
         # VVV this would be correct if there is no fee VVV
@@ -167,24 +178,14 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> Trade
             + agent_delta_x * state.price(x)
         )
 
-        # an alternate way to calculate optimal trade
-        # works with no fees, otherwise not
-        p = state.price(y) / state.price(x)
-        if p < pool.liquidity[x] / (pool.liquidity[y] * (1 - pool.base_fee)):
-            b = -pool.liquidity[y] * pool.base_fee
-
-            c = -(pool.liquidity[x] * pool.liquidity[y]) / p
-            alternate_agent_delta_y = pool.liquidity[y] - (-b + math.sqrt(b ** 2 - 4 * c)) / 2
-            # if alternate_agent_delta_y == agent_delta_y:
-            #     # raise ValueError("Recursive and algebraic prices don't match.")
-            #     raise ValueError("woooooow.")
-
         agent.projected_profit = projected_profit
 
-        if projected_profit <= minimum_profit:
+        if projected_profit <= 0:
             # don't do it
-            # agent.trade_rejected += 1
+            agent.trade_rejected += 1
             return state
+        elif agent_delta_y < 0:
+            er = 1
 
         # buy just enough of non-USD asset
         if agent_delta_y > 0 and x != 'USD' or agent_delta_y < 0 and y != 'USD':
@@ -205,6 +206,22 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> Trade
         for tkn, quantity in new_agent.holdings.items():
             if new_agent.holdings[tkn] > 0 and tkn != 'USD':
                 new_state = external_market_trade(state, agent_id, tkn_buy='USD', tkn_sell=tkn, sell_quantity=quantity)
+
+        actual_profit = new_state.agents[agent_id].holdings['USD'] - holdings
+
+        if projected_profit < 0:
+            # don't do it
+            new_agent.trade_rejected += 1
+        #     return state
+
+        if abs(projected_profit - actual_profit) > 0.000000000001 and abs(actual_profit) > 0.000000000001:
+            er = 1
+        elif actual_profit > 0.000000000001:
+            er = 3
+        elif actual_profit < -0.000000000001:
+            er = 4
+        else:
+            er = 2
 
         return new_state
 
