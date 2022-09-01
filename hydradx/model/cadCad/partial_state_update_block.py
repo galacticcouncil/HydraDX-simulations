@@ -6,7 +6,7 @@ partial_state_update_block = [
         'policies': {
         },
         'variables': {
-            'state': execute_trades
+            'state': evolve_market
         }
     },
     {
@@ -14,9 +14,10 @@ partial_state_update_block = [
         'policies': {
         },
         'variables': {
-            'state': evolve_market
+            'state': execute_trades
         }
     },
+
     # {
     #     # system.py
     #     'policies': {

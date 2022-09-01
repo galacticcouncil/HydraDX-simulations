@@ -27,6 +27,10 @@ class GlobalState:
         self.external_market = external_market or {}
         if 'USD' not in self.external_market:
             self.external_market['USD'] = 1  # default denomination
+        for agent in self.agents.values():
+            for asset in self.asset_list:
+                if asset not in agent.holdings:
+                    agent.holdings[asset] = 0
         self._evolve_function = evolve_function
         self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
 
@@ -59,8 +63,12 @@ class GlobalState:
         return {tkn: self.total_asset(tkn) for tkn in self.asset_list}
 
     def copy(self):
-        self_copy = copy.deepcopy(self)
-        return self_copy
+        return GlobalState(
+            agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
+            pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
+            external_market=copy.copy(self.external_market),
+            evolve_function=copy.copy(self._evolve_function)
+        )
 
     def evolve(self):
         if self._evolve_function:
@@ -79,19 +87,70 @@ class GlobalState:
         )
 
 
-def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = ()):
+def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
+    """
+        Volatility is in the form of
+        {tkn: percentage for tkn in asset_list}
+        and is the maximum percentage by which the asset price will vary per step.
+
+        Trend is also in the form
+        {tkn: percentage for tkn in asset_list}
+        and is the percentage by the which the price will predictably move, every step.
+
+        Approximately:
+        price[tkn] += random.random() * volatility[tkn] / 100 + trend[tkn] / 100
+    """
+    trend = trend or {}
 
     def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
         for asset in new_state.external_market:
             change = volatility[asset] if asset in volatility else 0
             bias = trend[asset] / 100 if asset in trend else 0
+            # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
+            # instead, we need to subtract (100/101)% to avoid a long-term downward trend
             new_state.external_market[asset] *= (
-                    1 / (1 + change / 100)
-                    + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
-                    + bias / 100
+                (1 + random.random() * change / 100 if random.choice([True, False])
+                 else 1 - random.random() * (1 - 100 / (100 + change)))
+                # 1 / (1 + change / 100)
+                # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
+                + bias / 100
             )
         return new_state
+
+    return transform
+
+
+def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = None, period: int = 1) -> Callable:
+    # steadily oscillate, no unpredictable motion
+    class UpDown:
+        def __init__(self, magnitude, wavelength, bias):
+            self.bias = bias
+            self.inertia = 0
+            self.wavelength = wavelength
+            self.direction = magnitude
+
+    trend = trend or {}
+    updown: dict[str: UpDown] = {}
+    for token in volatility:
+        updown[token] = UpDown(
+            wavelength=period,
+            magnitude=volatility[token],
+            bias=trend[token] if token in trend else 0
+        )
+
+    def transform(state: GlobalState) -> GlobalState:
+        for tkn in updown:
+            if abs(updown[tkn].inertia) >= updown[tkn].wavelength:
+                # reverse trend
+                updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
+                updown[tkn].inertia = 0
+            state.external_market[tkn] += (
+                updown[tkn].direction / 100 / updown[tkn].wavelength
+                + updown[tkn].bias / 100 / updown[tkn].wavelength
+            )
+            updown[tkn].inertia += 1
+        return state
 
     return transform
 
@@ -192,15 +251,15 @@ def external_market_trade(
     if tkn_buy not in agent.holdings:
         agent.holdings[tkn_buy] = 0
 
-    if tkn_sell not in agent.holdings or agent.holdings[tkn_sell] - sell_quantity < 0:
-        # insufficient funds
-        return state
+    if agent.holdings[tkn_sell] - sell_quantity < 0:
+        # insufficient funds, reduce quantity to match
+        sell_quantity = agent.holdings[tkn_sell]
     elif agent.holdings[tkn_buy] + buy_quantity < 0:
         # also insufficient funds
-        return state
-    else:
-        # there could probably be a fee or something here, but for now you can sell infinite quantities for free
-        agent.holdings[tkn_buy] += buy_quantity
-        agent.holdings[tkn_sell] -= sell_quantity
+        buy_quantity = -agent.holdings[tkn_buy]
+
+    # there could probably be a fee or something here, but for now you can sell infinite quantities for free
+    agent.holdings[tkn_buy] += buy_quantity
+    agent.holdings[tkn_sell] -= sell_quantity
 
     return new_state

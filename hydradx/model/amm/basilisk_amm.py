@@ -10,8 +10,6 @@ precision_level = 20
 
 
 class ConstantProductPoolState(AMM):
-    unique_ids = {''}
-
     def __init__(self, tokens: dict[str: float], trade_fee: float = 0, fee_function: Callable = None, unique_id=''):
         """
         Tokens should be in the form of:
@@ -59,6 +57,7 @@ class ConstantProductPoolState(AMM):
         return (
             f'Constant Product Pool\n'
             f'base trade fee: {self.base_fee}\n'
+            f'shares: {self.shares}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
             [(
@@ -105,24 +104,25 @@ def remove_liquidity(
         old_state: ConstantProductPoolState,
         old_agent: Agent,
         quantity: float,
-        tkn_remove: str
+        tkn_remove: str = ''
 ) -> tuple[ConstantProductPoolState, Agent]:
+
     if tkn_remove not in old_state.asset_list:
         # withdraw some of each
         tkns = old_state.asset_list
-        total = sum(old_state.liquidity.values())
-        halves = [
-            quantity * old_state.liquidity[tkns[0]] / total,
-            quantity * old_state.liquidity[tkns[1]] / total
-        ]
-        next_state, next_agent = remove_liquidity(old_state, old_agent, halves[0], tkns[0])
-        new_state, new_agent = remove_liquidity(next_state, next_agent, halves[1], tkns[1])
-        return new_state, new_agent
+        new_state = old_state.copy()
+        new_agent = old_agent.copy()
+        withdraw_fraction = quantity / new_state.shares
+        for tkn in tkns:
+            withdraw_quantity = new_state.liquidity[tkn] * withdraw_fraction
+            new_state.liquidity[tkn] -= withdraw_quantity
+            new_agent.holdings[tkn] += withdraw_quantity
+    else:
+        withdraw_quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
+        new_state, new_agent = add_liquidity(
+            old_state, old_agent, -withdraw_quantity, tkn_remove
+        )
 
-    quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
-    new_state, new_agent = add_liquidity(
-        old_state, old_agent, -quantity, tkn_remove
-    )
     if min(new_state.liquidity.values()) < 0:
         return old_state.fail_transaction('Tried to remove more liquidity than exists in the pool.'), old_agent
 
@@ -147,6 +147,19 @@ def swap(
 
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return old_state.fail_transaction('Invalid token name.'), old_agent
+
+    if buy_quantity < 0 or sell_quantity < 0:
+        sell_quantity = -buy_quantity
+        buy_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
+    elif sell_quantity < 0:
+        buy_quantity = -sell_quantity
+        sell_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
 
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout

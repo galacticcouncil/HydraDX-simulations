@@ -37,7 +37,7 @@ def pool_val(state: GlobalState, pool: AMM):
     return total
 
 
-def postprocessing(events, optional_params=()):
+def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:
     """
     Definition:
     Compute more abstract metrics from the simulation
@@ -50,10 +50,8 @@ def postprocessing(events, optional_params=()):
     'pool_val': tracks the value of all assets held in the pool
     'impermanent_loss': computes loss for LPs due to price movements in either direction
     """
-    tokens = events[0]['state'].asset_list
     # save initial state
     initial_state: GlobalState = events[0]['state']
-    initial_agents = initial_state.agents
     withdraw_state: GlobalState = initial_state.copy()
 
     optional_params = set(optional_params)
@@ -66,7 +64,8 @@ def postprocessing(events, optional_params=()):
         'withdraw_val',
         'holdings_val',
         'impermanent_loss',
-        'token_count'
+        'token_count',
+        'trade_volume'
     }
     exchange_params = {
         'pool_val',
@@ -76,8 +75,8 @@ def postprocessing(events, optional_params=()):
     if unrecognized_params:
         raise ValueError(f'Unrecognized parameter {unrecognized_params}')
 
-    print(f'processing {optional_params}')
-
+    # print(f'processing {optional_params}')
+    #
     # a little pre-processing
     if 'deposit_val' in optional_params:
         # move the agents' liquidity deposits back into holdings, as something to compare against later
@@ -112,5 +111,14 @@ def postprocessing(events, optional_params=()):
                 agent.impermanent_loss = agent.withdraw_val / agent.deposit_val - 1
             if 'token_count' in optional_params:
                 agent.token_count = sum(agent.holdings.values())
+            if 'trade_volume' in optional_params:
+                agent.trade_volume = 0
+                if step['timestep'] > 0:
+                    previous_agent = events[step['timestep'] - 1]['state'].agents[agent.unique_id]
+                    agent.trade_volume += (
+                        sum([
+                            abs(previous_agent.holdings[tkn] - agent.holdings[tkn]) * state.price(tkn)
+                            for tkn in agent.holdings])
+                    )
 
     return events

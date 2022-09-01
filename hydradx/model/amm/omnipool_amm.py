@@ -34,6 +34,8 @@ class OmnipoolState(AMM):
 
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
+        if preferred_stablecoin not in tokens:
+            raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
 
         self.asset_list: list[str] = []
         self.liquidity = {}
@@ -281,7 +283,7 @@ def add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
-    assert quantity > 0, f"delta_R must be positive: {quantity}"
+    # assert quantity > 0, f"delta_R must be positive: {quantity}"
     assert tkn_add in old_state.asset_list, f"invalid value for i: {tkn_add}"
 
     new_state = old_state.copy()
