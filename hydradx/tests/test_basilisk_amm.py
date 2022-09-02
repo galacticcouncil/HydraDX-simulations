@@ -5,7 +5,7 @@ from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
-asset_quantity_strategy = st.floats(min_value=1000, max_value=10000000)
+asset_quantity_strategy = st.floats(min_value=1000, max_value=1000)
 fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 

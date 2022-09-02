@@ -112,6 +112,9 @@ def global_state_config(
         for pool in pools.values():
             for asset in pool.asset_list:
                 pool.liquidity[asset] = pool.liquidity[asset] or 1000000 / market_prices[asset]
+            if pool.base_fee is None:
+                pool.base_fee = draw(fee_strategy)
+
 
     if not agents:
         agents = {
@@ -270,6 +273,51 @@ def test_arbitrage_profitability(initial_state: GlobalState):
         next_agent = state.agents['arbitrageur']
         if next_agent.holdings['USD'] < last_agent.holdings['USD']:
             raise AssertionError('Arbitrageur lost money :(')
+
+
+@given(global_state_config(
+    external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
+    pools={
+        'X/Y': ConstantProductPoolState(
+            {
+                'X': 0,  # random via draw(asset_quantity_strategy)
+                'Y': 0
+            },
+            trade_fee=None  # i.e. choose one randomly via draw(fee_strategy)
+        )
+    },
+    agents={
+        'arbitrager': Agent()
+    }
+), asset_price_strategy)
+def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
+    initial_state.external_market['Y'] = initial_state.external_market['X'] * target_price
+    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
+    recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
+
+    def sell_spot(state: GlobalState):
+        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 - state.pools['X/Y'].base_fee)
+
+    def buy_spot(state: GlobalState):
+        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 + state.pools['X/Y'].base_fee)
+
+    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
+    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
+                        / algebraic_state.pools['X/Y'].liquidity['Y'])
+    recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
+                        / recursive_state.pools['X/Y'].liquidity['Y'])
+
+    if algebraic_result != pytest.approx(recursive_result):
+        raise AssertionError("Arbitrage calculation methods don't match.")
+
+    if target_price < sell_spot(initial_state):
+        if sell_spot(algebraic_state) != pytest.approx(target_price):
+            raise AssertionError("Arbitrage calculation doesn't match expected result.")
+
+    elif target_price > buy_spot(initial_state):
+        if buy_spot(algebraic_state) != pytest.approx(target_price):
+            raise AssertionError("Arbitrage calculation doesn't match expected result.")
 
 
 @given(global_state_config())
