@@ -12,11 +12,15 @@ class GlobalState:
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None
                  ):
+        if external_market is None:
+            self.external_market = {}
+        else:
+            self.external_market = external_market
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
             + [asset for agent in agents.values() for asset in agent.asset_list]
-            + list(external_market.keys())
+            + list(self.external_market.keys())
         ))
         self.agents = agents
         for agent_name in self.agents:
@@ -24,7 +28,6 @@ class GlobalState:
         self.pools = pools
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
-        self.external_market = external_market or {}
         if 'USD' not in self.external_market:
             self.external_market['USD'] = 1  # default denomination
         for agent in self.agents.values():
