@@ -74,6 +74,25 @@ class GlobalState:
         if self._evolve_function:
             return self._evolve_function(self)
 
+    def execute_swap(
+            self,
+            pool_id: str,
+            agent_id: str,
+            tkn_sell: str,
+            tkn_buy: str,
+            buy_quantity: float = 0,
+            sell_quantity: float = 0
+    ):
+        self.pools[pool_id], self.agents[agent_id] = self.pools[pool_id].swap(
+            old_state=self.pools[pool_id],
+            old_agent=self.agents[agent_id],
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            buy_quantity=buy_quantity,
+            sell_quantity=sell_quantity
+        )
+        return self
+
     def __repr__(self):
         newline = "\n"
         return (
@@ -164,16 +183,14 @@ def swap(
     buy_quantity: float = 0,
     sell_quantity: float = 0
 ) -> GlobalState:
-    new_state = old_state  # .copy()
-    new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].swap(
-        old_state=new_state.pools[pool_id],
-        old_agent=new_state.agents[agent_id],
+    return old_state.copy().execute_swap(
+        pool_id=pool_id,
+        agent_id=agent_id,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity,
         sell_quantity=sell_quantity
     )
-    return new_state
 
 
 def add_liquidity(
