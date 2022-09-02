@@ -74,8 +74,7 @@ def steady_swaps(
         sell_asset = assets[sell_index]
         sell_quantity = usd_amount / state.price(sell_asset)
 
-        return swap(
-            old_state=state,
+        return state.execute_swap(
             pool_id=pool_id,
             agent_id=agent_id,
             tkn_sell=sell_asset,
@@ -107,7 +106,7 @@ def invest_all(pool_id: str) -> TradeStrategy:
     return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
 
 
-def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = False) -> TradeStrategy:
+def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = True) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
@@ -118,7 +117,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         x = pool.asset_list[0]
         y = pool.asset_list[1]
 
-        if pool.fee_function:
+        if pool.fee_function or not direct_calc:
             agent_delta_y = recursive_calculation(state, x, y)
         else:
             agent_delta_y = direct_calculation(state, x, y)
@@ -155,14 +154,14 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             )
 
         # swap
-        new_state = swap(state, pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=agent_delta_y)
+        state.execute_swap(pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=agent_delta_y)
 
         # immediately cash out everything for USD
-        new_agent = new_state.agents[agent_id]
+        new_agent = state.agents[agent_id]
         for tkn, quantity in new_agent.holdings.items():
             if new_agent.holdings[tkn] > 0 and tkn != 'USD':
                 new_state = external_market_trade(
-                    new_state, agent_id, tkn_buy='USD', tkn_sell=tkn, sell_quantity=quantity
+                    state, agent_id, tkn_buy='USD', tkn_sell=tkn, sell_quantity=quantity
                 )
 
         return new_state
