@@ -72,12 +72,16 @@ class OmnipoolState(AMM):
             )
 
     def price(self, i: str):
-        # price of an asset in USD, according to current market conditions in the omnipool
+        """
+        price of an asset in USD, according to current market conditions in the omnipool
+        """
         return self.lrna[i] / self.liquidity[i] / self.lrna[self.stablecoin] * self.liquidity[self.stablecoin]
 
     @property
     def lrna_price(self) -> dict[str: float]:
-        # price of asset i in LRNA
+        """
+        price of asset i in LRNA
+        """
         return {i: self.lrna[i] / self.liquidity[i] for i in self.asset_list}
 
     @property
@@ -319,7 +323,10 @@ def add_liquidity(
     new_state.lrna[tkn_add] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add] * old_state.lrna_imbalance / old_state.lrna_total
+    delta_L = (
+        quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
+        * old_state.lrna_imbalance / old_state.lrna_total
+    )
     new_state.lrna_imbalance += delta_L
 
     # T update: TVL soft cap
@@ -378,14 +385,19 @@ def remove_liquidity(
         if 'LRNA' not in new_agent.holdings:
             new_agent.holdings['LRNA'] = 0
         new_agent.holdings['LRNA'] -= piq * (
-                2 * piq / (piq + p0) * quantity / old_state.shares[tkn_remove] * old_state.liquidity[tkn_remove] - delta_R)
+            2 * piq / (piq + p0) * quantity / old_state.shares[tkn_remove]
+            * old_state.liquidity[tkn_remove] - delta_R
+        )
 
     # LRNA burn
     delta_Q = lrna_price(old_state, tkn_remove) * delta_R
     new_state.lrna[tkn_remove] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = delta_R * old_state.lrna[tkn_remove] / old_state.liquidity[tkn_remove] * old_state.lrna_imbalance / old_state.lrna_total
+    delta_L = (
+        delta_R * old_state.lrna[tkn_remove] / old_state.liquidity[tkn_remove]
+        * old_state.lrna_imbalance / old_state.lrna_total
+    )
     new_state.lrna_imbalance += delta_L
 
     return new_state, new_agent
