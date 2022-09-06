@@ -1,8 +1,9 @@
 import math
 
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade
-from .amm import AMM
+from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
+from .omnipool_amm import OmnipoolState
 from typing import Callable
 import random
 
@@ -247,3 +248,30 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         return find_agent_delta_y(target_price)
 
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
+
+
+def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+
+        omnipool: OmnipoolState = state.pools[pool_id]
+        current_price = omnipool.lrna_price[asset_name]
+        quantity = (
+            (omnipool.lrna_total - omnipool.lrna[asset_name])
+            * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
+            - omnipool.lrna[asset_name]
+        ) / current_price
+        state = add_liquidity(
+            state, pool_id, agent_id,
+            quantity=quantity,
+            tkn_add=asset_name
+        )
+        state = swap(
+            state, pool_id, agent_id,
+            tkn_sell=asset_name,
+            tkn_buy='USD',
+            sell_quantity=trade_size
+        )
+        return state
+
+    return TradeStrategy(strategy, name='toxic asset attack')
