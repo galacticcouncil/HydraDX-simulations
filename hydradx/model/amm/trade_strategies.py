@@ -256,6 +256,11 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> Trad
 
         omnipool: OmnipoolState = state.pools[pool_id]
         current_price = omnipool.lrna_price[asset_name]
+        if current_price <= 0:
+            return state
+        usd_price = omnipool.lrna_price[omnipool.stablecoin] / current_price
+        if usd_price <= 0:
+            return state
         quantity = (
             (omnipool.lrna_total - omnipool.lrna[asset_name])
             * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
@@ -270,8 +275,8 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> Trad
             state, pool_id, agent_id,
             tkn_sell=asset_name,
             tkn_buy='USD',
-            sell_quantity=trade_size
+            sell_quantity=trade_size * usd_price
         )
         return state
 
-    return TradeStrategy(strategy, name='toxic asset attack')
+    return TradeStrategy(strategy, name=f'toxic asset attack (asset={asset_name}, trade_size={trade_size})')
