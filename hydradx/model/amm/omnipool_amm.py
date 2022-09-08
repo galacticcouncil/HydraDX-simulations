@@ -343,6 +343,10 @@ def add_liquidity(
 
         return old_state.fail_transaction('Transaction rejected because it would exceed the TVL cap.'), old_agent
 
+    if new_state.liquidity[tkn_add] > 10 ** 12:
+
+        return old_state.fail_transaction('Only 10^12 of an asset allowed in the pool.'), old_agent
+
     # set price at which liquidity was added
     if old_agent:
         new_agent.share_prices[(new_state.unique_id, tkn_add)] = new_state.lrna_price[tkn_add]
