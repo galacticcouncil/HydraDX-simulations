@@ -153,3 +153,14 @@ def best_fit_line(data_array: list[float]):
     intercept = avg_y - slope * avg_x
 
     return [range(len(data_array)), [x * slope + intercept for x in range(len(data_array))]]
+
+
+def color_gradient(color1: tuple, color2: tuple, length):
+    gradient = []
+    for i in range(length):
+        gradient.append((
+            hex(int(color1[0] * (1 - i / length) + color2[0] * i / length))[2:].zfill(2),
+            hex(int(color1[1] * (1 - i / length) + color2[1] * i / length))[2:].zfill(2),
+            hex(int(color1[2] * (1 - i / length) + color2[2] * i / length))[2:].zfill(2),
+        ))
+    return gradient
