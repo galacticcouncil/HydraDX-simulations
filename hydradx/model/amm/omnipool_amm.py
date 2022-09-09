@@ -219,6 +219,9 @@ def swap_assets_direct(
     new_agent.holdings[i] -= delta_Ri
     new_agent.holdings[j] -= delta_Rj
 
+    if new_state.liquidity[i] > 10 ** 12:
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
+
     return new_state, new_agent
 
 
@@ -346,7 +349,7 @@ def add_liquidity(
 
     if new_state.liquidity[tkn_add] > 10 ** 12:
 
-        return old_state.fail_transaction('Only 10^12 of an asset allowed in the pool.'), old_agent
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
 
     # set price at which liquidity was added
     if old_agent:
