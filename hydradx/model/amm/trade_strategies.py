@@ -265,17 +265,25 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> Trad
             (omnipool.lrna_total - omnipool.lrna[asset_name])
             * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
             - omnipool.lrna[asset_name]
-        ) / current_price
+        ) / current_price - 0.0001  # because rounding errors
+
         state = add_liquidity(
             state, pool_id, agent_id,
             quantity=quantity,
             tkn_add=asset_name
         )
+        sell_quantity = trade_size * usd_price
+        # if state.pools[pool_id].liquidity[asset_name] + sell_quantity > 10 ** 12:
+        #     # go right up to the maximum
+        #     sell_quantity = 10 ** 12 - state.pools[pool_id].liquidity[asset_name]
+        #     if sell_quantity == 0:
+        #         # pool is maxed
+        #         return state
         state = swap(
             state, pool_id, agent_id,
             tkn_sell=asset_name,
             tkn_buy='USD',
-            sell_quantity=trade_size * usd_price
+            sell_quantity=sell_quantity
         )
         return state
 
