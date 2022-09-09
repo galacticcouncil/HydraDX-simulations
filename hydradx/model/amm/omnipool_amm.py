@@ -155,16 +155,17 @@ def swap_lrna(
     if delta_qa < 0:
         delta_Q = -delta_qa
         delta_R = old_state.liquidity[tkn] * -delta_Q / (delta_Q + old_state.lrna[tkn]) * (1 - old_state.asset_fee)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_ra = -delta_R
     elif delta_ra > 0:
         delta_R = -delta_ra
         delta_Q = old_state.lrna[tkn] * -delta_R / (old_state.liquidity[tkn] * (1 - old_state.asset_fee) + delta_R)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_qa = -delta_Q
     else:
-        # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return old_state.fail_transaction(), old_agent
+        return old_state.fail_transaction('Buying LRNA not implemented.'), old_agent
+
+    delta_L = (-delta_Q * (1 + (1 - old_state.asset_fee)
+                           * (old_state.lrna[tkn] + old_state.lrna_imbalance)
+                           / (old_state.lrna[tkn] + delta_Q)))
 
     if delta_qa + old_agent.holdings['LRNA'] < 0:
         return old_state.fail_transaction("agent doesn't have enough lrna"), old_agent
