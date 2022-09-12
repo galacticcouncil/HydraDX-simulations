@@ -273,12 +273,12 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> Trad
             tkn_add=asset_name
         )
         sell_quantity = trade_size * usd_price
-        # if state.pools[pool_id].liquidity[asset_name] + sell_quantity > 10 ** 12:
-        #     # go right up to the maximum
-        #     sell_quantity = 10 ** 12 - state.pools[pool_id].liquidity[asset_name]
-        #     if sell_quantity == 0:
-        #         # pool is maxed
-        #         return state
+        if state.pools[pool_id].liquidity[asset_name] + sell_quantity > 10 ** 12:
+            # go right up to the maximum
+            sell_quantity = 10 ** 12 - state.pools[pool_id].liquidity[asset_name] - 0.0000001
+            if sell_quantity == 0:
+                # pool is maxed
+                return state
         state = swap(
             state, pool_id, agent_id,
             tkn_sell=asset_name,
