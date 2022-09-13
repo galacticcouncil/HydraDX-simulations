@@ -1,23 +1,24 @@
-import copy
-import random
+import math
+from scipy.optimize import curve_fit
+import numpy as np
 
 import pytest
 from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
-from hydradx.model.amm.global_state import GlobalState, oscillate_prices, fluctuate_prices
+from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
-from hydradx.model import plot_utils as pu
 from hydradx.model import processing
 from hydradx.model.processing import cash_out
-from hydradx.model.amm.trade_strategies import random_swaps, steady_swaps, invest_all, constant_product_arbitrage
+from hydradx.model.amm.trade_strategies import \
+    steady_swaps, invest_all, constant_product_arbitrage, toxic_asset_attack
 from hydradx.model.amm.amm import AMM
 
 import sys
-import random
 
 sys.path.append('../..')
 
@@ -112,6 +113,8 @@ def global_state_config(
         for pool in pools.values():
             for asset in pool.asset_list:
                 pool.liquidity[asset] = pool.liquidity[asset] or 1000000 / market_prices[asset]
+            if hasattr(pool, 'base_fee') and pool.base_fee is None:
+                pool.base_fee = draw(fee_strategy)
 
     if not agents:
         agents = {
@@ -132,7 +135,6 @@ def global_state_config(
 
 @given(global_state_config())
 def test_simulation(initial_state: GlobalState):
-
     for a, agent in enumerate(initial_state.agents.values()):
         pool: AMM = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
         agent.trade_strategy = [
@@ -270,6 +272,51 @@ def test_arbitrage_profitability(initial_state: GlobalState):
         next_agent = state.agents['arbitrageur']
         if next_agent.holdings['USD'] < last_agent.holdings['USD']:
             raise AssertionError('Arbitrageur lost money :(')
+
+
+@given(global_state_config(
+    external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
+    pools={
+        'X/Y': ConstantProductPoolState(
+            {
+                'X': 0,  # random via draw(asset_quantity_strategy)
+                'Y': 0
+            },
+            trade_fee=None  # i.e. choose one randomly via draw(fee_strategy)
+        )
+    },
+    agents={
+        'arbitrager': Agent()
+    }
+), asset_price_strategy)
+def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
+    initial_state.external_market['Y'] = initial_state.external_market['X'] * target_price
+    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
+    recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
+
+    def sell_spot(state: GlobalState):
+        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 - state.pools['X/Y'].base_fee)
+
+    def buy_spot(state: GlobalState):
+        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 + state.pools['X/Y'].base_fee)
+
+    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
+    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
+                        / algebraic_state.pools['X/Y'].liquidity['Y'])
+    recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
+                        / recursive_state.pools['X/Y'].liquidity['Y'])
+
+    if algebraic_result != pytest.approx(recursive_result):
+        raise AssertionError("Arbitrage calculation methods don't match.")
+
+    if target_price < sell_spot(initial_state):
+        if sell_spot(algebraic_state) != pytest.approx(target_price):
+            raise AssertionError("Arbitrage calculation doesn't match expected result.")
+
+    elif target_price > buy_spot(initial_state):
+        if buy_spot(algebraic_state) != pytest.approx(target_price):
+            raise AssertionError("Arbitrage calculation doesn't match expected result.")
 
 
 @given(global_state_config())

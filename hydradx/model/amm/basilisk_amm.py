@@ -10,7 +10,7 @@ precision_level = 20
 
 
 class ConstantProductPoolState(AMM):
-    def __init__(self, tokens: dict[str: float], trade_fee: float = 0, fee_function: Callable = None, unique_id=''):
+    def __init__(self, tokens: dict[str: float], trade_fee: float = None, fee_function: Callable = None, unique_id=''):
         """
         Tokens should be in the form of:
         {
@@ -20,7 +20,10 @@ class ConstantProductPoolState(AMM):
         There should only be two.
         """
         super().__init__()
-        self.base_fee = mpf(trade_fee)
+        if trade_fee is not None:
+            self.base_fee = mpf(trade_fee)
+        else:
+            self.base_fee = None
         self.fee_function = fee_function
         self.liquidity = dict()
         self.asset_list: list[str] = []
@@ -148,7 +151,7 @@ def swap(
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return old_state.fail_transaction('Invalid token name.'), old_agent
 
-    if buy_quantity < 0 or sell_quantity < 0:
+    if buy_quantity < 0:
         sell_quantity = -buy_quantity
         buy_quantity = 0
         t = tkn_sell
