@@ -9,7 +9,7 @@ mp.dps = 50
 
 
 class StableSwapPoolState(AMM):
-    def __init__(self, tokens: dict, amplification: float, precision: float = 1):
+    def __init__(self, tokens: dict, amplification: float, precision: float = 1, trade_fee: float = 0):
         """
         Tokens should be in the form of:
         {
@@ -23,12 +23,14 @@ class StableSwapPoolState(AMM):
         self.precision = precision
         self.liquidity = dict()
         self.asset_list: list[str] = []
+        self.trade_fee = trade_fee
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
             self.liquidity[token] = mpf(quantity)
 
         self.shares = self.calculate_d()
+        self.d = self.calculate_d()
 
     @property
     def ann(self):
@@ -40,9 +42,10 @@ class StableSwapPoolState(AMM):
             return True
         return False
 
-    def calculate_d(self, max_iterations=128):
+    def calculate_d(self, reserves=(), max_iterations=128):
         n_coins = len(self.asset_list)
-        xp_sorted = sorted(self.liquidity.values())
+        reserves = reserves or self.liquidity.values()
+        xp_sorted = sorted(reserves)
         s = sum(xp_sorted)
         if s == 0:
             return 0
@@ -70,7 +73,7 @@ class StableSwapPoolState(AMM):
         y = d
         for i in range(max_iterations):
             y_prev = y
-            y = (y ** 2 + c) / (2 * y + b - d) + 2
+            y = (y ** 2 + c) / (2 * y + b - d)
             if self.has_converged(y_prev, y):
                 return y
 
@@ -94,9 +97,27 @@ class StableSwapPoolState(AMM):
         d = self.calculate_d()
         return self.calculate_y(new_reserve_out, d)
 
+    def calculate_out_given_in(
+        self,
+        tkn_in: str,
+        tkn_out: str,
+        amount_in: float
+    ):
+        new_reserve_out = self.calculate_y_given_in(amount_in, tkn_in)
+        return self.liquidity[tkn_out] - new_reserve_out
+
+    def calculate_in_given_out(
+            self,
+            tkn_in: str,
+            tkn_out: str,
+            amount_out: float
+    ):
+        new_reserve_in = self.calculate_y_given_out(amount_out, tkn_out)
+        return new_reserve_in - self.liquidity[tkn_in]
+
     def spot_price(self):
         x, y = self.liquidity.values()
-        d = self.calculate_d()
+        d = self.d
         return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
 
     def execute_swap(
@@ -107,23 +128,42 @@ class StableSwapPoolState(AMM):
         buy_quantity: float = 0,
         sell_quantity: float = 0
     ):
+        d = self.calculate_d()
         if buy_quantity:
-            sell_quantity = self.calculate_y_given_out(buy_quantity, tkn_buy)
+            sell_quantity = (self.calculate_y(self.liquidity[tkn_buy] - buy_quantity, d)
+                             - self.liquidity[tkn_sell]) * (1 + self.trade_fee)
         elif sell_quantity:
-            buy_quantity = self.calculate_y_given_in(sell_quantity, tkn_sell)
+            buy_quantity = (self.liquidity[tkn_buy] -
+                            self.calculate_y(self.liquidity[tkn_sell] + sell_quantity, d)) * (1 - self.trade_fee)
 
         if old_agent.holdings[tkn_sell] - sell_quantity < 0:
-            return self.fail_transaction('Agent has insufficient funds.')
+            return self.fail_transaction('Agent has insufficient funds.'), old_agent
         elif self.liquidity[tkn_buy] <= buy_quantity:
-            return self.fail_transaction('Pool has insufficient liquidity.')
+            return self.fail_transaction('Pool has insufficient liquidity.'), old_agent
 
-        agent = old_agent
-        agent.holdings[tkn_buy] += buy_quantity
-        agent.holdings[tkn_sell] -= sell_quantity
+        new_agent = old_agent  # .copy()
+        new_agent.holdings[tkn_buy] += buy_quantity
+        new_agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
-        return self, agent
+        return self, new_agent
+
+    def __repr__(self):
+        return (
+            f'Stable Swap Pool\n'
+            f'base trade fee: {self.trade_fee}\n'
+            f'shares: {self.shares}\n'
+            f'tokens: (\n'
+        ) + ')\n(\n'.join(
+            [(
+                f'    {token}\n'
+                f'    quantity: {self.liquidity[token]}\n'
+                f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
+            ) for token in self.asset_list]
+        ) + '\n)' + (
+            f'error message:{self.fail or "none"}'
+        )
 
 
 def swap(
