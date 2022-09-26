@@ -48,12 +48,14 @@ def omnipool_config(
         tvl_cap_usd=0
 ) -> oamm.OmnipoolState:
     asset_dict = asset_dict or draw(assets_config(token_count))
-    return oamm.OmnipoolState(
+    test_state = oamm.OmnipoolState(
         tokens=asset_dict,
         tvl_cap=tvl_cap_usd or float('inf'),
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee
     )
+    test_state.lrna_imbalance = -draw(asset_quantity_strategy)
+    return test_state
 
 
 @given(omnipool_config(asset_fee=0, lrna_fee=0, token_count=3), asset_quantity_strategy)
@@ -229,15 +231,11 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
     if min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) != pytest.approx(1):
         raise
 
-    if old_state.lrna[i] / old_state.liquidity[i] != pytest.approx(
-                (feeless_swap_state.lrna[i] + feeless_swap_state.lrna_imbalance) / feeless_swap_state.liquidity[i]
-            ):
+    if (((old_state.lrna[i] + old_state.lrna_imbalance) / old_state.liquidity[i])
+            != pytest.approx((new_state.lrna[i] + new_state.lrna_imbalance) / new_state.liquidity[i])):
         raise AssertionError(
-            f'Impermanent loss calculation incorrect. '
-            f'{old_state.lrna[i] / old_state.liquidity[i]} != '
-            f'{(feeless_swap_state.lrna[i] + feeless_swap_state.lrna_imbalance) / feeless_swap_state.liquidity[i]}'
+            f'Lrna imbalance is wrong.'
         )
-
     # try swapping into LRNA and back to see if that's equivalent
 
 

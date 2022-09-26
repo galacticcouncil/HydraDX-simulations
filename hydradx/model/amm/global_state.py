@@ -36,6 +36,7 @@ class GlobalState:
                     agent.holdings[asset] = 0
         self._evolve_function = evolve_function
         self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.time_step = 0
 
     def price(self, asset: str):
         if asset in self.external_market:
@@ -66,14 +67,17 @@ class GlobalState:
         return {tkn: self.total_asset(tkn) for tkn in self.asset_list}
 
     def copy(self):
-        return GlobalState(
+        copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
             external_market=copy.copy(self.external_market),
             evolve_function=copy.copy(self._evolve_function)
         )
+        copy_state.time_step = self.time_step
+        return copy_state
 
     def evolve(self):
+        self.time_step += 1
         if self._evolve_function:
             return self._evolve_function(self)
 

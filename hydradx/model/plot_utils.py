@@ -155,7 +155,7 @@ def best_fit_line(data_array: list[float]):
     return [range(len(data_array)), [x * slope + intercept for x in range(len(data_array))]]
 
 
-def color_gradient(color1: tuple, color2: tuple, length) -> list[str]:
+def color_gradient(length: int, color1: tuple = (255, 0, 0), color2: tuple = (0, 0, 255)) -> list[str]:
     gradient = []
     for i in range(length):
         gradient.append('#' + (

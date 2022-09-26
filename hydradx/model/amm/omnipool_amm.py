@@ -109,7 +109,7 @@ class OmnipoolState(AMM):
                 f'    {token}\n'
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
-                f'    price: {self.price(token)}\n'
+                f'    USD price: {self.price(token)}\n'
                 f'    tvl: {self.tvl[token]}\n'
                 f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
@@ -159,16 +159,17 @@ def swap_lrna(
     if delta_qa < 0:
         delta_Q = -delta_qa
         delta_R = old_state.liquidity[tkn] * -delta_Q / (delta_Q + old_state.lrna[tkn]) * (1 - old_state.asset_fee)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_ra = -delta_R
     elif delta_ra > 0:
         delta_R = -delta_ra
         delta_Q = old_state.lrna[tkn] * -delta_R / (old_state.liquidity[tkn] * (1 - old_state.asset_fee) + delta_R)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_qa = -delta_Q
     else:
-        # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return old_state.fail_transaction(), old_agent
+        return old_state.fail_transaction('Buying LRNA not implemented.'), old_agent
+
+    delta_L = (-delta_Q * (1 + (1 - old_state.asset_fee)
+                           * (old_state.lrna[tkn] + old_state.lrna_imbalance)
+                           / (old_state.lrna[tkn] + delta_Q)))
 
     if delta_qa + old_agent.holdings['LRNA'] < 0:
         return old_state.fail_transaction("agent doesn't have enough lrna"), old_agent
@@ -198,7 +199,8 @@ def swap_assets_direct(
     i = tkn_sell
     j = tkn_buy
     delta_Ri = delta_token
-    assert delta_Ri > 0, 'sell amount must be greater than zero'
+    if delta_Ri <= 0:
+        return old_state.fail_transaction('sell amount must be greater than zero'), old_agent
 
     delta_Qi = old_state.lrna[i] * -delta_Ri / (old_state.liquidity[i] + delta_Ri)
     delta_Qj = -delta_Qi * (1 - old_state.lrna_fee)
@@ -218,6 +220,15 @@ def swap_assets_direct(
     new_agent.holdings[i] -= delta_Ri
     new_agent.holdings[j] -= delta_Rj
 
+    if new_state.liquidity[i] > 10 ** 12:
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
+
+    if new_agent.holdings[i] < 0 or new_agent.holdings[j] < 0:
+        return (
+            old_state.fail_transaction(f"Agent doesn't have enough {i if new_agent.holdings[i] < 0 else j}"),
+            old_agent
+        )
+
     return new_state, new_agent
 
 
@@ -233,8 +244,8 @@ def swap(
     if tkn_sell == 'LRNA' or tkn_buy == 'LRNA':
 
         if tkn_sell == 'LRNA':
-            delta_qa = sell_quantity or -buy_quantity
-            delta_ra = buy_quantity or -sell_quantity
+            delta_qa = -sell_quantity or buy_quantity
+            delta_ra = -buy_quantity or sell_quantity
             tkn = tkn_buy
 
         else:  # tkn_buy == 'LRNA'
@@ -242,13 +253,15 @@ def swap(
             delta_ra = buy_quantity or -sell_quantity
             tkn = tkn_sell
 
-        swap_lrna(
+        new_state, new_agents = swap_lrna(
             old_state=old_state,
             old_agent=old_agent,
             delta_ra=delta_ra,
             delta_qa=delta_qa,
             tkn=tkn
         )
+
+        return new_state, new_agents
 
     elif sell_quantity != 0:
 
@@ -261,6 +274,7 @@ def swap(
         )
 
         return new_state, new_agents
+
     elif buy_quantity != 0:
         # back into correct delta_Ri, then execute sell
         delta_Qj = -old_state.lrna[tkn_buy] * buy_quantity / (
@@ -345,7 +359,7 @@ def add_liquidity(
 
     if new_state.liquidity[tkn_add] > 10 ** 12:
 
-        return old_state.fail_transaction('Only 10^12 of an asset allowed in the pool.'), old_agent
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
 
     # set price at which liquidity was added
     if old_agent:
@@ -371,6 +385,7 @@ def remove_liquidity(
     if quantity == 0:
         return new_state, new_agent
 
+    # determine if they should get some LRNA back as well as the asset they invested
     piq = old_state.lrna_price[tkn_remove]
     p0 = new_agent.share_prices[(new_state.unique_id, tkn_remove)]
     mult = (piq - p0) / (piq + p0)
