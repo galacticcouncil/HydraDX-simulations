@@ -195,6 +195,10 @@ def test_remove_liquidity(initial_state: oamm.OmnipoolState):
             and not new_state.fail):
         raise AssertionError('something is wrong')
 
+    if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
 
 @given(omnipool_config(token_count=3), fee_strategy)
 def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
@@ -227,8 +231,11 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
     if min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) != pytest.approx(1):
         raise
 
-    if (((old_state.lrna[i] + old_state.lrna_imbalance) / old_state.liquidity[i])
-            != pytest.approx((new_state.lrna[i] + new_state.lrna_imbalance) / new_state.liquidity[i])):
+    if (new_state.liquidity[i] * old_state.lrna[i] *
+        new_state.lrna_total * (old_state.lrna_total + old_state.lrna_imbalance)) != pytest.approx(
+        old_state.liquidity[i] * new_state.lrna[i] *
+        old_state.lrna_total * (new_state.lrna_total + new_state.lrna_imbalance)
+    ):
         raise AssertionError(
             f'Lrna imbalance is wrong.'
         )
