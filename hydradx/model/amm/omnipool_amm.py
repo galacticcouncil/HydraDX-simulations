@@ -42,7 +42,6 @@ class OmnipoolState(AMM):
         self.lrna = {}
         self.shares = {}
         self.protocol_shares = {}
-        self.tvl = {}
         self.weight_cap = {}
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
@@ -65,12 +64,6 @@ class OmnipoolState(AMM):
         self.stablecoin = preferred_stablecoin
         self.fail = ''
 
-        # count TVL for each pool once all values are set
-        for token in self.asset_list:
-            self.tvl[token] = (
-                self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
-            )
-
     def price(self, i: str):
         """
         price of an asset in USD, according to current market conditions in the omnipool
@@ -90,7 +83,8 @@ class OmnipoolState(AMM):
 
     @property
     def tvl_total(self):
-        return sum(self.tvl.values())
+        # base this just on the LRNA/USD exchange rate in the pool
+        return self.liquidity[self.stablecoin] * self.lrna[self.stablecoin] / self.lrna_total
 
     def copy(self):
         copy_state = copy.deepcopy(self)
@@ -110,8 +104,8 @@ class OmnipoolState(AMM):
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    price: {self.price(token)}\n'
-                f'    tvl: {self.tvl[token]}\n'
-                f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
+                f'    tvl: {self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]}\n'
+                f'    weight: {self.lrna[token]}/{self.lrna_total} ({self.lrna[token] / self.lrna_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
                 f'    protocol shares: {self.protocol_shares[token]}\n'
@@ -159,12 +153,10 @@ def swap_lrna(
     if delta_qa < 0:
         delta_Q = -delta_qa
         delta_R = old_state.liquidity[tkn] * -delta_Q / (delta_Q + old_state.lrna[tkn]) * (1 - old_state.asset_fee)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_ra = -delta_R
     elif delta_ra > 0:
         delta_R = -delta_ra
         delta_Q = old_state.lrna[tkn] * -delta_R / (old_state.liquidity[tkn] * (1 - old_state.asset_fee) + delta_R)
-        delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
         delta_qa = -delta_Q
     else:
         # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
@@ -183,7 +175,14 @@ def swap_lrna(
     new_agent.holdings[tkn] += delta_ra
     new_state.lrna[tkn] += delta_Q
     new_state.liquidity[tkn] += delta_R
-    new_state.lrna_imbalance += delta_L
+    new_state.lrna_imbalance = (
+        new_state.lrna_total * new_state.liquidity[tkn] / new_state.lrna[tkn]
+        * old_state.lrna[tkn] / old_state.liquidity[tkn]
+        * (1 + old_state.lrna_imbalance / old_state.lrna_total) - new_state.lrna_total
+    )
+    # new_state.lrna_imbalance -= delta_Q * (1 + (1 - old_state.asset_fee)
+    #                                        * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
+    # delta_L = -delta_Q * (1 + (1 - old_state.asset_fee) * old_state.lrna[tkn] / (old_state.lrna[tkn] + delta_Q))
 
     return new_state, new_agent
 
@@ -328,11 +327,6 @@ def add_liquidity(
         * old_state.lrna_imbalance / old_state.lrna_total
     )
     new_state.lrna_imbalance += delta_L
-
-    # T update: TVL soft cap
-    usd = new_state.stablecoin
-    delta_t = new_state.lrna[tkn_add] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[tkn_add]
-    new_state.tvl[tkn_add] += delta_t
 
     if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
         return old_state.fail_transaction(
