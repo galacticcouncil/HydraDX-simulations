@@ -229,13 +229,13 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
     if min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(old_state, i), 1) != pytest.approx(1):
         raise
 
-    if old_state.lrna[i] / old_state.liquidity[i] != pytest.approx(
-                (feeless_swap_state.lrna[i] + feeless_swap_state.lrna_imbalance) / feeless_swap_state.liquidity[i]
-            ):
+    if (new_state.liquidity[i] * old_state.lrna[i] *
+        new_state.lrna_total * (old_state.lrna_total + old_state.lrna_imbalance)) != pytest.approx(
+        old_state.liquidity[i] * new_state.lrna[i] *
+        old_state.lrna_total * (new_state.lrna_total + new_state.lrna_imbalance)
+    ):
         raise AssertionError(
-            f'Impermanent loss calculation incorrect. '
-            f'{old_state.lrna[i] / old_state.liquidity[i]} != '
-            f'{(feeless_swap_state.lrna[i] + feeless_swap_state.lrna_imbalance) / feeless_swap_state.liquidity[i]}'
+            f'Impermanent loss calculation incorrect.'
         )
 
     # try swapping into LRNA and back to see if that's equivalent
