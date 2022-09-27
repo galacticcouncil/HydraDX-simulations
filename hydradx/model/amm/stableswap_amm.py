@@ -161,7 +161,7 @@ class StableSwapPoolState(AMM):
                 f'    quantity: {self.liquidity[token]}\n'
                 f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
             ) for token in self.asset_list]
-        ) + '\n)' + (
+        ) + '\n)\n' + (
             f'error message:{self.fail or "none"}'
         )
 
@@ -205,6 +205,8 @@ def add_liquidity(
         d_diff = updated_d - initial_d
         share_amount = old_state.shares * d_diff / initial_d
         new_state.shares += share_amount
+        if new_state.unique_id not in new_agent.shares:
+            new_agent.shares[new_state.unique_id] = 0
         new_agent.shares[new_state.unique_id] += share_amount
 
     return new_state, new_agent
@@ -216,14 +218,14 @@ def remove_liquidity(
     quantity: float,
     tkn_remove: str
 ):
-    if quantity > old_agent.shares:
+    if quantity > old_agent.shares[old_state.unique_id]:
         raise ValueError('Agent tried to remove more shares than it owns.')
 
     share_fraction = quantity / old_state.shares
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     new_state.shares -= quantity
-    new_agent.shares -= quantity
+    new_agent.shares[old_state.unique_id] -= quantity
     for tkn in new_state.asset_list:
         new_agent.holdings[tkn] += old_state.liquidity[tkn] * share_fraction
         new_state.liquidity[tkn] -= old_state.liquidity[tkn] * share_fraction
@@ -233,30 +235,3 @@ def remove_liquidity(
 StableSwapPoolState.add_liquidity = staticmethod(add_liquidity)
 StableSwapPoolState.remove_liquidity = staticmethod(remove_liquidity)
 StableSwapPoolState.swap = staticmethod(swap)
-
-# def calculate_asset_b_required(reserve_a, reserve_b, delta_a):
-#     updated_reserve_a = reserve_a + delta_a
-#     updated_reserve_b = updated_reserve_a * reserve_b / reserve_a
-
-
-#
-#
-# reserves = [1000000000, 100000000]
-# ann = 4 * 10
-# d = calculate_d(reserves, ann)
-# print(f'spot price at {reserves}: {spot_price(reserves, d, ann)}')
-#
-# # test that calculate_d and calculate_y are consistent
-# ann = 400
-# reserve_a = 100000000
-# reserve_b = 200000000
-# d = calculate_d([reserve_a, reserve_b], ann)
-# y = calculate_y(reserve_b, d, ann)
-#
-# # fix value, i.e. fix p_x^y * x + y
-# D = 200000000
-# x_step_size = 500000
-# x_min = 10000000
-# x_max = 200000000
-# liq_depth = {}
-
