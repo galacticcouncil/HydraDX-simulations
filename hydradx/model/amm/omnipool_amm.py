@@ -159,8 +159,11 @@ def swap_lrna(
         delta_Q = old_state.lrna[tkn] * -delta_R / (old_state.liquidity[tkn] * (1 - old_state.asset_fee) + delta_R)
         delta_qa = -delta_Q
     else:
-        # print(f'Invalid swap (delta_Qa {delta_Qa}, delta_Ra {delta_Ra}')
-        return old_state.fail_transaction(), old_agent
+        return old_state.fail_transaction('Buying LRNA not implemented.'), old_agent
+
+    delta_L = (-delta_Q * (1 + (1 - old_state.asset_fee)
+                           * (old_state.lrna[tkn] + old_state.lrna_imbalance)
+                           / (old_state.lrna[tkn] + delta_Q)))
 
     if delta_qa + old_agent.holdings['LRNA'] < 0:
         return old_state.fail_transaction("agent doesn't have enough lrna"), old_agent
@@ -216,6 +219,9 @@ def swap_assets_direct(
     new_agent = old_agent.copy()
     new_agent.holdings[i] -= delta_Ri
     new_agent.holdings[j] -= delta_Rj
+
+    if new_state.liquidity[i] > 10 ** 12:
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
 
     return new_state, new_agent
 
@@ -339,7 +345,7 @@ def add_liquidity(
 
     if new_state.liquidity[tkn_add] > 10 ** 12:
 
-        return old_state.fail_transaction('Only 10^12 of an asset allowed in the pool.'), old_agent
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
 
     # set price at which liquidity was added
     if old_agent:

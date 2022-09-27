@@ -48,12 +48,14 @@ def omnipool_config(
         tvl_cap_usd=0
 ) -> oamm.OmnipoolState:
     asset_dict = asset_dict or draw(assets_config(token_count))
-    return oamm.OmnipoolState(
+    test_state = oamm.OmnipoolState(
         tokens=asset_dict,
         tvl_cap=tvl_cap_usd or float('inf'),
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee
     )
+    test_state.lrna_imbalance = -draw(asset_quantity_strategy)
+    return test_state
 
 
 @given(omnipool_config(asset_fee=0, lrna_fee=0, token_count=3), asset_quantity_strategy)
@@ -235,9 +237,8 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
         old_state.lrna_total * (new_state.lrna_total + new_state.lrna_imbalance)
     ):
         raise AssertionError(
-            f'Impermanent loss calculation incorrect.'
+            f'Lrna imbalance is wrong.'
         )
-
     # try swapping into LRNA and back to see if that's equivalent
 
 
