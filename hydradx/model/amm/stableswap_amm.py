@@ -115,9 +115,14 @@ class StableSwapPoolState(AMM):
         new_reserve_in = self.calculate_y_given_out(amount_out, tkn_out)
         return new_reserve_in - self.liquidity[tkn_in]
 
+    @property
     def spot_price(self):
         x, y = self.liquidity.values()
         d = self.d
+        return self.price_at_balance([x, y], d)
+
+    def price_at_balance(self, balances: list, d: float):
+        x, y = balances
         return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
 
     def execute_swap(
@@ -195,7 +200,7 @@ def add_liquidity(
     updated_d = new_state.calculate_d()
 
     if updated_d < initial_d:
-        return None
+        return old_state.fail_transaction('invariant decreased for some reason'), old_agent
 
     if old_state.shares == 0:
         new_agent.shares[new_state.unique_id] = updated_d
