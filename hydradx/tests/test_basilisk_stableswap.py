@@ -2,9 +2,9 @@ import pytest
 
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.trade_strategies import random_swaps
+from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.run import run
+from hydradx.model import run
 from hydradx.model import processing
 
 # # fix value, i.e. fix p_x^y * x + y
@@ -80,9 +80,52 @@ def testSwapInvariant():
             )
         new_d = new_pool.calculate_d()
         if d != pytest.approx(d):
-            er = 1
+            raise AssertionError('Invariant has varied.')
         pool_events.append(new_pool.copy())
         agent_events.append(new_agent.copy())
-    events = run(initial_state, time_steps=1000)
-    post = processing.postprocessing(events, optional_params=['holdings_val'])
-    er = 1
+
+
+def test_arbitrage():
+    stable_pool = StableSwapPoolState(
+        tokens={
+            'R1': 500000,
+            'R2': 500000
+        },
+        amplification=10,
+        trade_fee=0
+    )
+
+    initial_state = GlobalState(
+        pools={
+            'R1/R2': stable_pool
+        },
+        agents={
+            'Trader': Agent(
+                holdings={'R1': 1000000, 'R2': 1000000},
+                trade_strategy=random_swaps(pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000}, randomize_amount=True)
+            ),
+            'Arbitrageur': Agent(
+                holdings={'R1': 1000000, 'R2': 1000000},
+                trade_strategy=stableswap_arbitrage(pool_id='R1/R2', minimum_profit=0)
+            )
+        },
+        external_market={
+            'R1': 1,
+            'R2': 1
+        },
+        # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
+    )
+    events = run.run(initial_state, time_steps=100)
+    # print(events[0]['state'].pools['R1/R2'].spot_price, events[-1]['state'].pools['R1/R2'].spot_price)
+    if (
+        events[0]['state'].pools['R1/R2'].spot_price
+        != pytest.approx(events[-1]['state'].pools['R1/R2'].spot_price, rel=1e-2)
+    ):
+        raise AssertionError("Arbitrageur didn't keep the price stable.")
+    if (
+        events[0]['state'].agents['Arbitrageur'].holdings['R1']
+        + events[0]['state'].agents['Arbitrageur'].holdings['R2']
+        > events[-1]['state'].agents['Arbitrageur'].holdings['R1']
+        + events[-1]['state'].agents['Arbitrageur'].holdings['R2']
+    ):
+        raise AssertionError("Arbitrageur didn't make money.")
