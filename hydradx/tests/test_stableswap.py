@@ -1,46 +1,44 @@
 import pytest
 
+from hydradx.model.amm import stableswap_amm as stableSwap
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
-from hydradx.model import processing
+from hypothesis import given, strategies as st, assume
 
-# # fix value, i.e. fix p_x^y * x + y
-# D = 200000000
-# x_step_size = 500000
-# x_min = 10000000
-# x_max = 200000000
-# liq_depth = {}
-#
-# # for A in range(10, 101, 10):
-# for A in [5, 10, 20, 50, 500]:
-#     ann = A * 4
-#
-#     print("A is " + str(A))
-#
-#     liq_depth[A] = [None] * ((x_max - x_min) // x_step_size)
-#     prices = [None] * ((x_max - x_min) // x_step_size)
-#
-#     i = 0
-#     p_prev = 0
-#     for x in range(x_min, x_max + x_step_size, x_step_size):
-#         p_prev = p
-#         y = StableSwapPoolState.calculate_y(x, D, ann)
-#         p = spot_price([x, y], D, ann)
-#         if i > 0:
-#             liq_depth[A][i - 1] = x_step_size / (p - p_prev)
-#             prices[i - 1] = p
-#         # print((x, y, p))
-#         # print(liq_depth[A][i-1], p)
-#         i += 1
-#     # print(sum(liq_depth[A]))
-#     s = sum(liq_depth[A])
-#     for j in range(len(liq_depth[A])):
-#         # liq_depth[A][j] = liq_depth[A][j]/s
-#         liq_depth[A][j] = liq_depth[A][j]
-#
+asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
+asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
+fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
+trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
+amplification_strategy = st.floats(min_value=1, max_value = 10000)
+
+
+@st.composite
+def assets_config(draw, token_count) -> dict:
+    return_dict = {
+        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        for i in range(token_count)
+    }
+    return return_dict
+
+
+@st.composite
+def stableswap_config(
+        draw,
+        asset_dict = None,
+        token_count = 2,
+        trade_fee = None,
+        amplification: float = None
+) -> stableSwap.StableSwapPoolState:
+    asset_dict = asset_dict or draw(assets_config(token_count))
+    test_state = StableSwapPoolState(
+        tokens=asset_dict,
+        amplification=draw(amplification_strategy) if amplification is None else amplification,
+        trade_fee=draw(st.floats(min_value=0, max_value=0.1)) if trade_fee is None else trade_fee
+    )
+    return test_state
 
 
 def testSwapInvariant():
@@ -79,7 +77,7 @@ def testSwapInvariant():
                 new_agent, 'R2', 'R1', 0, 100
             )
         new_d = new_pool.calculate_d()
-        if d != pytest.approx(d):
+        if new_d != pytest.approx(d):
             raise AssertionError('Invariant has varied.')
         pool_events.append(new_pool.copy())
         agent_events.append(new_agent.copy())
@@ -129,3 +127,22 @@ def test_arbitrage():
         + events[-1]['state'].agents['Arbitrageur'].holdings['R2']
     ):
         raise AssertionError("Arbitrageur didn't make money.")
+
+
+@given(stableswap_config(trade_fee=0, amplification=10))
+def test_add_remove_liquidity(initial_state: StableSwapPoolState):
+    lp_tkn = initial_state.asset_list[0]
+    lp = Agent(
+        holdings={lp_tkn: 10000}
+    )
+    add_liquidity_state, add_liquidity_agent = stableSwap.add_liquidity(
+        initial_state, old_agent=lp, quantity=10000, tkn_add=lp_tkn
+    )
+    remove_liquidity_state, remove_liquidity_agent = add_liquidity_state.remove_liquidity(
+        add_liquidity_state,
+        add_liquidity_agent,
+        quantity=add_liquidity_agent.shares[initial_state.unique_id],
+        tkn_remove=lp_tkn
+    )
+    if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
+        raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
