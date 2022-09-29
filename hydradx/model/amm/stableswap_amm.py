@@ -9,6 +9,7 @@ mp.dps = 50
 
 
 class StableSwapPoolState(AMM):
+    unique_id: str = 'stableswap'
     def __init__(self, tokens: dict, amplification: float, precision: float = 1, trade_fee: float = 0):
         """
         Tokens should be in the form of:
@@ -185,17 +186,15 @@ def swap(
 def add_liquidity(
     old_state: StableSwapPoolState,
     old_agent: Agent,
-    quantity: float,
+    quantity: float,  # quantity of asset to be added
     tkn_add: str
 ):
     initial_d = old_state.calculate_d()
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    for token in old_state.asset_list:
-        delta_r = quantity * old_state.liquidity[token] / old_state.liquidity[tkn_add]
-        new_agent.holdings[token] -= delta_r
-        new_state.liquidity[token] += delta_r
+    new_state.liquidity[tkn_add] += quantity
+    new_agent.holdings[tkn_add] -= quantity
 
     updated_d = new_state.calculate_d()
 
@@ -220,7 +219,7 @@ def add_liquidity(
 def remove_liquidity(
     old_state: StableSwapPoolState,
     old_agent: Agent,
-    quantity: float,
+    quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
     tkn_remove: str
 ):
     if quantity > old_agent.shares[old_state.unique_id]:
@@ -231,9 +230,15 @@ def remove_liquidity(
     new_agent = old_agent.copy()
     new_state.shares -= quantity
     new_agent.shares[old_state.unique_id] -= quantity
-    for tkn in new_state.asset_list:
-        new_agent.holdings[tkn] += old_state.liquidity[tkn] * share_fraction
-        new_state.liquidity[tkn] -= old_state.liquidity[tkn] * share_fraction
+    new_state.d = new_state.calculate_d(new_state.liquidity.values()) * (1 - share_fraction)
+    delta_tkn = new_state.calculate_y(
+        # get the name of the token not being removed
+        new_state.liquidity[list(filter(lambda key: key != tkn_remove, new_state.liquidity.keys()))[0]],
+        new_state.d
+    ) - new_state.liquidity[tkn_remove]
+    delta_tkn *= (1 - new_state.trade_fee)
+    new_state.liquidity[tkn_remove] += delta_tkn
+    new_agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
     return new_state, new_agent
 
 
