@@ -59,7 +59,7 @@ class StableSwapPoolState(AMM):
                 d_p *= d / (x * n_coins)
 
             d_prev = d
-            d = (self.ann * s + d_p * n_coins) * d / ((self.ann - 1) * d + (n_coins + 1) * d_p) + 2
+            d = (self.ann * s + d_p * n_coins) * d / ((self.ann - 1) * d + (n_coins + 1) * d_p)
 
             if self.has_converged(d_prev, d):
                 return d
