@@ -12,7 +12,7 @@ asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
 fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
-amplification_strategy = st.floats(min_value=1, max_value = 10000)
+amplification_strategy = st.floats(min_value=1, max_value=10000)
 
 
 @st.composite
@@ -27,9 +27,9 @@ def assets_config(draw, token_count) -> dict:
 @st.composite
 def stableswap_config(
         draw,
-        asset_dict = None,
-        token_count = 2,
-        trade_fee = None,
+        asset_dict=None,
+        token_count: int = 2,
+        trade_fee: float = None,
         amplification: float = None
 ) -> stableSwap.StableSwapPoolState:
     asset_dict = asset_dict or draw(assets_config(token_count))
@@ -83,16 +83,8 @@ def testSwapInvariant():
         agent_events.append(new_agent.copy())
 
 
-def test_arbitrage():
-    stable_pool = StableSwapPoolState(
-        tokens={
-            'R1': 500000,
-            'R2': 500000
-        },
-        amplification=10,
-        trade_fee=0
-    )
-
+@given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
+def test_arbitrage(stable_pool):
     initial_state = GlobalState(
         pools={
             'R1/R2': stable_pool
@@ -113,7 +105,7 @@ def test_arbitrage():
         },
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
-    events = run.run(initial_state, time_steps=100)
+    events = run.run(initial_state, time_steps=10, silent=True)
     # print(events[0]['state'].pools['R1/R2'].spot_price, events[-1]['state'].pools['R1/R2'].spot_price)
     if (
         events[0]['state'].pools['R1/R2'].spot_price
@@ -129,7 +121,7 @@ def test_arbitrage():
         raise AssertionError("Arbitrageur didn't make money.")
 
 
-@given(stableswap_config(trade_fee=0, amplification=10))
+@given(stableswap_config(trade_fee=0))
 def test_add_remove_liquidity(initial_state: StableSwapPoolState):
     lp_tkn = initial_state.asset_list[0]
     lp = Agent(
