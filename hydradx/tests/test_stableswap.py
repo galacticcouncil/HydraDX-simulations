@@ -13,6 +13,7 @@ asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
 fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 amplification_strategy = st.floats(min_value=1, max_value=10000)
+asset_number_strategy = st.integers(min_value=2, max_value=5)
 
 
 @st.composite
@@ -28,10 +29,11 @@ def assets_config(draw, token_count) -> dict:
 def stableswap_config(
         draw,
         asset_dict=None,
-        token_count: int = 2,
+        token_count: int = None,
         trade_fee: float = None,
         amplification: float = None
 ) -> stableSwap.StableSwapPoolState:
+    token_count = token_count or draw(asset_number_strategy)
     asset_dict = asset_dict or draw(assets_config(token_count))
     test_state = StableSwapPoolState(
         tokens=asset_dict,
@@ -41,46 +43,31 @@ def stableswap_config(
     return test_state
 
 
-def testSwapInvariant():
+@given(stableswap_config(trade_fee=0))
+def testSwapInvariant(initial_pool: StableSwapPoolState):
     initial_state = GlobalState(
         pools={
-            'R1/R2': StableSwapPoolState(
-                tokens={
-                    'R1': 100000,
-                    'R2': 100000
-                },
-                amplification=100,
-                trade_fee=0
-            )
+            'stableswap': initial_pool
         },
         agents={
             'trader': Agent(
-                holdings={'R1': 1000, 'R2': 1000},
-                trade_strategy=random_swaps(pool_id='R1/R2', amount={'R1': 200, 'R2': 1000}, randomize_amount=True)
+                holdings={tkn: 100000 for tkn in initial_pool.asset_list},
+                trade_strategy=random_swaps(
+                    pool_id='stableswap',
+                    amount={tkn: 1000 for tkn in initial_pool.asset_list},
+                    randomize_amount=True
+                )
             )
-        },
-        external_market={'R1': 1, 'R2': 1}
+        }
     )
 
-    pool_events = []
-    agent_events = []
-    new_pool = initial_state.pools['R1/R2'].copy()
-    new_agent = initial_state.agents['trader'].copy()
-    d = new_pool.calculate_d()
+    new_state = initial_state.copy()
+    d = new_state.pools['stableswap'].calculate_d()
     for n in range(10):
-        if n % 2 == 0:
-            new_pool, new_agent = new_pool.execute_swap(
-                new_agent, 'R1', 'R2', 100, 0
-            )
-        else:
-            new_pool, new_agent = new_pool.execute_swap(
-                new_agent, 'R2', 'R1', 0, 100
-            )
-        new_d = new_pool.calculate_d()
+        new_state = new_state.agents['trader'].trade_strategy.execute(new_state, agent_id='trader')
+        new_d = new_state.pools['stableswap'].calculate_d()
         if new_d != pytest.approx(d):
             raise AssertionError('Invariant has varied.')
-        pool_events.append(new_pool.copy())
-        agent_events.append(new_agent.copy())
 
 
 @given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
