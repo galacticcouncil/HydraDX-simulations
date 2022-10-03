@@ -9,16 +9,21 @@ mp.dps = 50
 
 
 class StableSwapPoolState(AMM):
-    def __init__(self, tokens: dict, amplification: float, precision: float = 1, trade_fee: float = 0):
+    unique_id: str = 'stableswap'
+
+    def __init__(self, tokens: dict, amplification: float, precision: float = 0.0001, trade_fee: float = 0):
         """
         Tokens should be in the form of:
         {
             token1: quantity,
             token2: quantity
         }
-        There should only be two.
+        There can be up to five.
         """
         super().__init__()
+        if len(tokens.keys()) > 5:
+            raise ValueError('Too many tokens (limit 5)')
+
         self.amplification = amplification
         self.precision = precision
         self.liquidity = dict()
@@ -33,8 +38,12 @@ class StableSwapPoolState(AMM):
         self.d = self.calculate_d()
 
     @property
-    def ann(self):
+    def ann(self) -> float:
         return self.amplification * len(self.asset_list) ** len(self.asset_list)
+
+    @property
+    def n_coins(self) -> int:
+        return len(self.asset_list)
 
     def has_converged(self, v0, v1) -> bool:
         diff = abs(v0 - v1)
@@ -42,8 +51,7 @@ class StableSwapPoolState(AMM):
             return True
         return False
 
-    def calculate_d(self, reserves=(), max_iterations=128):
-        n_coins = len(self.asset_list)
+    def calculate_d(self, reserves=(), max_iterations=128) -> float:
         reserves = reserves or self.liquidity.values()
         xp_sorted = sorted(reserves)
         s = sum(xp_sorted)
@@ -55,65 +63,58 @@ class StableSwapPoolState(AMM):
 
             d_p = d
             for x in xp_sorted:
-                d_p *= d / (x * n_coins)
+                d_p *= d / (x * self.n_coins)
 
             d_prev = d
-            d = (self.ann * s + d_p * n_coins) * d / ((self.ann - 1) * d + (n_coins + 1) * d_p) + 2
+            d = (self.ann * s + d_p * self.n_coins) * d / ((self.ann - 1) * d + (self.n_coins + 1) * d_p)
 
             if self.has_converged(d_prev, d):
                 return d
 
-    def calculate_y(self, reserve, d, max_iterations=128):
-        s = reserve
+    # def calculate_y(self, reserve, d, max_iterations=128):
+    #     s = reserve
+    #     c = d
+    #     c *= d / 2 / reserve
+    #     c *= d / self.ann / self.n_coins
+    #
+    #     b = s + d / self.ann
+    #     y = d
+    #     for i in range(max_iterations):
+    #         y_prev = y
+    #         y = (y ** 2 + c) / (2 * y + b - d)
+    #         if self.has_converged(y_prev, y):
+    #             return y
+
+    """
+    Given a value for D and the balances of all tokens except 1, calculate what the balance of the final token should be
+    """
+    def calculate_y(self, reserves: list, d: float, max_iterations=128):
+
+        # get all the balances except tkn_out and sort them from low to high
+        balances = sorted(reserves)
+
+        s = sum(balances)
         c = d
-        c *= d / (2 * reserve)
-        c *= d / (self.ann * len(self.liquidity.keys()))
+        for reserve in balances:
+            c *= d / reserve / self.n_coins
+        c *= d / self.ann / self.n_coins
 
         b = s + d / self.ann
         y = d
-        for i in range(max_iterations):
+
+        for _ in range(max_iterations):
             y_prev = y
             y = (y ** 2 + c) / (2 * y + b - d)
+            # y.checked_mul(y)?
+            # .checked_add(c)?
+            # .checked_div(two_hp.checked_mul(y)?.checked_add(b)?.checked_sub(d_hp)?)?
+            # .checked_add(two_hp)?;
+
             if self.has_converged(y_prev, y):
+                # [cfg(not(feature = "runtime-benchmarks"))]
                 return y
 
-    # Calculate new amount of reserve OUT given amount to be added to the pool
-    def calculate_y_given_in(
-        self,
-        amount: float,
-        tkn_in: str,
-    ) -> float:
-        new_reserve_in = self.liquidity[tkn_in] + amount
-        d = self.calculate_d()
-        return self.calculate_y(new_reserve_in, d)
-
-    # Calculate new amount of reserve IN given amount to be withdrawn from the pool
-    def calculate_y_given_out(
-            self,
-            amount: float,
-            tkn_out: str
-    ) -> float:
-        new_reserve_out = self.liquidity[tkn_out] - amount
-        d = self.calculate_d()
-        return self.calculate_y(new_reserve_out, d)
-
-    def calculate_out_given_in(
-        self,
-        tkn_in: str,
-        tkn_out: str,
-        amount_in: float
-    ):
-        new_reserve_out = self.calculate_y_given_in(amount_in, tkn_in)
-        return self.liquidity[tkn_out] - new_reserve_out
-
-    def calculate_in_given_out(
-            self,
-            tkn_in: str,
-            tkn_out: str,
-            amount_out: float
-    ):
-        new_reserve_in = self.calculate_y_given_out(amount_out, tkn_out)
-        return new_reserve_in - self.liquidity[tkn_in]
+        return y
 
     @property
     def spot_price(self):
@@ -125,6 +126,14 @@ class StableSwapPoolState(AMM):
         x, y = balances
         return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
 
+    def modified_balances(self, delta: dict, omit: list = ()):
+        balances = {key: value for key, value in self.liquidity.items()}
+        for tkn, value in delta.items():
+            balances[tkn] += value
+        for tkn in omit:
+            balances.pop(tkn)
+        return list(balances.values())
+
     def execute_swap(
         self,
         old_agent: Agent,
@@ -135,13 +144,13 @@ class StableSwapPoolState(AMM):
     ):
         d = self.calculate_d()
         if buy_quantity:
-            sell_quantity = (self.calculate_y(self.liquidity[tkn_buy] - buy_quantity, d)
-                             - self.liquidity[tkn_sell]) * (1 + self.trade_fee)
+            reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
+            sell_quantity = (self.calculate_y(reserves, d) - self.liquidity[tkn_sell]) * (1 + self.trade_fee)
         elif sell_quantity:
-            buy_quantity = (self.liquidity[tkn_buy] -
-                            self.calculate_y(self.liquidity[tkn_sell] + sell_quantity, d)) * (1 - self.trade_fee)
+            reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
+            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, d)) * (1 - self.trade_fee)
 
-        if old_agent.holdings[tkn_sell] - sell_quantity < 0:
+        if old_agent.holdings[tkn_sell] < sell_quantity:
             return self.fail_transaction('Agent has insufficient funds.'), old_agent
         elif self.liquidity[tkn_buy] <= buy_quantity:
             return self.fail_transaction('Pool has insufficient liquidity.'), old_agent
@@ -159,6 +168,7 @@ class StableSwapPoolState(AMM):
             f'Stable Swap Pool\n'
             f'base trade fee: {self.trade_fee}\n'
             f'shares: {self.shares}\n'
+            f'amplification constant: {self.amplification}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
             [(
@@ -185,17 +195,15 @@ def swap(
 def add_liquidity(
     old_state: StableSwapPoolState,
     old_agent: Agent,
-    quantity: float,
+    quantity: float,  # quantity of asset to be added
     tkn_add: str
 ):
     initial_d = old_state.calculate_d()
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    for token in old_state.asset_list:
-        delta_r = quantity * old_state.liquidity[token] / old_state.liquidity[tkn_add]
-        new_agent.holdings[token] -= delta_r
-        new_state.liquidity[token] += delta_r
+    new_state.liquidity[tkn_add] += quantity
+    new_agent.holdings[tkn_add] -= quantity
 
     updated_d = new_state.calculate_d()
 
@@ -220,7 +228,7 @@ def add_liquidity(
 def remove_liquidity(
     old_state: StableSwapPoolState,
     old_agent: Agent,
-    quantity: float,
+    quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
     tkn_remove: str
 ):
     if quantity > old_agent.shares[old_state.unique_id]:
@@ -231,9 +239,14 @@ def remove_liquidity(
     new_agent = old_agent.copy()
     new_state.shares -= quantity
     new_agent.shares[old_state.unique_id] -= quantity
-    for tkn in new_state.asset_list:
-        new_agent.holdings[tkn] += old_state.liquidity[tkn] * share_fraction
-        new_state.liquidity[tkn] -= old_state.liquidity[tkn] * share_fraction
+    new_state.d = new_state.calculate_d(new_state.liquidity.values()) * (1 - share_fraction)
+    delta_tkn = new_state.calculate_y(
+        new_state.modified_balances(delta={}, omit=[tkn_remove]),
+        new_state.d
+    ) - new_state.liquidity[tkn_remove]
+    delta_tkn *= (1 - new_state.trade_fee)
+    new_state.liquidity[tkn_remove] += delta_tkn
+    new_agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
     return new_state, new_agent
 
 
