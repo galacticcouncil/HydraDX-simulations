@@ -144,14 +144,14 @@ def find_agent_delta_y(
     target_price: float,
     price_after_trade: Callable,
     starting_bid: float = 1,
-    max_diff: float = 0.000000001
+    precision: float = 0.000000001
 ):
     b = starting_bid
     previous_change = 1
     p = price_after_trade(b)
     previous_price = p
     diff = p / target_price
-    while abs(1 - diff) > max_diff:
+    while abs(1 - diff) > precision:
         progress = (previous_price - p) / (previous_price - target_price) or 2
         old_b = b
         b -= previous_change * (1 - 1 / progress)
@@ -326,32 +326,28 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1):
         stable_pool: StableSwapPoolState = state.pools[pool_id]
         if not isinstance(stable_pool, StableSwapPoolState):
             raise AssertionError()
-        market_ratio = (
-            state.external_market[stable_pool.asset_list[0]] / state.external_market[stable_pool.asset_list[1]]
+        sorted_assets = sorted(list(
+            stable_pool.liquidity.keys()), key=lambda k: state.external_market[k] / stable_pool.liquidity.get(k)
         )
-        pool_ratio = (
-            stable_pool.liquidity[stable_pool.asset_list[1]] / stable_pool.liquidity[stable_pool.asset_list[0]]
-        )
-        if market_ratio > pool_ratio:
-            buy_asset = stable_pool.asset_list[0]
-            sell_asset = stable_pool.asset_list[1]
-            target_price = market_ratio
-        else:
-            buy_asset = stable_pool.asset_list[1]
-            sell_asset = stable_pool.asset_list[0]
-            target_price = 1 / market_ratio
+        buy_asset = sorted_assets[0]
+        sell_asset = sorted_assets[-1]
+        target_price = state.external_market[buy_asset] / state.external_market[sell_asset]
 
         # target_price *= (1 + stable_pool.trade_fee)
         d = stable_pool.calculate_d()
 
         def price_after_trade(buy_amount: float = 0, sell_amount: float = 0):
+            buy_amount = buy_amount or sell_amount
             balance_out = stable_pool.liquidity[buy_asset] - buy_amount
-            balance_in = stable_pool.calculate_y(balance_out, d)
+            balance_in = stable_pool.calculate_y(
+                stable_pool.modified_balances(delta={buy_asset: -buy_amount}, omit=[sell_asset]), d
+            )
             return stable_pool.price_at_balance([balance_in, balance_out], d)
 
-        delta_y = find_agent_delta_y(target_price, price_after_trade, max_diff=0.0001)
+        delta_y = find_agent_delta_y(target_price, price_after_trade, precision=0.0001)
         delta_x = (
-            stable_pool.liquidity[sell_asset] - stable_pool.calculate_y(stable_pool.liquidity[buy_asset] - delta_y, d)
+            stable_pool.liquidity[sell_asset]
+            - stable_pool.calculate_y(stable_pool.modified_balances(delta={buy_asset: -delta_y}, omit=[sell_asset]), d)
         ) * (1 + stable_pool.trade_fee)
 
         projected_profit = (
