@@ -90,7 +90,7 @@ class OmnipoolState(AMM):
 
     @property
     def tvl_total(self):
-        return sum(self.tvl.values())
+        return self.liquidity[self.stablecoin] * self.lrna[self.stablecoin] / self.lrna_total
 
     def copy(self):
         copy_state = copy.deepcopy(self)
@@ -111,7 +111,7 @@ class OmnipoolState(AMM):
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    USD price: {self.price(token)}\n'
                 f'    tvl: {self.tvl[token]}\n'
-                f'    weight: {self.tvl[token]}/{self.tvl_total} ({self.tvl[token] / self.tvl_total})\n'
+                f'    weight: {self.lrna[token]}/{self.lrna_total} ({self.lrna[token] / self.lrna_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
                 f'    protocol shares: {self.protocol_shares[token]}\n'
@@ -167,10 +167,6 @@ def swap_lrna(
     else:
         return old_state.fail_transaction('Buying LRNA not implemented.'), old_agent
 
-    delta_L = (-delta_Q * (1 + (1 - old_state.asset_fee)
-                           * (old_state.lrna[tkn] + old_state.lrna_imbalance)
-                           / (old_state.lrna[tkn] + delta_Q)))
-
     if delta_qa + old_agent.holdings['LRNA'] < 0:
         return old_state.fail_transaction("agent doesn't have enough lrna"), old_agent
     elif delta_ra + old_agent.holdings[tkn] < 0:
@@ -184,7 +180,13 @@ def swap_lrna(
     new_agent.holdings[tkn] += delta_ra
     new_state.lrna[tkn] += delta_Q
     new_state.liquidity[tkn] += delta_R
-    new_state.lrna_imbalance += delta_L
+    new_state.lrna_imbalance = (new_state.lrna_total * new_state.liquidity[tkn] / new_state.lrna[tkn]
+                                * old_state.lrna[tkn] / old_state.liquidity[tkn]
+                                * (1 + old_state.lrna_imbalance / old_state.lrna_total) - new_state.lrna_total
+                                )
+    # new_state.lrna_imbalance += (-delta_Q * (1 + (1 - old_state.asset_fee)
+    #                    * (old_state.lrna[tkn] + old_state.lrna_imbalance)
+    #                    / (old_state.lrna[tkn] + delta_Q)))
 
     return new_state, new_agent
 
@@ -337,16 +339,9 @@ def add_liquidity(
     new_state.lrna[tkn_add] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = (
-        quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
-        * old_state.lrna_imbalance / old_state.lrna_total
-    )
+    delta_L = (quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
+               * old_state.lrna_imbalance / old_state.lrna_total)
     new_state.lrna_imbalance += delta_L
-
-    # T update: TVL soft cap
-    usd = new_state.stablecoin
-    delta_t = new_state.lrna[tkn_add] * new_state.liquidity[usd] / new_state.lrna[usd] - new_state.tvl[tkn_add]
-    new_state.tvl[tkn_add] += delta_t
 
     if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
         return old_state.fail_transaction(
