@@ -1,26 +1,17 @@
-import math
-from scipy.optimize import curve_fit
-import numpy as np
-
 import pytest
 from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+# from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
 from hydradx.model import processing
 from hydradx.model.processing import cash_out
-from hydradx.model.amm.trade_strategies import \
-    steady_swaps, invest_all, constant_product_arbitrage, toxic_asset_attack
+from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage
 from hydradx.model.amm.amm import AMM
-
-import sys
-
-sys.path.append('../..')
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -200,7 +191,7 @@ def test_LP(initial_state: GlobalState):
     final_state: GlobalState = events[-1]['state']
 
     # post-process
-    events = processing.postprocessing(events, optional_params=['withdraw_val', 'deposit_val'])
+    processing.postprocessing(events, optional_params=['withdraw_val'])
 
     if sum(final_state.agents['LP'].holdings.values()) > 0:
         print('failed, not invested')
@@ -317,14 +308,3 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
     elif target_price > buy_spot(initial_state):
         if buy_spot(algebraic_state) != pytest.approx(target_price):
             raise AssertionError("Arbitrage calculation doesn't match expected result.")
-
-
-@given(global_state_config())
-def test_construction(initial_state: GlobalState):
-    # see whether we can just construct a valid global state
-    # print(initial_state)
-    pass
-
-
-if __name__ == "__main__":
-    pass
