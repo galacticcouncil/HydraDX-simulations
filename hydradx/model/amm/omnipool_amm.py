@@ -65,12 +65,6 @@ class OmnipoolState(AMM):
         self.stablecoin = preferred_stablecoin
         self.fail = ''
 
-        # count TVL for each pool once all values are set
-        for token in self.asset_list:
-            self.tvl[token] = (
-                self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]
-            )
-
     def price(self, i: str):
         """
         price of an asset in USD, according to current market conditions in the omnipool
@@ -90,6 +84,7 @@ class OmnipoolState(AMM):
 
     @property
     def tvl_total(self):
+        # base this just on the LRNA/USD exchange rate in the pool
         return self.liquidity[self.stablecoin] * self.lrna[self.stablecoin] / self.lrna_total
 
     def copy(self):
@@ -110,7 +105,7 @@ class OmnipoolState(AMM):
                 f'    asset quantity: {self.liquidity[token]}\n'
                 f'    lrna quantity: {self.lrna[token]}\n'
                 f'    USD price: {self.price(token)}\n'
-                f'    tvl: {self.tvl[token]}\n'
+                f'    tvl: {self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]}\n'
                 f'    weight: {self.lrna[token]}/{self.lrna_total} ({self.lrna[token] / self.lrna_total})\n'
                 f'    weight cap: {self.weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
@@ -180,13 +175,11 @@ def swap_lrna(
     new_agent.holdings[tkn] += delta_ra
     new_state.lrna[tkn] += delta_Q
     new_state.liquidity[tkn] += delta_R
-    new_state.lrna_imbalance = (new_state.lrna_total * new_state.liquidity[tkn] / new_state.lrna[tkn]
-                                * old_state.lrna[tkn] / old_state.liquidity[tkn]
-                                * (1 + old_state.lrna_imbalance / old_state.lrna_total) - new_state.lrna_total
-                                )
-    # new_state.lrna_imbalance += (-delta_Q * (1 + (1 - old_state.asset_fee)
-    #                    * (old_state.lrna[tkn] + old_state.lrna_imbalance)
-    #                    / (old_state.lrna[tkn] + delta_Q)))
+    new_state.lrna_imbalance = (
+        new_state.lrna_total * new_state.liquidity[tkn] / new_state.lrna[tkn]
+        * old_state.lrna[tkn] / old_state.liquidity[tkn]
+        * (1 + old_state.lrna_imbalance / old_state.lrna_total) - new_state.lrna_total
+    )
 
     return new_state, new_agent
 
@@ -246,8 +239,8 @@ def swap(
     if tkn_sell == 'LRNA' or tkn_buy == 'LRNA':
 
         if tkn_sell == 'LRNA':
-            delta_qa = -sell_quantity or buy_quantity
-            delta_ra = -buy_quantity or sell_quantity
+            delta_qa = sell_quantity or -buy_quantity
+            delta_ra = buy_quantity or -sell_quantity
             tkn = tkn_buy
 
         else:  # tkn_buy == 'LRNA'
