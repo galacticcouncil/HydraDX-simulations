@@ -1,10 +1,10 @@
 import pytest
 
-from hydradx.model.amm import stableswap_amm as stableSwap
+from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
-from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model import run
 from hypothesis import given, strategies as st, assume
 
@@ -32,7 +32,7 @@ def stableswap_config(
         token_count: int = None,
         trade_fee: float = None,
         amplification: float = None
-) -> stableSwap.StableSwapPoolState:
+) -> stableswap.StableSwapPoolState:
     token_count = token_count or draw(asset_number_strategy)
     asset_dict = asset_dict or draw(assets_config(token_count))
     test_state = StableSwapPoolState(
@@ -45,6 +45,7 @@ def stableswap_config(
 
 @given(stableswap_config(trade_fee=0))
 def testSwapInvariant(initial_pool: StableSwapPoolState):
+    # print(f'testing with {len(initial_pool.asset_list)} assets')
     initial_state = GlobalState(
         pools={
             'stableswap': initial_pool
@@ -68,6 +69,8 @@ def testSwapInvariant(initial_pool: StableSwapPoolState):
         new_d = new_state.pools['stableswap'].calculate_d()
         if new_d != pytest.approx(d):
             raise AssertionError('Invariant has varied.')
+    if initial_state.total_wealth() != pytest.approx(new_state.total_wealth()):
+        raise AssertionError('Some assets were lost along the way.')
 
 
 @given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
@@ -109,18 +112,19 @@ def test_arbitrage(stable_pool):
 
 
 @given(stableswap_config(trade_fee=0))
-def test_add_remove_liquidity(initial_state: StableSwapPoolState):
-    lp_tkn = initial_state.asset_list[0]
+def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
+    # print(f'testing with {len(initial_state.asset_list)} assets')
+    lp_tkn = initial_pool.asset_list[0]
     lp = Agent(
         holdings={lp_tkn: 10000}
     )
-    add_liquidity_state, add_liquidity_agent = stableSwap.add_liquidity(
-        initial_state, old_agent=lp, quantity=10000, tkn_add=lp_tkn
+    add_liquidity_state, add_liquidity_agent = stableswap.add_liquidity(
+        initial_pool, old_agent=lp, quantity=10000, tkn_add=lp_tkn
     )
     remove_liquidity_state, remove_liquidity_agent = add_liquidity_state.remove_liquidity(
         add_liquidity_state,
         add_liquidity_agent,
-        quantity=add_liquidity_agent.shares[initial_state.unique_id],
+        quantity=add_liquidity_agent.shares[initial_pool.unique_id],
         tkn_remove=lp_tkn
     )
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
