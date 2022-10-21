@@ -1,6 +1,6 @@
 import pytest
 import random
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
 
@@ -201,9 +201,12 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
         raise AssertionError('Agent was able to remove more shares than it owned!')
 
 
-@given(constant_product_pool_config(trade_fee=0, fee_function=bamm.ConstantProductPoolState.custom_slip_fee(0.1)))
-def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
-
+@given(constant_product_pool_config(trade_fee=0), fee_strategy)
+def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: float):
+    assume(slip_factor > 0.01)
+    minimum_fee = 0.0001
+    initial_state.fee_function = bamm.ConstantProductPoolState.custom_slip_fee(
+        slip_factor=slip_factor, minimum=minimum_fee)
     initial_agent = Agent(
         holdings={token: 1000000 for token in initial_state.asset_list}
     )
@@ -211,54 +214,57 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
     tkn_sell = initial_state.asset_list[0]
     # buy half of the available asset with slip based fees
     buy_quantity = initial_state.liquidity[tkn_buy] / 2
-    swap_state, swap_agent = bamm.swap(
+    buy_state, buy_agent = bamm.swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity
     )
+    fee = initial_state.fee_function(initial_state, tkn_buy=tkn_buy, buy_quantity=buy_quantity)
+    if buy_state.liquidity[tkn_buy] * (fee - minimum_fee) != pytest.approx(abs(slip_factor * buy_quantity)):
+        raise AssertionError('Math mismatch, please re-check.')
     # now buy the same quantity, but do it in two smaller trades
     buy_quantity /= 2
-    half_swap_state, half_swap_agent = initial_state, initial_agent
+    split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
     next_state, next_agent = {}, {}
     for i in range(2):
         next_state[i], next_agent[i] = bamm.swap(
-            old_state=half_swap_state,
-            old_agent=half_swap_agent,
+            old_state=split_buy_state,
+            old_agent=split_buy_agent,
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             buy_quantity=buy_quantity
         )
-        half_swap_state, half_swap_agent = next_state[i], next_agent[i]
+        split_buy_state, split_buy_agent = next_state[i], next_agent[i]
 
-    if swap_state.fail or half_swap_state.fail:
+    if buy_state.fail or split_buy_state.fail:
         return
 
-    if (swap_state.liquidity[tkn_buy] != pytest.approx(half_swap_state.liquidity[tkn_buy]) or
-            pytest.approx(half_swap_agent.holdings[tkn_buy]) != swap_agent.holdings[tkn_buy]):
+    if (buy_state.liquidity[tkn_buy] != pytest.approx(split_buy_state.liquidity[tkn_buy]) or
+            pytest.approx(split_buy_agent.holdings[tkn_buy]) != buy_agent.holdings[tkn_buy]):
         raise AssertionError('Buy quantities not equal.')
 
-    if (swap_state.liquidity[tkn_sell] <= half_swap_state.liquidity[tkn_sell] or
-            swap_agent.holdings[tkn_sell] >= half_swap_agent.holdings[tkn_sell]):
+    if (buy_state.liquidity[tkn_sell] <= split_buy_state.liquidity[tkn_sell] or
+            buy_agent.holdings[tkn_sell] >= split_buy_agent.holdings[tkn_sell]):
         # show that when using slip-based fees,
         # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
-        # raise AssertionError('Fee balance different than expected.')
+        raise AssertionError('Agent did not save money by breaking the trade into two parts.')
         pass
 
     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-            != pytest.approx(swap_agent.holdings[tkn_sell] + swap_agent.holdings[tkn_buy]
-                             + swap_state.liquidity[tkn_sell] + swap_state.liquidity[tkn_buy])):
+            != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
+                             + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
         raise AssertionError('Asset quantity is not constant after trade (one-part)')
 
     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-            != pytest.approx(half_swap_agent.holdings[tkn_sell] + half_swap_agent.holdings[tkn_buy]
-                             + half_swap_state.liquidity[tkn_sell] + half_swap_state.liquidity[tkn_buy])):
+            != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
+                             + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
         raise AssertionError('Asset quantity is not constant after trade (two-part)')
 
-    sell_quantity = swap_state.liquidity[tkn_sell] - initial_state.liquidity[tkn_sell]
+    sell_quantity = buy_state.liquidity[tkn_sell] - initial_state.liquidity[tkn_sell]
     sell_state, sell_agent = bamm.swap(
         old_state=initial_state,
         old_agent=initial_agent,
@@ -275,28 +281,30 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState):
 
     # now sell the same quantity, but do it in two smaller trades
     sell_quantity /= 2
-    half_sell_state, half_sell_agent = initial_state, initial_agent
+    split_sell_state, split_sell_agent = initial_state, initial_agent
     next_state, next_agent = {}, {}
     for i in range(2):
         next_state[i], next_agent[i] = bamm.swap(
-            old_state=half_sell_state,
-            old_agent=half_sell_agent,
+            old_state=split_sell_state,
+            old_agent=split_sell_agent,
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             sell_quantity=sell_quantity
         )
-        half_sell_state, half_sell_agent = next_state[i], next_agent[i]
+        split_sell_state, split_sell_agent = next_state[i], next_agent[i]
 
-    if sell_state.fail or half_sell_state.fail:
+    if sell_state.fail or split_sell_state.fail:
         raise AssertionError('sell swap failed!')
 
-    if (sell_state.liquidity[tkn_buy] <= half_sell_state.liquidity[tkn_buy] or
-            sell_agent.holdings[tkn_buy] >= half_sell_agent.holdings[tkn_buy]):
+    if (sell_state.liquidity[tkn_buy] <= split_sell_state.liquidity[tkn_buy] or
+            sell_agent.holdings[tkn_buy] >= split_sell_agent.holdings[tkn_buy]):
         # show that when using slip-based fees,
         # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
         # this should apply regardless of how the trade is specified.
-        raise AssertionError('Fee balance different than expected.')
+        raise AssertionError('Agent did not save money by breaking the trade into two parts.')
 
+    # this is commented out because it doesn't work. the spec would have to be adjusted
+    # in some yet-to-be-determined way. not currently a priority.
     # if sell_state.liquidity[tkn_buy] != pytest.approx(swap_state.liquidity[tkn_buy]):
     #     raise AssertionError('Buy transaction was not reversed accurately.')
 
