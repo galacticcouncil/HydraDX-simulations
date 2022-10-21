@@ -36,19 +36,33 @@ class ConstantProductPoolState(AMM):
 
         self.unique_id = unique_id
 
-    def thorchain_fee(self, sell_asset: str, buy_asset: str, trade_size: float) -> float:
-        return trade_size * self.liquidity[buy_asset] / (trade_size + self.liquidity[sell_asset]) ** 2
+    def thorchain_fee(self, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0, sell_quantity: float = 0) -> float:
+        if sell_quantity:
+            return sell_quantity / (sell_quantity + self.liquidity[tkn_sell])
+        elif buy_quantity:
+            return buy_quantity / (buy_quantity + self.liquidity[tkn_buy])
+        raise ValueError('Trade must include a buy quantity or a sell quantity.')
 
     @staticmethod
-    def custom_slip_fee(slip_factor: float) -> Callable:
-        def fee_function(exchange, sell_asset: str, buy_asset: str, trade_size: float) -> float:
-            return trade_size * slip_factor / exchange.liquidity[sell_asset]
+    def custom_slip_fee(slip_factor: float, minimum: float = 0) -> Callable:
+        def fee_function(
+            exchange, tkn_sell: str = '', tkn_buy: str = '', buy_quantity: float = 0, sell_quantity: float = 0
+        ) -> float:
+            if sell_quantity:
+                fee = (slip_factor * sell_quantity
+                       / (sell_quantity + exchange.liquidity[tkn_sell])) + minimum
+            elif buy_quantity:
+                fee = (slip_factor * buy_quantity
+                       / (exchange.liquidity[tkn_buy] - buy_quantity)) + minimum
+            else:
+                raise ValueError('Trade must include a buy quantity or a sell quantity.')
+            return fee
         return fee_function
 
-    def trade_fee(self, tkn_sell: str, tkn_buy: str, trade_size: float) -> float:
+    def trade_fee(self, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0, sell_quantity: float = 0) -> float:
         fee = 0
         if self.fee_function:
-            fee += self.fee_function(self, tkn_sell, tkn_buy, trade_size)
+            fee += self.fee_function(self, tkn_sell, tkn_buy, buy_quantity, sell_quantity)
         fee += self.base_fee
         return fee
 
@@ -167,7 +181,7 @@ def swap(
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, buy_quantity=buy_quantity)
         buy_quantity *= 1 - trade_fee
         new_agent.holdings[tkn_buy] += buy_quantity
         new_agent.holdings[tkn_sell] -= sell_quantity
@@ -177,7 +191,7 @@ def swap(
     elif buy_quantity != 0:
         # calculate input price from a given payout
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(buy_quantity))
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, sell_quantity=sell_quantity)
         sell_quantity *= 1 + trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity
         new_agent.holdings[tkn_buy] += buy_quantity
