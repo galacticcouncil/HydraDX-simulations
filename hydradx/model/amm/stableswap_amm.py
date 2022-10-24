@@ -71,20 +71,6 @@ class StableSwapPoolState(AMM):
             if self.has_converged(d_prev, d):
                 return d
 
-    # def calculate_y(self, reserve, d, max_iterations=128):
-    #     s = reserve
-    #     c = d
-    #     c *= d / 2 / reserve
-    #     c *= d / self.ann / self.n_coins
-    #
-    #     b = s + d / self.ann
-    #     y = d
-    #     for i in range(max_iterations):
-    #         y_prev = y
-    #         y = (y ** 2 + c) / (2 * y + b - d)
-    #         if self.has_converged(y_prev, y):
-    #             return y
-
     """
     Given a value for D and the balances of all tokens except 1, calculate what the balance of the final token should be
     """
@@ -105,13 +91,8 @@ class StableSwapPoolState(AMM):
         for _ in range(max_iterations):
             y_prev = y
             y = (y ** 2 + c) / (2 * y + b - d)
-            # y.checked_mul(y)?
-            # .checked_add(c)?
-            # .checked_div(two_hp.checked_mul(y)?.checked_add(b)?.checked_sub(d_hp)?)?
-            # .checked_add(two_hp)?;
 
             if self.has_converged(y_prev, y):
-                # [cfg(not(feature = "runtime-benchmarks"))]
                 return y
 
         return y
@@ -214,6 +195,9 @@ def add_liquidity(
         new_agent.shares[new_state.unique_id] = updated_d
         new_state.shares = updated_d
 
+    elif new_state.shares <= 0:
+        return old_state.fail_transaction('Shares cannot go below 0.'), old_agent
+
     else:
         d_diff = updated_d - initial_d
         share_amount = old_state.shares * d_diff / initial_d
@@ -221,6 +205,7 @@ def add_liquidity(
         if new_state.unique_id not in new_agent.shares:
             new_agent.shares[new_state.unique_id] = 0
         new_agent.shares[new_state.unique_id] += share_amount
+        new_agent.share_prices[new_state.unique_id] = quantity / share_amount
 
     return new_state, new_agent
 
