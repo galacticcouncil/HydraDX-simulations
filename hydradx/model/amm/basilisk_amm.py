@@ -23,7 +23,7 @@ class ConstantProductPoolState(AMM):
         if trade_fee is not None:
             self.base_fee = mpf(trade_fee)
         else:
-            self.base_fee = None
+            self.base_fee = 0
         self.fee_function = fee_function
         self.liquidity = dict()
         self.asset_list: list[str] = []
@@ -151,6 +151,7 @@ def swap(
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return old_state.fail_transaction('Invalid token name.'), old_agent
 
+    # turn a negative buy into a sell and vice versa
     if buy_quantity < 0:
         sell_quantity = -buy_quantity
         buy_quantity = 0
@@ -167,6 +168,8 @@ def swap(
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
+        if math.isnan(buy_quantity):
+            buy_quantity = sell_quantity  # this allows infinite liquidity for testing
         trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
         buy_quantity *= 1 - trade_fee
         new_agent.holdings[tkn_buy] += buy_quantity
@@ -177,8 +180,10 @@ def swap(
     elif buy_quantity != 0:
         # calculate input price from a given payout
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(buy_quantity))
-        sell_quantity *= 1 + trade_fee
+        if math.isnan(sell_quantity):
+            sell_quantity = buy_quantity  # this allows infinite liquidity for testing
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        sell_quantity /= 1 - trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity
         new_agent.holdings[tkn_buy] += buy_quantity
         new_state.liquidity[tkn_buy] -= buy_quantity
