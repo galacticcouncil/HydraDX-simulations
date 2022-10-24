@@ -1,5 +1,5 @@
 import pytest
-
+import functools
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
@@ -44,7 +44,7 @@ def stableswap_config(
 
 
 @given(stableswap_config(trade_fee=0))
-def testSwapInvariant(initial_pool: StableSwapPoolState):
+def test_swap_invariant(initial_pool: StableSwapPoolState):
     # print(f'testing with {len(initial_pool.asset_list)} assets')
     initial_state = GlobalState(
         pools={
@@ -73,6 +73,16 @@ def testSwapInvariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
+@given(stableswap_config(trade_fee=0))
+def test_round_trip_dy(initial_pool: StableSwapPoolState):
+    d = initial_pool.calculate_d()
+    asset_a = initial_pool.asset_list[0]
+    other_reserves = [initial_pool.liquidity[a] for a in list(filter(lambda k: k != asset_a, initial_pool.asset_list))]
+    y = initial_pool.calculate_y(reserves=other_reserves, d=d)
+    if y != pytest.approx(initial_pool.liquidity[asset_a]) or y < initial_pool.liquidity[asset_a]:
+        raise AssertionError('Round-trip calculation incorrect.')
+
+
 @given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
 def test_arbitrage(stable_pool):
     initial_state = GlobalState(
@@ -86,7 +96,7 @@ def test_arbitrage(stable_pool):
             ),
             'Arbitrageur': Agent(
                 holdings={'R1': 1000000, 'R2': 1000000},
-                trade_strategy=stableswap_arbitrage(pool_id='R1/R2', minimum_profit=0)
+                trade_strategy=stableswap_arbitrage(pool_id='R1/R2', minimum_profit=0, precision=0.000001)
             )
         },
         external_market={
@@ -99,9 +109,11 @@ def test_arbitrage(stable_pool):
     # print(events[0]['state'].pools['R1/R2'].spot_price, events[-1]['state'].pools['R1/R2'].spot_price)
     if (
         events[0]['state'].pools['R1/R2'].spot_price
-        != pytest.approx(events[-1]['state'].pools['R1/R2'].spot_price, rel=1e-2)
+        != pytest.approx(events[-1]['state'].pools['R1/R2'].spot_price)
     ):
-        raise AssertionError("Arbitrageur didn't keep the price stable.")
+        raise AssertionError(f"Arbitrageur didn't keep the price stable."
+                             f"({events[0]['state'].pools['R1/R2'].spot_price})"
+                             f"{events[-1]['state'].pools['R1/R2'].spot_price}")
     if (
         events[0]['state'].agents['Arbitrageur'].holdings['R1']
         + events[0]['state'].agents['Arbitrageur'].holdings['R2']
@@ -111,6 +123,13 @@ def test_arbitrage(stable_pool):
         raise AssertionError("Arbitrageur didn't make money.")
 
 
+def stable_swap_equation(d: float, a: float, n: int, reserves: list):
+    # this is the equation that should remain true at all times within a stableswap pool
+    side1 = a * n ** n * sum(reserves) + d
+    side2 = a * n ** n * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, reserves))
+    return side1 == pytest.approx(side2)
+
+
 @given(stableswap_config(trade_fee=0))
 def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     # print(f'testing with {len(initial_state.asset_list)} assets')
@@ -118,14 +137,30 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     lp = Agent(
         holdings={lp_tkn: 10000}
     )
+
     add_liquidity_state, add_liquidity_agent = stableswap.add_liquidity(
         initial_pool, old_agent=lp, quantity=10000, tkn_add=lp_tkn
     )
+    if not stable_swap_equation(
+        add_liquidity_state.calculate_d(),
+        add_liquidity_state.amplification,
+        add_liquidity_state.n_coins,
+        add_liquidity_state.liquidity.values()
+    ):
+        raise AssertionError('Stableswap equation does not hold after add liquidity operation.')
+
     remove_liquidity_state, remove_liquidity_agent = add_liquidity_state.remove_liquidity(
         add_liquidity_state,
         add_liquidity_agent,
         quantity=add_liquidity_agent.shares[initial_pool.unique_id],
         tkn_remove=lp_tkn
     )
+    if not stable_swap_equation(
+        remove_liquidity_state.calculate_d(),
+        remove_liquidity_state.amplification,
+        remove_liquidity_state.n_coins,
+        remove_liquidity_state.liquidity.values()
+    ):
+        raise AssertionError('Stableswap equation does not hold after add liquidity operation.')
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
         raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
