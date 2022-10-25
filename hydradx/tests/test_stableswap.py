@@ -19,7 +19,7 @@ asset_number_strategy = st.integers(min_value=2, max_value=5)
 @st.composite
 def assets_config(draw, token_count) -> dict:
     return_dict = {
-        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        f"USD-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
         for i in range(token_count)
     }
     return return_dict
