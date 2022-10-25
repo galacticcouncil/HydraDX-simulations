@@ -6,7 +6,7 @@ from .amm import global_state
 # functions for calculating extra parameters we may want to track
 def value_assets(prices: dict, agent: Agent) -> float:
     return sum([
-        agent.holdings[i] * prices[i]
+        agent.holdings[i] * prices[i] if i in prices else 0
         for i in agent.holdings.keys()
     ])
 
@@ -18,14 +18,14 @@ def market_prices(state: GlobalState, shares: dict) -> dict:
         if isinstance(share_id, tuple):
             pool_id = share_id[0]
             tkn_id = share_id[1]
-            prices[tkn_id] = state.pools[pool_id].price(tkn_id)
+            prices[share_id] = state.pools[pool_id].price(tkn_id)
 
     return prices
 
 
 def cash_out(state: GlobalState, agent: Agent) -> float:
     new_agent = withdraw_all_liquidity(state, agent.unique_id).agents[agent.unique_id]
-    prices = market_prices(state, agent.shares)
+    prices = market_prices(state, agent.holdings)
     return value_assets(prices, new_agent)
 
 
@@ -99,7 +99,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
             if 'deposit_val' in optional_params:
                 # what are this agent's original holdings theoretically worth at current spot prices?
                 agent.deposit_val = value_assets(
-                    market_prices(state, agent.shares),
+                    market_prices(state, agent.holdings),
                     withdraw_state.agents[agent.unique_id]
                 )
             if 'withdraw_val' in optional_params:

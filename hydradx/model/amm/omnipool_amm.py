@@ -76,12 +76,11 @@ class OmnipoolState(AMM):
         """
         return self.lrna[i] / self.liquidity[i] / self.lrna[self.stablecoin] * self.liquidity[self.stablecoin]
 
-    @property
-    def lrna_price(self) -> dict[str: float]:
+    def lrna_price(self, tkn) -> float:
         """
         price of asset i in LRNA
         """
-        return {i: self.lrna[i] / self.liquidity[i] for i in self.asset_list}
+        return self.lrna[tkn] / self.liquidity[tkn]
 
     @property
     def lrna_total(self):
@@ -129,7 +128,8 @@ class OmnipoolState(AMM):
         """
 
         for sub_pool in self.sub_pools:
-            if {tkn_buy, tkn_sell} | {*sub_pool.asset_list}:
+            # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
+            if {tkn_buy, tkn_sell} & {*sub_pool.asset_list}:
                 if isinstance(sub_pool, StableSwapPoolState):
                     return self.execute_stable_swap(
                         agent, sub_pool,
@@ -142,8 +142,8 @@ class OmnipoolState(AMM):
 
         if buy_quantity != 0:
             # back into correct delta_Ri, then execute sell
-            delta_Qj = -self.lrna[tkn_buy] * buy_quantity / (
-                    self.liquidity[tkn_buy] * (1 - self.asset_fee) + buy_quantity)
+            delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
+                    self.liquidity[tkn_buy] * (1 - self.asset_fee) - buy_quantity)
             delta_Qi = -delta_Qj / (1 - self.lrna_fee)
             delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
             return self.execute_swap(
@@ -193,16 +193,24 @@ class OmnipoolState(AMM):
         buy_quantity: float = 0,
         sell_quantity: float = 0
     ):
+        initial_d = sub_pool.calculate_d()
+
         if buy_quantity and tkn_buy in sub_pool.asset_list:
-            initial_d = sub_pool.calculate_d()
             updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: -buy_quantity}))
             delta_d = updated_d - initial_d
-            share_cost = sub_pool.shares * delta_d / initial_d / (1 - sub_pool.trade_fee)
-            if share_cost > sub_pool.shares:
+            shares_traded = -sub_pool.shares * delta_d / initial_d / (1 - sub_pool.trade_fee)
+            if shares_traded > sub_pool.shares:
                 return self.fail_transaction("Subpool doesn't have enough liquidity."), agent
-            self.execute_swap(agent, tkn_buy=sub_pool.unique_id, tkn_sell=tkn_sell, buy_quantity=buy_quantity)
+            # buy shares in the subpool
+            self.execute_swap(agent, tkn_buy=sub_pool.unique_id, tkn_sell=tkn_sell, buy_quantity=shares_traded)
+            # withdraw the shares for the desired token
+            sub_pool, agent = StableSwapPoolState.remove_liquidity(sub_pool, agent, shares_traded, tkn_remove=tkn_buy)
             return self, agent
         elif buy_quantity and tkn_sell in sub_pool.asset_list:
+            updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: buy_quantity}))
+            delta_d = updated_d - initial_d
+            shares_traded = sub_pool.shares * delta_d / initial_d
+            self.execute_swap(agent, tkn_buy=tkn_buy, tkn_sell=sub_pool.unique_id, buy_quantity=buy_quantity)
             return self, agent
         elif sell_quantity and tkn_sell in sub_pool.asset_list:
             return self, agent
@@ -364,9 +372,9 @@ def add_liquidity(
 
     if old_agent:
         # shares go to provisioning agent
-        if not (new_state.unique_id, tkn_add) in new_agent.shares:
-            new_agent.shares[(new_state.unique_id, tkn_add)] = 0
-        new_agent.shares[(new_state.unique_id, tkn_add)] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
+        if not (new_state.unique_id, tkn_add) in new_agent.holdings:
+            new_agent.holdings[(new_state.unique_id, tkn_add)] = 0
+        new_agent.holdings[(new_state.unique_id, tkn_add)] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
     else:
         # shares go to protocol
         new_state.protocol_shares[tkn_add] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
@@ -397,7 +405,7 @@ def add_liquidity(
 
     # set price at which liquidity was added
     if old_agent:
-        new_agent.share_prices[(new_state.unique_id, tkn_add)] = new_state.lrna_price[tkn_add]
+        new_agent.share_prices[(new_state.unique_id, tkn_add)] = new_state.lrna_price(tkn_add)
 
     return new_state, new_agent
 
@@ -420,7 +428,7 @@ def remove_liquidity(
         return new_state, new_agent
 
     # determine if they should get some LRNA back as well as the asset they invested
-    piq = old_state.lrna_price[tkn_remove]
+    piq = old_state.lrna_price(tkn_remove)
     p0 = new_agent.share_prices[(new_state.unique_id, tkn_remove)]
     mult = (piq - p0) / (piq + p0)
 
@@ -428,7 +436,7 @@ def remove_liquidity(
     delta_B = max(mult * quantity, 0)
     new_state.protocol_shares[tkn_remove] += delta_B
     new_state.shares[tkn_remove] += quantity + delta_B
-    new_agent.shares[(new_state.unique_id, tkn_remove)] += quantity
+    new_agent.holdings[(new_state.unique_id, tkn_remove)] += quantity
 
     # Token amounts update
     delta_R = old_state.liquidity[tkn_remove] * max((quantity + delta_B) / old_state.shares[tkn_remove], -1)

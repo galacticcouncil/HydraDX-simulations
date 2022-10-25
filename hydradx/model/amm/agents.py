@@ -6,7 +6,6 @@ class Agent:
 
     def __init__(self,
                  holdings: dict[str: float] = None,
-                 shares: dict[any: float] = None,
                  share_prices: dict[str: float] = None,
                  trade_strategy: any = None,
                  ):
@@ -15,19 +14,16 @@ class Agent:
         {
             asset_name: quantity
         }
-        shares should be in the form of:
+        share_prices should be in the form of:
         {
-            pool_name: share quantity
+            asset_name: price
         }
-        share_prices should be in the same form as shares, and the keys should match.
         The values of share_prices reflect the price at which those shares were acquired.
         """
         self.holdings = holdings or {}
-        self.shares = shares or {}
         self.share_prices = share_prices or {}
         self.trade_strategy = trade_strategy
-
-        self.asset_list = list(set(list(self.holdings.keys()) + [share[1] for share in self.shares.keys()]))
+        self.asset_list = list(self.holdings.keys())
 
     def __repr__(self):
         return (
@@ -37,15 +33,9 @@ class Agent:
             f'holdings: (\n' +
             f')\n(\n'.join(
                 [(
-                    f'    {token}: {self.holdings[token]}\n'
-                ) for token in self.holdings]
-            ) + ')\n' +
-            f'shares: (\n' +
-            f')\n(\n'.join(
-                [(
-                    f'    {pool}: {self.shares[pool]}\n'
-                    f'    price: {self.share_prices[pool]}\n'
-                ) for pool in self.shares]
+                    f'    {tkn}: {self.holdings[tkn]}\n' +
+                    f'    price: {self.share_prices[tkn]}\n' if tkn in self.share_prices else ''
+                ) for tkn in self.holdings]
             ) + ')\n')
 
     def copy(self):

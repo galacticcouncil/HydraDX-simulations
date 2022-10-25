@@ -152,7 +152,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     remove_liquidity_state, remove_liquidity_agent = add_liquidity_state.remove_liquidity(
         add_liquidity_state,
         add_liquidity_agent,
-        quantity=add_liquidity_agent.shares[initial_pool.unique_id],
+        quantity=add_liquidity_agent.holdings[initial_pool.unique_id],
         tkn_remove=lp_tkn
     )
     if not stable_swap_equation(

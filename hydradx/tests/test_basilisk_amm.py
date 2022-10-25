@@ -144,7 +144,7 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
     if not new_state.fail:
         revert_state, revert_agent = bamm.remove_liquidity(
             new_state, new_agent,
-            quantity=new_agent.shares[new_state.unique_id],
+            quantity=new_agent.holdings[new_state.unique_id],
             tkn_remove=tkn_add
         )
         if (
@@ -153,8 +153,8 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
                 or revert_state.shares != pytest.approx(old_state.shares)
                 or revert_agent.holdings[tkn_add] != pytest.approx(revert_agent.holdings[tkn_add])
                 or revert_agent.holdings[other_tkn] != pytest.approx(revert_agent.holdings[other_tkn])
-                or revert_agent.shares[old_state.unique_id] != pytest.approx(
-                    revert_agent.shares[old_state.unique_id]
+                or revert_agent.holdings[old_state.unique_id] != pytest.approx(
+                    revert_agent.holdings[old_state.unique_id]
                 )
         ):
             raise AssertionError('Withdrawal failed to return to previous state.')

@@ -1,3 +1,5 @@
+import copy
+
 from .global_state import AMM
 from .agents import Agent
 from mpmath import mpf, mp
@@ -144,6 +146,9 @@ class StableSwapPoolState(AMM):
 
         return self, new_agent
 
+    def copy(self):
+        return copy.deepcopy(self)
+
     def __repr__(self):
         return (
             f'Stable Swap Pool\n'
@@ -192,8 +197,8 @@ def add_liquidity(
         return old_state.fail_transaction('invariant decreased for some reason'), old_agent
 
     if old_state.shares == 0:
-        new_agent.shares[new_state.unique_id] = updated_d
-        new_state.shares = updated_d
+        new_agent.holdings[new_state.unique_id] = updated_d
+        new_state.holdings = updated_d
 
     elif new_state.shares <= 0:
         return old_state.fail_transaction('Shares cannot go below 0.'), old_agent
@@ -202,9 +207,9 @@ def add_liquidity(
         d_diff = updated_d - initial_d
         share_amount = old_state.shares * d_diff / initial_d
         new_state.shares += share_amount
-        if new_state.unique_id not in new_agent.shares:
-            new_agent.shares[new_state.unique_id] = 0
-        new_agent.shares[new_state.unique_id] += share_amount
+        if new_state.unique_id not in new_agent.holdings:
+            new_agent.holdings[new_state.unique_id] = 0
+        new_agent.holdings[new_state.unique_id] += share_amount
         new_agent.share_prices[new_state.unique_id] = quantity / share_amount
 
     return new_state, new_agent
@@ -216,14 +221,14 @@ def remove_liquidity(
     quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
     tkn_remove: str
 ):
-    if quantity > old_agent.shares[old_state.unique_id]:
+    if quantity > old_agent.holdings[old_state.unique_id]:
         raise ValueError('Agent tried to remove more shares than it owns.')
 
     share_fraction = quantity / old_state.shares
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     new_state.shares -= quantity
-    new_agent.shares[old_state.unique_id] -= quantity
+    new_agent.holdings[old_state.unique_id] -= quantity
     new_state.d = new_state.calculate_d(new_state.liquidity.values()) * (1 - share_fraction)
     delta_tkn = new_state.calculate_y(
         new_state.modified_balances(delta={}, omit=[tkn_remove]),
