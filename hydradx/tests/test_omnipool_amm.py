@@ -298,7 +298,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     buy_state.lrna_fee = 0
     buy_state.asset_fee = 0
     buy_state, buy_agent = oamm.swap(
-        buy_state, old_agent, i_buy, i_sell, buy_quantity=-delta_out_new
+        buy_state, old_agent, i_buy, i_sell, buy_quantity=delta_out_new
     )
 
     for j in old_state.asset_list:

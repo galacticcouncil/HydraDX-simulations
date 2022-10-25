@@ -271,9 +271,9 @@ def swap(
 
     elif buy_quantity != 0:
         # back into correct delta_Ri, then execute sell
-        delta_Qj = -old_state.lrna[tkn_buy] * buy_quantity / (
-                old_state.liquidity[tkn_buy] * (1 - old_state.asset_fee) + buy_quantity)
-        delta_Qi = -delta_Qj/(1 - old_state.lrna_fee)
+        delta_Qj = old_state.lrna[tkn_buy] * buy_quantity / (
+                old_state.liquidity[tkn_buy] * (1 - old_state.asset_fee) - buy_quantity)
+        delta_Qi = -delta_Qj / (1 - old_state.lrna_fee)
         delta_Ri = -old_state.liquidity[tkn_sell] * delta_Qi / (old_state.lrna[tkn_sell] + delta_Qi)
         return swap(
             old_state=old_state,
