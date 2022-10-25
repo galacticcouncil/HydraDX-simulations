@@ -203,8 +203,6 @@ def test_remove_liquidity(initial_state: oamm.OmnipoolState):
 @given(omnipool_config(token_count=3), fee_strategy)
 def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
     old_state = initial_state
-    trader_id = 'trader'
-    LP_id = 'lp'
     old_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']}
     )
@@ -251,9 +249,9 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
         holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']},
         shares={token: 10000 for token in initial_state.asset_list}
     )
-    delta_R = 1000
     sellable_tokens = len(old_state.asset_list) - 1
     i_sell = old_state.asset_list[i % sellable_tokens + 1]
+    delta_R = min(1000, old_state.liquidity[i_sell] / 2, old_state.liquidity[i_buy] / 2)
 
     # Test with trader selling asset i, no LRNA fee... price should match feeless
     new_state, new_agent = \
@@ -293,20 +291,28 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     if delta_L + delta_Qj + delta_Qi + delta_Qh != pytest.approx(0, abs=1e10):
         raise AssertionError('Some LRNA was lost along the way.')
 
-    delta_out_new = new_agent.holdings[i_buy] - old_agent.holdings[i_buy]
+    delta_out_new = feeless_agent.holdings[i_buy] - old_agent.holdings[i_buy]
 
     # Test with trader buying asset i, no LRNA fee... price should match feeless
+    buy_state = old_state.copy()
+    buy_state.lrna_fee = 0
+    buy_state.asset_fee = 0
     buy_state, buy_agent = oamm.swap(
-        old_state, old_agent, i_buy, i_sell, buy_quantity=-delta_out_new
+        buy_state, old_agent, i_buy, i_sell, buy_quantity=-delta_out_new
     )
 
     for j in old_state.asset_list:
-        assert buy_state.liquidity[j] == pytest.approx(new_state.liquidity[j])
-        assert buy_state.lrna[j] == pytest.approx(new_state.lrna[j])
-        assert old_state.liquidity[j] + old_agent.holdings[j] == \
-               pytest.approx(buy_state.liquidity[j] + buy_agent.holdings[j])
-        assert buy_agent.holdings[j] == pytest.approx(new_agent.holdings[j])
-        assert buy_agent.holdings['LRNA'] == pytest.approx(new_agent.holdings['LRNA'])
+        if not buy_state.liquidity[j] == pytest.approx(feeless_state.liquidity[j]):
+            raise AssertionError(f'Liquidity mismatch in {j}')
+        if not buy_state.lrna[j] == pytest.approx(feeless_state.lrna[j]):
+            raise AssertionError(f'LRNA mismatch in {j}')
+        if not (
+            old_state.liquidity[j] + old_agent.holdings[j] ==
+            pytest.approx(buy_state.liquidity[j] + buy_agent.holdings[j])
+        ):
+            raise AssertionError('Change in the total quantity of {j}.')
+        assert buy_agent.holdings[j] == pytest.approx(feeless_agent.holdings[j])
+        assert buy_agent.holdings['LRNA'] == pytest.approx(feeless_agent.holdings['LRNA'])
 
 
 if __name__ == '__main__':
