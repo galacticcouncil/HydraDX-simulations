@@ -6,7 +6,6 @@ from .stableswap_amm import StableSwapPoolState
 
 class OmnipoolState(AMM):
     unique_id: str = 'omnipool'
-    stableswap_subpool: StableSwapPoolState
 
     def __init__(self,
                  tokens: dict[str: dict],
@@ -44,7 +43,6 @@ class OmnipoolState(AMM):
         self.lrna = {}
         self.shares = {}
         self.protocol_shares = {}
-        self.tvl = {}
         self.weight_cap = {}
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
@@ -378,8 +376,10 @@ def add_liquidity(
     new_state.lrna[tkn_add] += delta_Q
 
     # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = (quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
-               * old_state.lrna_imbalance / old_state.lrna_total)
+    delta_L = (
+        quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
+        * old_state.lrna_imbalance / old_state.lrna_total
+    )
     new_state.lrna_imbalance += delta_L
 
     if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
