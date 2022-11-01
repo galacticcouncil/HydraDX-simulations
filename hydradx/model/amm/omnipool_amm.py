@@ -245,6 +245,13 @@ class OmnipoolState(AMM):
             )
             return self, agent
         elif buy_quantity and tkn_sell in sub_pool.asset_list:
+            sell_shares = self.calculate_sell_from_buy(tkn_buy, sub_pool.unique_id, buy_quantity)
+            if sell_shares < 0:
+                return self.fail_transaction("Not enough liquidity in the stableswap/LRNA pool."), agent
+            sub_pool.execute_buy_shares(agent, sell_shares, tkn_sell)
+            if sub_pool.fail:
+                return self.fail_transaction(sub_pool.fail), agent
+            self.execute_swap(agent, tkn_buy, sub_pool.unique_id, buy_quantity)
             return self, agent
         elif sell_quantity and tkn_buy in sub_pool.asset_list:
             return self, agent
