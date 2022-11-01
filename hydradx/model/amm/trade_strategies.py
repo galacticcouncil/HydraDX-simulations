@@ -319,7 +319,7 @@ def omnipool_arbitrage(pool_id: str):
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
-def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1):
+def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
 
@@ -344,7 +344,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1):
             )
             return stable_pool.price_at_balance([balance_in, balance_out], d)
 
-        delta_y = find_agent_delta_y(target_price, price_after_trade, precision=0.0001)
+        delta_y = find_agent_delta_y(target_price, price_after_trade, precision=precision)
         delta_x = (
             stable_pool.liquidity[sell_asset]
             - stable_pool.calculate_y(stable_pool.modified_balances(delta={buy_asset: -delta_y}, omit=[sell_asset]), d)
