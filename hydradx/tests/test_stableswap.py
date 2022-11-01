@@ -125,6 +125,33 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
+@given(stableswap_config(precision=0.000000001))
+def test_buy_shares(initial_pool: StableSwapPoolState):
+    initial_agent = Agent(
+        holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]}
+    )
+    # agent holds all the shares
+    tkn_add = initial_pool.asset_list[0]
+    pool_name = initial_pool.unique_id
+    delta_tkn = 10
+    initial_agent.holdings.update({tkn_add: 10})
+    add_liquidity_pool, add_liquidity_agent = stableswap.add_liquidity(
+        initial_pool, initial_agent, delta_tkn, tkn_add
+    )
+    delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
+    buy_shares_pool, buy_shares_agent = initial_pool.copy().execute_buy_shares(
+        initial_agent.copy(), delta_shares, tkn_add
+    )
+
+    if (
+        add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add])
+        or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name])
+        or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add])
+        or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares)
+    ):
+        raise AssertionError("Asset values don't match.")
+
+
 @given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
 def test_arbitrage(stable_pool):
     initial_state = GlobalState(
