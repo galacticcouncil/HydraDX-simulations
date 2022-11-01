@@ -206,7 +206,9 @@ class StableSwapPoolState(AMM):
         # shares_removed = self.cost_of_asset_in_shares(tkn_remove, quantity)
 
         if shares_removed > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
+            # return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
+            # just round down
+            shares_removed = agent.holdings[self.unique_id]
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
