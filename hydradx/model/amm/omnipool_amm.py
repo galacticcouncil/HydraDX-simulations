@@ -2,6 +2,8 @@ import copy
 from .agents import Agent
 from .amm import AMM
 from .stableswap_amm import StableSwapPoolState
+from mpmath import mpf, mp
+mp.dps = 50
 
 
 class OmnipoolState(AMM):
@@ -47,20 +49,20 @@ class OmnipoolState(AMM):
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
             self.asset_list.append(token)
-            self.liquidity[token] = (pool['liquidity'])
-            self.shares[token] = (pool['liquidity'])
-            self.protocol_shares[token] = (pool['liquidity'])
-            self.weight_cap[token] = (pool['weight_cap'] if 'weight_cap' in pool else 1)
+            self.liquidity[token] = mpf(pool['liquidity'])
+            self.shares[token] = mpf(pool['liquidity'])
+            self.protocol_shares[token] = mpf(pool['liquidity'])
+            self.weight_cap[token] = mpf(pool['weight_cap'] if 'weight_cap' in pool else 1)
             if 'LRNA' in pool:
-                self.lrna[token] = (pool['LRNA'])
+                self.lrna[token] = mpf(pool['LRNA'])
             elif 'LRNA_price' in pool:
-                self.lrna[token] = pool['liquidity'] / pool['LRNA_price']
+                self.lrna[token] = mpf(pool['liquidity'] / pool['LRNA_price'])
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
 
         self.asset_fee = asset_fee
         self.lrna_fee = lrna_fee
-        self.lrna_imbalance = 0  # AKA "L"
+        self.lrna_imbalance = mpf(0)  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
         self.fail = ''
@@ -70,11 +72,12 @@ class OmnipoolState(AMM):
         else:
             self.sub_pools = []
 
-    def price(self, i: str):
+    def price(self, i: str, j: str = ''):
         """
-        price of an asset in USD, according to current market conditions in the omnipool
+        price of an asset i denominated in j, according to current market conditions in the omnipool
         """
-        return self.lrna[i] / self.liquidity[i] / self.lrna[self.stablecoin] * self.liquidity[self.stablecoin]
+        j = j if j in self.liquidity else self.stablecoin
+        return self.lrna[i] / self.liquidity[i] / self.lrna[j] * self.liquidity[j]
 
     def lrna_price(self, tkn) -> float:
         """
@@ -196,15 +199,24 @@ class OmnipoolState(AMM):
         initial_d = sub_pool.calculate_d()
 
         if buy_quantity and tkn_buy in sub_pool.asset_list:
-            updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: -buy_quantity}))
+            if buy_quantity >= sub_pool.liquidity[tkn_buy]:
+                return self.fail_transaction(f'Not enough liquidity in {sub_pool.unique_id}: {tkn_buy}.'), agent
+            initial_d = sub_pool.calculate_d()
+            updated_d = sub_pool.calculate_d(
+                sub_pool.modified_balances(delta={tkn_buy: -buy_quantity})
+            )
             delta_d = updated_d - initial_d
-            shares_traded = -sub_pool.shares * delta_d / initial_d / (1 - sub_pool.trade_fee)
-            if shares_traded > sub_pool.shares:
+            # shares_traded = sub_pool.cost_of_asset_in_shares(tkn_remove=tkn_buy, quantity=buy_quantity)
+            shares_traded = -sub_pool.shares * delta_d / sub_pool.calculate_d() / (1 - sub_pool.trade_fee)
+            if shares_traded > sub_pool.liquidity[tkn_buy]:
                 return self.fail_transaction("Subpool doesn't have enough liquidity."), agent
             # buy shares in the subpool
             self.execute_swap(agent, tkn_buy=sub_pool.unique_id, tkn_sell=tkn_sell, buy_quantity=shares_traded)
+            if self.fail:
+                # if the swap failed, the transaction failed.
+                return self.fail_transaction(self.fail), agent
             # withdraw the shares for the desired token
-            sub_pool, agent = StableSwapPoolState.remove_liquidity(sub_pool, agent, shares_traded, tkn_remove=tkn_buy)
+            sub_pool.execute_remove_liquidity(agent, shares_removed=shares_traded, tkn_remove=tkn_buy)
             return self, agent
         elif buy_quantity and tkn_sell in sub_pool.asset_list:
             updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: buy_quantity}))
