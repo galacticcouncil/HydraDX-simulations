@@ -218,11 +218,19 @@ class OmnipoolState(AMM):
             # withdraw the shares for the desired token
             sub_pool.execute_withdraw_asset(agent, quantity=buy_quantity, tkn_remove=tkn_buy)
             return self, agent
-        elif buy_quantity and tkn_sell in sub_pool.asset_list:
-            updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: buy_quantity}))
-            delta_d = updated_d - initial_d
-            shares_traded = sub_pool.shares * delta_d / initial_d
-            self.execute_swap(agent, tkn_buy=tkn_buy, tkn_sell=sub_pool.unique_id, buy_quantity=buy_quantity)
+        elif sell_quantity and tkn_sell in sub_pool.asset_list:
+            agent_shares = agent.holdings[sub_pool.unique_id] if sub_pool.unique_id in agent.holdings else 0
+            sub_pool.execute_add_liquidity(agent, sell_quantity, tkn_sell)
+            if self.fail:
+                # the transaction failed.
+                return self.fail_transaction(self.fail), agent
+            delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
+            self.execute_swap(
+                agent=agent,
+                tkn_buy=tkn_buy,
+                tkn_sell=sub_pool.unique_id,
+                sell_quantity=delta_shares
+            )
             return self, agent
         elif sell_quantity and tkn_sell in sub_pool.asset_list:
             return self, agent
