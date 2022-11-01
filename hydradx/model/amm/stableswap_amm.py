@@ -217,6 +217,38 @@ class StableSwapPoolState(AMM):
         self.d = updated_d
         return self, agent
 
+    def execute_add_liquidity(self, agent, quantity, tkn_add):
+        initial_d = self.calculate_d()
+
+        updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
+
+        if updated_d < initial_d:
+            return self.fail_transaction('invariant decreased for some reason'), agent
+        if agent.holdings[tkn_add] < quantity:
+            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
+
+        self.liquidity[tkn_add] += quantity
+        agent.holdings[tkn_add] -= quantity
+
+        if self.shares == 0:
+            agent.holdings[self.unique_id] = updated_d
+            self.shares = updated_d
+
+        elif self.shares < 0:
+            return self.fail_transaction('Shares cannot go below 0.'), agent
+            # why would this possibly happen?
+
+        else:
+            d_diff = updated_d - initial_d
+            share_amount = self.shares * d_diff / initial_d
+            self.shares += share_amount
+            if self.unique_id not in agent.holdings:
+                agent.holdings[self.unique_id] = 0
+            agent.holdings[self.unique_id] += share_amount
+            agent.share_prices[self.unique_id] = quantity / share_amount
+
+        return self, agent
+
     def copy(self):
         return copy.deepcopy(self)
 
@@ -255,35 +287,9 @@ def add_liquidity(
         quantity: float,  # quantity of asset to be added
         tkn_add: str
 ):
-    initial_d = old_state.calculate_d()
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-
-    new_state.liquidity[tkn_add] += quantity
-    new_agent.holdings[tkn_add] -= quantity
-
-    updated_d = new_state.calculate_d()
-
-    if updated_d < initial_d:
-        return old_state.fail_transaction('invariant decreased for some reason'), old_agent
-
-    if old_state.shares == 0:
-        new_agent.holdings[new_state.unique_id] = updated_d
-        new_state.holdings = updated_d
-
-    elif new_state.shares <= 0:
-        return old_state.fail_transaction('Shares cannot go below 0.'), old_agent
-
-    else:
-        d_diff = updated_d - initial_d
-        share_amount = old_state.shares * d_diff / initial_d
-        new_state.shares += share_amount
-        if new_state.unique_id not in new_agent.holdings:
-            new_agent.holdings[new_state.unique_id] = 0
-        new_agent.holdings[new_state.unique_id] += share_amount
-        new_agent.share_prices[new_state.unique_id] = quantity / share_amount
-
-    return new_state, new_agent
+    return new_state.execute_add_liquidity(new_agent, quantity, tkn_add)
 
 
 def remove_liquidity(
@@ -294,11 +300,7 @@ def remove_liquidity(
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.execute_remove_liquidity(
-        new_agent,
-        quantity,
-        tkn_remove
-    )
+    return new_state.execute_remove_liquidity(new_agent, quantity, tkn_remove)
 
 
 StableSwapPoolState.add_liquidity = staticmethod(add_liquidity)
