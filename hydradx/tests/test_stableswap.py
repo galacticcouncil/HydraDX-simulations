@@ -118,7 +118,7 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
     )
     if (
         withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
-        or withdraw_asset_agent.holdings[pool_name] != pytest.approx(withdraw_shares_agent.holdings[pool_name], abs=1e-6)
+        or withdraw_asset_agent.holdings[pool_name] != pytest.approx(withdraw_shares_agent.holdings[pool_name])
         or withdraw_shares_pool.liquidity[tkn_remove] != pytest.approx(withdraw_asset_pool.liquidity[tkn_remove])
         or withdraw_shares_pool.shares != pytest.approx(withdraw_asset_pool.shares)
     ):
