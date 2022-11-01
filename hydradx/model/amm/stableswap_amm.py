@@ -260,19 +260,23 @@ class StableSwapPoolState(AMM):
             self,
             agent: Agent,
             quantity: float,
-            tkn_add: str
+            tkn_add: str,
+            fail_overdraft: bool = True
     ):
         initial_d = self.calculate_d()
-        updated_d = initial_d + quantity
+        updated_d = initial_d * (self.shares + quantity) / self.shares
         delta_tkn = self.calculate_y(
             self.modified_balances(omit=[tkn_add]),
             d=updated_d
-        )
+        ) - self.liquidity[tkn_add]
 
         if delta_tkn > agent.holdings[tkn_add]:
-            # return self.fail_transaction(f"Agent doesn't have enough {tkn_add}."), agent
-            # instead of failing, just round down
-            delta_tkn = agent.holdings[tkn_add]
+            if fail_overdraft:
+                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}."), agent
+            else:
+                # instead of failing, just round down
+                delta_tkn = agent.holdings[tkn_add]
+                return self.execute_add_liquidity(agent, delta_tkn, tkn_add)
 
         self.liquidity[tkn_add] += delta_tkn
         agent.holdings[tkn_add] -= delta_tkn
