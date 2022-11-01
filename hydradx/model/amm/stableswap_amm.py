@@ -197,7 +197,7 @@ class StableSwapPoolState(AMM):
         Calculate a withdrawal based on the asset quantity rather than the share quantity
         """
         if quantity >= self.liquidity[tkn_remove]:
-            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.')
+            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.'), agent
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
@@ -206,7 +206,7 @@ class StableSwapPoolState(AMM):
         # shares_removed = self.cost_of_asset_in_shares(tkn_remove, quantity)
 
         if shares_removed > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Agent tried to remove more shares than it owns.')
+            return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
