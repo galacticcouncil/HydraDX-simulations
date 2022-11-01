@@ -120,6 +120,21 @@ class OmnipoolState(AMM):
             ) for token in self.asset_list]
         ) + '\n)'
 
+    def calculate_sell_from_buy(
+            self,
+            tkn_buy: str,
+            tkn_sell: str,
+            buy_quantity: float
+    ):
+        """
+        Given a buy quantity, calculate the effective price, so we can execute it as a sell
+        """
+        delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
+                self.liquidity[tkn_buy] * (1 - self.asset_fee) - buy_quantity)
+        delta_Qi = -delta_Qj / (1 - self.lrna_fee)
+        delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
+        return delta_Ri
+
     def execute_swap(
         self, agent: Agent,
         tkn_buy: str, tkn_sell: str,
@@ -145,10 +160,7 @@ class OmnipoolState(AMM):
 
         if buy_quantity != 0:
             # back into correct delta_Ri, then execute sell
-            delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
-                    self.liquidity[tkn_buy] * (1 - self.asset_fee) - buy_quantity)
-            delta_Qi = -delta_Qj / (1 - self.lrna_fee)
-            delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
+            delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
             return self.execute_swap(
                 agent=agent,
                 tkn_buy=tkn_buy,
@@ -232,7 +244,7 @@ class OmnipoolState(AMM):
                 sell_quantity=delta_shares
             )
             return self, agent
-        elif sell_quantity and tkn_sell in sub_pool.asset_list:
+        elif buy_quantity and tkn_sell in sub_pool.asset_list:
             return self, agent
         elif sell_quantity and tkn_buy in sub_pool.asset_list:
             return self, agent
