@@ -42,6 +42,5 @@ class AMM:
         return self.copy(), old_agent.copy()
 
     def fail_transaction(self, error: str = 'fail'):
-        failed_state = self.copy()
-        failed_state.fail = error
-        return failed_state
+        self.fail = error
+        return self
