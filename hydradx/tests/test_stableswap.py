@@ -140,7 +140,7 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
     buy_shares_pool, buy_shares_agent = initial_pool.copy().execute_buy_shares(
-        initial_agent.copy(), delta_shares, tkn_add
+        initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
     )
 
     if (
@@ -148,6 +148,7 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name])
         or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add])
         or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares)
+        or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d())
     ):
         raise AssertionError("Asset values don't match.")
 
