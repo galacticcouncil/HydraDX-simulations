@@ -216,7 +216,7 @@ class OmnipoolState(AMM):
                 # if the swap failed, the transaction failed.
                 return self.fail_transaction(self.fail), agent
             # withdraw the shares for the desired token
-            sub_pool.execute_remove_liquidity(agent, shares_removed=shares_traded, tkn_remove=tkn_buy)
+            sub_pool.execute_withdraw_asset(agent, quantity=buy_quantity, tkn_remove=tkn_buy)
             return self, agent
         elif buy_quantity and tkn_sell in sub_pool.asset_list:
             updated_d = sub_pool.calculate_d(sub_pool.modified_balances(delta={tkn_buy: buy_quantity}))
