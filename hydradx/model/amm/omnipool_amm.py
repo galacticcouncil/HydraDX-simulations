@@ -84,7 +84,7 @@ class OmnipoolState(AMM):
     @property
     def tvl_total(self):
         # base this just on the LRNA/USD exchange rate in the pool
-        return self.liquidity[self.stablecoin] * self.lrna[self.stablecoin] / self.lrna_total
+        return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
     def copy(self):
         copy_state = copy.deepcopy(self)
