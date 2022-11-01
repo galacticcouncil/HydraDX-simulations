@@ -121,12 +121,14 @@ class StableSwapPoolState(AMM):
         x, y = balances
         return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
 
-    def modified_balances(self, delta: dict, omit: list = ()):
-        balances = {key: value for key, value in self.liquidity.items()}
-        for tkn, value in delta.items():
-            balances[tkn] += value
-        for tkn in omit:
-            balances.pop(tkn)
+    def modified_balances(self, delta: dict = None, omit: list = ()):
+        balances = copy.copy(self.liquidity)
+        if delta:
+            for tkn, value in delta.items():
+                balances[tkn] += value
+        if omit:
+            for tkn in omit:
+                balances.pop(tkn)
         return list(balances.values())
 
     def execute_swap(
@@ -217,7 +219,12 @@ class StableSwapPoolState(AMM):
         self.d = updated_d
         return self, agent
 
-    def execute_add_liquidity(self, agent, quantity, tkn_add):
+    def execute_add_liquidity(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
         initial_d = self.calculate_d()
 
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
@@ -247,6 +254,30 @@ class StableSwapPoolState(AMM):
             agent.holdings[self.unique_id] += share_amount
             agent.share_prices[self.unique_id] = quantity / share_amount
 
+        return self, agent
+
+    def execute_buy_shares(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
+        initial_d = self.calculate_d()
+        updated_d = initial_d + quantity
+        delta_tkn = self.calculate_y(
+            self.modified_balances(omit=[tkn_add]),
+            d=updated_d
+        )
+
+        if delta_tkn > agent.holdings[tkn_add]:
+            # return self.fail_transaction(f"Agent doesn't have enough {tkn_add}."), agent
+            # instead of failing, just round down
+            delta_tkn = agent.holdings[tkn_add]
+
+        self.liquidity[tkn_add] += delta_tkn
+        agent.holdings[tkn_add] -= delta_tkn
+        self.shares += quantity
+        agent.holdings[self.unique_id] += quantity
         return self, agent
 
     def copy(self):
