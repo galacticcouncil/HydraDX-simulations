@@ -184,7 +184,6 @@ def swap(
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
         if math.isnan(buy_quantity):
             buy_quantity = sell_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
         trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, buy_quantity=buy_quantity)
         buy_quantity *= 1 - trade_fee
         new_agent.holdings[tkn_buy] += buy_quantity
@@ -197,10 +196,8 @@ def swap(
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
         if math.isnan(sell_quantity):
             sell_quantity = buy_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
-        sell_quantity /= 1 - trade_fee
         trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, sell_quantity=sell_quantity)
-        sell_quantity *= 1 + trade_fee
+        sell_quantity /= 1 - trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity
         new_agent.holdings[tkn_buy] += buy_quantity
         new_state.liquidity[tkn_buy] -= buy_quantity
