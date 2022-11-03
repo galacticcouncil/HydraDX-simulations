@@ -23,7 +23,7 @@ class ConstantProductPoolState(AMM):
         if trade_fee is not None:
             self.base_fee = mpf(trade_fee)
         else:
-            self.base_fee = None
+            self.base_fee = 0
         self.fee_function = fee_function
         self.liquidity = dict()
         self.asset_list: list[str] = []
@@ -94,8 +94,8 @@ def add_liquidity(
     new_agent = old_agent.copy()
     new_state = old_state.copy()
 
-    if new_state.unique_id not in new_agent.shares:
-        new_agent.shares[new_state.unique_id] = 0
+    if new_state.unique_id not in new_agent.holdings:
+        new_agent.holdings[new_state.unique_id] = 0
 
     for token in old_state.asset_list:
         delta_r = quantity * old_state.liquidity[token] / old_state.liquidity[tkn_add]
@@ -109,8 +109,8 @@ def add_liquidity(
     new_shares = (new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add] - 1) * old_state.shares
     new_state.shares += new_shares
 
-    new_agent.shares[new_state.unique_id] += new_shares
-    if new_agent.shares[new_state.unique_id] > 0:
+    new_agent.holdings[new_state.unique_id] += new_shares
+    if new_agent.holdings[new_state.unique_id] > 0:
         new_agent.share_prices[new_state.unique_id] = (
             new_state.liquidity[new_state.asset_list[1]] / new_state.liquidity[new_state.asset_list[0]]
         )
@@ -144,7 +144,7 @@ def remove_liquidity(
         return old_state.fail_transaction('Tried to remove more liquidity than exists in the pool.'), old_agent
 
     # avoid fail due to rounding error.
-    if round(new_agent.shares[new_state.unique_id], precision_level) < 0:
+    if round(new_agent.holdings[new_state.unique_id], precision_level) < 0:
         return old_state.fail_transaction('Tried to remove more shares than agent owns.'), old_agent
 
     return new_state, new_agent
@@ -165,6 +165,7 @@ def swap(
     if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
         return old_state.fail_transaction('Invalid token name.'), old_agent
 
+    # turn a negative buy into a sell and vice versa
     if buy_quantity < 0:
         sell_quantity = -buy_quantity
         buy_quantity = 0
@@ -181,6 +182,9 @@ def swap(
     if sell_quantity != 0:
         # when amount to be paid in is specified, calculate payout
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
+        if math.isnan(buy_quantity):
+            buy_quantity = sell_quantity  # this allows infinite liquidity for testing
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
         trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, buy_quantity=buy_quantity)
         buy_quantity *= 1 - trade_fee
         new_agent.holdings[tkn_buy] += buy_quantity
@@ -191,6 +195,10 @@ def swap(
     elif buy_quantity != 0:
         # calculate input price from a given payout
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
+        if math.isnan(sell_quantity):
+            sell_quantity = buy_quantity  # this allows infinite liquidity for testing
+        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        sell_quantity /= 1 - trade_fee
         trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, sell_quantity=sell_quantity)
         sell_quantity *= 1 + trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity

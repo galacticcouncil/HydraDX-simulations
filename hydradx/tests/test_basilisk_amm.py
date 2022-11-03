@@ -5,7 +5,7 @@ from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
-asset_quantity_strategy = st.floats(min_value=1000, max_value=1000)
+asset_quantity_strategy = st.floats(min_value=1000, max_value=100000)
 fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 
@@ -144,7 +144,7 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
     if not new_state.fail:
         revert_state, revert_agent = bamm.remove_liquidity(
             new_state, new_agent,
-            quantity=new_agent.shares[new_state.unique_id],
+            quantity=new_agent.holdings[new_state.unique_id],
             tkn_remove=tkn_add
         )
         if (
@@ -153,8 +153,8 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
                 or revert_state.shares != pytest.approx(old_state.shares)
                 or revert_agent.holdings[tkn_add] != pytest.approx(revert_agent.holdings[tkn_add])
                 or revert_agent.holdings[other_tkn] != pytest.approx(revert_agent.holdings[other_tkn])
-                or revert_agent.shares[old_state.unique_id] != pytest.approx(
-                    revert_agent.shares[old_state.unique_id]
+                or revert_agent.holdings[old_state.unique_id] != pytest.approx(
+                    revert_agent.holdings[old_state.unique_id]
                 )
         ):
             raise AssertionError('Withdrawal failed to return to previous state.')
@@ -307,6 +307,23 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
     # in some yet-to-be-determined way. not currently a priority.
     # if sell_state.liquidity[tkn_buy] != pytest.approx(swap_state.liquidity[tkn_buy]):
     #     raise AssertionError('Buy transaction was not reversed accurately.')
+
+
+@given(constant_product_pool_config(), trade_quantity_strategy)
+def test_fee_imbalance(initial_state: bamm.ConstantProductPoolState, trade_size: float):
+    assume(initial_state.base_fee > 0)
+    assume(min(initial_state.liquidity.values()) > abs(trade_size) > 0)
+    initial_agent = Agent(
+        holdings={token: float('inf') for token in initial_state.asset_list}
+    )
+    x = initial_state.asset_list[0]
+    y = initial_state.asset_list[1]
+    sell_quantity = trade_size
+    sell_state, sell_agent = bamm.swap(initial_state, initial_agent, tkn_sell=x, tkn_buy=y, sell_quantity=sell_quantity)
+    buy_quantity = initial_state.liquidity[y] * sell_quantity / (initial_state.liquidity[x] + sell_quantity)
+    buy_state, buy_agent = bamm.swap(initial_state, initial_agent, tkn_sell=x, tkn_buy=y, buy_quantity=buy_quantity)
+    if buy_state.liquidity[y] >= sell_state.liquidity[y]:
+        raise AssertionError('I must have been wrong about this')
 
 
 if __name__ == '__main__':

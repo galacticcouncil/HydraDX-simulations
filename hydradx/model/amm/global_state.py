@@ -238,7 +238,7 @@ def remove_liquidity(
 def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
     agent = state.agents[agent_id]
     new_state = state
-    for key in agent.shares.keys():
+    for key in agent.holdings.keys():
         # shares.keys might just be the pool name, or it might be a tuple (pool, token)
         if isinstance(key, tuple):
             pool_id = key[0]
@@ -246,7 +246,8 @@ def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
         else:
             pool_id = key
             tkn = key
-        new_state = remove_liquidity(new_state, pool_id, agent.unique_id, agent.shares[key], tkn_remove=tkn)
+        if pool_id in state.pools:
+            new_state = remove_liquidity(new_state, pool_id, agent.unique_id, agent.holdings[key], tkn_remove=tkn)
 
     return new_state
 
