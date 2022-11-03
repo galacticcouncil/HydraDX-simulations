@@ -80,8 +80,8 @@ def add_liquidity(
     new_agent = old_agent.copy()
     new_state = old_state.copy()
 
-    if new_state.unique_id not in new_agent.shares:
-        new_agent.shares[new_state.unique_id] = 0
+    if new_state.unique_id not in new_agent.holdings:
+        new_agent.holdings[new_state.unique_id] = 0
 
     for token in old_state.asset_list:
         delta_r = quantity * old_state.liquidity[token] / old_state.liquidity[tkn_add]
@@ -95,8 +95,8 @@ def add_liquidity(
     new_shares = (new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add] - 1) * old_state.shares
     new_state.shares += new_shares
 
-    new_agent.shares[new_state.unique_id] += new_shares
-    if new_agent.shares[new_state.unique_id] > 0:
+    new_agent.holdings[new_state.unique_id] += new_shares
+    if new_agent.holdings[new_state.unique_id] > 0:
         new_agent.share_prices[new_state.unique_id] = (
             new_state.liquidity[new_state.asset_list[1]] / new_state.liquidity[new_state.asset_list[0]]
         )
@@ -130,7 +130,7 @@ def remove_liquidity(
         return old_state.fail_transaction('Tried to remove more liquidity than exists in the pool.'), old_agent
 
     # avoid fail due to rounding error.
-    if round(new_agent.shares[new_state.unique_id], precision_level) < 0:
+    if round(new_agent.holdings[new_state.unique_id], precision_level) < 0:
         return old_state.fail_transaction('Tried to remove more shares than agent owns.'), old_agent
 
     return new_state, new_agent

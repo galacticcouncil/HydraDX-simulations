@@ -198,7 +198,7 @@ def test_LP(initial_state: GlobalState):
     # post-process
     processing.postprocessing(events, optional_params=['withdraw_val'])
 
-    if sum(final_state.agents['LP'].holdings.values()) > 0:
+    if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
     if final_state.agents['LP'].withdraw_val < cash_out(initial_state, initial_state.agents['LP']):
