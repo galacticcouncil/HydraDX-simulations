@@ -46,16 +46,19 @@ class ConstantProductPoolState(AMM):
     @staticmethod
     def custom_slip_fee(slip_factor: float, minimum: float = 0) -> Callable:
         def fee_function(
-            exchange, tkn_sell: str = '', tkn_buy: str = '', buy_quantity: float = 0, sell_quantity: float = 0
+            exchange, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0, sell_quantity: float = 0
         ) -> float:
-            if sell_quantity:
-                fee = (slip_factor * sell_quantity
-                       / (sell_quantity + exchange.liquidity[tkn_sell])) + minimum
-            elif buy_quantity:
-                fee = (slip_factor * buy_quantity
-                       / (exchange.liquidity[tkn_buy] - buy_quantity)) + minimum
-            else:
-                raise ValueError('Trade must include a buy quantity or a sell quantity.')
+            if buy_quantity:
+                # fee = (slip_factor * buy_quantity
+                #        / (exchange.liquidity[tkn_buy] - buy_quantity)) + minimum
+                sell_quantity = (
+                    exchange.liquidity[tkn_sell] * buy_quantity
+                    / (exchange.liquidity[tkn_buy] - buy_quantity)
+                )
+                sell_quantity /= (1 - fee_function(exchange, tkn_sell, tkn_buy, sell_quantity=sell_quantity))
+            fee = (slip_factor * sell_quantity
+                   / (sell_quantity + exchange.liquidity[tkn_sell])) + minimum
+
             return fee
         return fee_function
 
