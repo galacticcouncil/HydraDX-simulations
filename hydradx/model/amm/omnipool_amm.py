@@ -114,8 +114,8 @@ class OmnipoolState(AMM):
         return (
             f'Omnipool\n'
             f'tvl cap: {self.tvl_cap}\n'
-            f'lrna fee: {self.lrna_fee}\n'
-            f'asset fee: {self.asset_fee}\n'
+            f'lrna fee: {self.lrna_fee.name}\n'
+            f'asset fee: {self.asset_fee.name}\n'
             f'asset pools: (\n'
         ) + ')\n(\n'.join(
             [(
