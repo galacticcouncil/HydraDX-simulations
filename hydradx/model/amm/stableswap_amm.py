@@ -1,7 +1,11 @@
+import copy
+
 from .global_state import AMM
 from .agents import Agent
 from mpmath import mpf, mp
+
 mp.dps = 50
+
 
 # N_COINS = 2  # I think we cannot currently go higher than this
 # ann means how concentrated the liquidity is;
@@ -11,7 +15,14 @@ mp.dps = 50
 class StableSwapPoolState(AMM):
     unique_id: str = 'stableswap'
 
-    def __init__(self, tokens: dict, amplification: float, precision: float = 0.0001, trade_fee: float = 0):
+    def __init__(
+            self,
+            tokens: dict,
+            amplification: float,
+            precision: float = 0.0001,
+            trade_fee: float = 0,
+            unique_id: str = ''
+    ):
         """
         Tokens should be in the form of:
         {
@@ -29,6 +40,8 @@ class StableSwapPoolState(AMM):
         self.liquidity = dict()
         self.asset_list: list[str] = []
         self.trade_fee = trade_fee
+        if unique_id:
+            self.unique_id = unique_id
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
@@ -74,6 +87,7 @@ class StableSwapPoolState(AMM):
     """
     Given a value for D and the balances of all tokens except 1, calculate what the balance of the final token should be
     """
+
     def calculate_y(self, reserves: list, d: float, max_iterations=128):
 
         # get all the balances except tkn_out and sort them from low to high
@@ -107,26 +121,28 @@ class StableSwapPoolState(AMM):
         x, y = balances
         return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
 
-    def modified_balances(self, delta: dict, omit: list = ()):
-        balances = {key: value for key, value in self.liquidity.items()}
-        for tkn, value in delta.items():
-            balances[tkn] += value
-        for tkn in omit:
-            balances.pop(tkn)
+    def modified_balances(self, delta: dict = None, omit: list = ()):
+        balances = copy.copy(self.liquidity)
+        if delta:
+            for tkn, value in delta.items():
+                balances[tkn] += value
+        if omit:
+            for tkn in omit:
+                balances.pop(tkn)
         return list(balances.values())
 
     def execute_swap(
-        self,
-        old_agent: Agent,
-        tkn_sell: str,
-        tkn_buy: str,
-        buy_quantity: float = 0,
-        sell_quantity: float = 0
+            self,
+            old_agent: Agent,
+            tkn_sell: str,
+            tkn_buy: str,
+            buy_quantity: float = 0,
+            sell_quantity: float = 0
     ):
         d = self.calculate_d()
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-            sell_quantity = (self.calculate_y(reserves, d) - self.liquidity[tkn_sell]) * (1 + self.trade_fee)
+            sell_quantity = (self.calculate_y(reserves, d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, d)) * (1 - self.trade_fee)
@@ -144,95 +160,182 @@ class StableSwapPoolState(AMM):
 
         return self, new_agent
 
+    def execute_remove_liquidity(
+            self,
+            agent: Agent,
+            shares_removed: float,
+            tkn_remove: str
+    ):
+        if shares_removed > agent.holdings[self.unique_id]:
+            raise ValueError('Agent tried to remove more shares than it owns.')
+        elif shares_removed <= 0:
+            raise ValueError('Withdraw quantity must be > 0.')
+
+        share_fraction = shares_removed / self.shares
+        self.shares -= shares_removed
+        agent.holdings[self.unique_id] -= shares_removed
+        updated_d = self.calculate_d(self.liquidity.values()) * (1 - share_fraction * (1 - self.trade_fee))
+        delta_tkn = self.calculate_y(
+            self.modified_balances(delta={}, omit=[tkn_remove]),
+            updated_d
+        ) - self.liquidity[tkn_remove]
+        # delta_tkn *= (1 - self.trade_fee)
+
+        if delta_tkn >= self.liquidity[tkn_remove]:
+            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.'), agent
+
+        self.liquidity[tkn_remove] += delta_tkn
+        agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
+        # self.d = updated_d
+        return self, agent
+
+    def execute_withdraw_asset(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_remove: str
+    ):
+        """
+        Calculate a withdrawal based on the asset quantity rather than the share quantity
+        """
+        if quantity >= self.liquidity[tkn_remove]:
+            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.'), agent
+        if quantity <= 0:
+            raise ValueError('Withdraw quantity must be > 0.')
+
+        updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
+        shares_removed = self.shares * (1 - updated_d / self.calculate_d()) / (1 - self.trade_fee)
+        # shares_removed = self.cost_of_asset_in_shares(tkn_remove, quantity)
+
+        if shares_removed > agent.holdings[self.unique_id]:
+            # return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
+            # just round down
+            shares_removed = agent.holdings[self.unique_id]
+
+        agent.holdings[self.unique_id] -= shares_removed
+        self.shares -= shares_removed
+        self.liquidity[tkn_remove] -= quantity
+        agent.holdings[tkn_remove] += quantity
+        self.d = updated_d
+        return self, agent
+
+    def execute_add_liquidity(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
+        initial_d = self.calculate_d()
+
+        updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
+
+        if updated_d < initial_d:
+            return self.fail_transaction('invariant decreased for some reason'), agent
+        if agent.holdings[tkn_add] < quantity:
+            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
+
+        self.liquidity[tkn_add] += quantity
+        agent.holdings[tkn_add] -= quantity
+
+        if self.shares == 0:
+            agent.holdings[self.unique_id] = updated_d
+            self.shares = updated_d
+
+        elif self.shares < 0:
+            return self.fail_transaction('Shares cannot go below 0.'), agent
+            # why would this possibly happen?
+
+        else:
+            d_diff = updated_d - initial_d
+            share_amount = self.shares * d_diff / initial_d
+            self.shares += share_amount
+            if self.unique_id not in agent.holdings:
+                agent.holdings[self.unique_id] = 0
+            agent.holdings[self.unique_id] += share_amount
+            agent.share_prices[self.unique_id] = quantity / share_amount
+
+        return self, agent
+
+    def execute_buy_shares(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str,
+            fail_overdraft: bool = True
+    ):
+        initial_d = self.calculate_d()
+        updated_d = initial_d * (self.shares + quantity) / self.shares
+        delta_tkn = self.calculate_y(
+            self.modified_balances(omit=[tkn_add]),
+            d=updated_d
+        ) - self.liquidity[tkn_add]
+
+        if delta_tkn > agent.holdings[tkn_add]:
+            if fail_overdraft:
+                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}."), agent
+            else:
+                # instead of failing, just round down
+                delta_tkn = agent.holdings[tkn_add]
+                return self.execute_add_liquidity(agent, delta_tkn, tkn_add)
+
+        self.liquidity[tkn_add] += delta_tkn
+        agent.holdings[tkn_add] -= delta_tkn
+        self.shares += quantity
+        agent.holdings[self.unique_id] += quantity
+        return self, agent
+
+    def copy(self):
+        return copy.deepcopy(self)
+
     def __repr__(self):
         return (
-            f'Stable Swap Pool\n'
-            f'base trade fee: {self.trade_fee}\n'
-            f'shares: {self.shares}\n'
-            f'amplification constant: {self.amplification}\n'
-            f'tokens: (\n'
-        ) + ')\n(\n'.join(
+                   f'Stable Swap Pool\n'
+                   f'base trade fee: {self.trade_fee}\n'
+                   f'shares: {self.shares}\n'
+                   f'amplification constant: {self.amplification}\n'
+                   f'tokens: (\n'
+               ) + ')\n(\n'.join(
             [(
                 f'    {token}\n'
                 f'    quantity: {self.liquidity[token]}\n'
                 f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
             ) for token in self.asset_list]
         ) + '\n)\n' + (
-            f'error message:{self.fail or "none"}'
-        )
+                   f'error message:{self.fail or "none"}'
+               )
 
 
 def swap(
-    old_state: StableSwapPoolState,
-    old_agent: Agent,
-    tkn_sell: str,
-    tkn_buy: str,
-    buy_quantity: float = 0,
-    sell_quantity: float = 0
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
 ):
     return old_state.copy().execute_swap(old_agent.copy(), tkn_sell, tkn_buy, buy_quantity, sell_quantity)
 
 
 def add_liquidity(
-    old_state: StableSwapPoolState,
-    old_agent: Agent,
-    quantity: float,  # quantity of asset to be added
-    tkn_add: str
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,  # quantity of asset to be added
+        tkn_add: str
 ):
-    initial_d = old_state.calculate_d()
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-
-    new_state.liquidity[tkn_add] += quantity
-    new_agent.holdings[tkn_add] -= quantity
-
-    updated_d = new_state.calculate_d()
-
-    if updated_d < initial_d:
-        return old_state.fail_transaction('invariant decreased for some reason'), old_agent
-
-    if old_state.shares == 0:
-        new_agent.shares[new_state.unique_id] = updated_d
-        new_state.shares = updated_d
-
-    elif new_state.shares <= 0:
-        return old_state.fail_transaction('Shares cannot go below 0.'), old_agent
-
-    else:
-        d_diff = updated_d - initial_d
-        share_amount = old_state.shares * d_diff / initial_d
-        new_state.shares += share_amount
-        if new_state.unique_id not in new_agent.shares:
-            new_agent.shares[new_state.unique_id] = 0
-        new_agent.shares[new_state.unique_id] += share_amount
-        new_agent.share_prices[new_state.unique_id] = quantity / share_amount
-
-    return new_state, new_agent
+    return new_state.execute_add_liquidity(new_agent, quantity, tkn_add)
 
 
 def remove_liquidity(
-    old_state: StableSwapPoolState,
-    old_agent: Agent,
-    quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
-    tkn_remove: str
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
+        tkn_remove: str
 ):
-    if quantity > old_agent.shares[old_state.unique_id]:
-        raise ValueError('Agent tried to remove more shares than it owns.')
-
-    share_fraction = quantity / old_state.shares
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    new_state.shares -= quantity
-    new_agent.shares[old_state.unique_id] -= quantity
-    new_state.d = new_state.calculate_d(new_state.liquidity.values()) * (1 - share_fraction)
-    delta_tkn = new_state.calculate_y(
-        new_state.modified_balances(delta={}, omit=[tkn_remove]),
-        new_state.d
-    ) - new_state.liquidity[tkn_remove]
-    delta_tkn *= (1 - new_state.trade_fee)
-    new_state.liquidity[tkn_remove] += delta_tkn
-    new_agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
-    return new_state, new_agent
+    return new_state.execute_remove_liquidity(new_agent, quantity, tkn_remove)
 
 
 StableSwapPoolState.add_liquidity = staticmethod(add_liquidity)
