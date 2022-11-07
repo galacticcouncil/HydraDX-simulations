@@ -1,5 +1,4 @@
 import pytest
-import random
 from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
@@ -24,14 +23,12 @@ def assets_config(draw) -> dict:
 def constant_product_pool_config(
         draw,
         asset_dict=None,
-        trade_fee=None,
-        fee_function=None
+        trade_fee=None
 ) -> bamm.ConstantProductPoolState:
     asset_dict = asset_dict or draw(assets_config())
     return bamm.ConstantProductPoolState(
         tokens=asset_dict,
         trade_fee=draw(fee_strategy) if trade_fee is None else trade_fee,
-        fee_function=fee_function
     )
 
 
@@ -205,7 +202,7 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
 def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: float):
     assume(slip_factor > 0.01)
     minimum_fee = 0.0001
-    initial_state.fee_function = bamm.ConstantProductPoolState.custom_slip_fee(
+    initial_state.trade_fee = bamm.ConstantProductPoolState.custom_slip_fee(
         slip_factor=slip_factor, minimum=minimum_fee)
     initial_agent = Agent(
         holdings={token: 1000000 for token in initial_state.asset_list}
@@ -247,7 +244,6 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         # show that when using slip-based fees,
         # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
         raise AssertionError('Agent did not save money by breaking the trade into two parts.')
-        pass
 
     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
@@ -270,10 +266,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         sell_quantity=sell_quantity
     )
 
-    buy_fee = initial_state.fee_function(
-        initial_state, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_quantity)
-    sell_fee = initial_state.fee_function(
-        initial_state, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+    sell_fee = initial_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
     if sell_state.liquidity[tkn_sell] * (sell_fee - minimum_fee) != pytest.approx(abs(slip_factor * sell_quantity)):
         raise AssertionError('Math mismatch, please re-check.')
 
@@ -312,21 +305,15 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
     #     raise AssertionError('Buy transaction was not reversed accurately.')
 
 
-@given(constant_product_pool_config(), trade_quantity_strategy)
-def test_fee_imbalance(initial_state: bamm.ConstantProductPoolState, trade_size: float):
-    assume(initial_state.base_fee > 0)
-    assume(min(initial_state.liquidity.values()) > abs(trade_size) > 0)
-    initial_agent = Agent(
-        holdings={token: float('inf') for token in initial_state.asset_list}
+def test_fee_difference():
+    initial_state = bamm.ConstantProductPoolState(
+        tokens={'R1': 1000, 'R2': 1000},
+        trade_fee=bamm.ConstantProductPoolState.custom_slip_fee(slip_factor=1)
     )
-    x = initial_state.asset_list[0]
-    y = initial_state.asset_list[1]
-    sell_quantity = trade_size
-    sell_state, sell_agent = bamm.swap(initial_state, initial_agent, tkn_sell=x, tkn_buy=y, sell_quantity=sell_quantity)
-    buy_quantity = initial_state.liquidity[y] * sell_quantity / (initial_state.liquidity[x] + sell_quantity)
-    buy_state, buy_agent = bamm.swap(initial_state, initial_agent, tkn_sell=x, tkn_buy=y, buy_quantity=buy_quantity)
-    if buy_state.liquidity[y] >= sell_state.liquidity[y]:
-        raise AssertionError('I must have been wrong about this')
+    trader = Agent(
+        holdings={'R1': 1000, 'R2': 1000}
+    )
+    pass
 
 
 if __name__ == '__main__':
