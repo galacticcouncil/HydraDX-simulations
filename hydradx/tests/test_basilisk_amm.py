@@ -221,11 +221,8 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity
     )
-    fee = initial_state.fee_function(initial_state, tkn_buy=tkn_buy, buy_quantity=buy_quantity)
-    if buy_state.liquidity[tkn_buy] * (fee - minimum_fee) != pytest.approx(abs(slip_factor * buy_quantity)):
-        raise AssertionError('Math mismatch, please re-check.')
+
     # now buy the same quantity, but do it in two smaller trades
-    buy_quantity /= 2
     split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
     next_state, next_agent = {}, {}
     for i in range(2):
@@ -234,7 +231,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
             old_agent=split_buy_agent,
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
-            buy_quantity=buy_quantity
+            buy_quantity=buy_quantity / 2
         )
         split_buy_state, split_buy_agent = next_state[i], next_agent[i]
 
@@ -273,6 +270,13 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         sell_quantity=sell_quantity
     )
 
+    buy_fee = initial_state.fee_function(
+        initial_state, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_quantity)
+    sell_fee = initial_state.fee_function(
+        initial_state, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+    if sell_state.liquidity[tkn_sell] * (sell_fee - minimum_fee) != pytest.approx(abs(slip_factor * sell_quantity)):
+        raise AssertionError('Math mismatch, please re-check.')
+
     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
             != pytest.approx(sell_agent.holdings[tkn_sell] + sell_agent.holdings[tkn_buy]
@@ -280,7 +284,6 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         raise AssertionError('Asset quantity is not constant after sell trade')
 
     # now sell the same quantity, but do it in two smaller trades
-    sell_quantity /= 2
     split_sell_state, split_sell_agent = initial_state, initial_agent
     next_state, next_agent = {}, {}
     for i in range(2):
@@ -289,7 +292,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
             old_agent=split_sell_agent,
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
-            sell_quantity=sell_quantity
+            sell_quantity=sell_quantity / 2
         )
         split_sell_state, split_sell_agent = next_state[i], next_agent[i]
 
@@ -305,8 +308,8 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
 
     # this is commented out because it doesn't work. the spec would have to be adjusted
     # in some yet-to-be-determined way. not currently a priority.
-    # if sell_state.liquidity[tkn_buy] != pytest.approx(swap_state.liquidity[tkn_buy]):
-    #     raise AssertionError('Buy transaction was not reversed accurately.')
+    if sell_state.liquidity[tkn_buy] != pytest.approx(buy_state.liquidity[tkn_buy]):
+        raise AssertionError('Buy transaction was not reversed accurately.')
 
 
 @given(constant_product_pool_config(), trade_quantity_strategy)
