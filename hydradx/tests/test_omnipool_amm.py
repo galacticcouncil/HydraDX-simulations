@@ -223,8 +223,8 @@ def test_remove_liquidity(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
 
-@given(omnipool_config(token_count=3), fee_strategy)
-def test_swap_lrna(initial_state: oamm.OmnipoolState, fee):
+@given(omnipool_config(token_count=3))
+def test_swap_lrna(initial_state: oamm.OmnipoolState):
     old_state = initial_state
     old_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']}
@@ -527,7 +527,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent did not get exactly the amount they specified.')
 
 
-@given(omnipool_config(token_count=4), st.floats(min_value=0.01, max_value=1), st.floats(min_value=0.01, max_value=1))
+@given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
 def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
     initial_state.lrna_fee = oamm.OmnipoolState.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
     initial_state.asset_fee = oamm.OmnipoolState.slip_fee(asset_slip_rate, minimum_fee=0.0001)
