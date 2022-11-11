@@ -42,7 +42,7 @@ class StableSwapPoolState(AMM):
             self.asset_list.append(token)
             self.liquidity[token] = mpf(quantity)
 
-        self.shares = self.d
+        self.shares = mpf(self.d)
 
     @property
     def ann(self) -> float:
