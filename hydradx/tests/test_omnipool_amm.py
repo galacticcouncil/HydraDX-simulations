@@ -66,16 +66,6 @@ def omnipool_config(
             for name, pool in sub_pools.items()
         } if sub_pools else None
     )
-    if sub_pools:
-        # deposit subpool shares into omnipool
-        for stable_pool in test_state.sub_pools.values():
-            stable_shares = stable_pool.unique_id
-            test_state.asset_list += [stable_shares]
-            test_state.liquidity[stable_shares] = stable_pool.shares
-            test_state.lrna[stable_shares] = stable_pool.shares * test_state.lrna_price('USD')
-            test_state.weight_cap[stable_shares] = 1
-            test_state.shares[stable_shares] = stable_pool.shares
-            test_state.protocol_shares[stable_shares] = stable_pool.shares
 
     test_state.lrna_imbalance = -draw(asset_quantity_strategy)
     return test_state
