@@ -202,7 +202,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         # buy just enough of non-USD asset
         if agent_delta_y > 0 and x != 'USD' or agent_delta_y < 0 and y != 'USD':
             state = external_market_trade(
-                state=state,
+                old_state=state,
                 agent_id=agent_id,
                 tkn_buy=x if agent_delta_y > 0 else 'USD',
                 tkn_sell=y if agent_delta_y < 0 else 'USD',
@@ -384,10 +384,10 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> Trad
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
 
         omnipool: OmnipoolState = state.pools[pool_id]
-        current_price = omnipool.lrna_price[asset_name]
+        current_price = omnipool.lrna_price(asset_name)
         if current_price <= 0:
             return state
-        usd_price = omnipool.lrna_price[omnipool.stablecoin] / current_price
+        usd_price = omnipool.lrna_price(omnipool.stablecoin) / current_price
         if usd_price <= 0:
             return state
         quantity = (
