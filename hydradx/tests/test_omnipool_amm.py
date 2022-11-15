@@ -6,7 +6,7 @@ from mpmath import mpf, mp
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
-from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation
+from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -55,8 +55,8 @@ def omnipool_config(
         tvl_cap=tvl_cap_usd or float('inf'),
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-        sub_pools=[
-            draw(stableswap_config(
+        sub_pools={
+            name: draw(stableswap_config(
                 asset_dict=pool['asset_dict'] if 'asset_dict' in pool else None,
                 token_count=pool['token_count'] if 'token_count' in pool else None,
                 trade_fee=pool['trade_fee'] if 'trade_fee' in pool else None,
@@ -64,11 +64,11 @@ def omnipool_config(
                 unique_id=name
             ))
             for name, pool in sub_pools.items()
-        ] if sub_pools else None
+        } if sub_pools else None
     )
     if sub_pools:
         # deposit subpool shares into omnipool
-        for stable_pool in test_state.sub_pools:
+        for stable_pool in test_state.sub_pools.values():
             stable_shares = stable_pool.unique_id
             test_state.asset_list += [stable_shares]
             test_state.liquidity[stable_shares] = stable_pool.shares
@@ -341,7 +341,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     # deposit stable pool shares into omnipool
     stable_shares = stable_pool.unique_id
 
@@ -358,7 +358,7 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -409,7 +409,7 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
     # agent holds some of everything
     agent = Agent(holdings={tkn: mpf(10000000000) for tkn in initial_state.asset_list + stable_pool.asset_list})
@@ -424,7 +424,7 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         sell_quantity=sell_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -473,7 +473,7 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
 
     # agent holds some of everything
@@ -489,7 +489,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -531,7 +531,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
 
     # agent holds some of everything
@@ -547,7 +547,7 @@ def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         sell_quantity=sell_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -590,7 +590,7 @@ def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     # stable_shares = stable_pool.unique_id
     agent = Agent(holdings={tkn: 1000000000000000 for tkn in initial_state.asset_list + ['LRNA']})
     # attempt buying an asset from the stableswap pool
@@ -605,7 +605,7 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -657,7 +657,7 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools[0]
+    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
     agent = Agent(holdings={tkn: 1000000000000000 for tkn in initial_state.asset_list + ['LRNA']})
     # attempt buying an asset from the stableswap pool
@@ -671,7 +671,7 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
         tkn_sell=tkn_sell,
         sell_quantity=sell_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools[0]
+    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
@@ -704,12 +704,25 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError("LRNA imbalance incorrect.")
 
 
-if __name__ == '__main__':
-    test_swap_lrna_delta_Ri_respects_invariant()
-    test_swap_lrna_delta_Qi_respects_invariant()
-    test_swap_lrna()
-    test_weights()
-    test_prices()
-    test_add_liquidity()
-    test_remove_liquidity()
-    test_swap_assets()
+@given(omnipool_config(
+    asset_dict={
+        'USD': {'liquidity': 1000, 'LRNA': 1000},
+        'HDX': {'liquidity': 1000, 'LRNA': 1000},
+        'DAI': {'liquidity': 1000, 'LRNA': 1000}
+    },
+    sub_pools={'stableswap': {'token_count': 2}}
+))
+def test_migrate_asset(initial_state: oamm.OmnipoolState):
+    s = 'stableswap'
+    i = 'DAI'
+    sub_pool: StableSwapPoolState = initial_state.sub_pools[s]
+    new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
+    if (
+        pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
+        != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
+        + initial_state.lrna[s] * initial_state.protocol_shares[s] / initial_state.shares[s]
+    ):
+        raise AssertionError("Protocol didn't get the right number of shares.")
+    new_sub_pool: StableSwapPoolState = new_state.sub_pools[s]
+    if new_state.shares[s] != new_sub_pool.shares:
+        raise AssertionError("Subpool and Omnipool shares aren't equal.")
