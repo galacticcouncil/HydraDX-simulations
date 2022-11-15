@@ -270,8 +270,8 @@ class OmnipoolState(AMM):
         """
         Execute LRNA swap in place (modify and return)
         """
-        asset_fee = old_state.asset_fee.compute(
-            tkn=tkn, delta_tkn=delta_ra or old_state.liquidity[tkn] * delta_qa / (delta_qa + old_state.lrna[tkn])
+        asset_fee = self.asset_fee.compute(
+            tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
         )
 
         if delta_qa < 0:
