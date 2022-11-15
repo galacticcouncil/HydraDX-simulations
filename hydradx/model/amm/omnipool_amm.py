@@ -70,7 +70,7 @@ class OmnipoolState(AMM):
         if sub_pools:
             self.sub_pools = sub_pools
         else:
-            self.sub_pools = []
+            self.sub_pools = {}
 
     def price(self, i: str, j: str = ''):
         """
@@ -145,7 +145,7 @@ class OmnipoolState(AMM):
         execute swap in place (modify and return self and agent)
         """
 
-        for sub_pool in self.sub_pools:
+        for sub_pool in self.sub_pools.values():
             # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
             if {tkn_buy, tkn_sell} & {*sub_pool.asset_list}:
                 if isinstance(sub_pool, StableSwapPoolState):
@@ -348,6 +348,26 @@ class OmnipoolState(AMM):
         else:
             raise ValueError('buy_quantity or sell_quantity must be specified.')
 
+    def execute_migration(self, tkn_migrate: str, sub_pool_id: str):
+        """
+        Move an asset from the Omnipool into a stableswap subpool.
+        """
+        sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_id]
+        s = sub_pool.unique_id
+        i = tkn_migrate
+        if tkn_migrate in sub_pool.liquidity:
+            raise AssertionError('Assets should only exist in one place in the Omnipool at a time.')
+        sub_pool.liquidity[s] = self.liquidity[i]
+        self.protocol_shares[s] += (
+            self.shares[s] * self.lrna[i] / self.lrna[s] * self.protocol_shares[i] / self.shares[i]
+        )
+        self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
+        sub_pool.shares += self.lrna[i] * sub_pool.shares / self.lrna[s]
+        self.lrna[s] += self.lrna[i]
+        self.liquidity[i] = 0
+        self.lrna[i] = 0
+        return self
+
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
     """Invariant for specific asset"""
@@ -413,6 +433,14 @@ def swap(
     )
 
     return new_state, new_agents
+
+
+def migrate(
+        old_state: OmnipoolState,
+        tkn_migrate: str,
+        sub_pool_id: str
+) -> OmnipoolState:
+    return old_state.copy().execute_migration(tkn_migrate, sub_pool_id)
 
 
 def add_liquidity(
