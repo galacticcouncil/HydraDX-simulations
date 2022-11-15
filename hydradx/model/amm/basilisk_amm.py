@@ -1,7 +1,6 @@
-import copy
 import math
 from typing import Callable
-from .global_state import AMM
+from .amm import AMM, FeeMechanism
 from .agents import Agent
 from mpmath import mpf, mp
 mp.dps = 50
@@ -10,7 +9,12 @@ precision_level = 20
 
 
 class ConstantProductPoolState(AMM):
-    def __init__(self, tokens: dict[str: float], trade_fee: float = None, fee_function: Callable = None, unique_id=''):
+    def __init__(
+            self,
+            tokens: dict[str: float],
+            trade_fee: FeeMechanism or float = 0,
+            unique_id=''
+    ):
         """
         Tokens should be in the form of:
         {
@@ -20,11 +24,8 @@ class ConstantProductPoolState(AMM):
         There should only be two.
         """
         super().__init__()
-        if trade_fee is not None:
-            self.base_fee = mpf(trade_fee)
-        else:
-            self.base_fee = 0
-        self.fee_function = fee_function
+        self.trade_fee: FeeMechanism = trade_fee.assign(self) if isinstance(trade_fee, FeeMechanism)\
+            else self.basic_fee(trade_fee).assign(self)
         self.liquidity = dict()
         self.asset_list: list[str] = []
 
@@ -36,21 +37,23 @@ class ConstantProductPoolState(AMM):
 
         self.unique_id = unique_id
 
-    def thorchain_fee(self, sell_asset: str, buy_asset: str, trade_size: float) -> float:
-        return trade_size * self.liquidity[buy_asset] / (trade_size + self.liquidity[sell_asset]) ** 2
+    @staticmethod
+    def thorchain_fee() -> FeeMechanism:
+        def fee_function(exchange: AMM, tkn: str, delta_tkn: float):
+            return delta_tkn / (delta_tkn + exchange.liquidity[tkn])
+
+        return FeeMechanism(fee_function=fee_function, name='Thorchain fee')
 
     @staticmethod
-    def custom_slip_fee(slip_factor: float) -> Callable:
-        def fee_function(exchange, sell_asset: str, buy_asset: str, trade_size: float) -> float:
-            return trade_size * slip_factor / exchange.liquidity[sell_asset]
-        return fee_function
+    def custom_slip_fee(slip_factor: float, minimum: float = 0) -> FeeMechanism:
+        def fee_function(
+            exchange: AMM, tkn: str, delta_tkn: float
+        ) -> float:
+            fee = (slip_factor * delta_tkn
+                   / (delta_tkn + exchange.liquidity[tkn])) + minimum
 
-    def trade_fee(self, tkn_sell: str, tkn_buy: str, trade_size: float) -> float:
-        fee = 0
-        if self.fee_function:
-            fee += self.fee_function(self, tkn_sell, tkn_buy, trade_size)
-        fee += self.base_fee
-        return fee
+            return fee
+        return FeeMechanism(fee_function=fee_function, name=f'slip fee {slip_factor * 100}% slippage + {minimum}')
 
     @property
     def invariant(self):
@@ -59,7 +62,7 @@ class ConstantProductPoolState(AMM):
     def __repr__(self):
         return (
             f'Constant Product Pool\n'
-            f'base trade fee: {self.base_fee}\n'
+            f'base trade fee: {self.trade_fee.name}\n'
             f'shares: {self.shares}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
@@ -170,7 +173,7 @@ def swap(
         buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
         if math.isnan(buy_quantity):
             buy_quantity = sell_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        trade_fee = new_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
         buy_quantity *= 1 - trade_fee
         new_agent.holdings[tkn_buy] += buy_quantity
         new_agent.holdings[tkn_sell] -= sell_quantity
@@ -182,7 +185,7 @@ def swap(
         sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
         if math.isnan(sell_quantity):
             sell_quantity = buy_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee(tkn_sell, tkn_buy, abs(sell_quantity))
+        trade_fee = new_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
         sell_quantity /= 1 - trade_fee
         new_agent.holdings[tkn_sell] -= sell_quantity
         new_agent.holdings[tkn_buy] += buy_quantity

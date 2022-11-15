@@ -1,6 +1,6 @@
 import copy
 from .agents import Agent
-from .amm import AMM
+from .amm import AMM, FeeMechanism
 from .stableswap_amm import StableSwapPoolState
 from mpmath import mpf, mp
 mp.dps = 50
@@ -13,9 +13,9 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 asset_fee: float = 0,
-                 lrna_fee: float = 0,
-                 sub_pools: dict[str: AMM] = None
+                 asset_fee: FeeMechanism or float = None,
+                 lrna_fee: FeeMechanism or float = None,
+                 sub_pools: dict[str: AMM] = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -60,8 +60,10 @@ class OmnipoolState(AMM):
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
 
-        self.asset_fee = asset_fee
-        self.lrna_fee = lrna_fee
+        self.asset_fee: FeeMechanism = asset_fee.assign(self) if isinstance(asset_fee, FeeMechanism)\
+            else self.basic_fee(asset_fee).assign(self)
+        self.lrna_fee: FeeMechanism = lrna_fee.assign(self) if isinstance(lrna_fee, FeeMechanism) \
+            else self.basic_fee(lrna_fee).assign(self)
         self.lrna_imbalance = mpf(0)  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
@@ -110,6 +112,15 @@ class OmnipoolState(AMM):
         copy_state.fail = ''
         return copy_state
 
+    @staticmethod
+    def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
+        def fee_function(
+                exchange: AMM, tkn: str, delta_tkn: float
+        ) -> float:
+            return (slip_factor * abs(delta_tkn) / (exchange.liquidity[tkn] + delta_tkn)) + minimum_fee
+
+        return FeeMechanism(fee_function, f"Slip fee (alpha={slip_factor}, min={minimum_fee}")
+
     def __repr__(self):
         # don't go overboard with the precision here
         precision = 10
@@ -122,8 +133,8 @@ class OmnipoolState(AMM):
             f'Omnipool: {self.unique_id}\n'
             f'********************************\n'
             f'tvl cap: {self.tvl_cap}\n'
-            f'lrna fee: {self.lrna_fee}\n'
-            f'asset fee: {self.asset_fee}\n'
+            f'lrna fee: {self.lrna_fee.name}\n'
+            f'asset fee: {self.asset_fee.name}\n'
             f'asset pools: (\n\n'
         ) + '\n'.join(
             [(
@@ -154,9 +165,14 @@ class OmnipoolState(AMM):
         """
         Given a buy quantity, calculate the effective price, so we can execute it as a sell
         """
+        asset_fee = self.asset_fee.compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
-                self.liquidity[tkn_buy] * (1 - self.asset_fee) - buy_quantity)
-        delta_Qi = -delta_Qj / (1 - self.lrna_fee)
+                self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
+        lrna_fee = self.lrna_fee.compute(tkn=tkn_sell, delta_tkn=(
+                self.liquidity[tkn_buy] * delta_Qj /
+                (self.lrna[tkn_buy] - delta_Qj)
+        ))
+        delta_Qi = -delta_Qj / (1 - lrna_fee)
         delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
         return delta_Ri
 
@@ -183,7 +199,7 @@ class OmnipoolState(AMM):
                 else:
                     raise ValueError("unknown subpool type")
 
-        if 'LRNA' == tkn_sell:
+        if tkn_sell == 'LRNA':
             return self.execute_lrna_swap(
                 agent=agent,
                 delta_ra=buy_quantity,
@@ -210,10 +226,16 @@ class OmnipoolState(AMM):
             return self.fail_transaction('sell amount must be greater than zero'), agent
 
         delta_Qi = self.lrna[i] * -delta_Ri / (self.liquidity[i] + delta_Ri)
-        delta_Qj = -delta_Qi * (1 - self.lrna_fee)
-        delta_Rj = self.liquidity[j] * -delta_Qj / (self.lrna[j] + delta_Qj) * (1 - self.asset_fee)
-        delta_L = min(-delta_Qi * self.lrna_fee, -self.lrna_imbalance)
-        delta_QH = -self.lrna_fee * delta_Qi - delta_L
+        asset_fee = self.asset_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+        lrna_fee = self.lrna_fee.compute(
+            tkn=tkn_buy,
+            delta_tkn=self.liquidity[j] * sell_quantity / (self.lrna[j] + sell_quantity) * (1 - asset_fee)
+        )
+
+        delta_Qj = -delta_Qi * (1 - lrna_fee)
+        delta_Rj = self.liquidity[j] * -delta_Qj / (self.lrna[j] + delta_Qj) * (1 - asset_fee)
+        delta_L = min(-delta_Qi * lrna_fee, -self.lrna_imbalance)
+        delta_QH = -lrna_fee * delta_Qi - delta_L
 
         if self.liquidity[i] + sell_quantity > 10 ** 12:
             return self.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), agent
@@ -248,14 +270,17 @@ class OmnipoolState(AMM):
         """
         Execute LRNA swap in place (modify and return)
         """
+        asset_fee = old_state.asset_fee.compute(
+            tkn=tkn, delta_tkn=delta_ra or old_state.liquidity[tkn] * delta_qa / (delta_qa + old_state.lrna[tkn])
+        )
 
         if delta_qa < 0:
             delta_Q = -delta_qa
-            delta_R = self.liquidity[tkn] * -delta_Q / (delta_Q + self.lrna[tkn]) * (1 - self.asset_fee)
+            delta_R = self.liquidity[tkn] * -delta_Q / (delta_Q + self.lrna[tkn]) * (1 - asset_fee)
             delta_ra = -delta_R
         elif delta_ra > 0:
             delta_R = -delta_ra
-            delta_Q = self.lrna[tkn] * -delta_R / (self.liquidity[tkn] * (1 - self.asset_fee) + delta_R)
+            delta_Q = self.lrna[tkn] * -delta_R / (self.liquidity[tkn] * (1 - asset_fee) + delta_R)
             delta_qa = -delta_Q
         else:
             return self.fail_transaction('Buying LRNA not implemented.'), agent
@@ -453,7 +478,7 @@ def swap(
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    new_state, new_agents = new_state.execute_swap(
+    new_state.execute_swap(
         agent=new_agent,
         sell_quantity=sell_quantity,
         buy_quantity=buy_quantity,
@@ -461,7 +486,7 @@ def swap(
         tkn_sell=tkn_sell,
     )
 
-    return new_state, new_agents
+    return new_state, new_agent
 
 
 def migrate(
