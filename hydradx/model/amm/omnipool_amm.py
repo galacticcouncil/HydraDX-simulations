@@ -191,7 +191,7 @@ class OmnipoolState(AMM):
             if {tkn_buy, tkn_sell} & {*sub_pool.asset_list}:
                 if isinstance(sub_pool, StableSwapPoolState):
                     return self.execute_stable_swap(
-                        agent, sub_pool,
+                        agent, sub_pool.unique_id,
                         tkn_sell, tkn_buy,
                         buy_quantity=buy_quantity,
                         sell_quantity=sell_quantity
@@ -311,12 +311,13 @@ class OmnipoolState(AMM):
 
     def execute_stable_swap(
         self, agent: Agent,
-        sub_pool: StableSwapPoolState,
+        sub_pool_id: str,
         tkn_sell: str, tkn_buy: str,
         buy_quantity: float = 0,
         sell_quantity: float = 0
     ) -> tuple[AMM, Agent]:
 
+        sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_id]
         if tkn_sell == 'LRNA':
             if buy_quantity:
                 # buy a specific quantity of a stableswap asset using LRNA
@@ -414,13 +415,34 @@ class OmnipoolState(AMM):
             self.shares[s] * self.lrna[i] / self.lrna[s] * self.protocol_shares[i] / self.shares[i]
         )
         self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
+
+        sub_pool.conversion_metrics[i] = {
+            'price': self.lrna[i] / self.lrna[s] * sub_pool.shares / self.liquidity[i],
+            'shares': self.shares[i],
+            'omnipool_shares': self.lrna[i] * self.shares[s] / self.lrna[s],
+            'stableswap_shares': self.lrna[i] * sub_pool.shares / self.lrna[s]
+        }
+
         sub_pool.shares += self.lrna[i] * sub_pool.shares / self.lrna[s]
         self.lrna[s] += self.lrna[i]
+
+        # remove asset from omnipool and add it to subpool
         self.lrna[i] = 0
         self.liquidity[i] = 0
         self.asset_list.remove(i)
         sub_pool.asset_list.append(i)
         return self
+
+    def execute_migrate_lp(
+        self,
+        agent: Agent,
+        sub_pool_id: str,
+        tkn_migrate: str
+    ):
+        old_share_price = agent.share_prices[(self.unique_id, tkn_migrate)]
+        # maybe this is an edge case or not allowed, but what if the agent already has a share price locked in?
+        # ex., maybe
+        agent.share_prices[sub_pool_id] = 1
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
@@ -512,7 +534,7 @@ def add_liquidity(
     if tkn_add not in old_state.asset_list:
         for sub_pool in new_state.sub_pools.values():
             if tkn_add in sub_pool.asset_list:
-                new_state.sub_pools[sub_pool.unique_id] = sub_pool.execute_add_liquidity(
+                new_state.sub_pools[sub_pool.unique_id], new_agent = sub_pool.execute_add_liquidity(
                     agent=new_agent,
                     quantity=quantity,
                     tkn_add=tkn_add
