@@ -102,11 +102,20 @@ class GlobalState:
 
     def __repr__(self):
         newline = "\n"
+        indent = '    '
         return (
             f'global state {newline}'
-            f'pools: {newline}{newline.join([repr(pool) for pool in self.pools.values()])}'
-            f'{newline}'
-            f'agents: {newline}{newline.join([repr(agent) for agent in self.agents.values()])}'
+            f'pools: {newline + newline + indent}' +
+            ((newline + indent).join([
+                (newline + indent).join(pool_desc.split('\n'))
+                for pool_desc in [repr(pool) for pool in self.pools.values()]
+            ])) +
+            newline + newline +
+            f'agents: {newline + newline}    ' +
+            ((newline + indent).join([
+                (newline + indent).join(agent_desc.split('\n'))
+                for agent_desc in [repr(agent) for agent in self.agents.values()]
+            ])) +
             f'{newline}'
             f'evolution function: {self.evolve_function}'
             f'{newline}'
@@ -190,6 +199,9 @@ def swap(
     buy_quantity: float = 0,
     sell_quantity: float = 0
 ) -> GlobalState:
+    """
+    copy state, execute swap, return swapped state
+    """
     return old_state.copy().execute_swap(
         pool_id=pool_id,
         agent_id=agent_id,
@@ -207,7 +219,16 @@ def add_liquidity(
     quantity: float,
     tkn_add: str
 ) -> GlobalState:
+    """
+    copy state, execute add liquidity
+    """
     new_state = old_state.copy()
+    # add liquidity to sub_pools through main pool
+    if pool_id not in new_state.pools:
+        for pool in new_state.pools.values():
+            if hasattr(pool, 'sub_pools') and pool_id in pool.sub_pools:
+                pool_id = pool.unique_id
+
     new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].add_liquidity(
         old_state=new_state.pools[pool_id],
         old_agent=new_state.agents[agent_id],
@@ -253,7 +274,7 @@ def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
 
 
 def external_market_trade(
-    state: GlobalState,
+    old_state: GlobalState,
     agent_id: str,
     tkn_buy: str,
     tkn_sell: str,
@@ -263,7 +284,7 @@ def external_market_trade(
 
     # do a trade at spot price on the external market
     # this should maybe only work in USD, cause we're probably talking about coinbase or something
-    new_state = state  # .copy()
+    new_state = old_state.copy()
     agent = new_state.agents[agent_id]
     if buy_quantity:
         sell_quantity = buy_quantity * new_state.price(tkn_buy) / new_state.price(tkn_sell)
@@ -271,7 +292,7 @@ def external_market_trade(
         buy_quantity = sell_quantity * new_state.price(tkn_sell) / new_state.price(tkn_buy)
     else:
         # raise TypeError('Must include either buy_quantity or sell_quantity.')
-        return state
+        return old_state
 
     if tkn_buy not in agent.holdings:
         agent.holdings[tkn_buy] = 0
@@ -287,4 +308,20 @@ def external_market_trade(
     agent.holdings[tkn_buy] += buy_quantity
     agent.holdings[tkn_sell] -= sell_quantity
 
+    return new_state
+
+
+def migrate(
+    old_state: GlobalState,
+    pool_id: str,
+    sub_pool_id: str,
+    tkn_migrate: str
+) -> GlobalState:
+    if not hasattr(old_state.pools[pool_id], 'execute_migration'):
+        raise AttributeError(f"Pool {pool_id} does not implement migrations.")
+    new_state = old_state.copy()
+    new_state.pools[pool_id] = new_state.pools[pool_id].execute_migration(
+        tkn_migrate=tkn_migrate,
+        sub_pool_id=sub_pool_id
+    )
     return new_state

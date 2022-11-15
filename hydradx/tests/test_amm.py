@@ -109,8 +109,8 @@ def global_state_config(
         for pool in pools.values():
             for asset in pool.asset_list:
                 pool.liquidity[asset] = pool.liquidity[asset] or 1000000 / market_prices[asset]
-            if hasattr(pool, 'base_fee') and pool.base_fee is None:
-                pool.base_fee = draw(fee_strategy)
+            if hasattr(pool, 'trade_fee') and pool.trade_fee.compute('', 0) < 0:
+                pool.trade_fee = draw(fee_strategy)
 
     if not agents:
         agents = {
@@ -278,7 +278,7 @@ def test_arbitrage_profitability(initial_state: GlobalState):
                 'X': 0,  # random via draw(asset_quantity_strategy)
                 'Y': 0
             },
-            trade_fee=None  # i.e. choose one randomly via draw(fee_strategy)
+            trade_fee=-1  # i.e. choose one randomly via draw(fee_strategy)
         )
     },
     agents={
@@ -291,10 +291,18 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
     recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
 
     def sell_spot(state: GlobalState):
-        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 - state.pools['X/Y'].base_fee)
+        return (
+                state.pools['X/Y'].liquidity['X']
+                / state.pools['X/Y'].liquidity['Y']
+                * (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+        )
 
     def buy_spot(state: GlobalState):
-        return state.pools['X/Y'].liquidity['X'] / state.pools['X/Y'].liquidity['Y'] * (1 + state.pools['X/Y'].base_fee)
+        return (
+                state.pools['X/Y'].liquidity['X']
+                / state.pools['X/Y'].liquidity['Y']
+                / (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+        )
 
     algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
     recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
@@ -328,7 +336,7 @@ def test_buy_fee_derivation(initial_state: GlobalState):
             pool.liquidity[tkn] = float('inf')
     feeless_state = initial_state.copy()
     for pool in feeless_state.pools.values():
-        pool.base_fee = 0
+        pool.trade_fee = 0
     asset_path = copy.copy(initial_state.asset_list)
     pool_path = []
     random.shuffle(asset_path)
@@ -370,7 +378,7 @@ def test_buy_fee_derivation(initial_state: GlobalState):
     fee_amount = buy_amount / feeless_buy_amount - 1
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount /= (1 - initial_state.pools[pool_id].base_fee)
+        expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
     expected_fee_amount -= 1
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
@@ -389,7 +397,7 @@ def test_sell_fee_derivation(initial_state: GlobalState):
             pool.liquidity[tkn] = float('inf')
     feeless_state = initial_state.copy()
     for pool in feeless_state.pools.values():
-        pool.base_fee = 0
+        pool.trade_fee = 0
     asset_path = copy.copy(initial_state.asset_list)
     pool_path = []
     random.shuffle(asset_path)
@@ -432,7 +440,7 @@ def test_sell_fee_derivation(initial_state: GlobalState):
     # what do we think it should be, if the derived formula is right?
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount *= (1 - initial_state.pools[pool_id].base_fee)
+        expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
     expected_fee_amount = 1 - expected_fee_amount
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')

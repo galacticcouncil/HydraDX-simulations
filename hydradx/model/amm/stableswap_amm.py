@@ -7,11 +7,6 @@ from mpmath import mpf, mp
 mp.dps = 50
 
 
-# N_COINS = 2  # I think we cannot currently go higher than this
-# ann means how concentrated the liquidity is;
-# the higher the number, the less the price changes as the pool moves away from balance
-
-
 class StableSwapPoolState(AMM):
     unique_id: str = 'stableswap'
 
@@ -47,8 +42,7 @@ class StableSwapPoolState(AMM):
             self.asset_list.append(token)
             self.liquidity[token] = mpf(quantity)
 
-        self.shares = self.calculate_d()
-        self.d = self.calculate_d()
+        self.shares = mpf(self.d)
 
     @property
     def ann(self) -> float:
@@ -57,6 +51,10 @@ class StableSwapPoolState(AMM):
     @property
     def n_coins(self) -> int:
         return len(self.asset_list)
+
+    @property
+    def d(self) -> float:
+        return self.calculate_d()
 
     def has_converged(self, v0, v1) -> bool:
         diff = abs(v0 - v1)
@@ -114,8 +112,7 @@ class StableSwapPoolState(AMM):
     @property
     def spot_price(self):
         x, y = self.liquidity.values()
-        d = self.d
-        return self.price_at_balance([x, y], d)
+        return self.price_at_balance([x, y], self.d)
 
     def price_at_balance(self, balances: list, d: float):
         x, y = balances
@@ -131,28 +128,31 @@ class StableSwapPoolState(AMM):
                 balances.pop(tkn)
         return list(balances.values())
 
+    def calculate_withdrawal_shares(self, tkn_remove, quantity):
+        updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
+        return self.shares * (1 - updated_d / self.d) / (1 - self.trade_fee)
+
     def execute_swap(
             self,
-            old_agent: Agent,
+            agent: Agent,
             tkn_sell: str,
             tkn_buy: str,
             buy_quantity: float = 0,
             sell_quantity: float = 0
     ):
-        d = self.calculate_d()
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-            sell_quantity = (self.calculate_y(reserves, d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+            sell_quantity = (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
-            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, d)) * (1 - self.trade_fee)
+            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
 
-        if old_agent.holdings[tkn_sell] < sell_quantity:
-            return self.fail_transaction('Agent has insufficient funds.'), old_agent
+        if agent.holdings[tkn_sell] < sell_quantity:
+            return self.fail_transaction('Agent has insufficient funds.'), agent
         elif self.liquidity[tkn_buy] <= buy_quantity:
-            return self.fail_transaction('Pool has insufficient liquidity.'), old_agent
+            return self.fail_transaction('Pool has insufficient liquidity.'), agent
 
-        new_agent = old_agent  # .copy()
+        new_agent = agent  # .copy()
         new_agent.holdings[tkn_buy] += buy_quantity
         new_agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
@@ -172,28 +172,30 @@ class StableSwapPoolState(AMM):
             raise ValueError('Withdraw quantity must be > 0.')
 
         share_fraction = shares_removed / self.shares
-        self.shares -= shares_removed
-        agent.holdings[self.unique_id] -= shares_removed
-        updated_d = self.calculate_d(self.liquidity.values()) * (1 - share_fraction * (1 - self.trade_fee))
+
+        updated_d = self.d * (1 - share_fraction * (1 - self.trade_fee))
         delta_tkn = self.calculate_y(
             self.modified_balances(delta={}, omit=[tkn_remove]),
             updated_d
         ) - self.liquidity[tkn_remove]
-        # delta_tkn *= (1 - self.trade_fee)
 
         if delta_tkn >= self.liquidity[tkn_remove]:
             return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.'), agent
 
+        if tkn_remove not in agent.holdings:
+            agent.holdings[tkn_remove] = 0
+        self.shares -= shares_removed
+        agent.holdings[self.unique_id] -= shares_removed
         self.liquidity[tkn_remove] += delta_tkn
         agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
-        # self.d = updated_d
         return self, agent
 
     def execute_withdraw_asset(
             self,
             agent: Agent,
             quantity: float,
-            tkn_remove: str
+            tkn_remove: str,
+            fail_on_overdraw: bool = True
     ):
         """
         Calculate a withdrawal based on the asset quantity rather than the share quantity
@@ -203,20 +205,22 @@ class StableSwapPoolState(AMM):
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
-        shares_removed = self.shares * (1 - updated_d / self.calculate_d()) / (1 - self.trade_fee)
-        # shares_removed = self.cost_of_asset_in_shares(tkn_remove, quantity)
+        shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity)
 
         if shares_removed > agent.holdings[self.unique_id]:
-            # return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
-            # just round down
-            shares_removed = agent.holdings[self.unique_id]
+            if fail_on_overdraw:
+                return self.fail_transaction('Agent tried to remove more shares than it owns.'), agent
+            else:
+                # just round down
+                shares_removed = agent.holdings[self.unique_id]
+
+        if tkn_remove not in agent.holdings:
+            agent.holdings[tkn_remove] = 0
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= quantity
         agent.holdings[tkn_remove] += quantity
-        self.d = updated_d
         return self, agent
 
     def execute_add_liquidity(
@@ -225,7 +229,7 @@ class StableSwapPoolState(AMM):
             quantity: float,
             tkn_add: str
     ):
-        initial_d = self.calculate_d()
+        initial_d = self.d
 
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
 
@@ -263,7 +267,7 @@ class StableSwapPoolState(AMM):
             tkn_add: str,
             fail_overdraft: bool = True
     ):
-        initial_d = self.calculate_d()
+        initial_d = self.d
         updated_d = initial_d * (self.shares + quantity) / self.shares
         delta_tkn = self.calculate_y(
             self.modified_balances(omit=[tkn_add]),
@@ -288,17 +292,22 @@ class StableSwapPoolState(AMM):
         return copy.deepcopy(self)
 
     def __repr__(self):
+        # round to given precision
+        precision = 10
+        liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.asset_list}
+        shares = round(self.shares, precision)
         return (
-                   f'Stable Swap Pool\n'
+                   f'Stable Swap Pool: {self.unique_id}\n'
+                   f'********************************\n'
                    f'base trade fee: {self.trade_fee}\n'
-                   f'shares: {self.shares}\n'
+                   f'shares: {shares}\n'
                    f'amplification constant: {self.amplification}\n'
-                   f'tokens: (\n'
-               ) + ')\n(\n'.join(
+                   f'tokens: (\n\n'
+               ) + '\n'.join(
             [(
                 f'    {token}\n'
-                f'    quantity: {self.liquidity[token]}\n'
-                f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
+                f'    quantity: {liquidity[token]}\n'
+                f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
             ) for token in self.asset_list]
         ) + '\n)\n' + (
                    f'error message:{self.fail or "none"}'

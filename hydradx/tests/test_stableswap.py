@@ -4,9 +4,9 @@ from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
-from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
+from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
-from hypothesis import given, strategies as st, assume
+from hypothesis import given, strategies as st
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
@@ -108,7 +108,7 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
     tkn_remove = initial_pool.asset_list[0]
     pool_name = initial_pool.unique_id
     delta_shares = min(initial_pool.shares / 2, 100)
-    initial_agent.holdings.update({initial_pool.unique_id: delta_shares})
+    initial_agent.holdings.update({initial_pool.unique_id: delta_shares + 1})
     withdraw_shares_pool, withdraw_shares_agent = stableswap.remove_liquidity(
         initial_pool, initial_agent, delta_shares, tkn_remove
     )
