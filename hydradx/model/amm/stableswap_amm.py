@@ -292,17 +292,21 @@ class StableSwapPoolState(AMM):
         return copy.deepcopy(self)
 
     def __repr__(self):
+        # round to given precision
+        precision = 10
+        liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.asset_list}
+        shares = round(self.shares, precision)
         return (
-                   f'Stable Swap Pool\n'
+                   f'Stable Swap Pool: {self.unique_id}\n'
                    f'base trade fee: {self.trade_fee}\n'
-                   f'shares: {self.shares}\n'
+                   f'shares: {shares}\n'
                    f'amplification constant: {self.amplification}\n'
-                   f'tokens: (\n'
-               ) + ')\n(\n'.join(
+                   f'tokens: (\n\n'
+               ) + '\n'.join(
             [(
                 f'    {token}\n'
-                f'    quantity: {self.liquidity[token]}\n'
-                f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
+                f'    quantity: {liquidity[token]}\n'
+                f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
             ) for token in self.asset_list]
         ) + '\n)\n' + (
                    f'error message:{self.fail or "none"}'
