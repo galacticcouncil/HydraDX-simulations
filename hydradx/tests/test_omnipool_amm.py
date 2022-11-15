@@ -645,6 +645,7 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent did not get exactly the amount they specified.')
 
 
+@given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
 def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
