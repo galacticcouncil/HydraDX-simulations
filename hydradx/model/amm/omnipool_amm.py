@@ -15,7 +15,7 @@ class OmnipoolState(AMM):
                  preferred_stablecoin: str = "USD",
                  asset_fee: float = 0,
                  lrna_fee: float = 0,
-                 sub_pools: dict[str: AMM] = ()
+                 sub_pools: dict[str: AMM] = None
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -69,6 +69,15 @@ class OmnipoolState(AMM):
 
         if sub_pools:
             self.sub_pools = sub_pools
+            # deposit subpool shares into omnipool
+            for pool_name, stable_pool in self.sub_pools.items():
+                self.asset_list += [pool_name]
+                self.liquidity[pool_name] = stable_pool.shares
+                self.lrna[pool_name] = stable_pool.shares * self.lrna_price(self.stablecoin)
+                self.weight_cap[pool_name] = 1
+                self.shares[pool_name] = stable_pool.shares
+                self.protocol_shares[pool_name] = stable_pool.shares
+                stable_pool.unique_id = pool_name
         else:
             self.sub_pools = {}
 
@@ -77,6 +86,8 @@ class OmnipoolState(AMM):
         price of an asset i denominated in j, according to current market conditions in the omnipool
         """
         j = j if j in self.liquidity else self.stablecoin
+        if self.liquidity[i] == 0:
+            return 0
         return self.lrna[i] / self.liquidity[i] / self.lrna[j] * self.liquidity[j]
 
     def lrna_price(self, tkn) -> float:
@@ -100,24 +111,37 @@ class OmnipoolState(AMM):
         return copy_state
 
     def __repr__(self):
+        # don't go overboard with the precision here
+        precision = 10
+        lrna = {tkn: round(self.lrna[tkn], precision) for tkn in self.lrna}
+        lrna_total = round(self.lrna_total, precision)
+        liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
+        weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
+        price = {tkn: round(self.price(tkn), precision) for tkn in self.asset_list}
         return (
-            f'Omnipool\n'
+            f'Omnipool: {self.unique_id}\n'
             f'tvl cap: {self.tvl_cap}\n'
             f'lrna fee: {self.lrna_fee}\n'
             f'asset fee: {self.asset_fee}\n'
-            f'asset pools: (\n'
-        ) + ')\n(\n'.join(
+            f'asset pools: (\n\n'
+        ) + '\n'.join(
             [(
-                f'    {token}\n'
-                f'    asset quantity: {self.liquidity[token]}\n'
-                f'    lrna quantity: {self.lrna[token]}\n'
-                f'    USD price: {self.price(token)}\n'
-                f'    tvl: {self.lrna[token] * self.liquidity[self.stablecoin] / self.lrna[self.stablecoin]}\n'
-                f'    weight: {self.lrna[token]}/{self.lrna_total} ({self.lrna[token] / self.lrna_total})\n'
-                f'    weight cap: {self.weight_cap[token]}\n'
+                f'    *{token}*\n'
+                f'    asset quantity: {liquidity[token]}\n'
+                f'    lrna quantity: {lrna[token]}\n'
+                f'    USD price: {price[token]}\n' +
+                f'    tvl: {lrna[token] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
+                f'    weight: {lrna[token]}/{lrna_total} ({lrna[token] / lrna_total})\n'
+                f'    weight cap: {weight_cap[token]}\n'
                 f'    total shares: {self.shares[token]}\n'
                 f'    protocol shares: {self.protocol_shares[token]}\n'
             ) for token in self.asset_list]
+        ) + '\n)\n' + f'sub pools: (\n\n    ' + ')\n(\n'.join(
+            [
+                '\n    '.join(pool_desc.split('\n'))
+                for pool_desc in
+                [repr(pool) for pool in self.sub_pools.values()]
+            ]
         ) + '\n)'
 
     def calculate_sell_from_buy(
@@ -206,6 +230,8 @@ class OmnipoolState(AMM):
         self.lrna['HDX'] += delta_QH
         self.lrna_imbalance += delta_L
 
+        if j not in agent.holdings:
+            agent.holdings[j] = 0
         agent.holdings[i] -= delta_Ri
         agent.holdings[j] -= delta_Rj
 
@@ -451,11 +477,20 @@ def add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
-    # assert quantity > 0, f"delta_R must be positive: {quantity}"
-    assert tkn_add in old_state.asset_list, f"invalid value for i: {tkn_add}"
-
     new_state = old_state.copy()
     new_agent = old_agent.copy()
+
+    # assert quantity > 0, f"delta_R must be positive: {quantity}"
+    if tkn_add not in old_state.asset_list:
+        for sub_pool in new_state.sub_pools.values():
+            if tkn_add in sub_pool.asset_list:
+                new_state.sub_pools[sub_pool.unique_id] = sub_pool.execute_add_liquidity(
+                    agent=new_agent,
+                    quantity=quantity,
+                    tkn_add=tkn_add
+                )
+            return new_state, new_agent
+        raise AssertionError(f"invalid value for i: {tkn_add}")
 
     # Token amounts update
     new_state.liquidity[tkn_add] += quantity
