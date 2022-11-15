@@ -298,6 +298,7 @@ class StableSwapPoolState(AMM):
         shares = round(self.shares, precision)
         return (
                    f'Stable Swap Pool: {self.unique_id}\n'
+                   f'********************************\n'
                    f'base trade fee: {self.trade_fee}\n'
                    f'shares: {shares}\n'
                    f'amplification constant: {self.amplification}\n'

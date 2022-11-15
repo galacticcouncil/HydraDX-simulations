@@ -102,11 +102,20 @@ class GlobalState:
 
     def __repr__(self):
         newline = "\n"
+        indent = '    '
         return (
             f'global state {newline}'
-            f'pools: {newline}{newline.join([repr(pool) for pool in self.pools.values()])}'
-            f'{newline}'
-            f'agents: {newline}{newline.join([repr(agent) for agent in self.agents.values()])}'
+            f'pools: {newline + newline + indent}' +
+            ((newline + indent).join([
+                (newline + indent).join(pool_desc.split('\n'))
+                for pool_desc in [repr(pool) for pool in self.pools.values()]
+            ])) +
+            newline + newline +
+            f'agents: {newline + newline}    ' +
+            ((newline + indent).join([
+                (newline + indent).join(agent_desc.split('\n'))
+                for agent_desc in [repr(agent) for agent in self.agents.values()]
+            ])) +
             f'{newline}'
             f'evolution function: {self.evolve_function}'
             f'{newline}'

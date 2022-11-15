@@ -33,6 +33,7 @@ class Agent:
         share_prices = {tkn: round(self.holdings[tkn], precision) for tkn in self.share_prices}
         return (
             f'Agent: {self.unique_id}\n'
+            f'********************************\n'
             f'trade strategy: {self.trade_strategy.name if self.trade_strategy else "None"}\n' +
             f'holdings: (\n\n' +
             f'\n'.join(

@@ -120,6 +120,7 @@ class OmnipoolState(AMM):
         price = {tkn: round(self.price(tkn), precision) for tkn in self.asset_list}
         return (
             f'Omnipool: {self.unique_id}\n'
+            f'********************************\n'
             f'tvl cap: {self.tvl_cap}\n'
             f'lrna fee: {self.lrna_fee}\n'
             f'asset fee: {self.asset_fee}\n'
@@ -383,15 +384,17 @@ class OmnipoolState(AMM):
         i = tkn_migrate
         if tkn_migrate in sub_pool.liquidity:
             raise AssertionError('Assets should only exist in one place in the Omnipool at a time.')
-        sub_pool.liquidity[s] = self.liquidity[i]
+        sub_pool.liquidity[i] = self.liquidity[i]
         self.protocol_shares[s] += (
             self.shares[s] * self.lrna[i] / self.lrna[s] * self.protocol_shares[i] / self.shares[i]
         )
         self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
         sub_pool.shares += self.lrna[i] * sub_pool.shares / self.lrna[s]
         self.lrna[s] += self.lrna[i]
-        self.liquidity[i] = 0
         self.lrna[i] = 0
+        self.liquidity[i] = 0
+        self.asset_list.remove(i)
+        sub_pool.asset_list.append(i)
         return self
 
 
