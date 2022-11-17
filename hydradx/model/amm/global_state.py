@@ -325,3 +325,21 @@ def migrate(
         sub_pool_id=sub_pool_id
     )
     return new_state
+
+
+def migrate_lp(
+    old_state: GlobalState,
+    pool_id: str,
+    agent_id: str,
+    sub_pool_id: str,
+    tkn_migrate: str
+) -> GlobalState:
+    if not hasattr(old_state.pools[pool_id], 'execute_migrate_lp'):
+        raise AttributeError(f"Pool {pool_id} does not implement migrations.")
+    new_state = old_state.copy()
+    new_state.pools[pool_id], agent = new_state.pools[pool_id].execute_migrate_lp(
+        agent=new_state.agents[agent_id],
+        tkn_migrate=tkn_migrate,
+        sub_pool_id=sub_pool_id
+    )
+    return new_state
