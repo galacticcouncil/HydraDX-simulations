@@ -43,6 +43,7 @@ class StableSwapPoolState(AMM):
             self.liquidity[token] = mpf(quantity)
 
         self.shares = mpf(self.d)
+        self.conversion_metrics = {}
 
     @property
     def ann(self) -> float:
@@ -308,6 +309,7 @@ class StableSwapPoolState(AMM):
                 f'    {token}\n'
                 f'    quantity: {liquidity[token]}\n'
                 f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
+                f'    conversion metrics: {self.conversion_metrics[token] if token in self.conversion_metrics else ""}'
             ) for token in self.asset_list]
         ) + '\n)\n' + (
                    f'error message:{self.fail or "none"}'
