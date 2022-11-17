@@ -13,8 +13,8 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 asset_fee: FeeMechanism or float = None,
-                 lrna_fee: FeeMechanism or float = None,
+                 asset_fee: FeeMechanism or float = 0,
+                 lrna_fee: FeeMechanism or float = 0,
                  sub_pools: dict[str: AMM] = None,
                  ):
         """
@@ -401,6 +401,37 @@ class OmnipoolState(AMM):
         else:
             raise ValueError('buy_quantity or sell_quantity must be specified.')
 
+    def execute_create_sub_pool(
+            self,
+            tkns_migrate: list[str],
+            sub_pool_id: str,
+            amplification: float,
+            trade_fee: FeeMechanism or float = 0
+    ):
+        new_sub_pool = StableSwapPoolState(
+            tokens={tkn: self.liquidity[tkn] for tkn in tkns_migrate},
+            amplification=amplification,
+            unique_id=sub_pool_id,
+            trade_fee=trade_fee
+        )
+        new_sub_pool.conversion_metrics = {
+            tkn: {
+                'price': self.lrna_price(tkn),
+                'old_shares': self.shares[tkn],
+                'omnipool_shares': self.lrna[tkn],
+                'subpool_shares': self.lrna[tkn]
+            } for tkn in tkns_migrate
+        }
+        new_sub_pool.shares = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        self.sub_pools[sub_pool_id] = new_sub_pool
+        self.liquidity[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        self.shares[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        self.lrna[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        self.protocol_shares[sub_pool_id] = sum([
+            self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
+        ])
+        return self
+
     def execute_migration(self, tkn_migrate: str, sub_pool_id: str):
         """
         Move an asset from the Omnipool into a stableswap subpool.
@@ -414,15 +445,15 @@ class OmnipoolState(AMM):
         self.protocol_shares[s] += (
             self.shares[s] * self.lrna[i] / self.lrna[s] * self.protocol_shares[i] / self.shares[i]
         )
-        self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
 
         sub_pool.conversion_metrics[i] = {
             'price': self.lrna[i] / self.lrna[s] * sub_pool.shares / self.liquidity[i],
-            'shares': self.shares[i],
+            'old_shares': self.shares[i],
             'omnipool_shares': self.lrna[i] * self.shares[s] / self.lrna[s],
-            'stableswap_shares': self.lrna[i] * sub_pool.shares / self.lrna[s]
+            'subpool_shares': self.lrna[i] * sub_pool.shares / self.lrna[s]
         }
 
+        self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
         sub_pool.shares += self.lrna[i] * sub_pool.shares / self.lrna[s]
         self.lrna[s] += self.lrna[i]
 
@@ -439,10 +470,25 @@ class OmnipoolState(AMM):
         sub_pool_id: str,
         tkn_migrate: str
     ):
-        old_share_price = agent.share_prices[(self.unique_id, tkn_migrate)]
-        # maybe this is an edge case or not allowed, but what if the agent already has a share price locked in?
-        # ex., maybe
-        agent.share_prices[sub_pool_id] = 1
+        sub_pool = self.sub_pools[sub_pool_id]
+        conversions = sub_pool.conversion_metrics[tkn_migrate]
+        old_pool_id = (self.unique_id, tkn_migrate)
+        old_share_price = agent.share_prices[old_pool_id]
+        # TODO: maybe this is an edge case or not allowed, but what if the agent already has a share price locked in?
+        # ex., maybe they have LPed into the new subpool after their asset was migrated,
+        # but before they had migrated their own position
+        agent.share_prices[sub_pool_id] = old_share_price / conversions['price']
+        if sub_pool_id not in agent.holdings:
+            agent.holdings[sub_pool_id] = 0
+        agent.holdings[sub_pool_id] += (
+            agent.holdings[old_pool_id] / conversions['old_shares'] * conversions['omnipool_shares']
+        )
+        self.liquidity[sub_pool_id] += (
+            agent.holdings[old_pool_id]/conversions['old_shares'] * conversions['subpool_shares']
+        )  # frac{s_\alpha}{S_i}\Delta U_s
+        agent.holdings[old_pool_id] = 0
+
+        return self, agent
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
