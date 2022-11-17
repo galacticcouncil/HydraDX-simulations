@@ -66,7 +66,7 @@ class AMM:
         return self
 
     @staticmethod
-    def basic_fee(f: float) -> FeeMechanism:
+    def basic_fee(f: float = 0) -> FeeMechanism:
         def fee_function(
                 exchange: AMM, tkn: str, delta_tkn: float
         ) -> float:
