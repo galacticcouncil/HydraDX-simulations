@@ -430,9 +430,14 @@ class OmnipoolState(AMM):
         self.protocol_shares[sub_pool_id] = sum([
             self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
         ])
+        # remove assets from Omnipool
+        for tkn in tkns_migrate:
+            self.liquidity[tkn] = 0
+            self.lrna[tkn] = 0
+            self.asset_list.remove(tkn)
         return self
 
-    def execute_migration(self, tkn_migrate: str, sub_pool_id: str):
+    def execute_migrate_asset(self, tkn_migrate: str, sub_pool_id: str):
         """
         Move an asset from the Omnipool into a stableswap subpool.
         """
@@ -454,6 +459,7 @@ class OmnipoolState(AMM):
         }
 
         self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
+        self.liquidity[s] += self.lrna[i] * sub_pool.shares / self.lrna[s]
         sub_pool.shares += self.lrna[i] * sub_pool.shares / self.lrna[s]
         self.lrna[s] += self.lrna[i]
 
@@ -562,7 +568,7 @@ def migrate(
         tkn_migrate: str,
         sub_pool_id: str
 ) -> OmnipoolState:
-    return old_state.copy().execute_migration(tkn_migrate, sub_pool_id)
+    return old_state.copy().execute_migrate_asset(tkn_migrate, sub_pool_id)
 
 
 def add_liquidity(
@@ -580,7 +586,7 @@ def add_liquidity(
     if tkn_add not in old_state.asset_list:
         for sub_pool in new_state.sub_pools.values():
             if tkn_add in sub_pool.asset_list:
-                new_state.sub_pools[sub_pool.unique_id], new_agent = sub_pool.execute_add_liquidity(
+                sub_pool.execute_add_liquidity(
                     agent=new_agent,
                     quantity=quantity,
                     tkn_add=tkn_add
@@ -651,15 +657,27 @@ def remove_liquidity(
         tkn_remove: str
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity removal"""
-    quantity = -abs(quantity)
-    assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
-    assert tkn_remove in old_state.asset_list, f"invalid token name: {tkn_remove}"
-
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
     if quantity == 0:
         return new_state, new_agent
+
+    if tkn_remove not in new_state.asset_list:
+        for sub_pool in new_state.sub_pools.values():
+            if tkn_remove in sub_pool.asset_list:
+                sub_pool.execute_remove_liquidity(
+                    new_agent, quantity, tkn_remove
+                )
+                if sub_pool.fail:
+                    return old_state.fail_transaction(sub_pool.fail), old_agent
+                return new_state, new_agent
+
+        raise AssertionError(f"invalid value for i: {tkn_remove}")
+
+    quantity = -abs(quantity)
+    assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
+    assert tkn_remove in old_state.asset_list, f"invalid token name: {tkn_remove}"
 
     # determine if they should get some LRNA back as well as the asset they invested
     piq = old_state.lrna_price(tkn_remove)
