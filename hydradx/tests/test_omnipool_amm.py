@@ -7,6 +7,7 @@ from mpmath import mpf, mp
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
+import hydradx.model.amm.stableswap_amm as stableswap
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -694,30 +695,6 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError("LRNA imbalance incorrect.")
 
 
-@given(omnipool_config(
-    asset_dict={
-        'USD': {'liquidity': 1000, 'LRNA': 1000},
-        'HDX': {'liquidity': 1000, 'LRNA': 1000},
-        'DAI': {'liquidity': 1000, 'LRNA': 1000}
-    },
-    sub_pools={'stableswap': {'token_count': 2}}
-))
-def test_migrate_asset(initial_state: oamm.OmnipoolState):
-    s = 'stableswap'
-    i = 'DAI'
-    sub_pool: StableSwapPoolState = initial_state.sub_pools[s]
-    new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
-    if (
-        pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
-        != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
-        + initial_state.lrna[s] * initial_state.protocol_shares[s] / initial_state.shares[s]
-    ):
-        raise AssertionError("Protocol didn't get the right number of shares.")
-    new_sub_pool: StableSwapPoolState = new_state.sub_pools[s]
-    if new_state.shares[s] != new_sub_pool.shares:
-        raise AssertionError("Subpool and Omnipool shares aren't equal.")
-
-
 @given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
 def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
     initial_state.lrna_fee = oamm.OmnipoolState.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
@@ -768,3 +745,222 @@ def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, ass
             != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
                              + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
         raise AssertionError('Asset quantity is not constant after trade (two-part)')
+
+
+@given(omnipool_config(
+    asset_dict={
+        'USD': {'liquidity': 1000, 'LRNA': 1000},
+        'HDX': {'liquidity': 1000, 'LRNA': 1000},
+        'DAI': {'liquidity': 1000, 'LRNA': 1000}
+    },
+    sub_pools={'stableswap': {'token_count': 2}}
+))
+def test_migrate_asset(initial_state: oamm.OmnipoolState):
+    s = 'stableswap'
+    i = 'DAI'
+    initial_agent = Agent(
+        holdings={'DAI': 100}
+    )
+    sub_pool: StableSwapPoolState = initial_state.sub_pools[s]
+    new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
+    if (
+        pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
+        != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
+        + initial_state.lrna[s] * initial_state.protocol_shares[s] / initial_state.shares[s]
+    ):
+        raise AssertionError("Protocol didn't get the right number of shares.")
+    new_sub_pool: StableSwapPoolState = new_state.sub_pools[s]
+    if new_state.shares[s] != new_sub_pool.shares:
+        raise AssertionError("Subpool and Omnipool shares aren't equal.")
+
+    lp_state, lp = oamm.add_liquidity(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        quantity=100, tkn_add='DAI'
+    )
+    migrated_state, migrated_lp = lp_state.copy().execute_migrate_asset('DAI', 'stableswap').execute_migrate_lp(
+        agent=lp.copy(),
+        sub_pool_id='stableswap',
+        tkn_migrate='DAI'
+    )
+    migrated_sub_pool: StableSwapPoolState = migrated_state.sub_pools[s]
+    pui = migrated_sub_pool.conversion_metrics['DAI']['price']
+    pa = lp.share_prices[(initial_state.unique_id, 'DAI')]
+    pb = migrated_lp.share_prices['stableswap']
+    if pui * pb != pa:
+        raise AssertionError('something wrong')
+    sa = lp.holdings[(initial_state.unique_id, 'DAI')]
+    sb = migrated_lp.holdings[s]
+    d_si = migrated_sub_pool.conversion_metrics[i]['old_shares']
+    d_ss = migrated_state.shares[s] - initial_state.shares[s]
+    if sb / sa != abs(d_ss / d_si):
+        raise AssertionError('something wrong')
+
+
+@given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
+def test_migration_scenarios(initial_state: oamm.OmnipoolState):
+    asset1 = initial_state.asset_list[2]
+    asset2 = 'DAI'
+    asset3 = 'USDC'
+    initial_state.asset_list.append(asset2)
+    initial_state.liquidity[asset2] = initial_state.liquidity[asset1] * 1.1
+    initial_state.lrna[asset2] = initial_state.lrna[asset1] * 1.1
+    initial_state.shares[asset2] = initial_state.shares[asset1] * 1.1
+    initial_state.protocol_shares[asset2] = initial_state.protocol_shares[asset1] * 1.1
+    initial_state.asset_list.append(asset3)
+    initial_state.liquidity[asset3] = initial_state.liquidity[asset1] * 1.1
+    initial_state.lrna[asset3] = initial_state.lrna[asset1] * 1.1
+    initial_state.shares[asset3] = initial_state.shares[asset1] * 1.1
+    initial_state.protocol_shares[asset3] = initial_state.protocol_shares[asset1] * 1.1
+    initial_state.weight_cap[asset3] = 1
+    initial_lp = Agent(
+        holdings={
+            asset1: initial_state.liquidity[asset2] - initial_state.liquidity[asset1],
+            asset2: 0,
+            asset3: 0,
+            'LRNA': 0
+        }
+    )
+    initial_state, initial_lp = oamm.add_liquidity(
+        initial_state, initial_lp,
+        quantity=initial_lp.holdings[asset1], tkn_add=asset1
+    )
+    s1_state, s1_lp = oamm.remove_liquidity(
+        initial_state, initial_lp,
+        quantity=initial_lp.holdings[(initial_state.unique_id, asset1)],
+        tkn_remove=asset1
+    )
+
+    q1 = s1_lp.holdings['LRNA']
+    r1 = s1_lp.holdings[asset1]
+
+    migrate_state, migrate_lp = initial_state.copy().execute_create_sub_pool(
+        tkns_migrate=[asset1, asset2, asset3],
+        sub_pool_id='stableswap',
+        amplification=10
+    ).execute_migrate_lp(
+        agent=initial_lp.copy(),
+        sub_pool_id='stableswap',
+        tkn_migrate=asset1
+    )
+    s2_state = migrate_state.copy()
+    s2_lp = migrate_lp.copy()
+    s2_sub_pool: StableSwapPoolState = s2_state.sub_pools['stableswap']
+    withdraw_fraction = migrate_lp.holdings['stableswap'] / s2_sub_pool.shares
+    # withdraw an equal fraction of each asset from the subpool
+    for tkn in s2_sub_pool.asset_list:
+        delta_tkn = s2_sub_pool.liquidity[tkn] * withdraw_fraction
+        s2_sub_pool.liquidity[tkn] -= delta_tkn
+        s2_lp.holdings[tkn] += delta_tkn
+    s2_sub_pool.shares *= 1 - withdraw_fraction
+    s2_lp.holdings['stableswap'] = 0
+
+    q2 = s2_lp.holdings['LRNA']
+    r2 = s2_lp.holdings[asset1] + s2_lp.holdings[asset2] + s2_lp.holdings[asset3]
+
+    s3_state = s2_state.copy()
+    s3_lp = s2_lp.copy()
+    s3_sub_pool = s3_state.sub_pools['stableswap']
+    for tkn in [asset2, asset3]:
+        s3_sub_pool.execute_swap(
+            agent=s3_lp,
+            tkn_sell=tkn,
+            tkn_buy=asset1,
+            sell_quantity=s3_lp.holdings[tkn]
+        )
+
+    r3 = s3_lp.holdings[asset1]
+
+    s3_state, s3_lp = oamm.remove_liquidity(
+        migrate_state, migrate_lp,
+        quantity=migrate_lp.holdings['stableswap'],
+        tkn_remove=asset1
+    )
+
+    q4 = s3_lp.holdings['LRNA']
+    r4 = s3_lp.holdings[asset1]
+
+    if q1 != pytest.approx(q2) or r1 != pytest.approx(r2) or r4 != pytest.approx(r3) or q4 != pytest.approx(q2):
+        raise AssertionError("Equivalent transactions didn't come out the same.")
+
+    initial_state = migrate_state.copy()
+    initial_sub_pool = initial_state.sub_pools['stableswap']
+    asset4 = "superstableUSDcoin"
+
+    initial_state.asset_list.append(asset4)
+    initial_state.liquidity[asset4] = initial_sub_pool.liquidity[asset1]
+    initial_state.lrna[asset4] = initial_state.lrna['stableswap'] / 3
+    initial_state.shares[asset4] = initial_state.lrna['stableswap'] / 3
+    initial_state.protocol_shares[asset4] = initial_state.lrna['stableswap'] / 3
+    initial_state.weight_cap[asset4] = 1
+
+    initial_lp = Agent(
+        holdings={
+            asset1: 0,
+            asset2: 0,
+            asset3: 0,
+            asset4: initial_sub_pool.liquidity[asset1] * 0.1,
+            'LRNA': 0
+        }
+    )
+
+    lp_state, invested_lp = oamm.add_liquidity(
+        initial_state, initial_lp,
+        quantity=initial_lp.holdings[asset4], tkn_add=asset4
+    )
+    s1_state, s1_lp = oamm.remove_liquidity(
+        lp_state, invested_lp,
+        quantity=invested_lp.holdings[(initial_state.unique_id, asset4)],
+        tkn_remove=asset4
+    )
+
+    q1 = s1_lp.holdings['LRNA']
+    r1 = s1_lp.holdings[asset4]
+
+    migrate_state, migrate_lp = lp_state.copy().execute_migrate_asset(
+        tkn_migrate=asset4,
+        sub_pool_id='stableswap'
+    ).execute_migrate_lp(
+        agent=invested_lp.copy(),
+        sub_pool_id='stableswap',
+        tkn_migrate=asset4
+    )
+    s2_state = migrate_state.copy()
+    s2_lp = migrate_lp.copy()
+    s2_sub_pool: StableSwapPoolState = s2_state.sub_pools['stableswap']
+    withdraw_fraction = migrate_lp.holdings['stableswap'] / s2_sub_pool.shares
+    # withdraw an equal fraction of each asset from the subpool
+    for tkn in s2_sub_pool.asset_list:
+        delta_tkn = s2_sub_pool.liquidity[tkn] * withdraw_fraction
+        s2_sub_pool.liquidity[tkn] -= delta_tkn
+        s2_lp.holdings[tkn] += delta_tkn
+    s2_sub_pool.shares *= 1 - withdraw_fraction
+    s2_lp.holdings['stableswap'] = 0
+
+    q2 = s2_lp.holdings['LRNA']
+    r2 = sum([s2_lp.holdings[tkn] for tkn in s2_sub_pool.asset_list])
+
+    s3_state = s2_state.copy()
+    s3_lp = s2_lp.copy()
+    s3_sub_pool = s3_state.sub_pools['stableswap']
+    for tkn in [asset1, asset2, asset3]:
+        s3_sub_pool.execute_swap(
+            agent=s3_lp,
+            tkn_sell=tkn,
+            tkn_buy=asset4,
+            sell_quantity=s3_lp.holdings[tkn]
+        )
+
+    r3 = s3_lp.holdings[asset4]
+
+    s3_state, s3_lp = oamm.remove_liquidity(
+        migrate_state, migrate_lp,
+        quantity=migrate_lp.holdings['stableswap'],
+        tkn_remove=asset4
+    )
+
+    q4 = s3_lp.holdings['LRNA']
+    r4 = s3_lp.holdings[asset4]
+
+    if q1 != pytest.approx(q2) or r1 != pytest.approx(r2) or r4 != pytest.approx(r3) or q4 != pytest.approx(q2):
+        raise AssertionError("Equivalent transactions didn't come out the same.")
