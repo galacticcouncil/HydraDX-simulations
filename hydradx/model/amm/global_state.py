@@ -320,7 +320,7 @@ def migrate(
     if not hasattr(old_state.pools[pool_id], 'execute_migration'):
         raise AttributeError(f"Pool {pool_id} does not implement migrations.")
     new_state = old_state.copy()
-    new_state.pools[pool_id] = new_state.pools[pool_id].execute_migration(
+    new_state.pools[pool_id] = new_state.pools[pool_id].execute_migrate_asset(
         tkn_migrate=tkn_migrate,
         sub_pool_id=sub_pool_id
     )
