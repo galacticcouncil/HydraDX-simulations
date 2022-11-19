@@ -424,6 +424,7 @@ class OmnipoolState(AMM):
         }
         new_sub_pool.shares = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.sub_pools[sub_pool_id] = new_sub_pool
+        self.asset_list.append(sub_pool_id)
         self.liquidity[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.shares[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.lrna[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
