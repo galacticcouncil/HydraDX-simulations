@@ -1,7 +1,7 @@
 from .agents import Agent
 import copy
 import random
-from .amm import AMM
+from .amm import AMM, FeeMechanism
 from typing import Callable
 
 
@@ -317,7 +317,7 @@ def migrate(
     sub_pool_id: str,
     tkn_migrate: str
 ) -> GlobalState:
-    if not hasattr(old_state.pools[pool_id], 'execute_migration'):
+    if not hasattr(old_state.pools[pool_id], 'execute_migrate_asset'):
         raise AttributeError(f"Pool {pool_id} does not implement migrations.")
     new_state = old_state.copy()
     new_state.pools[pool_id] = new_state.pools[pool_id].execute_migrate_asset(
@@ -343,3 +343,29 @@ def migrate_lp(
         sub_pool_id=sub_pool_id
     )
     return new_state
+
+
+def create_sub_pool(
+    old_state: GlobalState,
+    pool_id: str,
+    sub_pool_id: str,
+    tkns_migrate: list[str],
+    amplification: float,
+    trade_fee: FeeMechanism or float
+):
+    new_state = old_state.copy()
+    new_pool = new_state.pools[pool_id]
+    new_pool.execute_create_sub_pool(
+        tkns_migrate=tkns_migrate,
+        sub_pool_id=sub_pool_id,
+        amplification=amplification,
+        trade_fee=trade_fee
+    )
+    return new_state
+
+
+GlobalState.create_sub_pool = create_sub_pool
+GlobalState.migrate_lp = migrate_lp
+GlobalState.swap = swap
+GlobalState.add_liquidity = add_liquidity
+GlobalState.remove_liquidity = remove_liquidity
