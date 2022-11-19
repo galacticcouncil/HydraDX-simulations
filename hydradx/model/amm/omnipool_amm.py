@@ -56,7 +56,7 @@ class OmnipoolState(AMM):
             if 'LRNA' in pool:
                 self.lrna[token] = mpf(pool['LRNA'])
             elif 'LRNA_price' in pool:
-                self.lrna[token] = mpf(pool['liquidity'] / pool['LRNA_price'])
+                self.lrna[token] = mpf(pool['liquidity'] * pool['LRNA_price'])
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
 
@@ -428,6 +428,7 @@ class OmnipoolState(AMM):
         self.liquidity[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.shares[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.lrna[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        self.weight_cap[sub_pool_id] = 1
         self.protocol_shares[sub_pool_id] = sum([
             self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
         ])
