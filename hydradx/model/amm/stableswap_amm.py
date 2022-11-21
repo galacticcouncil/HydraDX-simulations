@@ -185,6 +185,7 @@ class StableSwapPoolState(AMM):
 
         if tkn_remove not in agent.holdings:
             agent.holdings[tkn_remove] = 0
+
         self.shares -= shares_removed
         agent.holdings[self.unique_id] -= shares_removed
         self.liquidity[tkn_remove] += delta_tkn
@@ -286,6 +287,8 @@ class StableSwapPoolState(AMM):
         self.liquidity[tkn_add] += delta_tkn
         agent.holdings[tkn_add] -= delta_tkn
         self.shares += quantity
+        if self.unique_id not in agent.holdings:
+            agent.holdings[self.unique_id] = 0
         agent.holdings[self.unique_id] += quantity
         return self, agent
 
