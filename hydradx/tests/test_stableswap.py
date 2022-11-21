@@ -26,9 +26,9 @@ def stable_swap_equation(d: float, a: float, n: int, reserves: list):
 
 
 @st.composite
-def assets_config(draw, token_count) -> dict:
+def assets_config(draw, token_count: int, base_token: str = 'USD') -> dict:
     return_dict = {
-        f"USD-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
         for i in range(token_count)
     }
     return return_dict
@@ -42,10 +42,11 @@ def stableswap_config(
         trade_fee: float = None,
         amplification: float = None,
         precision: float = 0.00001,
-        unique_id: str = ''
+        unique_id: str = '',
+        base_token: str = 'USD'
 ) -> stableswap.StableSwapPoolState:
     token_count = token_count or draw(asset_number_strategy)
-    asset_dict = asset_dict or draw(assets_config(token_count))
+    asset_dict = asset_dict or draw(assets_config(token_count, base_token=base_token))
     test_state = StableSwapPoolState(
         tokens=asset_dict,
         amplification=draw(amplification_strategy) if amplification is None else amplification,
