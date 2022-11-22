@@ -61,9 +61,9 @@ class AMM:
     ):
         return self.copy(), old_agent.copy()
 
-    def fail_transaction(self, error: str = 'fail'):
+    def fail_transaction(self, error: str, agent: Agent):
         self.fail = error
-        return self
+        return self, agent
 
     @staticmethod
     def basic_fee(f: float = 0) -> FeeMechanism:

@@ -68,20 +68,7 @@ class OmnipoolState(AMM):
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
         self.fail = ''
-
-        # if sub_pools:
-        #     self.sub_pools = sub_pools
-        #     # deposit subpool shares into omnipool
-        #     for pool_name, stable_pool in self.sub_pools.items():
-        #         self.asset_list += [pool_name]
-        #         self.liquidity[pool_name] = stable_pool.shares
-        #         self.lrna[pool_name] = stable_pool.shares * self.lrna_price(self.stablecoin)
-        #         self.weight_cap[pool_name] = 1
-        #         self.shares[pool_name] = stable_pool.shares
-        #         self.protocol_shares[pool_name] = stable_pool.shares
-        #         stable_pool.unique_id = pool_name
-        # else:
-        self.sub_pools = {}
+        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
 
     def price(self, i: str, j: str = ''):
         """
@@ -230,7 +217,7 @@ class OmnipoolState(AMM):
         j = tkn_buy
         delta_Ri = sell_quantity
         if delta_Ri <= 0:
-            return self.fail_transaction('sell amount must be greater than zero'), agent
+            return self.fail_transaction('sell amount must be greater than zero', agent)
 
         delta_Qi = self.lrna[i] * -delta_Ri / (self.liquidity[i] + delta_Ri)
         asset_fee = self.asset_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
@@ -245,13 +232,10 @@ class OmnipoolState(AMM):
         delta_QH = -lrna_fee * delta_Qi - delta_L
 
         if self.liquidity[i] + sell_quantity > 10 ** 12:
-            return self.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), agent
+            return self.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
 
         if agent.holdings[i] < sell_quantity:
-            return (
-                self.fail_transaction(f"Agent doesn't have enough {i}"),
-                agent
-            )
+            return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
         self.lrna[i] += delta_Qi
         self.lrna[j] += delta_Qj
@@ -290,16 +274,16 @@ class OmnipoolState(AMM):
             delta_Q = self.lrna[tkn] * -delta_R / (self.liquidity[tkn] * (1 - asset_fee) + delta_R)
             delta_qa = -delta_Q
         else:
-            return self.fail_transaction('Buying LRNA not implemented.'), agent
+            return self.fail_transaction('Buying LRNA not implemented.', agent)
 
         if delta_qa + agent.holdings['LRNA'] < 0:
-            return self.fail_transaction("agent doesn't have enough lrna"), agent
+            return self.fail_transaction("agent doesn't have enough lrna", agent)
         elif delta_ra + agent.holdings[tkn] < 0:
-            return self.fail_transaction(f"agent doesn't have enough {tkn} holdings"), agent
+            return self.fail_transaction(f"agent doesn't have enough {tkn} holdings", agent)
         elif delta_R + self.liquidity[tkn] <= 0:
-            return self.fail_transaction('insufficient assets in pool'), agent
+            return self.fail_transaction('insufficient assets in pool', agent)
         elif delta_Q + self.lrna[tkn] <= 0:
-            return self.fail_transaction('insufficient lrna in pool'), agent
+            return self.fail_transaction('insufficient lrna in pool', agent)
 
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[tkn] += delta_ra
@@ -333,7 +317,7 @@ class OmnipoolState(AMM):
                 self.execute_lrna_swap(agent, delta_ra=shares_needed, tkn=sub_pool.unique_id)
                 if self.fail:
                     # if the swap failed, the transaction failed.
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 sub_pool.execute_withdraw_asset(agent, buy_quantity, tkn_buy)
                 return self, agent
             elif sell_quantity:
@@ -346,7 +330,7 @@ class OmnipoolState(AMM):
                 )
                 if self.fail:
                     # if the swap failed, the transaction failed.
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
                 sub_pool.execute_remove_liquidity(agent, delta_shares, tkn_buy)
                 return self, agent
@@ -358,7 +342,7 @@ class OmnipoolState(AMM):
                 sub_pool.execute_add_liquidity(agent, sell_quantity, tkn_sell)
                 if self.fail:
                     # the transaction failed.
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
                 self.execute_swap(
                     agent=agent,
@@ -371,10 +355,10 @@ class OmnipoolState(AMM):
                 # buy an omnipool asset with a stableswap asset
                 sell_shares = self.calculate_sell_from_buy(tkn_buy, sub_pool.unique_id, buy_quantity)
                 if sell_shares < 0:
-                    return self.fail_transaction("Not enough liquidity in the stableswap/LRNA pool."), agent
+                    return self.fail_transaction("Not enough liquidity in the stableswap/LRNA pool.", agent)
                 sub_pool.execute_buy_shares(agent, sell_shares, tkn_sell)
                 if sub_pool.fail:
-                    return self.fail_transaction(sub_pool.fail), agent
+                    return self.fail_transaction(sub_pool.fail, agent)
                 self.execute_swap(agent, tkn_buy, sub_pool.unique_id, buy_quantity)
                 return self, agent
         elif sub_pool_buy_id and tkn_sell in self.asset_list:
@@ -387,11 +371,11 @@ class OmnipoolState(AMM):
                 self.execute_swap(agent, tkn_buy=sub_pool.unique_id, tkn_sell=tkn_sell, buy_quantity=shares_traded)
                 if self.fail:
                     # if the swap failed, the transaction failed.
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 # withdraw the shares for the desired token
                 sub_pool.execute_withdraw_asset(agent, quantity=buy_quantity, tkn_remove=tkn_buy)
                 if sub_pool.fail:
-                    return self.fail_transaction(sub_pool.fail), agent
+                    return self.fail_transaction(sub_pool.fail, agent)
                 return self, agent
             elif sell_quantity:
                 # sell an omnipool asset for a stableswap asset
@@ -404,7 +388,7 @@ class OmnipoolState(AMM):
                 )
                 delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
                 if self.fail:
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 sub_pool.execute_remove_liquidity(
                     agent=agent, shares_removed=delta_shares, tkn_remove=tkn_buy
                 )
@@ -417,7 +401,7 @@ class OmnipoolState(AMM):
                 # buy enough shares of tkn_sell to afford buy_quantity worth of tkn_buy
                 shares_bought = pool_buy.calculate_withdrawal_shares(tkn_buy, buy_quantity)
                 if shares_bought > pool_buy.liquidity[tkn_buy]:
-                    return self.fail_transaction(f'Not enough liquidity in {pool_buy.unique_id}: {tkn_buy}.'), agent
+                    return self.fail_transaction(f'Not enough liquidity in {pool_buy.unique_id}: {tkn_buy}.', agent)
                 shares_sold = self.calculate_sell_from_buy(
                     tkn_buy=pool_buy.unique_id,
                     tkn_sell=pool_sell.unique_id,
@@ -428,20 +412,20 @@ class OmnipoolState(AMM):
                     tkn_add=tkn_sell
                 )
                 if pool_sell.fail:
-                    return self.fail_transaction(pool_sell.fail), agent
+                    return self.fail_transaction(pool_sell.fail, agent)
                 self.execute_swap(
                     agent=agent,
                     tkn_buy=pool_buy.unique_id, tkn_sell=pool_sell.unique_id,
                     buy_quantity=shares_bought
                 )
                 if self.fail:
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 pool_buy.execute_withdraw_asset(
                     agent=agent, quantity=buy_quantity,
                     tkn_remove=tkn_buy, fail_on_overdraw=False
                 )
                 if pool_buy.fail:
-                    return self.fail_transaction(pool_buy.fail), agent
+                    return self.fail_transaction(pool_buy.fail, agent)
 
                 # if all three parts succeeded, then we're good!
                 return self, agent
@@ -451,7 +435,7 @@ class OmnipoolState(AMM):
                     agent=agent, quantity=sell_quantity, tkn_add=tkn_sell
                 )
                 if pool_sell.fail:
-                    return self.fail_transaction(pool_sell.fail), agent
+                    return self.fail_transaction(pool_sell.fail, agent)
                 delta_sell_holdings = agent.holdings[sub_pool_sell_id] - agent_sell_holdings
                 agent_buy_holdings = agent.holdings[sub_pool_buy_id] if sub_pool_buy_id in agent.holdings else 0
                 self.execute_swap(
@@ -460,13 +444,13 @@ class OmnipoolState(AMM):
                     sell_quantity=delta_sell_holdings
                 )
                 if self.fail:
-                    return self.fail_transaction(self.fail), agent
+                    return self.fail_transaction(self.fail, agent)
                 delta_buy_holdings = agent.holdings[sub_pool_buy_id] - agent_buy_holdings
                 pool_buy.execute_remove_liquidity(
                     agent=agent, shares_removed=delta_buy_holdings, tkn_remove=tkn_buy
                 )
                 if pool_buy.fail:
-                    return self.fail_transaction(pool_buy.fail), agent
+                    return self.fail_transaction(pool_buy.fail, agent)
                 return self, agent
         else:
             raise ValueError('buy_quantity or sell_quantity must be specified.')
@@ -677,9 +661,7 @@ def add_liquidity(
     if old_agent:
         new_agent.holdings[tkn_add] -= quantity
         if new_agent.holdings[tkn_add] < 0:
-            # print('Transaction rejected because agent has insufficient funds.')
-            # print(f'agent {LP_id}, asset {new_state["token_list"][i]}, amount {delta_R}')
-            return old_state.fail_transaction(), old_agent
+            return old_state.fail_transaction('Transaction rejected because agent has insufficient funds.', old_agent)
 
     # Share update
     if new_state.shares[tkn_add]:
@@ -709,14 +691,14 @@ def add_liquidity(
 
     if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
         return old_state.fail_transaction(
-            'Transaction rejected because it would exceed the weight cap in pool[{i}].'
-        ), old_agent
+            'Transaction rejected because it would exceed the weight cap in pool[{i}].', old_agent
+        )
 
     if new_state.tvl_total > new_state.tvl_cap:
-        return old_state.fail_transaction('Transaction rejected because it would exceed the TVL cap.'), old_agent
+        return old_state.fail_transaction('Transaction rejected because it would exceed the TVL cap.', old_agent)
 
     if new_state.liquidity[tkn_add] > 10 ** 12:
-        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.'), old_agent
+        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', old_agent)
 
     # set price at which liquidity was added
     if old_agent:
@@ -745,7 +727,7 @@ def remove_liquidity(
                     new_agent, quantity, tkn_remove
                 )
                 if sub_pool.fail:
-                    return old_state.fail_transaction(sub_pool.fail), old_agent
+                    return old_state.fail_transaction(sub_pool.fail, old_agent)
                 return new_state, new_agent
 
         raise AssertionError(f"invalid value for i: {tkn_remove}")
