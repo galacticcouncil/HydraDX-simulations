@@ -716,18 +716,23 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError("LRNA imbalance incorrect.")
 
 
-@given(omnipool_config(token_count=3, sub_pools={'stableswap1': {}, 'stableswap2': {}}))
+@given(omnipool_config(
+    token_count=3,
+    sub_pools={'stableswap1': {'trade_fee': 0}, 'stableswap2': {'trade_fee': 0}},
+    lrna_fee=0,
+    asset_fee=0
+))
 def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     pool_buy: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap1']
     pool_sell: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap2']
-    agent = Agent(holdings={pool_sell.asset_list[1]: 1000000000000000})
+    initial_agent = Agent(holdings={pool_sell.asset_list[1]: 1000000000000000})
     # attempt buying an asset from the stableswap pool
     tkn_buy = pool_buy.asset_list[0]
     tkn_sell = pool_sell.asset_list[1]
     buy_quantity = 10
     new_state, new_agent = oamm.swap(
         old_state=initial_state,
-        old_agent=agent,
+        old_agent=initial_agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
@@ -766,6 +771,34 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
+    smaller_initial_trade_state, before_trade_agent = oamm.swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_buy=tkn_buy,
+        tkn_sell=tkn_sell,
+        buy_quantity=buy_quantity / 1000
+    )
+    sell_quantity = initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]
+    smaller_after_trade_state, after_trade_agent = oamm.swap(
+        old_state=new_state,
+        old_agent=new_agent,
+        tkn_sell=tkn_buy,
+        tkn_buy=tkn_sell,
+        buy_quantity=sell_quantity / 1000
+    )
+    spot_price_before = (
+        (initial_agent.holdings[tkn_sell] - before_trade_agent.holdings[tkn_sell]) /
+        before_trade_agent.holdings[tkn_buy]
+    )
+    spot_price_after = (
+        (after_trade_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
+        (new_agent.holdings[tkn_buy] - after_trade_agent.holdings[tkn_buy])
+    )
+    execution_price = sell_quantity / new_agent.holdings[tkn_buy]
+    if not(spot_price_after > execution_price > spot_price_before):
+        raise AssertionError('Execution price out of bounds.')
+    else:
+        er = 1
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap1': {}, 'stableswap2': {}}))
