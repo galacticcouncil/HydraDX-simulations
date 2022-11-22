@@ -450,6 +450,8 @@ class OmnipoolState(AMM):
                 pool_sell.execute_add_liquidity(
                     agent=agent, quantity=sell_quantity, tkn_add=tkn_sell
                 )
+                if pool_sell.fail:
+                    return self.fail_transaction(pool_sell.fail), agent
                 delta_sell_holdings = agent.holdings[sub_pool_sell_id] - agent_sell_holdings
                 agent_buy_holdings = agent.holdings[sub_pool_buy_id] if sub_pool_buy_id in agent.holdings else 0
                 self.execute_swap(
@@ -457,10 +459,14 @@ class OmnipoolState(AMM):
                     tkn_buy=pool_buy.unique_id, tkn_sell=pool_sell.unique_id,
                     sell_quantity=delta_sell_holdings
                 )
+                if self.fail:
+                    return self.fail_transaction(self.fail), agent
                 delta_buy_holdings = agent.holdings[sub_pool_buy_id] - agent_buy_holdings
                 pool_buy.execute_remove_liquidity(
                     agent=agent, shares_removed=delta_buy_holdings, tkn_remove=tkn_buy
                 )
+                if pool_buy.fail:
+                    return self.fail_transaction(pool_buy.fail), agent
                 return self, agent
         else:
             raise ValueError('buy_quantity or sell_quantity must be specified.')
