@@ -312,7 +312,14 @@ class StableSwapPoolState(AMM):
                 f'    {token}\n'
                 f'    quantity: {liquidity[token]}\n'
                 f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
-                f'    conversion metrics: {self.conversion_metrics[token] if token in self.conversion_metrics else ""}'
+                + (
+                    f'    conversion metrics:\n'
+                    f'        price: {self.conversion_metrics[token]["price"]}\n'
+                    f'        old shares: {self.conversion_metrics[token]["old_shares"]}\n'
+                    f'        Omnipool shares: {self.conversion_metrics[token]["omnipool_shares"]}\n'
+                    f'        subpool shares: {self.conversion_metrics[token]["subpool_shares"]}\n'
+                    if token in self.conversion_metrics else ""
+                )
             ) for token in self.asset_list]
         ) + '\n)\n' + (
                    f'error message:{self.fail or "none"}'
