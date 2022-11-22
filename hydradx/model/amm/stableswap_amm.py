@@ -1,6 +1,6 @@
 import copy
 
-from .global_state import AMM
+from .amm import AMM
 from .agents import Agent
 from mpmath import mpf, mp
 
@@ -43,6 +43,7 @@ class StableSwapPoolState(AMM):
             self.liquidity[token] = mpf(quantity)
 
         self.shares = mpf(self.d)
+        self.conversion_metrics = {}
 
     @property
     def ann(self) -> float:
@@ -184,6 +185,7 @@ class StableSwapPoolState(AMM):
 
         if tkn_remove not in agent.holdings:
             agent.holdings[tkn_remove] = 0
+
         self.shares -= shares_removed
         agent.holdings[self.unique_id] -= shares_removed
         self.liquidity[tkn_remove] += delta_tkn
@@ -285,6 +287,8 @@ class StableSwapPoolState(AMM):
         self.liquidity[tkn_add] += delta_tkn
         agent.holdings[tkn_add] -= delta_tkn
         self.shares += quantity
+        if self.unique_id not in agent.holdings:
+            agent.holdings[self.unique_id] = 0
         agent.holdings[self.unique_id] += quantity
         return self, agent
 
@@ -299,7 +303,7 @@ class StableSwapPoolState(AMM):
         return (
                    f'Stable Swap Pool: {self.unique_id}\n'
                    f'********************************\n'
-                   f'base trade fee: {self.trade_fee}\n'
+                   f'trade fee: {self.trade_fee}\n'
                    f'shares: {shares}\n'
                    f'amplification constant: {self.amplification}\n'
                    f'tokens: (\n\n'
@@ -308,6 +312,14 @@ class StableSwapPoolState(AMM):
                 f'    {token}\n'
                 f'    quantity: {liquidity[token]}\n'
                 f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
+                + (
+                    f'    conversion metrics:\n'
+                    f'        price: {self.conversion_metrics[token]["price"]}\n'
+                    f'        old shares: {self.conversion_metrics[token]["old_shares"]}\n'
+                    f'        Omnipool shares: {self.conversion_metrics[token]["omnipool_shares"]}\n'
+                    f'        subpool shares: {self.conversion_metrics[token]["subpool_shares"]}\n'
+                    if token in self.conversion_metrics else ""
+                )
             ) for token in self.asset_list]
         ) + '\n)\n' + (
                    f'error message:{self.fail or "none"}'
