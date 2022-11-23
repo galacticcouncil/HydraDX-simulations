@@ -1,3 +1,4 @@
+import copy
 import math
 
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
@@ -317,6 +318,40 @@ def omnipool_arbitrage(pool_id: str):
         return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=delta_y)
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
+
+
+def omnipool_feeless_arbitrage(pool_id: str):
+
+    def size_from_price(price, reserve_in, reserve_out, lrna_in, lrna_out) -> float:
+        return (math.sqrt(reserve_in * reserve_out * lrna_in * lrna_out / price) - lrna_out * reserve_in) / (lrna_in + lrna_out)
+
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        omnipool: OmnipoolState = state.pools[pool_id]
+        if not isinstance(omnipool, OmnipoolState):
+            raise AssertionError()
+
+        next_state = copy.deepcopy(state)
+
+        for i in range(len(omnipool.asset_list)):
+            if omnipool.asset_list[i] == 'USD':
+                continue
+            asset = omnipool.asset_list[i]
+            target_price = state.external_market[asset]
+            size = size_from_price(target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
+                                   omnipool.lrna[asset], omnipool.lrna['USD'])
+
+
+
+            for j in range(0, i):
+                asset_j = omnipool.asset_list[j]
+                size_j = size * omnipool.lrna[asset_j] / (omnipool.lrna[asset_j] + omnipool.lrna[asset])
+                if size_j >= 0:
+                    next_state = next_state.execute_swap(pool_id, agent_id, asset, asset_j, sell_quantity=size_j)
+                else:
+                    next_state = next_state.execute_swap(pool_id, agent_id, asset_j, asset, buy_quantity=-size_j)
+        return next_state
+
+    return TradeStrategy(strategy, name='omnipool feeless arbitrage')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
