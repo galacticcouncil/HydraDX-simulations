@@ -190,6 +190,18 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
     return transform
 
 
+def historical_prices(price_list: list[dict[str: float]]) -> Callable:
+    price_iter = iter(price_list)
+    next(price_iter)
+    def transform(state: GlobalState) -> GlobalState:
+        new_prices = next(price_iter)
+        for tkn in new_prices:
+            state.external_market[tkn] = new_prices[tkn]
+        return state
+
+    return transform
+
+
 def swap(
     old_state: GlobalState,
     pool_id: str,
