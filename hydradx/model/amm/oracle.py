@@ -17,8 +17,9 @@ class Oracle:
 
     def update(self, attribute: str, value: float = None):
         if value is None:
-            if value in self.current:
+            if attribute in self.current:
                 value = self.current[attribute]
+                self.current[attribute] = 0
             else:
                 value = 0
         if attribute not in self.values:
