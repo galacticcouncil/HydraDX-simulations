@@ -51,17 +51,20 @@ class OmnipoolState(AMM):
         self.long_oracle = {}
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
-            self.add_token(token, mpf(pool['weight_cap']) if 'weight_cap' in pool else 1)
-            self.liquidity[token] = mpf(pool['liquidity'])
-            self.shares[token] = mpf(pool['liquidity'])
-            self.protocol_shares[token] = mpf(pool['liquidity'])
-            self.weight_cap[token] = mpf(pool['weight_cap'] if 'weight_cap' in pool else 1)
             if 'LRNA' in pool:
-                self.lrna[token] = mpf(pool['LRNA'])
+                lrna = mpf(pool['LRNA'])
             elif 'LRNA_price' in pool:
-                self.lrna[token] = mpf(pool['liquidity'] * pool['LRNA_price'])
+                lrna = mpf(pool['liquidity'] * pool['LRNA_price'])
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
+            self.add_token(
+                token,
+                liquidity=pool['liquidity'],
+                lrna=lrna,
+                shares=pool['liquidity'],
+                protocol_shares=pool['liquidity'],
+                weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
+            )
 
         self.asset_fee: FeeMechanism = asset_fee.assign(self) if isinstance(asset_fee, FeeMechanism) \
             else self.basic_fee(asset_fee).assign(self)
@@ -75,15 +78,24 @@ class OmnipoolState(AMM):
         self.update_function = self.update_oracles
         self.update_oracles()
 
-    def add_token(self, tkn: str, weight_cap: float = 1):
+    def add_token(
+            self,
+            tkn: str,
+            liquidity: float,
+            lrna: float,
+            shares: float,
+            protocol_shares: float,
+            weight_cap: float = 1
+       ):
         self.asset_list.append(tkn)
-        self.liquidity[tkn] = mpf(0)
-        self.lrna[tkn] = mpf(0)
-        self.shares[tkn] = mpf(0)
-        self.protocol_shares[tkn] = mpf(0)
+        self.liquidity[tkn] = mpf(liquidity)
+        self.lrna[tkn] = mpf(lrna)
+        self.shares[tkn] = mpf(shares)
+        self.protocol_shares[tkn] = mpf(protocol_shares)
         self.weight_cap[tkn] = mpf(weight_cap)
         self.short_oracle[tkn] = Oracle(sma_equivalent_length=5)
         self.long_oracle[tkn] = Oracle(sma_equivalent_length=300)
+        self.update_oracles(tkn)
 
     def remove_token(self, tkn: str):
         self.asset_list.remove(tkn)
@@ -95,8 +107,12 @@ class OmnipoolState(AMM):
         del self.short_oracle[tkn]
         del self.long_oracle[tkn]
 
-    def update_oracles(self):
-        for tkn in self.asset_list:
+    def update_oracles(self, tkn_list: list or str = None):
+        if tkn_list is None:
+            tkn_list = self.asset_list
+        elif isinstance(tkn_list, str):
+            tkn_list = [tkn_list]
+        for tkn in tkn_list:
             self.short_oracle[tkn].update('liquidity', self.liquidity[tkn])
             self.long_oracle[tkn].update('liquidity', self.liquidity[tkn])
             self.short_oracle[tkn].update('volume_in')
@@ -217,8 +233,8 @@ class OmnipoolState(AMM):
         all swaps, LRNA, sub-pool, and asset swaps, are executed through this function
         """
         agent_holdings = {
-            tkn_buy: agent.holdings[tkn_buy],
-            tkn_sell: agent.holdings[tkn_sell]
+            tkn_buy: agent.holdings[tkn_buy] if tkn_buy in agent.holdings else 0,
+            tkn_sell: agent.holdings[tkn_sell] if tkn_sell in agent.holdings else 0
         }
         if tkn_buy == tkn_sell:
             return self, agent  # no-op
@@ -292,17 +308,19 @@ class OmnipoolState(AMM):
             return_val = self, agent
 
         # update oracle
-        buy_quantity = agent.holdings[tkn_buy] - agent_holdings[tkn_buy]
-        sell_quantity = agent_holdings[tkn_sell] - agent.holdings[tkn_sell]
-        self.short_oracle[tkn_buy].add(
-            attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
-        self.long_oracle[tkn_buy].add(
-            attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
-        self.short_oracle[tkn_sell].add(
-            attribute='volume_out', value=sell_quantity / self.short_oracle[tkn_sell].get('liquidity'))
-        self.long_oracle[tkn_sell].add(
-            attribute='volume_out', value=sell_quantity / self.long_oracle[tkn_sell].get('liquidity'))
-        return return_val
+        if tkn_buy in self.asset_list:
+            buy_quantity = agent.holdings[tkn_buy] - agent_holdings[tkn_buy]
+            self.short_oracle[tkn_buy].add(
+                attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
+            self.long_oracle[tkn_buy].add(
+                attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
+        if tkn_sell in self.asset_list:
+            sell_quantity = agent_holdings[tkn_sell] - agent.holdings[tkn_sell]
+            self.short_oracle[tkn_sell].add(
+                attribute='volume_out', value=sell_quantity / self.short_oracle[tkn_sell].get('liquidity'))
+            self.long_oracle[tkn_sell].add(
+                attribute='volume_out', value=sell_quantity / self.long_oracle[tkn_sell].get('liquidity'))
+            return return_val
 
     def execute_lrna_swap(
             self,
@@ -531,13 +549,16 @@ class OmnipoolState(AMM):
         }
         new_sub_pool.shares = sum([self.lrna[tkn] for tkn in tkns_migrate])
         self.sub_pools[sub_pool_id] = new_sub_pool
-        self.add_token(sub_pool_id)
-        self.liquidity[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
-        self.shares[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
-        self.lrna[sub_pool_id] = sum([self.lrna[tkn] for tkn in tkns_migrate])
-        self.protocol_shares[sub_pool_id] = sum([
-            self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
-        ])
+        self.add_token(
+            sub_pool_id,
+            liquidity=sum([self.lrna[tkn] for tkn in tkns_migrate]),
+            shares=sum([self.lrna[tkn] for tkn in tkns_migrate]),
+            lrna=sum([self.lrna[tkn] for tkn in tkns_migrate]),
+            protocol_shares=sum([
+                self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
+            ])
+        )
+
         # remove assets from Omnipool
         for tkn in tkns_migrate:
             self.liquidity[tkn] = 0
