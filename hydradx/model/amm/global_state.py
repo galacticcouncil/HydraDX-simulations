@@ -78,6 +78,9 @@ class GlobalState:
 
     def evolve(self):
         self.time_step += 1
+        for pool in self.pools.values():
+            if pool.update_function:
+                pool.update_function()
         if self._evolve_function:
             return self._evolve_function(self)
 

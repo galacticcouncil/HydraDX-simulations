@@ -6,6 +6,7 @@ def plot(
         pool: str = '',
         agent: str = '',
         asset: str = '',
+        oracle: str = '',
         prop: str or list = '',
         key: str or list = 'all',
         subplot: plt.Subplot = None,
@@ -91,9 +92,16 @@ def plot(
             for k, use_key in enumerate(use_keys):
                 ax = subplot or plt.subplot(
                     1, max(len(use_keys), len(use_props), len(section)), max(p, k, i) + 1,
-                    title=f'{title}: {instance} {use_prop} {use_key} {use_range}'
+                    title=f'{title}: {instance}{" " + oracle + " " or " "}{use_prop} {use_key} {use_range}'
                 )
-                y = get_datastream(events=events, group=group, instance=instance, prop=use_prop, key=use_key)
+                y = get_datastream(
+                    events=events,
+                    group=group,
+                    instance=instance,
+                    oracle=oracle,
+                    prop=use_prop,
+                    key=use_key
+                )
                 x = range(len(y))
                 ax.plot(x, y, label=label)
 
@@ -105,6 +113,7 @@ def get_datastream(
         group: str = '',
         instance: str = '',
         pool: str = '',
+        oracle: str = '',
         agent: str = '',
         asset: str = '',
         prop: str = '',
@@ -132,12 +141,13 @@ def get_datastream(
         return [getattr(event['state'], group)[instance or key] for event in events]
     if not key:
         return [getattr(getattr(event['state'], group)[instance], prop) for event in events]
-
-    try:
-        return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
-    except KeyError:
-        # this may occur, for example, if a certain pool doesn't contain the assets specified by *key*
-        return []
+    if not oracle:
+        try:
+            return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
+        except KeyError:
+            # this may occur, for example, if a certain pool doesn't contain the assets specified by *key*
+            return []
+    return [getattr(getattr(event['state'], group)[instance], oracle)[key].get(prop) for event in events]
 
 
 def best_fit_line(data_array: list[float]):
