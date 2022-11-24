@@ -202,7 +202,7 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     next(price_iter)
     
     def transform(state: GlobalState) -> GlobalState:
-        new_prices = next(price_iter)
+        new_prices = price_list[state.time_step]
         for tkn in new_prices:
             state.external_market[tkn] = new_prices[tkn]
         return state
