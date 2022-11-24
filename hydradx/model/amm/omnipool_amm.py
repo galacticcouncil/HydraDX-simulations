@@ -16,7 +16,9 @@ class OmnipoolState(AMM):
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
                  asset_fee: FeeMechanism or float = 0,
-                 lrna_fee: FeeMechanism or float = 0
+                 lrna_fee: FeeMechanism or float = 0,
+                 long_oracle_period: int = 7200,
+                 short_oracle_period: int = 300
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -51,6 +53,8 @@ class OmnipoolState(AMM):
         self.short_oracle = {}
         self.long_oracle = {}
         self.liquidity_coefficient_function = lambda x, tkn: 1
+        self.short_oracle_period = short_oracle_period
+        self.long_oracle_period = long_oracle_period
         self.trade_limit_per_block = 0.25  # trades per block cannot exceed 25% of the pool's liquidity
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
@@ -97,9 +101,9 @@ class OmnipoolState(AMM):
         self.protocol_shares[tkn] = mpf(protocol_shares)
         self.weight_cap[tkn] = mpf(weight_cap)
         self.liquidity_offline[tkn] = 0
-        self.short_oracle[tkn] = Oracle(sma_equivalent_length=5).update('liquidity', self.liquidity[tkn])
-        self.long_oracle[tkn] = Oracle(sma_equivalent_length=7200).update('liquidity', self.liquidity[tkn])
-        self.update_oracles(tkn)
+        self.short_oracle[tkn] = Oracle(sma_equivalent_length=self.short_oracle_period).update('liquidity', liquidity)
+        self.long_oracle[tkn] = Oracle(sma_equivalent_length=self.long_oracle_period).update('liquidity', liquidity)
+        # self.update_oracles(tkn)
 
     def remove_token(self, tkn: str):
         self.asset_list.remove(tkn)
