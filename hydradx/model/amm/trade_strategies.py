@@ -396,7 +396,7 @@ def omnipool_feeless_arbitrage(pool_id: str):
             asset = omnipool.asset_list[i]
             if asset == 'USD':
                 usd_index = i
-            reserves.append(omnipool.liquidity[asset])
+            reserves.append(omnipool.online_liquidity(asset))
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
         dr = get_dr_list(prices, reserves, lrna, usd_index)
