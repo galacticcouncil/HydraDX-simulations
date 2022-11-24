@@ -274,7 +274,12 @@ class OmnipoolState(AMM):
                 tkn=tkn_buy
             )
         elif tkn_buy == 'LRNA':
-            raise ValueError('Buying LRNA not implemented.')
+            return_val = self.execute_lrna_swap(
+                agent=agent,
+                delta_qa=buy_quantity,
+                delta_ra=-sell_quantity,
+                tkn=tkn_sell
+            )
 
         elif buy_quantity:
             # back into correct delta_Ri, then execute sell
@@ -384,6 +389,15 @@ class OmnipoolState(AMM):
         elif delta_ra > 0:
             delta_R = -delta_ra
             delta_Q = self.lrna[tkn] * -delta_R / (self.liquidity[tkn] * (1 - asset_fee) + delta_R)
+            delta_qa = -delta_Q
+        # buying LRNA, feeless
+        elif delta_qa > 0:
+            delta_Q = -delta_qa
+            delta_R = self.liquidity[tkn] * -delta_Q / (delta_Q + self.lrna[tkn])
+            delta_ra = -delta_R
+        elif delta_ra < 0:
+            delta_R = -delta_ra
+            delta_Q = self.lrna[tkn] * -delta_R / (self.liquidity[tkn] + delta_R)
             delta_qa = -delta_Q
         else:
             return self.fail_transaction('Buying LRNA not implemented.', agent)
