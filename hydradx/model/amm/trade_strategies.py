@@ -1,5 +1,6 @@
 import copy
 import math
+from pprint import pprint
 
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
@@ -356,6 +357,14 @@ def omnipool_feeless_arbitrage(pool_id: str):
             target_price = state.external_market[asset]
             size = size_from_price(target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
                                    omnipool.lrna[asset], omnipool.lrna['USD'])
+            if size / omnipool.liquidity[asset] > omnipool.trade_limit_per_block:
+                size = omnipool.liquidity[asset] * omnipool.trade_limit_per_block
+
+            if asset == 'DOT':
+                pprint((target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
+                                       omnipool.lrna[asset], omnipool.lrna['USD'], size))
+                pprint(omnipool.price("DOT"))
+
 
             for j in range(0, i):
                 asset_j = omnipool.asset_list[j]
