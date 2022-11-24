@@ -10,6 +10,8 @@ from .stableswap_amm import StableSwapPoolState
 from typing import Callable
 import random
 
+import numpy as np
+
 
 class TradeStrategy:
     def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
@@ -337,6 +339,42 @@ def omnipool_arbitrage(pool_id: str):
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
+def get_mat(prices: list[float], reserves: list[int], lrna: list[int], usd_index: int):
+    mat = [[float(1)]*len(prices)]
+    for i in range(len(prices)):
+        if usd_index == i:
+            continue
+        row = [float(0)]*len(prices)
+        row[usd_index] = math.sqrt(prices[i] * reserves[i] * lrna[i])
+        row[i] = -math.sqrt(reserves[usd_index] * lrna[usd_index])
+        mat.append(row)
+    return mat
+
+def calc_new_reserve(new_reserve_B, old_reserve_A, old_reserve_B):
+    return old_reserve_A * old_reserve_B / new_reserve_B
+
+
+
+def get_dr_list(prices, reserves, lrna, usd_index):
+
+    mat = get_mat(prices, reserves, lrna, usd_index)
+
+    # pprint(mat)
+
+
+    A = np.array(mat)
+    # pprint(np.linalg.det(A))
+    B_ls = [float(0)] * len(prices)
+    B_ls[0] = float(sum(lrna))
+    B = np.array(B_ls)
+    # pprint(A)
+    # pprint(B)
+    X = np.linalg.solve(A,B)
+
+    dr = [calc_new_reserve(X[i], reserves[i], lrna[i]) - reserves[i] for i in range(len(prices))]
+    return dr
+
+
 def omnipool_feeless_arbitrage(pool_id: str):
 
     def size_from_price(price, reserve_in, reserve_out, lrna_in, lrna_out) -> float:
@@ -350,29 +388,53 @@ def omnipool_feeless_arbitrage(pool_id: str):
 
         next_state = copy.deepcopy(state)
 
+        reserves = []
+        lrna = []
+        prices = []
+        usd_index = -1
         for i in range(len(omnipool.asset_list)):
-            if omnipool.asset_list[i] == 'USD':
-                continue
             asset = omnipool.asset_list[i]
-            target_price = state.external_market[asset]
-            size = size_from_price(target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
-                                   omnipool.lrna[asset], omnipool.lrna['USD'])
-            if size / omnipool.liquidity[asset] > omnipool.trade_limit_per_block:
-                size = omnipool.liquidity[asset] * omnipool.trade_limit_per_block
+            if asset == 'USD':
+                usd_index = i
+            reserves.append(omnipool.liquidity[asset])
+            lrna.append(omnipool.lrna[asset])
+            prices.append(state.external_market[asset])
 
-            if asset == 'DOT':
-                pprint((target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
-                                       omnipool.lrna[asset], omnipool.lrna['USD'], size))
-                pprint(omnipool.price("DOT"))
+        dr = get_dr_list(prices, reserves, lrna, usd_index)
+        size_mult = 1
+        for i in range(len(omnipool.asset_list)):
+            if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
+                size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
-
-            for j in range(0, i):
-                asset_j = omnipool.asset_list[j]
-                size_j = size * omnipool.lrna[asset_j] / (omnipool.lrna[asset_j] + omnipool.lrna[asset])
-                if size_j >= 0:
-                    next_state.execute_swap(pool_id, agent_id, asset, asset_j, sell_quantity=size_j)
-                else:
-                    next_state.execute_swap(pool_id, agent_id, asset_j, asset, buy_quantity=-size_j)
+        for i in range(len(omnipool.asset_list)):
+            asset = omnipool.asset_list[i]
+            if dr[i] > 0:
+                next_state = next_state.execute_swap(pool_id, agent_id, 'LRNA', asset, sell_quantity=dr[i]*size_mult)
+            else:
+                next_state = next_state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=-dr[i]*size_mult)
+        # for i in range(len(omnipool.asset_list)):
+        #     if omnipool.asset_list[i] == 'USD':
+        #         continue
+        #     asset = omnipool.asset_list[i]
+        #     target_price = state.external_market[asset]
+        #     size = size_from_price(target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
+        #                            omnipool.lrna[asset], omnipool.lrna['USD'])
+        #     if size / omnipool.liquidity[asset] > omnipool.trade_limit_per_block:
+        #         size = omnipool.liquidity[asset] * omnipool.trade_limit_per_block
+        #
+        #     if asset == 'DOT':
+        #         pprint((target_price, omnipool.liquidity[asset], omnipool.liquidity['USD'],
+        #                                omnipool.lrna[asset], omnipool.lrna['USD'], size))
+        #         pprint(omnipool.price("DOT"))
+        #
+        #
+        #     for j in range(0, i):
+        #         asset_j = omnipool.asset_list[j]
+        #         size_j = size * omnipool.lrna[asset_j] / (omnipool.lrna[asset_j] + omnipool.lrna[asset])
+        #         if size_j >= 0:
+        #             next_state.execute_swap(pool_id, agent_id, asset, asset_j, sell_quantity=size_j)
+        #         else:
+        #             next_state.execute_swap(pool_id, agent_id, asset_j, asset, buy_quantity=-size_j)
         return next_state
 
     return TradeStrategy(strategy, name='omnipool feeless arbitrage')
