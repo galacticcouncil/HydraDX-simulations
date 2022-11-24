@@ -26,6 +26,7 @@ class Oracle:
             self.values[attribute] = value
         else:
             self.values[attribute] = (1 - self.decay_factor) * self.values[attribute] + self.decay_factor * value
+        return self
 
     def get(self, attribute: str) -> float:
         return self.values[attribute]

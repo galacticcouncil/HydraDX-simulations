@@ -97,8 +97,8 @@ class OmnipoolState(AMM):
         self.protocol_shares[tkn] = mpf(protocol_shares)
         self.weight_cap[tkn] = mpf(weight_cap)
         self.liquidity_offline[tkn] = 0
-        self.short_oracle[tkn] = Oracle(sma_equivalent_length=5)
-        self.long_oracle[tkn] = Oracle(sma_equivalent_length=300)
+        self.short_oracle[tkn] = Oracle(sma_equivalent_length=5).update('liquidity', self.liquidity[tkn])
+        self.long_oracle[tkn] = Oracle(sma_equivalent_length=7200).update('liquidity', self.liquidity[tkn])
         self.update_oracles(tkn)
 
     def remove_token(self, tkn: str):
