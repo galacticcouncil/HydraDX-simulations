@@ -47,6 +47,7 @@ class OmnipoolState(AMM):
         self.shares = {}
         self.protocol_shares = {}
         self.weight_cap = {}
+        self.liquidity_coefficient = {}
         self.short_oracle = {}
         self.long_oracle = {}
         for token, pool in tokens.items():
@@ -86,13 +87,14 @@ class OmnipoolState(AMM):
             shares: float,
             protocol_shares: float,
             weight_cap: float = 1
-       ):
+    ):
         self.asset_list.append(tkn)
         self.liquidity[tkn] = mpf(liquidity)
         self.lrna[tkn] = mpf(lrna)
         self.shares[tkn] = mpf(shares)
         self.protocol_shares[tkn] = mpf(protocol_shares)
         self.weight_cap[tkn] = mpf(weight_cap)
+        self.liquidity_coefficient[tkn] = mpf(1)
         self.short_oracle[tkn] = Oracle(sma_equivalent_length=5)
         self.long_oracle[tkn] = Oracle(sma_equivalent_length=300)
         self.update_oracles(tkn)
@@ -202,15 +204,19 @@ class OmnipoolState(AMM):
         """
         Given a buy quantity, calculate the effective price, so we can execute it as a sell
         """
+        tkn_buy_lrna = self.lrna[tkn_buy] * self.liquidity_coefficient[tkn_buy]
+        tkn_sell_lrna = self.lrna[tkn_sell] * self.liquidity_coefficient[tkn_sell]
+        tkn_buy_liquidity = self.liquidity[tkn_buy] * self.liquidity_coefficient[tkn_buy]
+        tkn_sell_liquidity = self.liquidity[tkn_sell] * self.liquidity_coefficient[tkn_sell]
         asset_fee = self.asset_fee.compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
-        delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
-                self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
+        delta_Qj = tkn_buy_lrna * buy_quantity / (
+                tkn_buy_liquidity * (1 - asset_fee) - buy_quantity)
         lrna_fee = self.lrna_fee.compute(tkn=tkn_sell, delta_tkn=(
-                self.liquidity[tkn_buy] * delta_Qj /
-                (self.lrna[tkn_buy] - delta_Qj)
+                tkn_buy_liquidity * delta_Qj /
+                (tkn_buy_lrna - delta_Qj)
         ))
         delta_Qi = -delta_Qj / (1 - lrna_fee)
-        delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
+        delta_Ri = -tkn_sell_liquidity * delta_Qi / (tkn_sell_lrna + delta_Qi)
         return delta_Ri
 
     def get_sub_pool(self, tkn: str):
@@ -269,21 +275,26 @@ class OmnipoolState(AMM):
                 sell_quantity=delta_Ri
             )
         else:
+            # basic Omnipool swap
+            tkn_buy_lrna = self.lrna[tkn_buy] * self.liquidity_coefficient[tkn_buy]
+            tkn_sell_lrna = self.lrna[tkn_sell] * self.liquidity_coefficient[tkn_sell]
+            tkn_buy_liquidity = self.liquidity[tkn_buy] * self.liquidity_coefficient[tkn_buy]
+            tkn_sell_liquidity = self.liquidity[tkn_sell] * self.liquidity_coefficient[tkn_sell]
             i = tkn_sell
             j = tkn_buy
             delta_Ri = sell_quantity
             if delta_Ri <= 0:
                 return self.fail_transaction('sell amount must be greater than zero', agent)
 
-            delta_Qi = self.lrna[i] * -delta_Ri / (self.liquidity[i] + delta_Ri)
+            delta_Qi = tkn_sell_lrna * -delta_Ri / (tkn_sell_liquidity + delta_Ri)
             asset_fee = self.asset_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
             lrna_fee = self.lrna_fee.compute(
                 tkn=tkn_buy,
-                delta_tkn=self.liquidity[j] * sell_quantity / (self.lrna[j] + sell_quantity) * (1 - asset_fee)
+                delta_tkn=tkn_buy_liquidity * sell_quantity / (tkn_buy_lrna + sell_quantity) * (1 - asset_fee)
             )
 
             delta_Qj = -delta_Qi * (1 - lrna_fee)
-            delta_Rj = self.liquidity[j] * -delta_Qj / (self.lrna[j] + delta_Qj) * (1 - asset_fee)
+            delta_Rj = tkn_buy_liquidity * -delta_Qj / (tkn_buy_lrna + delta_Qj) * (1 - asset_fee)
             delta_L = min(-delta_Qi * lrna_fee, -self.lrna_imbalance)
             delta_QH = -lrna_fee * delta_Qi - delta_L
 
