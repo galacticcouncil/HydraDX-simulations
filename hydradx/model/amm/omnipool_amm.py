@@ -78,7 +78,7 @@ class OmnipoolState(AMM):
         self.stablecoin = preferred_stablecoin
         self.fail = ''
         self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
-        self.update_function = self.update_oracles
+        # self.update_function = self.update_oracles
         self.update_oracles()
 
     def add_token(
@@ -279,7 +279,7 @@ class OmnipoolState(AMM):
         elif buy_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-            return_val = self.execute_swap(
+            return self.execute_swap(
                 agent=agent,
                 tkn_buy=tkn_buy,
                 tkn_sell=tkn_sell,
@@ -360,7 +360,8 @@ class OmnipoolState(AMM):
                 attribute='volume_in', value=sell_quantity / self.short_oracle[tkn_sell].get('liquidity'))
             self.long_oracle[tkn_sell].add(
                 attribute='volume_in', value=sell_quantity / self.long_oracle[tkn_sell].get('liquidity'))
-            return return_val
+
+        return return_val
 
     def execute_lrna_swap(
             self,
