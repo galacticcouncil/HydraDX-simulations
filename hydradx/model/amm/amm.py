@@ -26,6 +26,7 @@ class AMM:
     unique_id: str
     asset_list: list[str]
     liquidity: dict[str: float]
+    update_function: Callable = None
 
     def __init__(self):
         self.fail = ''

@@ -37,7 +37,7 @@ class TradeStrategy:
 def random_swaps(
     pool_id: str,
     amount: dict[str: float],
-    randomize_amount: bool = False
+    randomize_amount: bool = True
 ) -> TradeStrategy:
     """
     amount should be a dict in the form of:
@@ -145,14 +145,16 @@ def find_agent_delta_y(
     target_price: float,
     price_after_trade: Callable,
     starting_bid: float = 1,
-    precision: float = 0.000000001
+    precision: float = 0.000000001,
+    max_iterations: int = 50
 ):
     b = starting_bid
     previous_change = 1
     p = price_after_trade(b)
     previous_price = p
     diff = p / target_price
-    while abs(1 - diff) > precision:
+    i = 0
+    while abs(1 - diff) > precision and i < max_iterations:
         progress = (previous_price - p) / (previous_price - target_price) or 2
         old_b = b
         b -= previous_change * (1 - 1 / progress)
@@ -160,8 +162,9 @@ def find_agent_delta_y(
         previous_change = b - old_b
         p = price_after_trade(buy_amount=b if b >= 0 else 0, sell_amount=-b if b < 0 else 0)
         diff = p / target_price
+        i += 1
 
-    return b
+    return b if i < max_iterations else 0
 
 
 def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = True) -> TradeStrategy:
@@ -304,18 +307,31 @@ def omnipool_arbitrage(pool_id: str):
         target_price = state.external_market[sell_asset] / state.external_market[buy_asset]
         # pool_ratio = omnipool.lrna_price[sell_asset] / omnipool.lrna_price[buy_asset]
 
-        def price_after_trade(buy_amount: float, sell_amount: float):
-            sell_amount = sell_amount or buy_amount
-            Qi = omnipool.lrna[sell_asset]
-            Ri = omnipool.liquidity[sell_asset]
-            Qj = omnipool.lrna[buy_asset]
-            Rj = omnipool.liquidity[buy_asset]
+        def price_after_trade(buy_amount: float, sell_amount: float = 0):
+            sell_amount = abs(sell_amount) or omnipool.calculate_sell_from_buy(buy_asset, sell_asset, buy_amount)
+            if buy_amount:
+                Qi = omnipool.lrna[sell_asset]
+                Ri = omnipool.liquidity[sell_asset]
+                Qj = omnipool.lrna[buy_asset]
+                Rj = omnipool.liquidity[buy_asset]
+            else:
+                Qi = omnipool.lrna[buy_asset]
+                Ri = omnipool.liquidity[buy_asset]
+                Qj = omnipool.lrna[sell_asset]
+                Rj = omnipool.liquidity[sell_asset]
             x = sell_amount
             delta_q = Qi * (-x / (Ri + x))
-            return ((Qi + delta_q) / (Ri + x)) / ((Qj - delta_q) / (Rj + Rj * (delta_q / (Qj - delta_q))))
+            if buy_amount:
+                price = ((Qi + delta_q) / (Ri + x)) / ((Qj - delta_q) / (Rj + Rj * (delta_q / (Qj - delta_q))))
+            else:
+                price = ((Qj - delta_q) / (Rj + Rj * (delta_q / (Qj - delta_q)))) / ((Qi + delta_q) / (Ri + x))
+            return price
 
         delta_y = find_agent_delta_y(target_price, price_after_trade)
-        return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=delta_y)
+        if delta_y > 0:
+            return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=delta_y)
+        else:
+            return state.execute_swap(pool_id, agent_id, buy_asset, sell_asset, sell_quantity=-delta_y)
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
@@ -367,7 +383,6 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
         sell_asset = sorted_assets[-1]
         target_price = state.external_market[buy_asset] / state.external_market[sell_asset]
 
-        # target_price *= (1 + stable_pool.trade_fee)
         d = stable_pool.calculate_d()
 
         def price_after_trade(buy_amount: float = 0, sell_amount: float = 0):
@@ -389,25 +404,12 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             + delta_x * state.price(sell_asset)
         )
 
-        # in case we want to graph this later
-        # agent = state.agents[agent_id]
-        # agent.projected_profit = projected_profit
-
         if projected_profit <= minimum_profit:
             # don't do it
             # agent.trade_rejected += 1
             return state
 
-        # old_state = state.copy()
         new_state = state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, buy_quantity=delta_y)
-        # actual_profit = (
-        #     new_state.agents[agent_id].holdings[buy_asset] * new_state.price(buy_asset)
-        #     + new_state.agents[agent_id].holdings[sell_asset] * new_state.price(sell_asset)
-        # ) - (
-        #     old_state.agents[agent_id].holdings[buy_asset] * old_state.price(buy_asset)
-        #     + old_state.agents[agent_id].holdings[sell_asset] * old_state.price(sell_asset)
-        # )
-        # print(f'profit difference (actual-projected) = {actual_profit - projected_profit}')
         return new_state
 
     return TradeStrategy(strategy, name='stableswap arbitrage')
