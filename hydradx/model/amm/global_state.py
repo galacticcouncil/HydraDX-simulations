@@ -118,8 +118,12 @@ class GlobalState:
             ((newline + indent).join([
                 (newline + indent).join(agent_desc.split('\n'))
                 for agent_desc in [repr(agent) for agent in self.agents.values()]
+            ])) + newline +
+            f'market prices: {newline + newline}    ' +
+            ((newline + indent).join([
+                f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
             ])) +
-            f'{newline}'
+            f'{newline}{newline}'
             f'evolution function: {self.evolve_function}'
             f'{newline}'
         )
@@ -196,6 +200,7 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     price_iter = iter(price_list)
     next(price_iter)
+    
     def transform(state: GlobalState) -> GlobalState:
         new_prices = next(price_iter)
         for tkn in new_prices:
