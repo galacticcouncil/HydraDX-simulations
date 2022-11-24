@@ -1296,3 +1296,44 @@ def test_trade_limit():
         trades_allowed += 1
 
     assert trades_allowed == 2
+
+
+def test_liquidity_coefficient():
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
+            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
+            'R1': {'liquidity': 1000000, 'LRNA': 1000000},
+        }
+    )
+    agent = Agent(
+        holdings={'HDX': 1000000, 'USD': 1000000, 'R1': 1000000, 'LRNA': 1000000}
+    )
+    initial_price = initial_state.price('R1', 'USD')
+
+    new_state = initial_state.copy()
+    new_state.liquidity_coefficient_function = lambda x: 0.5
+    new_state.update_oracles()
+
+    if initial_price != pytest.approx(new_state.price('R1', 'USD')):
+        raise AssertionError('Price changed after changing liquidity coefficient.')
+
+    high_slip_state, high_slip_agent = oamm.swap(
+        new_state, agent, 'USD', 'R1', sell_quantity=10000
+    )
+
+    low_slip_state = new_state.copy()
+    low_slip_state.liquidity_coefficient_function = lambda x: 1
+    low_slip_state.update_oracles()
+    low_slip_state, low_slip_agent = oamm.swap(
+        low_slip_state, agent, 'USD', 'R1', sell_quantity=10000
+    )
+
+    if high_slip_agent.holdings['USD'] >= low_slip_agent.holdings['USD']:
+        raise AssertionError('Agent should have spent more when more liquidity is offline.')
+
+    high_slip_state_price = high_slip_state.price('R1', 'USD')
+    high_slip_state.liquidity_coefficient_function = lambda x: 1
+    high_slip_state.update_oracles()
+    if high_slip_state_price != pytest.approx(high_slip_state.price('R1', 'USD')):
+        raise AssertionError('Price changed after changing liquidity coefficient.')
