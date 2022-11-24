@@ -399,7 +399,6 @@ def omnipool_feeless_arbitrage(pool_id: str):
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
-
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         size_mult = 1
         for i in range(len(omnipool.asset_list)):
@@ -409,9 +408,9 @@ def omnipool_feeless_arbitrage(pool_id: str):
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
             if dr[i] > 0:
-                next_state = next_state.execute_swap(pool_id, agent_id, 'LRNA', asset, sell_quantity=dr[i]*size_mult)
+                next_state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr[i]*size_mult)
             else:
-                next_state = next_state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=-dr[i]*size_mult)
+                next_state.execute_swap(pool_id, agent_id, 'LRNA', asset, buy_quantity=-dr[i]*size_mult)
         # for i in range(len(omnipool.asset_list)):
         #     if omnipool.asset_list[i] == 'USD':
         #         continue
