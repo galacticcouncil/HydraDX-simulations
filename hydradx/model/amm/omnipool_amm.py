@@ -50,6 +50,7 @@ class OmnipoolState(AMM):
         self.liquidity_coefficient = {}
         self.short_oracle = {}
         self.long_oracle = {}
+        self.trade_limit_per_block = 0.25  # trades per block cannot exceed 25% of the pool's liquidity
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
             if 'LRNA' in pool:
@@ -280,6 +281,7 @@ class OmnipoolState(AMM):
             tkn_sell_lrna = self.lrna[tkn_sell] * self.liquidity_coefficient[tkn_sell]
             tkn_buy_liquidity = self.liquidity[tkn_buy] * self.liquidity_coefficient[tkn_buy]
             tkn_sell_liquidity = self.liquidity[tkn_sell] * self.liquidity_coefficient[tkn_sell]
+
             i = tkn_sell
             j = tkn_buy
             delta_Ri = sell_quantity
@@ -304,6 +306,25 @@ class OmnipoolState(AMM):
             if agent.holdings[i] < sell_quantity:
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
+            # per-block trade limits
+            if (
+                -delta_Rj / self.short_oracle[tkn_buy].get('liquidity')
+                - self.short_oracle[tkn_buy].get_current('volume_in')
+                + self.short_oracle[tkn_buy].get_current('volume_out')
+                > self.trade_limit_per_block
+            ):
+                return self.fail_transaction(
+                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
+                )
+            elif (
+                delta_Ri / self.short_oracle[tkn_sell].get('liquidity')
+                + self.short_oracle[tkn_sell].get_current('volume_in')
+                - self.short_oracle[tkn_sell].get_current('volume_out')
+                > self.trade_limit_per_block
+            ):
+                return self.fail_transaction(
+                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
+                )
             self.lrna[i] += delta_Qi
             self.lrna[j] += delta_Qj
             self.liquidity[i] += delta_Ri
@@ -322,15 +343,15 @@ class OmnipoolState(AMM):
         if tkn_buy in self.asset_list:
             buy_quantity = agent.holdings[tkn_buy] - agent_holdings[tkn_buy]
             self.short_oracle[tkn_buy].add(
-                attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
+                attribute='volume_out', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
             self.long_oracle[tkn_buy].add(
-                attribute='volume_in', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
+                attribute='volume_out', value=buy_quantity / self.short_oracle[tkn_buy].get('liquidity'))
         if tkn_sell in self.asset_list:
             sell_quantity = agent_holdings[tkn_sell] - agent.holdings[tkn_sell]
             self.short_oracle[tkn_sell].add(
-                attribute='volume_out', value=sell_quantity / self.short_oracle[tkn_sell].get('liquidity'))
+                attribute='volume_in', value=sell_quantity / self.short_oracle[tkn_sell].get('liquidity'))
             self.long_oracle[tkn_sell].add(
-                attribute='volume_out', value=sell_quantity / self.long_oracle[tkn_sell].get('liquidity'))
+                attribute='volume_in', value=sell_quantity / self.long_oracle[tkn_sell].get('liquidity'))
             return return_val
 
     def execute_lrna_swap(
