@@ -386,7 +386,7 @@ def omnipool_feeless_arbitrage(pool_id: str):
         if not isinstance(omnipool, OmnipoolState):
             raise AssertionError()
 
-        next_state = copy.deepcopy(state)
+        # next_state = copy.deepcopy(state)
 
         reserves = []
         lrna = []
@@ -408,9 +408,9 @@ def omnipool_feeless_arbitrage(pool_id: str):
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
             if dr[i] > 0:
-                next_state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr[i]*size_mult)
+                state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr[i]*size_mult)
             else:
-                next_state.execute_swap(pool_id, agent_id, 'LRNA', asset, buy_quantity=-dr[i]*size_mult)
+                state.execute_swap(pool_id, agent_id, 'LRNA', asset, buy_quantity=-dr[i]*size_mult)
         # for i in range(len(omnipool.asset_list)):
         #     if omnipool.asset_list[i] == 'USD':
         #         continue
@@ -434,7 +434,7 @@ def omnipool_feeless_arbitrage(pool_id: str):
         #             next_state.execute_swap(pool_id, agent_id, asset, asset_j, sell_quantity=size_j)
         #         else:
         #             next_state.execute_swap(pool_id, agent_id, asset_j, asset, buy_quantity=-size_j)
-        return next_state
+        return state
 
     return TradeStrategy(strategy, name='omnipool feeless arbitrage')
 
