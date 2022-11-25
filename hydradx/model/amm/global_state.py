@@ -93,9 +93,8 @@ class GlobalState:
             buy_quantity: float = 0,
             sell_quantity: float = 0
     ):
-        self.pools[pool_id], self.agents[agent_id] = self.pools[pool_id].swap(
-            old_state=self.pools[pool_id],
-            old_agent=self.agents[agent_id],
+        self.pools[pool_id].execute_swap(
+            agent=self.agents[agent_id],
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             buy_quantity=buy_quantity,
