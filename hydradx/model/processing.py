@@ -126,32 +126,11 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
 
     return events
 
+
 @dataclass
 class PriceTick:
     timestamp: int
     price: float
-
-def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[PriceTick]:
-    price_data = []
-    for input_filename in input_filenames:
-        with open(input_path + input_filename, newline='') as input_file:
-            fieldnames = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume',
-                          'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
-            reader = DictReader(input_file, fieldnames=fieldnames)
-            # reader = DictReader(input_file)
-            for row in reader:
-                price_data.append(PriceTick(int(row["timestamp"]), float(row["open"])))
-
-    price_data.sort(key=lambda x: x.timestamp)
-    return price_data
-
-def de_freq(price_data: list[PriceTick], freq: int) -> list[PriceTick]:
-    de_freq_data = []
-    for i in range(len(price_data)):
-        if i % freq == 0:
-            de_freq_data.append(price_data[i])
-    return de_freq_data
-
 
 
 def write_price_data(price_data: list[PriceTick], output_filename: str) -> None:
@@ -169,4 +148,25 @@ def import_price_data(input_filename: str) -> list[PriceTick]:
         reader = DictReader(input_file)
         for row in reader:
             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
+    return price_data
+
+
+@dataclass
+class PriceTick:
+    timestamp: int
+    price: float
+
+
+def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[PriceTick]:
+    price_data = []
+    for input_filename in input_filenames:
+        with open(input_path + input_filename, newline='') as input_file:
+            fieldnames = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume',
+                          'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
+            reader = DictReader(input_file, fieldnames=fieldnames)
+            # reader = DictReader(input_file)
+            for row in reader:
+                price_data.append(PriceTick(int(row["timestamp"]), float(row["open"])))
+
+    price_data.sort(key=lambda x: x.timestamp)
     return price_data
