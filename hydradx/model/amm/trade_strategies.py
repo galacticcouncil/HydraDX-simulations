@@ -297,44 +297,63 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
 
 
 def omnipool_arbitrage(pool_id: str):
+    def get_mat(prices: list[float], reserves: list[int], lrna: list[int], usd_index: int):
+        mat = [[float(1)] * len(prices)]
+        for i in range(len(prices)):
+            if usd_index == i:
+                continue
+            row = [float(0)] * len(prices)
+            row[usd_index] = math.sqrt(prices[i] * reserves[i] * lrna[i])
+            row[i] = -math.sqrt(reserves[usd_index] * lrna[usd_index])
+            mat.append(row)
+        return mat
+
+    def calc_new_reserve(new_reserve_B, old_reserve_A, old_reserve_B):
+        return old_reserve_A * old_reserve_B / new_reserve_B
+
+    def get_dr_list(prices, reserves, lrna, usd_index):
+
+        mat = get_mat(prices, reserves, lrna, usd_index)
+
+        A = np.array(mat)
+        B_ls = [float(0)] * len(prices)
+        B_ls[0] = float(sum(lrna))
+        B = np.array(B_ls)
+        X = np.linalg.solve(A, B)
+
+        dr = [calc_new_reserve(X[i], reserves[i], lrna[i]) - reserves[i] for i in range(len(prices))]
+        return dr
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
-
         omnipool: OmnipoolState = state.pools[pool_id]
         if not isinstance(omnipool, OmnipoolState):
             raise AssertionError()
-        sell_index = state.time_step % len(omnipool.asset_list)
-        buy_index = (sell_index + 1) % len(omnipool.asset_list)
-        sell_asset = omnipool.asset_list[sell_index]
-        buy_asset = omnipool.asset_list[buy_index]
-        target_price = state.external_market[sell_asset] / state.external_market[buy_asset]
-        # pool_ratio = omnipool.lrna_price[sell_asset] / omnipool.lrna_price[buy_asset]
 
-        def price_after_trade(buy_amount: float, sell_amount: float = 0):
-            sell_amount = abs(sell_amount) or omnipool.calculate_sell_from_buy(buy_asset, sell_asset, buy_amount)
-            if buy_amount:
-                Qi = omnipool.lrna[sell_asset]
-                Ri = omnipool.liquidity[sell_asset]
-                Qj = omnipool.lrna[buy_asset]
-                Rj = omnipool.liquidity[buy_asset]
-            else:
-                Qi = omnipool.lrna[buy_asset]
-                Ri = omnipool.liquidity[buy_asset]
-                Qj = omnipool.lrna[sell_asset]
-                Rj = omnipool.liquidity[sell_asset]
-            x = sell_amount
-            delta_q = Qi * (-x / (Ri + x))
-            if buy_amount:
-                price = ((Qi + delta_q) / (Ri + x)) / ((Qj - delta_q) / (Rj + Rj * (delta_q / (Qj - delta_q))))
-            else:
-                price = ((Qj - delta_q) / (Rj + Rj * (delta_q / (Qj - delta_q)))) / ((Qi + delta_q) / (Ri + x))
-            return price
+        reserves = []
+        lrna = []
+        prices = []
+        usd_index = -1
+        for i in range(len(omnipool.asset_list)):
+            asset = omnipool.asset_list[i]
+            if asset == 'USD':
+                usd_index = i
+            reserves.append(omnipool.online_liquidity(asset))
+            lrna.append(omnipool.lrna[asset])
+            prices.append(state.external_market[asset])
+        dr = get_dr_list(prices, reserves, lrna, usd_index)
+        size_mult = 1
+        for i in range(len(omnipool.asset_list)):
+            if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
+                size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
-        delta_y = find_agent_delta_y(target_price, price_after_trade)
-        if delta_y > 0:
-            return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=delta_y)
-        else:
-            return state.execute_swap(pool_id, agent_id, buy_asset, sell_asset, sell_quantity=-delta_y)
+        for i in range(len(omnipool.asset_list)):
+            asset = omnipool.asset_list[i]
+            if dr[i] > 0:
+                state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr[i]*size_mult)
+            else:
+                state.execute_swap(pool_id, agent_id, 'LRNA', asset, buy_quantity=-dr[i]*size_mult)
+
+        return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
@@ -485,9 +504,13 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
     return TradeStrategy(strategy, name='stableswap arbitrage')
 
 
-def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float) -> TradeStrategy:
+def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_timestep: int = 0) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if state.time_step < start_timestep:
+            return state
+
+        state.external_market[asset_name] = 0
 
         omnipool: OmnipoolState = state.pools[pool_id]
         current_price = omnipool.lrna_price(asset_name)
