@@ -59,6 +59,7 @@ class ConstantProductPoolState(AMM):
         return math.prod(self.liquidity.values())
 
     def __repr__(self):
+        precision = 12
         return (
             f'Constant Product Pool\n'
             f'base trade fee: {self.trade_fee.name}\n'
@@ -67,10 +68,69 @@ class ConstantProductPoolState(AMM):
         ) + ')\n(\n'.join(
             [(
                 f'    {token}\n'
-                f'    quantity: {self.liquidity[token]}\n'
-                f'    weight: {self.liquidity[token] / sum(self.liquidity.values())}\n'
+                f'    quantity: {round(self.liquidity[token], precision)}\n'
+                f'    weight: {round(self.liquidity[token] / sum(self.liquidity.values()), precision)}\n'
             ) for token in self.asset_list]
         ) + '\n)'
+
+    def execute_swap(
+        self,
+        agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
+    ):
+
+        if not (tkn_buy in self.asset_list and tkn_sell in self.asset_list):
+            return self.fail_transaction('Invalid token name.', agent)
+
+        # turn a negative buy into a sell and vice versa
+        if buy_quantity < 0:
+            sell_quantity = -buy_quantity
+            buy_quantity = 0
+            t = tkn_sell
+            tkn_sell = tkn_buy
+            tkn_buy = t
+        elif sell_quantity < 0:
+            buy_quantity = -sell_quantity
+            sell_quantity = 0
+            t = tkn_sell
+            tkn_sell = tkn_buy
+            tkn_buy = t
+
+        if sell_quantity != 0:
+            # when amount to be paid in is specified, calculate payout
+            buy_quantity = sell_quantity * self.liquidity[tkn_buy] / (
+                        self.liquidity[tkn_sell] + sell_quantity)
+            if math.isnan(buy_quantity):
+                buy_quantity = sell_quantity  # this allows infinite liquidity for testing
+            trade_fee = self.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            buy_quantity *= 1 - trade_fee
+
+        elif buy_quantity != 0:
+            # calculate input price from a given payout
+            sell_quantity = buy_quantity * self.liquidity[tkn_sell] / (self.liquidity[tkn_buy] - buy_quantity)
+            if math.isnan(sell_quantity):
+                sell_quantity = buy_quantity  # this allows infinite liquidity for testing
+            trade_fee = self.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            sell_quantity /= 1 - trade_fee
+
+        else:
+            return self.fail_transaction('Must specify buy quantity or sell quantity.', agent)
+
+        if self.liquidity[tkn_sell] + sell_quantity <= 0 or self.liquidity[tkn_buy] - buy_quantity <= 0:
+            return self.fail_transaction('Not enough liquidity in the pool.', agent)
+
+        if agent.holdings[tkn_sell] - sell_quantity < 0 or agent.holdings[tkn_buy] + buy_quantity < 0:
+            return self.fail_transaction('Agent has insufficient holdings.', agent)
+
+        agent.holdings[tkn_buy] += buy_quantity
+        agent.holdings[tkn_sell] -= sell_quantity
+        self.liquidity[tkn_sell] += sell_quantity
+        self.liquidity[tkn_buy] -= buy_quantity
+
+        return self, agent
 
 
 def add_liquidity(
@@ -149,58 +209,9 @@ def swap(
 ) -> tuple[ConstantProductPoolState, Agent]:
     new_agent = old_agent.copy()
     new_state = old_state.copy()
-
-    if not (tkn_buy in new_state.asset_list and tkn_sell in new_state.asset_list):
-        return old_state.fail_transaction('Invalid token name.', old_agent)
-
-    # turn a negative buy into a sell and vice versa
-    if buy_quantity < 0:
-        sell_quantity = -buy_quantity
-        buy_quantity = 0
-        t = tkn_sell
-        tkn_sell = tkn_buy
-        tkn_buy = t
-    elif sell_quantity < 0:
-        buy_quantity = -sell_quantity
-        sell_quantity = 0
-        t = tkn_sell
-        tkn_sell = tkn_buy
-        tkn_buy = t
-
-    if sell_quantity != 0:
-        # when amount to be paid in is specified, calculate payout
-        buy_quantity = sell_quantity * old_state.liquidity[tkn_buy] / (old_state.liquidity[tkn_sell] + sell_quantity)
-        if math.isnan(buy_quantity):
-            buy_quantity = sell_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-        buy_quantity *= 1 - trade_fee
-        new_agent.holdings[tkn_buy] += buy_quantity
-        new_agent.holdings[tkn_sell] -= sell_quantity
-        new_state.liquidity[tkn_sell] += sell_quantity
-        new_state.liquidity[tkn_buy] -= buy_quantity
-
-    elif buy_quantity != 0:
-        # calculate input price from a given payout
-        sell_quantity = buy_quantity * old_state.liquidity[tkn_sell] / (old_state.liquidity[tkn_buy] - buy_quantity)
-        if math.isnan(sell_quantity):
-            sell_quantity = buy_quantity  # this allows infinite liquidity for testing
-        trade_fee = new_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-        sell_quantity /= 1 - trade_fee
-        new_agent.holdings[tkn_sell] -= sell_quantity
-        new_agent.holdings[tkn_buy] += buy_quantity
-        new_state.liquidity[tkn_buy] -= buy_quantity
-        new_state.liquidity[tkn_sell] += sell_quantity
-
-    else:
-        return old_state.fail_transaction('Must specify buy quantity or sell quantity.', old_agent)
-
-    if new_state.liquidity[tkn_buy] <= 0 or new_state.liquidity[tkn_sell] <= 0:
-        return old_state.fail_transaction('Not enough liquidity in the pool.', old_agent)
-
-    if new_agent.holdings[tkn_sell] < 0 or new_agent.holdings[tkn_buy] < 0:
-        return old_state.fail_transaction('Agent has insufficient holdings.', old_agent)
-
-    return new_state, new_agent
+    return new_state.execute_swap(
+        new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity
+    )
 
 
 ConstantProductPoolState.swap = staticmethod(swap)

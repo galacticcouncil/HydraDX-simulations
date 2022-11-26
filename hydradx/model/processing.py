@@ -1,3 +1,6 @@
+from csv import DictReader, writer
+from dataclasses import dataclass
+
 from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
 from .amm.agents import Agent
 from .amm import global_state
@@ -122,3 +125,48 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
                     )
 
     return events
+
+
+@dataclass
+class PriceTick:
+    timestamp: int
+    price: float
+
+
+def write_price_data(price_data: list[PriceTick], output_filename: str) -> None:
+    with open(output_filename, 'w', newline='') as output_file:
+        fieldnames = ['timestamp', 'price']
+        csvwriter = writer(output_file)
+        csvwriter.writerow(fieldnames)
+        for row in price_data:
+            csvwriter.writerow([row.timestamp, row.price])
+
+
+def import_price_data(input_filename: str) -> list[PriceTick]:
+    price_data = []
+    with open(input_filename, newline='') as input_file:
+        reader = DictReader(input_file)
+        for row in reader:
+            price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
+    return price_data
+
+
+@dataclass
+class PriceTick:
+    timestamp: int
+    price: float
+
+
+def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[PriceTick]:
+    price_data = []
+    for input_filename in input_filenames:
+        with open(input_path + input_filename, newline='') as input_file:
+            fieldnames = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume',
+                          'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
+            reader = DictReader(input_file, fieldnames=fieldnames)
+            # reader = DictReader(input_file)
+            for row in reader:
+                price_data.append(PriceTick(int(row["timestamp"]), float(row["open"])))
+
+    price_data.sort(key=lambda x: x.timestamp)
+    return price_data

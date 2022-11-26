@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from typing import Callable
 
 
 def plot(
@@ -143,11 +144,16 @@ def get_datastream(
         return [getattr(getattr(event['state'], group)[instance], prop) for event in events]
     if not oracle:
         try:
-            return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
+            if isinstance(getattr(getattr(events[0]['state'], group)[instance], prop), Callable):
+                return [getattr(getattr(event['state'], group)[instance], prop)(key) for event in events]
+            else:
+                return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
         except KeyError:
             # this may occur, for example, if a certain pool doesn't contain the assets specified by *key*
             return []
-    return [getattr(getattr(event['state'], group)[instance], oracle)[key].get(prop) for event in events]
+    else:
+        # oracle
+        return [getattr(getattr(event['state'], group)[instance], oracle)[key].get(prop) for event in events]
 
 
 def best_fit_line(data_array: list[float]):

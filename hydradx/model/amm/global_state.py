@@ -93,9 +93,8 @@ class GlobalState:
             buy_quantity: float = 0,
             sell_quantity: float = 0
     ):
-        self.pools[pool_id], self.agents[agent_id] = self.pools[pool_id].swap(
-            old_state=self.pools[pool_id],
-            old_agent=self.agents[agent_id],
+        self.pools[pool_id].execute_swap(
+            agent=self.agents[agent_id],
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             buy_quantity=buy_quantity,
@@ -118,8 +117,12 @@ class GlobalState:
             ((newline + indent).join([
                 (newline + indent).join(agent_desc.split('\n'))
                 for agent_desc in [repr(agent) for agent in self.agents.values()]
+            ])) + newline +
+            f'market prices: {newline + newline}    ' +
+            ((newline + indent).join([
+                f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
             ])) +
-            f'{newline}'
+            f'{newline}{newline}'
             f'evolution function: {self.evolve_function}'
             f'{newline}'
         )
@@ -188,6 +191,19 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
                 + updown[tkn].bias / 100 / updown[tkn].wavelength
             )
             updown[tkn].inertia += 1
+        return state
+
+    return transform
+
+
+def historical_prices(price_list: list[dict[str: float]]) -> Callable:
+    price_iter = iter(price_list)
+    next(price_iter)
+    
+    def transform(state: GlobalState) -> GlobalState:
+        new_prices = price_list[state.time_step]
+        for tkn in new_prices:
+            state.external_market[tkn] = new_prices[tkn]
         return state
 
     return transform
