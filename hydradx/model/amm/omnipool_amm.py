@@ -162,7 +162,7 @@ class OmnipoolState(AMM):
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
     def liquidity_online(self, tkn):
-        return self.current_block.liquidity[tkn] - self.liquidity_offline[tkn]
+        return self.liquidity[tkn] - self.liquidity_offline[tkn]
 
     def copy(self):
         copy_state = copy.deepcopy(self)
