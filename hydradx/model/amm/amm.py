@@ -36,6 +36,9 @@ class AMM:
         copy_self.fail = ''
         return copy_self
 
+    def price(self, tkn: str, denomination: str = '') -> float:
+        return 0
+
     def swap(
         self,
         old_agent: Agent,
