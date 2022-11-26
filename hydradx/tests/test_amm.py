@@ -219,12 +219,13 @@ def test_LP(initial_state: GlobalState):
     },
     agents={
         'arbitrageur': Agent(
-            holdings={'USD': 10000000000},  # lots
+            holdings={'USD': float('inf')},
             trade_strategy=constant_product_arbitrage('HDX/BSX')
         )
     },
     external_market={'HDX': 0, 'BSX': 0},  # config function will fill these in with random values
-    evolve_function=fluctuate_prices(volatility={'HDX': 1, 'BSX': 1})
+    evolve_function=fluctuate_prices(volatility={'HDX': 1, 'BSX': 1}),
+    skip_omnipool=True
 ))
 def test_arbitrage_pool_balance(initial_state):
     # there are actually two things we would like to test:
@@ -446,3 +447,74 @@ def test_sell_fee_derivation(initial_state: GlobalState):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
     # if fee_amount > expected_fee_amount:
     #     raise ValueError('fee is higher than expected')
+
+
+def test_omnipool_arbitrage():
+    from scipy.optimize import curve_fit
+    import pandas as pd
+    import random
+    import sys
+    from IPython.display import clear_output
+    from matplotlib import pyplot as plt
+
+    sys.path.append('../..')
+
+    from hydradx.model import run
+    from hydradx.model import plot_utils as pu
+    from hydradx.model import processing
+    from hydradx.model.amm.omnipool_amm import OmnipoolState
+    from hydradx.model.amm.agents import Agent
+    from hydradx.model.amm.trade_strategies import toxic_asset_attack, omnipool_arbitrage
+    from hydradx.model.amm.global_state import GlobalState, historical_prices
+
+    # same seed, same parameters = same simulation result
+    random.seed(42)
+
+    assets = {
+        'HDX': {'usd price': 0.05, 'weight': 0.10},
+        'USD': {'usd price': 1, 'weight': 0.20},
+        'AUSD': {'usd price': 1, 'weight': 0.10},
+        'ETH': {'usd price': 2500, 'weight': 0.40},
+        'DOT': {'usd price': 5.37, 'weight': 0.20}
+    }
+
+    lrna_price_usd = 0.07
+    initial_omnipool_tvl = 10000000
+    liquidity = {}
+    lrna = {}
+
+    for tkn, info in assets.items():
+        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
+        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+
+    initial_state = GlobalState(
+        pools={
+            'Omnipool': OmnipoolState(
+                tokens={
+                    tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
+                },
+                lrna_fee=0,
+                asset_fee=0,
+                preferred_stablecoin='USD'
+            )
+        },
+        agents={
+            # 'Attacker': Agent(
+            #     holdings={'USD': 0, 'AUSD': 1000000000},
+            #     trade_strategy=toxic_asset_attack(
+            #         pool_id='omnipool',
+            #         asset_name='AUSD',
+            #         trade_size=10000
+            #     )
+            # ),
+            'Arbitrageur': Agent(
+                holdings={tkn: float('inf') for tkn in list(assets.keys()) + ['LRNA']},
+                trade_strategy=omnipool_arbitrage('Omnipool')
+            )
+        },
+        evolve_function=fluctuate_prices(volatility={'DOT': 0.2, 'HDX': 0.2}),
+        external_market={tkn: assets[tkn]['usd price'] for tkn in assets}
+    )
+    # print(initial_state)
+    time_steps = 10  # len(price_list) - 1
+    events = run.run(initial_state, time_steps=time_steps)
