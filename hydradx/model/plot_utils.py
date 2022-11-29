@@ -153,7 +153,7 @@ def get_datastream(
             return []
     else:
         # oracle
-        return [getattr(getattr(event['state'], group)[instance], oracle)[key].get(prop) for event in events]
+        return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop)[key] for event in events]
 
 
 def best_fit_line(data_array: list[float]):
