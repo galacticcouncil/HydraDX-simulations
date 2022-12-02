@@ -297,7 +297,7 @@ class StableSwapPoolState(AMM):
 
     def __repr__(self):
         # round to given precision
-        precision = 10
+        precision = 12
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.asset_list}
         shares = round(self.shares, precision)
         return (
