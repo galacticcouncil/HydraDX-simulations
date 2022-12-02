@@ -79,8 +79,7 @@ class GlobalState:
     def evolve(self):
         self.time_step += 1
         for pool in self.pools.values():
-            if pool.update_function:
-                pool.update_function()
+            pool.update()
         if self._evolve_function:
             return self._evolve_function(self)
 
@@ -197,9 +196,7 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
 
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
-    price_iter = iter(price_list)
-    next(price_iter)
-    
+
     def transform(state: GlobalState) -> GlobalState:
         new_prices = price_list[state.time_step]
         for tkn in new_prices:

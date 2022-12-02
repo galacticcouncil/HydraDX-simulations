@@ -18,11 +18,13 @@ class Oracle:
             self.decay_factor = 2 / (sma_equivalent_length + 1)
         else:
             raise ValueError('Either decay_factor or sma_equivalent_length must be specified')
+        self.length = sma_equivalent_length or 2 / self.decay_factor - 1
         self.asset_list = []
         self.liquidity = first_block.liquidity
         self.price = first_block.price
         self.volume_in = first_block.volume_in
         self.volume_out = first_block.volume_out
+        self.age = 0
 
     def add_asset(self, tkn: str, liquidity: float):
         self.liquidity[tkn] = liquidity
@@ -34,6 +36,7 @@ class Oracle:
         return (1 - self.decay_factor) * getattr(self, attribute)[tkn] + self.decay_factor * value
 
     def update(self, block: Block):
+        self.age += 1
         for tkn in block.liquidity:
             self.liquidity[tkn] = self.update_value(
                 tkn, 'liquidity', block.liquidity[tkn]

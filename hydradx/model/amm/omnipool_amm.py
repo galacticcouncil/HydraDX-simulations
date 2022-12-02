@@ -4,6 +4,7 @@ from .amm import AMM, FeeMechanism
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
 from mpmath import mpf, mp
+from typing import Callable
 
 mp.dps = 50
 
@@ -18,7 +19,8 @@ class OmnipoolState(AMM):
                  asset_fee: FeeMechanism or float = 0,
                  lrna_fee: FeeMechanism or float = 0,
                  oracles: dict[str: int] = None,
-                 trade_limit_per_block: float = 1,
+                 trade_limit_per_block: float = float('inf'),
+                 update_function: Callable = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -87,7 +89,7 @@ class OmnipoolState(AMM):
         self.stablecoin = preferred_stablecoin
         self.fail = ''
         self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
-        self.update_function = self.update
+        self.update_function = update_function
 
         self.current_block = Block(self)
         self.update()
@@ -131,7 +133,30 @@ class OmnipoolState(AMM):
 
         # update current block
         self.current_block = Block(self)
+        if self.update_function:
+            self.update_function(self)
         return self
+
+    @staticmethod
+    def circuit_breaker(self):
+        threshold = {
+            'long': 2,
+            'medium': 5,
+            'short': 10
+        }
+        self.liquidity_coefficient = {tkn: min(self.liquidity_coefficient[tkn] + 0.001, 1) for tkn in self.asset_list}
+        for period, oracle in self.oracles.items():
+            for tkn in self.asset_list:
+                trade_ratio = oracle.volume_in[tkn] / (oracle.volume_out[tkn] or 1)
+                if trade_ratio > threshold[period] and oracle.age > oracle.length:
+                    self.liquidity_coefficient[tkn] = (
+                        max(0.1, min(
+                            threshold[period] / trade_ratio,
+                            self.liquidity_coefficient[tkn],
+                            1
+                        ))
+                    )
+        # self.liquidity_coefficient.update(new_liquidity_coefficient)
 
     def price(self, tkn: str, denominator: str = ''):
         """
@@ -151,6 +176,12 @@ class OmnipoolState(AMM):
             return self.lrna[tkn] / self.liquidity_online(tkn)
         else:
             return self.lrna[tkn] / self.liquidity[tkn]
+
+    def usd_price(self, tkn):
+        """
+        price of an asset denominated in USD
+        """
+        return self.price(tkn, self.stablecoin)
 
     @property
     def lrna_total(self):
@@ -198,7 +229,7 @@ class OmnipoolState(AMM):
                     f'    *{token}*\n'
                     f'    asset quantity: {liquidity[token]}\n'
                     f'    lrna quantity: {lrna[token]}\n'
-                    f'    USD price: {price[token]}\n' +
+                    f'    USD price: {self.usd_price(token)}\n' +
                     f'    tvl: ${lrna[token] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[token]}/{lrna_total} ({lrna[token] / lrna_total})\n'
                     f'    weight cap: {weight_cap[token]}\n'

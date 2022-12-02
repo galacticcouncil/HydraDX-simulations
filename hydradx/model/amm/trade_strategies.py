@@ -335,7 +335,7 @@ def omnipool_arbitrage(pool_id: str):
         usd_index = -1
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
-            if asset == 'USD':
+            if asset == omnipool.stablecoin:
                 usd_index = i
             reserves.append(omnipool.liquidity_online(asset))
             lrna.append(omnipool.lrna[asset])
