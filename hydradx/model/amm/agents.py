@@ -22,6 +22,7 @@ class Agent:
         The values of share_prices reflect the price at which those shares were acquired.
         """
         self.holdings = holdings or {}
+        self.initial_holdings = copy.copy(holdings)
         self.share_prices = share_prices or {}
         self.trade_strategy = trade_strategy
         self.asset_list = list(self.holdings.keys())
