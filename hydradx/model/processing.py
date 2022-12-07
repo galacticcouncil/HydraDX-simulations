@@ -8,6 +8,9 @@ from .amm import global_state
 
 # functions for calculating extra parameters we may want to track
 def value_assets(prices: dict, agent: Agent) -> float:
+    """
+    return the value of the agent's assets if they were sold at current spot prices
+    """
     return sum([
         agent.holdings[i] * prices[i] if i in prices else 0
         for i in agent.holdings.keys()
@@ -15,18 +18,25 @@ def value_assets(prices: dict, agent: Agent) -> float:
 
 
 def market_prices(state: GlobalState, shares: dict) -> dict:
+    """
+    return the market price of each asset in state.asset_list, as well as the price of each asset in shares
+    """
     prices = {tkn: state.price(tkn) for tkn in state.asset_list}
     for share_id in shares:
         # if shares are for a specific asset in a specific pool, get prices according to that pool
         if isinstance(share_id, tuple):
             pool_id = share_id[0]
             tkn_id = share_id[1]
-            prices[share_id] = state.pools[pool_id].price(tkn_id)
+            prices[share_id] = state.pools[pool_id].usd_price(tkn_id)
 
     return prices
 
 
 def cash_out(state: GlobalState, agent: Agent) -> float:
+    """
+    return the value of the agent's holdings if they withdraw all liquidity
+    and then sell at current spot prices
+    """
     new_agent = withdraw_all_liquidity(state, agent.unique_id).agents[agent.unique_id]
     prices = market_prices(state, agent.holdings)
     return value_assets(prices, new_agent)
@@ -72,7 +82,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
     }
     exchange_params = {
         'pool_val',
-        'usd_price'
+        # 'usd_price'
     }
     unrecognized_params = optional_params.difference(agent_params | exchange_params)
     if unrecognized_params:
@@ -94,8 +104,8 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
         for pool in state.pools.values():
             if 'pool_val' in optional_params:
                 pool.pool_val = pool_val(state, pool)
-            if 'usd_price' in optional_params:
-                pool.usd_price = {tkn: pool.price(tkn) for tkn in pool.asset_list}
+            # if 'usd_price' in optional_params:
+            #     pool.usd_price = {tkn: pool.price(tkn) for tkn in pool.asset_list}
 
         # agents
         for agent in state.agents.values():
@@ -149,12 +159,6 @@ def import_price_data(input_filename: str) -> list[PriceTick]:
         for row in reader:
             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
     return price_data
-
-
-@dataclass
-class PriceTick:
-    timestamp: int
-    price: float
 
 
 def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[PriceTick]:
