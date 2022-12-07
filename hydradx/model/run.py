@@ -16,11 +16,13 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False, use_c
         return run_cadcad()[1:]
 
     start_time = time.time()
-    events = [{'state': initial_state}]
+    events = [None] * time_steps
+    new_global_state = initial_state.copy()
+
     if not silent:
         print('Starting simulation...')
+
     for i in range(time_steps):
-        new_global_state = events[-1]['state'].copy()
 
         # market evolutions
         new_global_state.evolve()
@@ -31,8 +33,8 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False, use_c
             if agent.trade_strategy:
                 new_global_state = agent.trade_strategy.execute(new_global_state, agent.unique_id)
 
-        events.append({'timestep': i, 'state': new_global_state})
+        events[new_global_state.time_step-1] = new_global_state.archive()
 
     if not silent:
         print(f'Execution time: {round(time.time() - start_time, 3)} seconds.')
-    return events[1:]
+    return events
