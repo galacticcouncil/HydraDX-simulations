@@ -10,7 +10,8 @@ class GlobalState:
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
                  external_market: dict[str: float] = None,
-                 evolve_function: Callable = None
+                 evolve_function: Callable = None,
+                 save_data: dict = None
                  ):
         if external_market is None:
             self.external_market = {}
@@ -36,6 +37,10 @@ class GlobalState:
                     agent.holdings[asset] = 0
         self._evolve_function = evolve_function
         self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.save_data = {
+            tag: save_data[tag].assemble(self)
+            for tag in save_data
+        } if save_data else {}
         self.time_step = 0
 
     def price(self, asset: str):
@@ -71,10 +76,20 @@ class GlobalState:
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
             external_market=copy.copy(self.external_market),
-            evolve_function=copy.copy(self._evolve_function)
+            evolve_function=copy.copy(self._evolve_function),
         )
+        copy_state.save_data = copy.copy(self.save_data)
         copy_state.time_step = self.time_step
         return copy_state
+
+    def archive(self):
+        if not self.save_data:
+            return {'state': self.copy()}
+        else:
+            return {
+                datastream: self.save_data[datastream](self)
+                for datastream in self.save_data
+            }
 
     def evolve(self):
         self.time_step += 1
