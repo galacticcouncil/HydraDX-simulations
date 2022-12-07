@@ -158,7 +158,7 @@ class OmnipoolState(AMM):
                     )
         # self.liquidity_coefficient.update(new_liquidity_coefficient)
 
-    def price(self, tkn: str, denominator: str = ''):
+    def price(self, tkn: str, denominator: str = '') -> float:
         """
         price of an asset i denominated in j, according to current market conditions in the omnipool
         """
@@ -177,7 +177,7 @@ class OmnipoolState(AMM):
         else:
             return self.lrna[tkn] / self.liquidity[tkn]
 
-    def usd_price(self, tkn):
+    def usd_price(self, tkn) -> float:
         """
         price of an asset denominated in USD
         """
@@ -226,16 +226,16 @@ class OmnipoolState(AMM):
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
-                    f'    *{token}*\n'
-                    f'    asset quantity: {liquidity[token]}\n'
-                    f'    lrna quantity: {lrna[token]}\n'
-                    f'    USD price: {self.usd_price(token)}\n' +
-                    f'    tvl: ${lrna[token] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
-                    f'    weight: {lrna[token]}/{lrna_total} ({lrna[token] / lrna_total})\n'
-                    f'    weight cap: {weight_cap[token]}\n'
-                    f'    total shares: {self.shares[token]}\n'
-                    f'    protocol shares: {self.protocol_shares[token]}\n'
-            ) for token in self.asset_list]
+                    f'    *{tkn}*\n'
+                    f'    asset quantity: {liquidity[tkn]}\n'
+                    f'    lrna quantity: {lrna[tkn]}\n'
+                    f'    USD price: {price[tkn]}\n' +
+                    f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
+                    f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
+                    f'    weight cap: {weight_cap[tkn]}\n'
+                    f'    total shares: {self.shares[tkn]}\n'
+                    f'    protocol shares: {self.protocol_shares[tkn]}\n'
+            ) for tkn in self.asset_list]
         ) + '\n)\n' + f'sub pools: (\n\n    ' + ')\n(\n'.join(
             [
                 '\n    '.join(pool_desc.split('\n'))
