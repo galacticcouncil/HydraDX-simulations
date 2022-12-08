@@ -1345,3 +1345,53 @@ def test_liquidity_coefficient():
     high_slip_state.update()
     if high_slip_state_price != pytest.approx(high_slip_state.price('R1', 'USD')):
         raise AssertionError('Price changed after changing liquidity coefficient.')
+
+
+def test_dynamic_fees():
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
+            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
+            'R1': {'liquidity': 1000000, 'LRNA': 1000000},
+            'R2': {'liquidity': 1000000, 'LRNA': 1000000}
+        },
+        oracles={
+            'mid': 100
+        },
+        asset_fee=oamm.dynamic_fee(
+            minimum=0.003,
+            decay=0.01,
+            amplification=10,
+            oracle_name='mid'
+        )
+    )
+    initial_state.last_fee = 0.005
+    initial_state.oracles['mid'].volume_in['R1'] = 200000
+    initial_state.oracles['mid'].volume_out['R1'] = 0
+    initial_state.oracles['mid'].liquidity['R1'] = 1000000
+    fee = initial_state.asset_fee.compute('R1', 1000)
+    assert(fee == pytest.approx(0.0066166667))
+
+    next_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
+            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
+            'R1': {'liquidity': 1000000, 'LRNA': 1000000},
+            'R2': {'liquidity': 1000000, 'LRNA': 1000000}
+        },
+        oracles={
+            'mid': 100
+        },
+        asset_fee=oamm.dynamic_fee(
+            minimum=0.003,
+            decay=0.01,
+            amplification=10,
+            oracle_name='mid'
+        )
+    )
+    next_state.last_fee = 0.006617
+    next_state.oracles['mid'].volume_in['R1'] = 200000
+    next_state.oracles['mid'].volume_out['R1'] = 200000
+    next_state.oracles['mid'].liquidity['R1'] = 1000000
+    fee = next_state.asset_fee.compute('R1', 1000)
+    assert (fee == pytest.approx(0.00655083))
