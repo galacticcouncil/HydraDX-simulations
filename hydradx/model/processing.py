@@ -7,13 +7,13 @@ from .amm import global_state
 
 
 # functions for calculating extra parameters we may want to track
-def value_assets(prices: dict, agent: Agent) -> float:
+def value_assets(prices: dict, assets: dict) -> float:
     """
     return the value of the agent's assets if they were sold at current spot prices
     """
     return sum([
-        agent.holdings[i] * prices[i] if i in prices else 0
-        for i in agent.holdings.keys()
+        assets[i] * prices[i] if i in prices else 0
+        for i in assets.keys()
     ])
 
 
@@ -39,7 +39,7 @@ def cash_out(state: GlobalState, agent: Agent) -> float:
     """
     new_agent = withdraw_all_liquidity(state, agent.unique_id).agents[agent.unique_id]
     prices = market_prices(state, agent.holdings)
-    return value_assets(prices, new_agent)
+    return value_assets(prices, new_agent.holdings)
 
 
 def pool_val(state: GlobalState, pool: AMM):
@@ -48,6 +48,15 @@ def pool_val(state: GlobalState, pool: AMM):
     for asset in pool.asset_list:
         total += pool.liquidity[asset] * state.price(asset)
     return total
+
+
+def impermanent_loss(state: GlobalState, agent_id: str) -> float:
+    return cash_out(  # withdraw_val
+        state, state.agents[agent_id]
+    ) / value_assets(  # deposit_val
+        market_prices(state, state.agents[agent_id].initial_holdings),
+        state.agents[agent_id].initial_holdings
+    ) - 1
 
 
 def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:
@@ -113,7 +122,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
                 # what are this agent's original holdings theoretically worth at current spot prices?
                 agent.deposit_val = value_assets(
                     market_prices(state, agent.holdings),
-                    withdraw_state.agents[agent.unique_id]
+                    withdraw_state.agents[agent.unique_id].holdings
                 )
             if 'withdraw_val' in optional_params:
                 # what are this agent's holdings worth if sold?
