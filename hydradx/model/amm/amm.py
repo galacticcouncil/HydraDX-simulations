@@ -37,6 +37,9 @@ class AMM:
         copy_self.fail = ''
         return copy_self
 
+    def update(self):
+        pass
+
     def price(self, tkn: str, denomination: str = '') -> float:
         return 0
 

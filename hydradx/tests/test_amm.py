@@ -262,12 +262,13 @@ def test_arbitrage_pool_balance(initial_state):
     evolve_function=fluctuate_prices(volatility={'HDX': 1, 'BSX': 1})
 ))
 def test_arbitrage_profitability(initial_state: GlobalState):
-    last_agent = initial_state.agents['arbitrageur']
+    arb = initial_state.agents['arbitrageur']
     state = initial_state
     for i in range(50):
-        state = run.run(state, time_steps=1, silent=True)[0]['state']
-        next_agent = state.agents['arbitrageur']
-        if next_agent.holdings['USD'] < last_agent.holdings['USD']:
+        state.evolve()
+        prev_holdings = arb.holdings['USD']
+        arb.trade_strategy.execute(state, 'arbitrageur')
+        if arb.holdings['USD'] < prev_holdings:
             raise AssertionError('Arbitrageur lost money :(')
 
 
@@ -450,22 +451,14 @@ def test_sell_fee_derivation(initial_state: GlobalState):
 
 
 def test_omnipool_arbitrage():
-    from scipy.optimize import curve_fit
-    import pandas as pd
     import random
-    import sys
-    from IPython.display import clear_output
-    from matplotlib import pyplot as plt
-
-    sys.path.append('../..')
 
     from hydradx.model import run
-    from hydradx.model import plot_utils as pu
-    from hydradx.model import processing
     from hydradx.model.amm.omnipool_amm import OmnipoolState
     from hydradx.model.amm.agents import Agent
-    from hydradx.model.amm.trade_strategies import toxic_asset_attack, omnipool_arbitrage
-    from hydradx.model.amm.global_state import GlobalState, historical_prices
+    from hydradx.model.amm.trade_strategies import omnipool_arbitrage
+    from hydradx.model.amm.global_state import GlobalState
+    from hydradx.model import plot_utils as pu
 
     # same seed, same parameters = same simulation result
     random.seed(42)
@@ -493,28 +486,35 @@ def test_omnipool_arbitrage():
                 tokens={
                     tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
                 },
+                oracles={
+                    'short': 10,
+                    'medium': 40,
+                    'long': 160
+                },
                 lrna_fee=0,
                 asset_fee=0,
                 preferred_stablecoin='USD'
             )
         },
         agents={
-            # 'Attacker': Agent(
-            #     holdings={'USD': 0, 'AUSD': 1000000000},
-            #     trade_strategy=toxic_asset_attack(
-            #         pool_id='omnipool',
-            #         asset_name='AUSD',
-            #         trade_size=10000
-            #     )
-            # ),
             'Arbitrageur': Agent(
                 holdings={tkn: float('inf') for tkn in list(assets.keys()) + ['LRNA']},
                 trade_strategy=omnipool_arbitrage('Omnipool')
             )
         },
-        evolve_function=fluctuate_prices(volatility={'DOT': 0.2, 'HDX': 0.2}),
-        external_market={tkn: assets[tkn]['usd price'] for tkn in assets}
+        evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
+        external_market={tkn: assets[tkn]['usd price'] for tkn in assets},
+        save_data={
+            # 'HDX price': pu.Datastream(pool='Omnipool', prop='usd_price', key='HDX'),
+            # 'pool_val': pu.Datastream(pool='Omnipool', prop='pool_val'),
+            # 'prices': pu.Datastream(asset='all'),
+            # 'oracles': pu.Datastream(pool='Omnipool', oracle='all', prop='all', key='all'),
+            # 'oracles HDX price': pu.Datastream(pool='Omnipool', oracle='all', prop='price', key='HDX'),
+            # 'oracles USD price': pu.Datastream(pool='Omnipool', oracle='all', prop='all', key=['USD', 'DOT']),
+            'agent holdings': pu.Datastream(agent='Arbitrageur', prop='holdings', key='all')
+        }
     )
     # print(initial_state)
-    time_steps = 10  # len(price_list) - 1
+    time_steps = 100  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
+    er = 1

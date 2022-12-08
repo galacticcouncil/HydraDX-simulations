@@ -126,8 +126,8 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
                 agent.token_count = sum(agent.holdings.values())
             if 'trade_volume' in optional_params:
                 agent.trade_volume = 0
-                if step['timestep'] > 0:
-                    previous_agent = events[step['timestep'] - 1]['state'].agents[agent.unique_id]
+                if state.time_step > 0:
+                    previous_agent = events[state.time_step - 1]['state'].agents[agent.unique_id]
                     agent.trade_volume += (
                         sum([
                             abs(previous_agent.holdings[tkn] - agent.holdings[tkn]) * state.price(tkn)

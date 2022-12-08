@@ -908,8 +908,8 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
 
 @given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
 def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
-    initial_state.lrna_fee = oamm.OmnipoolState.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
-    initial_state.asset_fee = oamm.OmnipoolState.slip_fee(asset_slip_rate, minimum_fee=0.0001)
+    initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
+    initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
     initial_agent = Agent(holdings={tkn: 1000 for tkn in initial_state.asset_list})
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = initial_state.asset_list[3]
