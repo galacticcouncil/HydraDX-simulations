@@ -14,7 +14,7 @@ class FeeMechanism:
         self.exchange = exchange
         return self
 
-    def compute(self, tkn: str, delta_tkn: float):
+    def compute(self, tkn: str, delta_tkn: float) -> float:
         return self.fee_function(
             exchange=self.exchange,
             tkn=tkn,
@@ -29,6 +29,7 @@ class AMM:
     update_function: Callable = None
 
     def __init__(self):
+        self.oracles = None
         self.fail = ''
 
     def copy(self):
