@@ -254,6 +254,8 @@ def plot(
         plot(x='time', y='long oracle HDX price')
             * assuming a Datastream titled 'long oracle HDX price' was specified in initial_state.save_data,
              plots the associated output
+        plot(y='long oracle HDX price')
+            * same as above, because 'time' is default for x
     """
 
     if time_range:
