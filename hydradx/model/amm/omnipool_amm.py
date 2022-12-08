@@ -200,15 +200,6 @@ class OmnipoolState(AMM):
         copy_state.fail = ''
         return copy_state
 
-    @staticmethod
-    def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
-        def fee_function(
-                exchange: AMM, tkn: str, delta_tkn: float
-        ) -> float:
-            return (slip_factor * abs(delta_tkn) / (exchange.liquidity[tkn] + delta_tkn)) + minimum_fee
-
-        return FeeMechanism(fee_function, f"Slip fee (alpha={slip_factor}, min={minimum_fee}")
-
     def __repr__(self):
         # don't go overboard with the precision here
         precision = 12
@@ -937,3 +928,38 @@ def remove_liquidity(
 OmnipoolState.swap = staticmethod(swap)
 OmnipoolState.add_liquidity = staticmethod(add_liquidity)
 OmnipoolState.remove_liquidity = staticmethod(remove_liquidity)
+
+
+# fee mechanisms
+def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
+    def fee_function(
+            exchange: AMM, tkn: str, delta_tkn: float
+    ) -> float:
+        return (slip_factor * abs(delta_tkn) / (exchange.liquidity[tkn] + delta_tkn)) + minimum_fee
+
+    return FeeMechanism(fee_function, f"Slip fee (alpha={slip_factor}, min={minimum_fee}")
+
+
+def dynamic_fee(
+        minimum: float = 0,
+        decay: float = 0.999,
+        amplification: float = 1,
+        oracle_name: str = 'long',
+) -> FeeMechanism:
+    def fee_function(
+            exchange: AMM, tkn: str, delta_tkn: float
+    ) -> float:
+        if not hasattr(exchange, 'last_fee'):
+            # add a bit of extra state to the exchange
+            exchange.last_fee = 0
+        last_fee = exchange.last_fee
+        oracle: Oracle = exchange.oracles[oracle_name]
+        net = (oracle.volume_in[tkn] - oracle.volume_out[tkn]) / oracle.liquidity[tkn]
+        fee = max(minimum, last_fee * (1 - decay + amplification * net ** 2 / (net + 1)))
+        exchange.last_fee = fee
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic fee (oracle={oracle_name}, decay={decay}, amplification={amplification}, min={minimum})'
+    )
