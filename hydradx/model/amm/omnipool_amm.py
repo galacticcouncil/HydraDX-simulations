@@ -942,9 +942,10 @@ def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
 
 def dynamic_fee(
         minimum: float = 0,
-        decay: float = 0.999,
+        decay: float = 0.001,
         amplification: float = 1,
-        oracle_name: str = 'long',
+        raise_oracle_name: str = 'short',
+        lower_oracle_name: str = 'long'
 ) -> FeeMechanism:
     def fee_function(
             exchange: AMM, tkn: str, delta_tkn: float
@@ -952,14 +953,27 @@ def dynamic_fee(
         if not hasattr(exchange, 'last_fee'):
             # add a bit of extra state to the exchange
             exchange.last_fee = 0
+        if not hasattr(exchange, 'last_mult'):
+            exchange.last_mult = 1
+        if not hasattr(exchange, 'temp'):
+            exchange.temp = 0
         last_fee = exchange.last_fee
-        oracle: Oracle = exchange.oracles[oracle_name]
-        net = (oracle.volume_in[tkn] - oracle.volume_out[tkn]) / oracle.liquidity[tkn]
-        fee = max(minimum, last_fee * (1 - decay + amplification * net ** 2 / (net + 1)))
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+        lower_oracle: Oracle = exchange.oracles[lower_oracle_name]
+        net = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
+        net_lower = (lower_oracle.volume_in[tkn] - lower_oracle.volume_out[tkn]) / lower_oracle.liquidity[tkn]
+        net_a = amplification * net
+        temp = amplification * abs(net) / (net + 1)
+        temp = amplification * abs(net)
+        decay_term = decay if net_lower == 0 else min(decay, decay / abs(net_lower))
+        mult = max(1, last_fee/minimum * (1 - decay_term + temp))
+        fee = minimum * mult
         exchange.last_fee = fee
+        exchange.last_mult = mult
+        exchange.temp = temp
         return fee
 
     return FeeMechanism(
         fee_function=fee_function,
-        name=f'Dynamic fee (oracle={oracle_name}, decay={decay}, amplification={amplification}, min={minimum})'
+        name=f'Dynamic fee (oracle={raise_oracle_name}, decay={decay}, amplification={amplification}, min={minimum})'
     )
