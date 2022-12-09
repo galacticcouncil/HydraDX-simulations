@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from typing import Callable
-from .processing import pool_val, market_prices, value_assets, cash_out
+from .processing import pool_val, market_prices, value_assets, cash_out, impermanent_loss
 from .amm.global_state import GlobalState
 from numbers import Number
 
@@ -115,9 +115,6 @@ class Datastream:
             return self.get_stream(
                 group=group,
                 instance=instance,
-                pool=pool,
-                agent=agent,
-                asset=asset,
                 oracle=oracle,
                 prop=prop,
                 key=key
@@ -199,12 +196,7 @@ class Datastream:
                     raise ValueError('Cannot calculate withdraw value for non-agent')
             elif prop == 'impermanent_loss':
                 if group == 'agents':
-                    return lambda state: cash_out(  # withdraw_val
-                        state, state.agents[instance]
-                    ) / value_assets(  # deposit_val
-                        market_prices(state, state.agents[instance].initial_holdings),
-                        getattr(state, group)[instance]
-                    ) - 1
+                    return lambda state: impermanent_loss(state, instance)
                 else:
                     raise ValueError('Cannot calculate impermanent loss for non-agent')
             # elif prop == 'holdings_val':
@@ -213,6 +205,7 @@ class Datastream:
             else:
                 return lambda state: getattr(getattr(state, group)[instance], prop)
         elif not oracle:
+            # prop may be either a dict or a function
             def get_prop(state):
                 if isinstance(getattr(getattr(state, group)[instance], prop), Callable):
                     return getattr(getattr(state, group)[instance], prop)(key)
@@ -241,7 +234,6 @@ def plot(
         label: str = '',
         title: str = '',
         x: list or str = None,
-        y: list or str = None,
 ):
     """
     Given several specifiers, automatically create a graph or a series of graphs as appropriate.
@@ -271,7 +263,9 @@ def plot(
     elif asset:
         title = f'asset price: {asset if isinstance(asset, str) else ""} {use_range}'
 
-    if not y:
+    if isinstance(events[0], Number):
+        y = events
+    else:
         datastream = Datastream(pool=pool, agent=agent, asset=asset, oracle=oracle, prop=prop, key=key).assemble(
             events[0]['state']
         )

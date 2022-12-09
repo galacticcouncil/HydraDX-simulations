@@ -9,6 +9,7 @@ from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
 import random
+from numbers import Number
 
 import numpy as np
 
@@ -39,8 +40,8 @@ class TradeStrategy:
 
 def random_swaps(
     pool_id: str,
-    amount: dict[str: float],
-    randomize_amount: bool = True
+    amount: dict[str: float] or float,
+    randomize_amount: bool = True,
 ) -> TradeStrategy:
     """
     amount should be a dict in the form of:
@@ -50,11 +51,12 @@ def random_swaps(
     """
 
     def strategy(state: GlobalState, agent_id: str):
+
         buy_asset = random.choice(list(amount.keys()))
         sell_asset = random.choice(list(amount.keys()))
         sell_quantity = (
-                                amount[sell_asset] * (random.random() if randomize_amount else 1)
-                        ) or 1
+            amount[sell_asset] / (state.price(sell_asset) or 1) * (random.random() if randomize_amount else 1)
+        ) or 1
         if buy_asset == sell_asset:
             return state
         else:
