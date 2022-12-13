@@ -963,11 +963,18 @@ def dynamic_fee(
         net = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
         net_lower = (lower_oracle.volume_in[tkn] - lower_oracle.volume_out[tkn]) / lower_oracle.liquidity[tkn]
         net_a = amplification * net
-        temp = amplification * abs(net) / (net + 1)
+        # temp = amplification * abs(net) / max(net + 1, 1)
+        # temp = max(temp, -1)
         temp = amplification * abs(net)
-        decay_term = decay if net_lower == 0 else min(decay, decay / abs(net_lower))
-        mult = max(1, last_fee/minimum * (1 - decay_term + temp))
-        fee = minimum * mult
+        decay_term = decay # if net_lower == 0 else min(decay, decay / abs(net_lower))
+        mult = max(1,  last_fee/minimum*(1 - decay_term + temp))
+        if raise_oracle.volume_in[tkn] == 0:
+            frac = 200
+        else:
+            frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
+        temp = 1 + max(frac - 1, 0) * amplification
+        mult = max(1, 1 - decay_term + temp)
+        fee = min(minimum * temp, 0.5)
         exchange.last_fee = fee
         exchange.last_mult = mult
         exchange.temp = temp
