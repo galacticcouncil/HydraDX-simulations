@@ -185,7 +185,7 @@ class Datastream:
                 if group == 'agents':
                     return lambda state: value_assets(
                         market_prices(state, state.agents[instance].initial_holdings),
-                        getattr(state, group)[instance]
+                        state.agents[instance].initial_holdings
                     )
                 else:
                     raise ValueError('Cannot calculate deposit value for non-agent')
@@ -234,6 +234,7 @@ def plot(
         label: str = '',
         title: str = '',
         x: list or str = None,
+        y: list or str = None,
 ):
     """
     Given several specifiers, automatically create a graph or a series of graphs as appropriate.
@@ -250,6 +251,10 @@ def plot(
             * same as above, because 'time' is default for x
     """
 
+    if not subplot:
+        plt.figure(figsize=(20, 5))
+        plt.title(title)
+
     if time_range:
         events = events[time_range[0]: time_range[1]]
         use_range = f'(time steps {time_range[0]} - {time_range[1]})'
@@ -263,22 +268,17 @@ def plot(
     elif asset:
         title = f'asset price: {asset if isinstance(asset, str) else ""} {use_range}'
 
-    if isinstance(events[0], Number):
+    if events and isinstance(events[0], Number):
         y = events
-    else:
+    elif not y:
         datastream = Datastream(pool=pool, agent=agent, asset=asset, oracle=oracle, prop=prop, key=key).assemble(
             events[0]['state']
         )
-        # title = title or f'{title}: {" " + oracle + " " or " "}{prop} {key} {use_range}'
         y = [datastream(event['state']) for event in events]
-
-    if not subplot:
-        plt.figure(figsize=(20, 5))
-        plt.title(title)
-
-    if isinstance(y, str):
+    elif isinstance(y, str):
         title = title or y
         y = [event[y] for event in events]
+
     if isinstance(y[0], dict):
         for i, k in enumerate(y[0].keys()):
             if isinstance(y[1][k], Number):
