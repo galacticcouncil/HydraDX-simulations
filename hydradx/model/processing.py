@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
 from .amm.agents import Agent
-from .amm import global_state
 
 
 # functions for calculating extra parameters we may want to track
@@ -51,11 +50,11 @@ def pool_val(state: GlobalState, pool: AMM):
 
 
 def impermanent_loss(state: GlobalState, agent_id: str) -> float:
-    return cash_out(  # withdraw_val
-        state, state.agents[agent_id]
-    ) / value_assets(  # deposit_val
+    return value_assets(  # deposit_val
         market_prices(state, state.agents[agent_id].initial_holdings),
         state.agents[agent_id].initial_holdings
+    ) / cash_out(  # withdraw_val
+        state, state.agents[agent_id]
     ) - 1
 
 
