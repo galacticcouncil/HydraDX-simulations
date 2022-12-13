@@ -403,6 +403,9 @@ class OmnipoolState(AMM):
         asset_fee = self.asset_fee.compute(
             tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
         )
+        lrna_fee = self.lrna_fee.compute(
+            tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
+        )
 
         if delta_qa < 0:
             delta_qi = -delta_qa
@@ -412,14 +415,14 @@ class OmnipoolState(AMM):
             delta_ri = -delta_ra
             delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] * (1 - asset_fee) + delta_ri)
             delta_qa = -delta_qi
-        # buying LRNA, feeless
+        # buying LRNA
         elif delta_qa > 0:
             delta_qi = -delta_qa
-            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
+            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) / (1 - lrna_fee)
             delta_ra = -delta_ri
         elif delta_ra < 0:
             delta_ri = -delta_ra
-            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] + delta_ri)
+            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
             delta_qa = -delta_qi
         else:
             return self.fail_transaction('Buying LRNA not implemented.', agent)
@@ -945,39 +948,20 @@ def dynamic_fee(
         decay: float = 0.001,
         amplification: float = 1,
         raise_oracle_name: str = 'short',
-        lower_oracle_name: str = 'long'
+        maximum: float = 0.5,
 ) -> FeeMechanism:
     def fee_function(
             exchange: AMM, tkn: str, delta_tkn: float
     ) -> float:
-        if not hasattr(exchange, 'last_fee'):
-            # add a bit of extra state to the exchange
-            exchange.last_fee = 0
-        if not hasattr(exchange, 'last_mult'):
-            exchange.last_mult = 1
-        if not hasattr(exchange, 'temp'):
-            exchange.temp = 0
-        last_fee = exchange.last_fee
         raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
-        lower_oracle: Oracle = exchange.oracles[lower_oracle_name]
-        net = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
-        net_lower = (lower_oracle.volume_in[tkn] - lower_oracle.volume_out[tkn]) / lower_oracle.liquidity[tkn]
-        net_a = amplification * net
-        # temp = amplification * abs(net) / max(net + 1, 1)
-        # temp = max(temp, -1)
-        temp = amplification * abs(net)
-        decay_term = decay # if net_lower == 0 else min(decay, decay / abs(net_lower))
-        mult = max(1,  last_fee/minimum*(1 - decay_term + temp))
+
         if raise_oracle.volume_in[tkn] == 0:
             frac = 200
         else:
             frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
         temp = 1 + max(frac - 1, 0) * amplification
-        mult = max(1, 1 - decay_term + temp)
-        fee = min(minimum * temp, 0.5)
-        exchange.last_fee = fee
-        exchange.last_mult = mult
-        exchange.temp = temp
+        fee = min(minimum * temp, maximum)
+
         return fee
 
     return FeeMechanism(
