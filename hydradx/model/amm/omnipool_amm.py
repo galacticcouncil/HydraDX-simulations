@@ -1011,11 +1011,12 @@ def dynamic_fee(
 
         # mult_lrna = max(1, last_lrna_fee / minimum * (1 - decay_term + temp_lrna))
         # lrna_fee = min(minimum * mult_lrna, 0.5)
-        exchange.last_lrna_fee = lrna_fee
-
+        if is_hub:
+            exchange.last_lrna_fee = lrna_fee
+        else:
+            exchange.last_fee = fee
         # mult = max(1, last_fee / minimum * (1 - decay_term + temp))
         # fee = min(minimum * mult, 0.5)
-        exchange.last_fee = fee
 
         # exchange.last_mult = mult
         exchange.temp = temp
