@@ -989,9 +989,23 @@ def dynamic_fee(
             else:
                 frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
 
-        temp = 1 + max(frac - 1, 0) * amplification
-        # temp = (frac - 1) * amplification
-        temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
+            coef = x / max(1 + x, 0.5)
+            x_lrna = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
+            coef_lrna = x_lrna / max(1 + x_lrna, 0.5)
+        else:
+            coef = 0
+            coef_lrna = 0
+
+        # with liquidity fraction
+        temp = 1 + max(frac - 1, 0) * amplification * max(coef,0)
+        temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification * max(coef_lrna,0)
+
+        # without liquidity fraction
+        # temp = 1 + max(frac - 1, 0) * amplification
+        # temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification
+
         fee = min(minimum * temp, 0.5)
         lrna_fee = min(minimum * temp_lrna, 0.5)
 
