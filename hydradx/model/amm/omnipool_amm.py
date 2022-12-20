@@ -382,11 +382,13 @@ class OmnipoolState(AMM):
         # update oracle
         if tkn_buy in self.current_block.asset_list:
             buy_quantity = old_liquidity[tkn_buy] - self.liquidity[tkn_buy]
-            self.current_block.volume_out[tkn_buy] += buy_quantity / self.current_block.liquidity[tkn_buy]
+            # self.current_block.volume_out[tkn_buy] += buy_quantity / self.current_block.liquidity[tkn_buy]
+            self.current_block.volume_out[tkn_buy] += buy_quantity
             self.current_block.price[tkn_buy] = self.lrna[tkn_buy] / self.liquidity_online(tkn_buy)
         if tkn_sell in self.current_block.asset_list:
             sell_quantity = self.liquidity[tkn_sell] - old_liquidity[tkn_sell]
-            self.current_block.volume_in[tkn_sell] += sell_quantity / self.current_block.liquidity[tkn_sell]
+            # self.current_block.volume_in[tkn_sell] += sell_quantity / self.current_block.liquidity[tkn_sell]
+            self.current_block.volume_in[tkn_sell] += sell_quantity
             self.current_block.price[tkn_sell] = self.lrna[tkn_sell] / self.liquidity_online(tkn_sell)
         return return_val
 
@@ -979,16 +981,12 @@ def dynamic_asset_fee(
             frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
 
         if raise_oracle.liquidity[tkn] != 0:
-            x = (
-                raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-                - raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-            ) / raise_oracle.liquidity[tkn]
-            coef = x / max(1 + x, 0.5)
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
         else:
-            coef = 0
+            x = 0
 
         # with liquidity fraction
-        temp = 1 + max(frac - 1, 0) * amplification * max(coef, 0)
+        temp = 1 + max(frac - 1, 0) * amplification * max(x,0)
 
         # without liquidity fraction
         # temp = 1 + max(frac - 1, 0) * amplification
@@ -1037,12 +1035,11 @@ def dynamic_lrna_fee(
                  raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
                  - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
              ) / raise_oracle.liquidity[tkn]
-            coef_lrna = x_lrna / max(1 + x_lrna, 0.5)
         else:
-            coef_lrna = 0
+            x_lrna = 0
 
         # with liquidity fraction
-        temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification * max(coef_lrna, 0)
+        temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification * max(x_lrna, 0)
 
         lrna_fee = min(minimum * temp_lrna, 0.5)
         exchange.last_lrna_fee[tkn] = lrna_fee
