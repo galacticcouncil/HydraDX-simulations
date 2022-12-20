@@ -189,7 +189,7 @@ class Datastream:
                     )
                 else:
                     raise ValueError('Cannot calculate deposit value for non-agent')
-            elif prop == 'withdraw_val':
+            elif prop == 'withdraw_val' or prop == 'cash_out':
                 if group == 'agents':
                     return lambda state: state.cash_out(state.agents[instance])
                 else:
