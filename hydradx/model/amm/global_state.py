@@ -37,6 +37,7 @@ class GlobalState:
                     agent.holdings[asset] = 0
         self._evolve_function = evolve_function
         self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.datastreams = save_data
         self.save_data = {
             tag: save_data[tag].assemble(self)
             for tag in save_data
@@ -77,8 +78,8 @@ class GlobalState:
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
             external_market=copy.copy(self.external_market),
             evolve_function=copy.copy(self._evolve_function),
+            save_data=self.datastreams
         )
-        copy_state.save_data = copy.copy(self.save_data)
         copy_state.time_step = self.time_step
         return copy_state
 
@@ -115,6 +116,64 @@ class GlobalState:
             sell_quantity=sell_quantity
         )
         return self
+
+    # functions for calculating extra parameters we may want to track
+    @staticmethod
+    def value_assets(prices: dict, assets: dict) -> float:
+        """
+        return the value of the agent's assets if they were sold at current spot prices
+        """
+        return sum([
+            assets[i] * prices[i] if i in prices else 0
+            for i in assets.keys()
+        ])
+
+    def market_prices(self, shares: dict) -> dict:
+        """
+        return the market price of each asset in state.asset_list, as well as the price of each asset in shares
+        """
+        prices = {tkn: self.price(tkn) for tkn in self.asset_list}
+        for share_id in shares:
+            # if shares are for a specific asset in a specific pool, get prices according to that pool
+            if isinstance(share_id, tuple):
+                pool_id = share_id[0]
+                tkn_id = share_id[1]
+                prices[share_id] = self.pools[pool_id].usd_price(tkn_id)
+
+        return prices
+
+    def cash_out(self, agent: Agent) -> float:
+        """
+        return the value of the agent's holdings if they withdraw all liquidity
+        and then sell at current spot prices
+        """
+        new_agent = withdraw_all_liquidity(self, agent.unique_id).agents[agent.unique_id]
+        prices = self.market_prices(agent.holdings)
+        return self.value_assets(prices, new_agent.holdings)
+
+    def pool_val(self, pool: AMM):
+        """ get the total value of all liquidity in the pool. """
+        total = 0
+        for asset in pool.asset_list:
+            total += pool.liquidity[asset] * self.price(asset)
+        return total
+
+    def impermanent_loss(self, agent: Agent) -> float:
+        return self.value_assets(  # deposit_val
+            self.market_prices(agent.initial_holdings),
+            agent.initial_holdings
+        ) / self.cash_out(  # withdraw_val
+            agent
+        ) - 1
+
+    def deposit_val(self, agent: Agent) -> float:
+        return self.value_assets(
+            self.market_prices(agent.holdings),
+            agent.initial_holdings
+        )
+
+    def withdraw_val(self, agent: Agent) -> float:
+        return self.cash_out(agent)
 
     def __repr__(self):
         newline = "\n"
