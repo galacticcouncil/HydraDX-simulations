@@ -16,7 +16,7 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 asset_fee: FeeMechanism or float = 0,
+                 asset_fee: dict or FeeMechanism or float = 0,
                  lrna_fee: FeeMechanism or float = 0,
                  oracles: dict[str: int] = None,
                  trade_limit_per_block: float = float('inf'),
@@ -80,8 +80,17 @@ class OmnipoolState(AMM):
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
-        self.asset_fee: FeeMechanism = asset_fee.assign(self) if isinstance(asset_fee, FeeMechanism) \
+        self.asset_fee: dict = {
+            tkn: asset_fee[tkn].assign(self)
+            for tkn in asset_fee
+        } if isinstance(asset_fee, dict) else (
+            {
+                tkn: asset_fee.assign(self)
+                for tkn in self.asset_list
+            }
+            if isinstance(asset_fee, FeeMechanism)
             else self.basic_fee(asset_fee).assign(self)
+        )
         self.lrna_fee: FeeMechanism = lrna_fee.assign(self) if isinstance(lrna_fee, FeeMechanism) \
             else self.basic_fee(lrna_fee).assign(self)
         self.lrna_imbalance = mpf(0)  # AKA "L"
@@ -208,12 +217,13 @@ class OmnipoolState(AMM):
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
         price = {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
+        newline = '\n'
         return (
                    f'Omnipool: {self.unique_id}\n'
                    f'********************************\n'
                    f'tvl cap: {self.tvl_cap}\n'
                    f'lrna fee: {self.lrna_fee.name}\n'
-                   f'asset fee: {self.asset_fee.name}\n'
+                   f'asset fee: \n{newline.join([tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_fee])}\n'
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
@@ -246,7 +256,7 @@ class OmnipoolState(AMM):
         """
         tkn_buy_liquidity = self.liquidity[tkn_buy] - self.liquidity_offline[tkn_buy]
         tkn_sell_liquidity = self.liquidity[tkn_sell] - self.liquidity_offline[tkn_sell]
-        asset_fee = self.asset_fee.compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+        asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 tkn_buy_liquidity * (1 - asset_fee) - buy_quantity)
         lrna_fee = self.lrna_fee.compute(tkn=tkn_sell, delta_tkn=(
@@ -329,7 +339,7 @@ class OmnipoolState(AMM):
                 return self.fail_transaction('sell amount must be greater than zero', agent)
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (tkn_sell_liquidity + delta_Ri)
-            asset_fee = self.asset_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
             lrna_fee = self.lrna_fee.compute(
                 tkn=tkn_buy,
                 delta_tkn=tkn_buy_liquidity * sell_quantity / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee)
@@ -402,7 +412,7 @@ class OmnipoolState(AMM):
         """
         Execute LRNA swap in place (modify and return)
         """
-        asset_fee = self.asset_fee.compute(
+        asset_fee = self.asset_fee[tkn].compute(
             tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
         )
         lrna_fee = self.lrna_fee.compute(
