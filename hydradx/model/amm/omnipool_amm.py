@@ -1034,7 +1034,7 @@ def dynamicmult_asset_fee(
             x = 0
 
 
-        temp = 1 + amplification * x / (x + 1)
+        temp = amplification * x / (x + 1)
         mult = max(1, exchange.last_mult[tkn] * (1 - decay + temp))
 
         fee = min(minimum * mult, fee_max)
@@ -1122,7 +1122,7 @@ def dynamicmult_lrna_fee(
         else:
             x = 0
 
-        temp = 1 + amplification * x / (x + 1)
+        temp = amplification * x / (x + 1)
         mult = max(1, exchange.last_lrna_mult[tkn] * (1 - decay + temp))
 
         fee = min(minimum * mult, fee_max)
