@@ -1009,6 +1009,45 @@ def dynamic_asset_fee(
         name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
     )
 
+def dynamicmult_asset_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        decay: float = 0.001,
+        fee_max: float = 0.5
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_fee'):
+            # add a bit of extra state to the exchange
+            exchange.last_fee = {tkn: 0 for tkn in exchange.asset_list}
+        if not hasattr(exchange, 'last_mult'):
+            # add a bit of extra state to the exchange
+            exchange.last_mult = {tkn: 1 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
+        else:
+            x = 0
+
+
+        temp = 1 + amplification * x / (x + 1)
+        mult = max(1, exchange.last_mult[tkn] * (1 - decay + temp))
+
+        fee = min(minimum * mult, fee_max)
+        exchange.last_mult[tkn] = mult
+        exchange.last_fee[tkn] = fee
+
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
 
 def dynamic_lrna_fee(
         minimum: float = 0,
@@ -1045,6 +1084,52 @@ def dynamic_lrna_fee(
         exchange.last_lrna_fee[tkn] = lrna_fee
 
         return lrna_fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic LRNA fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+def dynamicmult_lrna_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        decay: float = 0.001,
+        fee_max: float = 0.5
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_lrna_fee'):
+            exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
+        if not hasattr(exchange, 'last_lrna_mult'):
+            exchange.last_lrna_mult = {tkn: 1 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+            frac_lrna = 1
+        elif raise_oracle.volume_out[tkn] == 0:
+            frac_lrna = 200
+        else:
+            frac_lrna = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (
+                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+             ) / raise_oracle.liquidity[tkn]
+        else:
+            x = 0
+
+        temp = 1 + amplification * x / (x + 1)
+        mult = max(1, exchange.last_lrna_mult[tkn] * (1 - decay + temp))
+
+        fee = min(minimum * mult, fee_max)
+        exchange.last_lrna_mult[tkn] = mult
+        exchange.last_lrna_fee[tkn] = fee
+
+        return fee
 
     return FeeMechanism(
         fee_function=fee_function,
