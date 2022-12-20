@@ -5,13 +5,11 @@ from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
-# from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.global_state import GlobalState, fluctuate_prices, swap
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
 from hydradx.model import processing
-from hydradx.model.processing import cash_out
 from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage
 from hydradx.model.amm.amm import AMM
 
@@ -201,7 +199,8 @@ def test_LP(initial_state: GlobalState):
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
-    if final_state.agents['LP'].withdraw_val < cash_out(initial_state, initial_state.agents['LP']):
+    initial_agent: Agent = initial_state.agents['LP']
+    if final_state.agents['LP'].withdraw_val < initial_state.cash_out(initial_agent):
         print('failed, lost money.')
         raise AssertionError('The LP lost money!')
     # print('test passed.')
@@ -504,17 +503,16 @@ def test_omnipool_arbitrage():
         },
         evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
         external_market={tkn: assets[tkn]['usd price'] for tkn in assets},
-        save_data={
-            # 'HDX price': pu.Datastream(pool='Omnipool', prop='usd_price', key='HDX'),
-            # 'pool_val': pu.Datastream(pool='Omnipool', prop='pool_val'),
-            # 'prices': pu.Datastream(asset='all'),
-            # 'oracles': pu.Datastream(pool='Omnipool', oracle='all', prop='all', key='all'),
-            # 'oracles HDX price': pu.Datastream(pool='Omnipool', oracle='all', prop='price', key='HDX'),
-            # 'oracles USD price': pu.Datastream(pool='Omnipool', oracle='all', prop='all', key=['USD', 'DOT']),
-            'agent holdings': pu.Datastream(agent='Arbitrageur', prop='holdings', key='all')
-        }
     )
+
     # print(initial_state)
     time_steps = 100  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
+    prices = pu.get_datastream(events, asset='DOT')
+    hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
+    pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
+    oracles = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='all', key='all')
+    oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
+    oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='all', key='USD')
+    agent_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
     er = 1
