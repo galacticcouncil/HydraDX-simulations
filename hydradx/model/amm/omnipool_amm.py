@@ -1033,9 +1033,11 @@ def dynamicmult_asset_fee(
         else:
             x = 0
 
-
-        temp = amplification * x / (x + 1)
-        mult = max(1, exchange.last_mult[tkn] * (1 - decay + temp))
+        if x > -1:
+            temp = amplification * x / (x + 1)
+            mult = max(1, exchange.last_mult[tkn] * (1 - decay + temp))
+        else:
+            mult = 1
 
         fee = min(minimum * mult, fee_max)
         exchange.last_mult[tkn] = mult
@@ -1107,13 +1109,6 @@ def dynamicmult_lrna_fee(
 
         raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
-        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
-            frac_lrna = 1
-        elif raise_oracle.volume_out[tkn] == 0:
-            frac_lrna = 200
-        else:
-            frac_lrna = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
-
         if raise_oracle.liquidity[tkn] != 0:
             x = (
                  raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
@@ -1122,8 +1117,11 @@ def dynamicmult_lrna_fee(
         else:
             x = 0
 
-        temp = amplification * x / (x + 1)
-        mult = max(1, exchange.last_lrna_mult[tkn] * (1 - decay + temp))
+        if x > -1:
+            temp = amplification * x / (x + 1)
+            mult = max(1, exchange.last_lrna_mult[tkn] * (1 - decay + temp))
+        else:
+            mult = 1
 
         fee = min(minimum * mult, fee_max)
         exchange.last_lrna_mult[tkn] = mult
