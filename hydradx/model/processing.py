@@ -9,6 +9,7 @@ value_assets = GlobalState.value_assets
 impermanent_loss = GlobalState.impermanent_loss
 pool_val = GlobalState.pool_val
 deposit_val = GlobalState.deposit_val
+market_prices = GlobalState.market_prices
 
 
 def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:

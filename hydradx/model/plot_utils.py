@@ -178,25 +178,25 @@ class Datastream:
         elif not key and not oracle:
             if prop == 'pool_val':
                 if group == 'pools':
-                    return lambda state: pool_val(state, getattr(state, group)[instance])
+                    return lambda state: state.pool_val(getattr(state, group)[instance])
                 else:
                     raise ValueError('Cannot get pool_val for non-pool')
             elif prop == 'deposit_val':
                 if group == 'agents':
                     return lambda state: value_assets(
-                        market_prices(state, state.agents[instance].initial_holdings),
+                        state.market_prices(state.agents[instance].initial_holdings),
                         state.agents[instance].initial_holdings
                     )
                 else:
                     raise ValueError('Cannot calculate deposit value for non-agent')
             elif prop == 'withdraw_val':
                 if group == 'agents':
-                    return lambda state: cash_out(state, state.agents[instance])
+                    return lambda state: state.cash_out(state.agents[instance])
                 else:
                     raise ValueError('Cannot calculate withdraw value for non-agent')
             elif prop == 'impermanent_loss':
                 if group == 'agents':
-                    return lambda state: impermanent_loss(state, instance)
+                    return lambda state: state.impermanent_loss(instance)
                 else:
                     raise ValueError('Cannot calculate impermanent loss for non-agent')
             # elif prop == 'holdings_val':
