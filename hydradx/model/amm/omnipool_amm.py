@@ -348,19 +348,19 @@ class OmnipoolState(AMM):
 
             # per-block trade limits
             if (
-                -delta_Rj / self.current_block.liquidity[tkn_buy]
+                -delta_Rj
                 - self.current_block.volume_in[tkn_buy]
                 + self.current_block.volume_out[tkn_buy]
-                > self.trade_limit_per_block
+                > self.trade_limit_per_block * self.current_block.liquidity[tkn_buy]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
                 )
             elif (
-                delta_Ri / self.current_block.liquidity[tkn_sell]
+                delta_Ri
                 + self.current_block.volume_in[tkn_sell]
                 - self.current_block.volume_out[tkn_sell]
-                > self.trade_limit_per_block
+                > self.trade_limit_per_block * self.current_block.liquidity[tkn_sell]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_sell}.', agent
