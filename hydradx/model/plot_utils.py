@@ -1,113 +1,7 @@
 import matplotlib.pyplot as plt
 from typing import Callable
 from .amm.global_state import GlobalState
-
-
-def plot(
-        events: list = None,
-        pool: str = '',
-        agent: str = '',
-        asset: str = '',
-        oracle: str = '',
-        prop: str or list = '',
-        key: str or list = 'all',
-        subplot: plt.Subplot = None,
-        label: str = '',
-        time_range: tuple = ()
-):
-    """
-    Given several specifiers, automatically create a graph or a series of graphs as appropriate.
-    Examples:
-        plot(events, pool='omnipool', prop='LRNA', key='R1'):
-            * plots LRNA in the R1/LRNA pool over time
-        plot(events, pool='all', prop='liquidity', key=['R1', 'R2'])
-            * plots R1 and R2 liquidity in all pools which have R1 or R2
-        plot(events, pool='R1/R2', prop='impermanent_loss', key='all')
-    """
-
-    ax: plt.Subplot = None
-
-    if time_range:
-        events = events[time_range[0]: time_range[1]]
-        use_range = f'(time steps {time_range[0]} - {time_range[1]})'
-    else:
-        use_range = ''
-
-    if pool:
-        group = "pools"
-        section = [pool]
-        title = "pool"
-    elif agent:
-        group = "agents"
-        section = [agent]
-        title = "agent"
-    elif asset:
-        group = "external_market"
-        section = [asset]
-        title = "asset price"
-    else:
-        raise TypeError('plot() requires at least one of the following parameters: pool, agent, or asset.')
-
-    if 'all' in [pool, agent, asset]:
-        section = [key for key in getattr(events[0]['state'], group)]
-
-    for i, instance in enumerate(section):
-        if isinstance(prop, list):
-            use_props = prop
-        else:
-            use_props = [prop]
-
-        if (len(use_props) > 1 or i == 0) and not subplot:
-            plt.figure(figsize=(20, 5))
-
-        for p, use_prop in enumerate(use_props):
-
-            if key == 'all':
-                if use_prop:
-                    if isinstance(use_prop, str):
-                        test_prop = getattr(getattr(events[0]['state'], group)[section[0]], use_prop)
-                        if isinstance(test_prop, dict):
-                            # e.g. prop == liquidity, which is a dict. In this case we will graph all keys in the dict.
-                            keys = 'all'
-                        else:
-                            # e.g. prop == market_cap, which is a float
-                            keys = ['']
-                    else:
-                        keys = ['']
-                else:
-                    # e.g. asset is specified, meaning we don't need prop or key
-                    keys = ['']
-            elif isinstance(key, list):
-                keys = key
-            else:
-                keys = [key]
-
-            if keys == 'all':
-                use_keys = getattr(getattr(events[0]['state'], group)[instance], use_prop).keys()
-            else:
-                use_keys = keys
-
-            if len(use_keys) > 1 and p > 0:
-                # start a new line if we are doing multiple graphs at a time
-                plt.figure(figsize=(20, 5))
-
-            for k, use_key in enumerate(use_keys):
-                ax = subplot or plt.subplot(
-                    1, max(len(use_keys), len(use_props), len(section)), max(p, k, i) + 1,
-                    title=f'{title}: {instance}{" " + oracle + " " or " "}{use_prop} {use_key} {use_range}'
-                )
-                y = get_datastream(
-                    events=events,
-                    group=group,
-                    instance=instance,
-                    oracle=oracle,
-                    prop=use_prop,
-                    key=use_key
-                )
-                x = range(len(y))
-                ax.plot(x, y, label=label)
-
-    return ax
+from numbers import Number
 
 
 def get_datastream(
@@ -117,46 +11,186 @@ def get_datastream(
         pool: str = '',
         oracle: str = '',
         agent: str = '',
-        asset: str = '',
+        asset: str or list = '',
+        prop: str or list = '',
+        key: str or list = ''
+):
+    initial_state = events[0]['state']
+
+    """
+    generate a lit of values from the state, using the given parameters
+    ONE of these may be a list or 'all', in which case the function will return a dict of lists
+    """
+
+    if not (group and instance):
+        if pool:
+            group = "pools"
+            instance = pool
+        elif agent:
+            group = "agents"
+            instance = agent
+        elif asset:
+            group = "external_market"
+            instance = asset
+
+    if instance == 'all':
+        instance = list(getattr(initial_state, group).keys())
+    elif oracle == 'all':
+        oracle = list(initial_state.pools[pool or instance].oracles.keys())
+    elif prop == 'all':
+        if oracle:
+            prop = list(vars(initial_state.pools[pool or instance].oracles[oracle]).keys())
+        else:
+            prop = list(vars(getattr(initial_state, group)[instance]).keys())
+    elif key == 'all':
+        if oracle:
+            key = getattr(getattr(initial_state, group)[instance].oracles[oracle], prop)
+            if isinstance(key, dict):
+                key = list(key.keys())
+            else:
+                key = ''
+        else:
+            key = list(getattr(getattr(initial_state, group)[instance], prop).keys())
+
+    if isinstance(instance, list):
+        return {
+            i: get_single_stream(events, group=group, instance=i, oracle=oracle, prop=prop, key=key)
+            for i in instance
+        }
+
+    elif isinstance(oracle, list):
+        return {
+            i: get_single_stream(events, group=group, instance=instance, oracle=i, prop=prop, key=key)
+            for i in oracle
+        }
+
+    elif isinstance(prop, list):
+        return {
+            i: get_single_stream(events, group=group, instance=instance, oracle=oracle, prop=i, key=key)
+            for i in prop
+        }
+
+    elif isinstance(key, list):
+        return {
+            i: get_single_stream(events, group=group, instance=instance, oracle=oracle, prop=prop, key=i)
+            for i in key
+        }
+
+    else:
+        return get_single_stream(
+            events,
+            group=group,
+            instance=instance,
+            oracle=oracle,
+            prop=prop,
+            key=key
+        )
+
+
+def get_single_stream(
+        events,
+        group: str = '',
+        instance: str = '',
+        oracle: str = '',
         prop: str = '',
         key: str = ''
-) -> list[float]:
+) -> list[Number]:
     """
-    Takes entire events array and some specifiers as arguments.
-    Outputs one list of floats. Basically a list comprehension helper function.
+    Takes a set of parameters and returns a function which will return the appropriate data stream.
     """
 
-    if pool:
-        group = 'pools'
-        instance = pool
-
-    if agent:
-        group = 'agents'
-        instance = agent
-
-    if asset:
-        group = 'external_market'
     if group == 'external_market':
-        key = asset or instance or key
+        key = instance or key
 
-    if hasattr(GlobalState, prop) and isinstance(getattr(GlobalState, prop), Callable):
-        prop_function = getattr(GlobalState, prop)
-        return [prop_function(event['state'], getattr(event['state'], group)[instance]) for event in events]
-    elif not key:
-        return [getattr(getattr(event['state'], group)[instance], prop) for event in events]
+    initial_state = events[0]['state']
+    if hasattr(initial_state, prop):
+        return [getattr(event['state'], prop)(getattr(event['state'], group)[instance]) for event in events]
+    elif not prop:
+        return [getattr(event['state'], group)[instance or key] for event in events]
     elif not oracle:
-        try:
-            if isinstance(getattr(getattr(events[0]['state'], group)[instance], prop), Callable):
-                return [getattr(getattr(event['state'], group)[instance], prop)(key) for event in events]
+        # prop may be either a dict or a function
+        def get_prop(state):
+            if isinstance(getattr(getattr(state, group)[instance], prop), Callable):
+                return getattr(getattr(state, group)[instance], prop)(key)
             else:
-                return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
-        except KeyError:
-            # this may occur, for example, if a certain pool doesn't contain the assets specified by *key*
-            return []
+                return getattr(getattr(state, group)[instance], prop)[key]
+
+        return [get_prop(event['state']) for event in events]
     else:
         # oracle
-        return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop)[key] for event in events]
+        if key:
+            return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop)[key] for event in events]
+        else:
+            return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop) for event in events]
 
+
+def plot(
+        events: list = None,
+        pool: str = '',
+        agent: str = '',
+        asset: str = '',
+        oracle: str = '',
+        prop: str or list = '',
+        key: str or list = '',
+        subplot: plt.Subplot = None,
+        time_range: tuple = (),
+        label: str = '',
+        title: str = '',
+        x: list or str = None,
+        y: list or str = None,
+):
+    """
+    Given several specifiers, automatically create a graph or a series of graphs as appropriate.
+    Examples:
+        plot(events, pool='omnipool', prop='LRNA', key='R1'):
+            * plots LRNA in the R1/LRNA pool over time
+        plot(events, pool='all', prop='liquidity', key=['R1', 'R2'])
+            * plots R1 and R2 liquidity in all pools which have R1 or R2
+        plot(events, pool='R1/R2', prop='impermanent_loss', key='all')
+        plot(x='time', y='long oracle HDX price')
+            * assuming a Datastream titled 'long oracle HDX price' was specified in initial_state.save_data,
+             plots the associated output
+        plot(y='long oracle HDX price')
+            * same as above, because 'time' is default for x
+    """
+
+    if not subplot:
+        plt.figure(figsize=(20, 5))
+        plt.title(title)
+
+    if time_range:
+        events = events[time_range[0]: time_range[1]]
+        use_range = f'(time steps {time_range[0]} - {time_range[1]})'
+    else:
+        use_range = ''
+
+    if pool:
+        title = f'{pool} {" " + oracle + " " or " "}{prop}{" " + key + " " if isinstance(key, str) else " "}{use_range}'
+    elif agent:
+        title = f'{agent} {prop}{" " + key + " " if isinstance(key, str) else " "}{use_range}'
+    elif asset:
+        title = f'asset price: {asset if isinstance(asset, str) else ""} {use_range}'
+
+    if events and isinstance(events[0], Number):
+        y = events
+    elif not y:
+        y = get_datastream(events, pool=pool, agent=agent, asset=asset, oracle=oracle, prop=prop, key=key)
+    elif isinstance(y, str):
+        title = title or y
+        y = [event[y] for event in events]
+
+    if isinstance(y[0], dict):
+        for i, k in enumerate(y[0].keys()):
+            if isinstance(y[1][k], Number):
+                subplot = plt.subplot(1, len(y[0]), i + 1, title=f'{title} {k}')
+            plot(x=x, y=[y[k] for y in y], title=f'{title} {k}', subplot=subplot)
+        return
+    if not x or x == 'time':
+        x = range(len(y))
+
+    ax = subplot or plt.subplot(1, 1, 1, title=title)
+    ax.plot(x, y, label=label)
+    return ax
 
 def best_fit_line(data_array: list[float]):
     """
