@@ -3,6 +3,7 @@ import copy
 import random
 from .amm import AMM, FeeMechanism
 from typing import Callable
+from .omnipool_amm import OmnipoolState
 
 
 class GlobalState:
@@ -147,9 +148,40 @@ class GlobalState:
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
-        new_agent = withdraw_all_liquidity(self, agent.unique_id).agents[agent.unique_id]
-        prices = self.market_prices(agent.holdings)
-        return self.value_assets(prices, new_agent.holdings)
+        withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
+        for key in agent.holdings.keys():
+            # shares.keys might just be the pool name, or it might be a tuple (pool, token)
+            if isinstance(key, tuple):
+                pool_id = key[0]
+                tkn = key[1]
+            else:
+                pool_id = key
+                tkn = key
+            if pool_id in self.pools:
+                if isinstance(self.pools[pool_id], OmnipoolState):
+                    # optimized for omnipool, no copy operations
+                    if 'LRNA' not in withdraw_holdings:
+                        withdraw_holdings['LRNA'] = 0
+                    delta_qa, delta_r, delta_q,\
+                        delta_s, delta_b, delta_l = self.pools[pool_id].calculate_remove_liquidity(
+                            agent,
+                            agent.holdings[key],
+                            tkn_remove=tkn
+                        )
+                    withdraw_holdings[key] = 0
+                    withdraw_holdings['LRNA'] += delta_qa
+                    withdraw_holdings[tkn] -= delta_r
+                else:
+                    # much less efficient, but works for any pool
+                    new_state = remove_liquidity(self, pool_id, agent.unique_id, agent.holdings[key], tkn_remove=tkn)
+                    new_agent = new_state.agents[agent.unique_id]
+                    withdraw_holdings = {
+                        tkn: withdraw_holdings[tkn] + new_agent.holdings[tkn] - agent.holdings[tkn]
+                        for tkn in agent.holdings
+                    }
+
+        prices = self.market_prices(withdraw_holdings)
+        return self.value_assets(prices, withdraw_holdings)
 
     def pool_val(self, pool: AMM):
         """ get the total value of all liquidity in the pool. """
@@ -373,7 +405,7 @@ def external_market_trade(
 ) -> GlobalState:
 
     # do a trade at spot price on the external market
-    # this should maybe only work in USD, cause we're probably talking about coinbase or something
+    # this should maybe only work in USD, because we're probably talking about coinbase or something
     new_state = old_state.copy()
     agent = new_state.agents[agent_id]
     if buy_quantity:
