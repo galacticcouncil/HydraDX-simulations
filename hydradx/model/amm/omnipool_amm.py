@@ -89,10 +89,19 @@ class OmnipoolState(AMM):
                 for tkn in self.asset_list
             }
             if isinstance(asset_fee, FeeMechanism)
-            else self.basic_fee(asset_fee).assign(self)
+            else {tkn: self.basic_fee(lrna_fee).assign(self) for tkn in self.asset_list}
         )
-        self.lrna_fee: FeeMechanism = lrna_fee.assign(self) if isinstance(lrna_fee, FeeMechanism) \
-            else self.basic_fee(lrna_fee).assign(self)
+        self.lrna_fee: dict = {
+            tkn: lrna_fee[tkn].assign(self)
+            for tkn in lrna_fee
+        } if isinstance(lrna_fee, dict) else (
+            {
+                tkn: lrna_fee.assign(self)
+                for tkn in self.asset_list
+            }
+            if isinstance(lrna_fee, FeeMechanism)
+            else {tkn: self.basic_fee(lrna_fee).assign(self) for tkn in self.asset_list}
+        )
         self.lrna_imbalance = mpf(0)  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
@@ -222,8 +231,8 @@ class OmnipoolState(AMM):
                    f'Omnipool: {self.unique_id}\n'
                    f'********************************\n'
                    f'tvl cap: {self.tvl_cap}\n'
-                   f'lrna fee: {self.lrna_fee.name}\n'
-                   f'asset fee: \n{newline.join([tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_fee])}\n'
+                   f'lrna fee: \n{newline.join([tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n'
+                   f'asset fee: \n{newline.join([tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n'
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
@@ -259,7 +268,7 @@ class OmnipoolState(AMM):
         asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 tkn_buy_liquidity * (1 - asset_fee) - buy_quantity)
-        lrna_fee = self.lrna_fee.compute(tkn=tkn_sell, delta_tkn=(
+        lrna_fee = self.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
                 tkn_buy_liquidity * delta_Qj /
                 (self.lrna[tkn_buy] - delta_Qj)
         ))
@@ -340,7 +349,7 @@ class OmnipoolState(AMM):
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (tkn_sell_liquidity + delta_Ri)
             asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-            lrna_fee = self.lrna_fee.compute(
+            lrna_fee = self.lrna_fee[tkn_buy].compute(
                 tkn=tkn_buy,
                 delta_tkn=tkn_buy_liquidity * sell_quantity / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee)
             )
@@ -412,30 +421,32 @@ class OmnipoolState(AMM):
         """
         Execute LRNA swap in place (modify and return)
         """
-        asset_fee = self.asset_fee[tkn].compute(
-            tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
-        )
-        lrna_fee = self.lrna_fee.compute(
-            tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
-        )
 
-        if delta_qa < 0:
-            delta_qi = -delta_qa
-            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) * (1 - asset_fee)
-            delta_ra = -delta_ri
-        elif delta_ra > 0:
-            delta_ri = -delta_ra
-            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] * (1 - asset_fee) + delta_ri)
-            delta_qa = -delta_qi
-        # buying LRNA
-        elif delta_qa > 0:
-            delta_qi = -delta_qa
-            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) / (1 - lrna_fee)
-            delta_ra = -delta_ri
-        elif delta_ra < 0:
-            delta_ri = -delta_ra
-            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
-            delta_qa = -delta_qi
+        if delta_ra < 0 or delta_ra > 0:
+            asset_fee = self.asset_fee[tkn].compute(
+                tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
+            )
+            if delta_qa < 0:
+                delta_qi = -delta_qa
+                delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) * (1 - asset_fee)
+                delta_ra = -delta_ri
+            else:
+                delta_ri = -delta_ra
+                delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] * (1 - asset_fee) + delta_ri)
+                delta_qa = -delta_qi
+        elif delta_qa > 0 or delta_ra < 0:
+            lrna_fee = self.lrna_fee[tkn].compute(
+                tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
+            )
+            # buying LRNA
+            if delta_qa > 0:
+                delta_qi = -delta_qa
+                delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) / (1 - lrna_fee)
+                delta_ra = -delta_ri
+            else:
+                delta_ri = -delta_ra
+                delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
+                delta_qa = -delta_qi
         else:
             return self.fail_transaction('Buying LRNA not implemented.', agent)
 
