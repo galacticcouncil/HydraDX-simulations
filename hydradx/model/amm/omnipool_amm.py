@@ -270,7 +270,12 @@ class OmnipoolState(AMM):
             self, agent: Agent,
             tkn_buy: str, tkn_sell: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0
+            sell_quantity: float = 0,
+            modify_imbalance: bool = True,  # this is a hack to avoid modifying the imbalance for arbitrager LRNA swaps,
+                                            # since those would not actually be executed as LRNA swaps
+                                            # note that we still apply the imbalance modification due to LRNA fee
+                                            # collection, we just don't apply the imbalance modification from
+                                            # the sale of LRNA back to the pool.
     ):
         """
         execute swap in place (modify and return self and agent)
@@ -298,14 +303,16 @@ class OmnipoolState(AMM):
                 agent=agent,
                 delta_ra=buy_quantity,
                 delta_qa=-sell_quantity,
-                tkn=tkn_buy
+                tkn=tkn_buy,
+                modify_imbalance=modify_imbalance
             )
         elif tkn_buy == 'LRNA':
             return_val = self.execute_lrna_swap(
                 agent=agent,
                 delta_qa=buy_quantity,
                 delta_ra=-sell_quantity,
-                tkn=tkn_sell
+                tkn=tkn_sell,
+                modify_imbalance=modify_imbalance
             )
 
         elif buy_quantity:
@@ -397,7 +404,8 @@ class OmnipoolState(AMM):
             agent: Agent,
             delta_ra: float = 0,
             delta_qa: float = 0,
-            tkn: str = ''
+            tkn: str = '',
+            modify_imbalance: bool = True
     ):
         """
         Execute LRNA swap in place (modify and return)
@@ -446,11 +454,18 @@ class OmnipoolState(AMM):
         q = self.lrna_total
         self.lrna[tkn] += delta_qi
         self.liquidity[tkn] += delta_ri
-        self.lrna_imbalance = (
-                self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
-                * old_lrna / old_liquidity
-                * (1 + l / q) - self.lrna_total
-        )
+        if modify_imbalance:
+            self.lrna_imbalance = (
+                    self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
+                    * old_lrna / old_liquidity
+                    * (1 + l / q) - self.lrna_total
+            )
+        elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
+            lrna_fee_amt = -(delta_qa + delta_qi)
+            delta_l = min(-l, lrna_fee_amt)
+            self.lrna_imbalance += delta_l
+            self.lrna["HDX"] += lrna_fee_amt - delta_l
+
         return self, agent
 
     def execute_stable_swap(

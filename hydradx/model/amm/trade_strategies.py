@@ -2,6 +2,7 @@ import copy
 import math
 from pprint import pprint
 
+from . import omnipool_amm
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
@@ -298,7 +299,10 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str):
+def omnipool_arbitrage(pool_id: str, skip_assets=None):
+    if skip_assets is None:
+        skip_assets = []
+
     def get_mat(prices: list[float], reserves: list[int], lrna: list[int], usd_index: int):
         mat = [[float(1)] * len(prices)]
         for i in range(len(prices)):
@@ -326,6 +330,10 @@ def omnipool_arbitrage(pool_id: str):
         dr = [calc_new_reserve(X[i], reserves[i], lrna[i]) - reserves[i] for i in range(len(prices))]
         return dr
 
+    def get_dq_list(dr, reserves, lrna):
+        dq = [-lrna[i] * dr[i] / (reserves[i] + dr[i]) for i in range(len(reserves))]
+        return dq
+
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         omnipool: OmnipoolState = state.pools[pool_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -334,26 +342,40 @@ def omnipool_arbitrage(pool_id: str):
         reserves = []
         lrna = []
         prices = []
+        asset_list = []
         usd_index = -1
+        skip_ct = 0
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
+            if asset in skip_assets:  # we may not want to arb all assets
+                skip_ct += 1
+                continue
             if asset == omnipool.stablecoin:
-                usd_index = i
+                usd_index = i - skip_ct
             reserves.append(omnipool.liquidity_online(asset))
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
+            asset_list.append(asset)
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         size_mult = 1
-        for i in range(len(omnipool.asset_list)):
+        for i in range(len(prices)):
             if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
                 size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
-        for i in range(len(omnipool.asset_list)):
-            asset = omnipool.asset_list[i]
+        dq = get_dq_list(dr, reserves, lrna)
+        temp_omnipool = copy.deepcopy(omnipool)
+        temp_agent = copy.deepcopy(state.agents[agent_id])
+        for i in range(len(prices)):
+            asset = asset_list[i]
             if dr[i] > 0:
-                state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr[i]*size_mult)
-            else:
-                state.execute_swap(pool_id, agent_id, 'LRNA', asset, buy_quantity=-dr[i]*size_mult)
+                temp_omnipool, temp_agent = omnipool_amm.swap_lrna(temp_omnipool, temp_agent, 0, dq[i]*size_mult, asset)
+        if state.cash_out(temp_agent) > state.cash_out(state.agents[agent_id]):
+            for i in range(len(prices)):
+                asset = asset_list[i]
+                if dr[i] > 0:
+                    state.execute_swap(pool_id, agent_id, asset, 'LRNA', buy_quantity=-dq[i]*size_mult, modify_imbalance=False)
+                else:
+                    state.execute_swap(pool_id, agent_id, 'LRNA', asset, sell_quantity=dq[i]*size_mult, modify_imbalance=False)
 
         return state
 
