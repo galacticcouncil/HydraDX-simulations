@@ -103,6 +103,26 @@ def steady_swaps(
     return TradeStrategy(strategy, name=f'steady swaps (${usd_amount})')
 
 
+def back_and_forth(
+    pool_id: str,
+    percentage: float  # percentage of TVL to trade each block
+) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+        omnipool = state.pools[pool_id]
+        for i in range(len(omnipool.asset_list)):
+            asset = omnipool.asset_list[i]
+            dr = percentage / 2 * omnipool.liquidity[asset]
+            lrna_init = state.agents[agent_id].holdings['LRNA']
+            state.execute_swap(pool_id, agent_id, asset, 'LRNA', sell_quantity=dr, modify_imbalance=False)
+            dq = state.agents[agent_id].holdings['LRNA'] - lrna_init
+            state.execute_swap(pool_id, agent_id, 'LRNA', asset, sell_quantity=dq, modify_imbalance=False)
+
+        return state
+
+    return TradeStrategy(strategy, name=f'back and forth (${percentage})')
+
+
 def invest_all(pool_id: str) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
