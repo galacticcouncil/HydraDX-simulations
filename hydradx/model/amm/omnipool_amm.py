@@ -1,10 +1,11 @@
 import copy
 from .agents import Agent
-from .amm import AMM, FeeMechanism
+from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
 from mpmath import mpf, mp
 from typing import Callable
+from numbers import Number
 
 mp.dps = 50
 
@@ -16,8 +17,8 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 asset_fee: dict or FeeMechanism or float = 0,
-                 lrna_fee: FeeMechanism or float = 0,
+                 asset_fee: dict or FeeMechanism or float = 0.0,
+                 lrna_fee: dict or FeeMechanism or float = 0.0,
                  oracles: dict[str: int] = None,
                  trade_limit_per_block: float = float('inf'),
                  update_function: Callable = None,
@@ -54,7 +55,16 @@ class OmnipoolState(AMM):
         self.weight_cap = {}
         self.liquidity_coefficient = {}
         self.liquidity_offline = {}
-
+        self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
+        self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
+        self.asset_fee = self._get_fee(asset_fee)
+        self.lrna_fee = self._get_fee(lrna_fee)
+        self.lrna_imbalance = mpf(0)  # AKA "L"
+        self.tvl_cap = tvl_cap
+        self.stablecoin = preferred_stablecoin
+        self.fail = ''
+        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
+        self.update_function = update_function
         self.oracles = {
             name: Oracle(sma_equivalent_length=period, first_block=Block(self))
             for name, period in oracles.items()
@@ -80,37 +90,37 @@ class OmnipoolState(AMM):
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
-        self.asset_fee: dict = {
-            tkn: asset_fee[tkn].assign(self)
-            for tkn in asset_fee
-        } if isinstance(asset_fee, dict) else (
-            {
-                tkn: asset_fee.assign(self)
-                for tkn in self.asset_list
-            }
-            if isinstance(asset_fee, FeeMechanism)
-            else {tkn: self.basic_fee(lrna_fee).assign(self) for tkn in self.asset_list}
-        )
-        self.lrna_fee: dict = {
-            tkn: lrna_fee[tkn].assign(self)
-            for tkn in lrna_fee
-        } if isinstance(lrna_fee, dict) else (
-            {
-                tkn: lrna_fee.assign(self)
-                for tkn in self.asset_list
-            }
-            if isinstance(lrna_fee, FeeMechanism)
-            else {tkn: self.basic_fee(lrna_fee).assign(self) for tkn in self.asset_list}
-        )
-        self.lrna_imbalance = mpf(0)  # AKA "L"
-        self.tvl_cap = tvl_cap
-        self.stablecoin = preferred_stablecoin
-        self.fail = ''
-        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
-        self.update_function = update_function
-
         self.current_block = Block(self)
         self.update()
+
+    def __setattr__(self, key, value):
+        # if key is a fee, make sure it's a dict[str: FeeMechanism]
+        if key in ['lrna_fee', 'asset_fee']:
+            super().__setattr__(key, self._get_fee(value))
+        else:
+            super().__setattr__(key, value)
+
+    def _get_fee(self, value: dict or FeeMechanism or float) -> dict:
+        return (
+            {
+                # if a dict of fees is assigned, but not all tokens are included, default to 0
+                tkn: (
+                    (
+                        value[tkn].assign(self)
+                        if isinstance(fee, FeeMechanism)
+                        else basic_fee(fee[tkn]).assign(self)
+                    )
+                    if tkn in value else basic_fee(0).assign(self)
+                )
+                for tkn, fee in value.items()
+            }
+            if isinstance(value, dict)
+            else (
+                {tkn: value.assign(self) for tkn in self.asset_list}
+                if isinstance(value, FeeMechanism)
+                else {tkn: basic_fee(value).assign(self) for tkn in self.asset_list}
+            )
+        )
 
     def add_token(
             self,
@@ -129,15 +139,11 @@ class OmnipoolState(AMM):
         self.weight_cap[tkn] = mpf(weight_cap)
         self.liquidity_offline[tkn] = 0
         self.liquidity_coefficient[tkn] = 1
+        self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
+        self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
 
     def remove_token(self, tkn: str):
         self.asset_list.remove(tkn)
-        # del self.liquidity[tkn]
-        # del self.lrna[tkn]
-        # del self.shares[tkn]
-        # del self.protocol_shares[tkn]
-        # del self.weight_cap[tkn]
-        # del self.liquidity_coefficient[tkn]
 
     def update(self):
         # update oracles
@@ -422,7 +428,7 @@ class OmnipoolState(AMM):
         Execute LRNA swap in place (modify and return)
         """
 
-        if delta_ra < 0 or delta_ra > 0:
+        if delta_qa < 0 or delta_ra > 0:
             asset_fee = self.asset_fee[tkn].compute(
                 tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
             )
@@ -467,11 +473,13 @@ class OmnipoolState(AMM):
         q = self.lrna_total
         self.lrna[tkn] += delta_qi
         self.liquidity[tkn] += delta_ri
+
         self.lrna_imbalance = (
                 self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
                 * old_lrna / old_liquidity
                 * (1 + l / q) - self.lrna_total
         )
+
         return self, agent
 
     def execute_stable_swap(
