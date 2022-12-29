@@ -57,8 +57,6 @@ class OmnipoolState(AMM):
         self.liquidity_offline = {}
         self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
-        self.asset_fee = self._get_fee(asset_fee)
-        self.lrna_fee = self._get_fee(lrna_fee)
         self.lrna_imbalance = mpf(0)  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
@@ -89,6 +87,8 @@ class OmnipoolState(AMM):
                 protocol_shares=pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
+        self.asset_fee = self._get_fee(asset_fee)
+        self.lrna_fee = self._get_fee(lrna_fee)
 
         self.current_block = Block(self)
         self.update()
@@ -139,8 +139,9 @@ class OmnipoolState(AMM):
         self.weight_cap[tkn] = mpf(weight_cap)
         self.liquidity_offline[tkn] = 0
         self.liquidity_coefficient[tkn] = 1
-        self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
-        self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
+        if hasattr(self, 'asset_fee'):
+            self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
+            self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
 
     def remove_token(self, tkn: str):
         self.asset_list.remove(tkn)
@@ -1143,7 +1144,8 @@ def dynamicmult_asset_fee(
         minimum: float = 0,
         amplification: float = 1,
         raise_oracle_name: str = 'short',
-        fee_max: float = 0.5
+        fee_max: float = 0.5,
+        decay: float = 0.001
 ) -> FeeMechanism:
     def fee_function(
             exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
