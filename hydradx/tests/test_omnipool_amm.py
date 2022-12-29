@@ -1351,7 +1351,6 @@ def test_liquidity_coefficient():
     st.floats(min_value=1e-10, max_value=1e10),
 )
 def test_dynamic_fees(agent_wealth: float, hdx_price: float):
-    from hydradx.model.amm.omnipool_amm import dynamic_asset_fee, dynamic_lrna_fee
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
@@ -1371,8 +1370,8 @@ def test_dynamic_fees(agent_wealth: float, hdx_price: float):
             raise_oracle_name='mid'
         )
     )
-    initial_fee = initial_state.asset_fee.compute('HDX', 1000000)
-    initial_lrna_fee = initial_state.lrna_fee.compute('HDX', 1000000)
+    initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
+    initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
     )
@@ -1384,8 +1383,8 @@ def test_dynamic_fees(agent_wealth: float, hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
-    fee = test_state.asset_fee.compute('HDX', 1000000)
-    lrna_fee = test_state.lrna_fee.compute('USD', 1000000)
+    fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
+    lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
     if not fee > initial_fee:
         raise AssertionError('Fee should increase when price increases.')
     if not lrna_fee > initial_lrna_fee:
