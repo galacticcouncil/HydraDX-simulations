@@ -39,7 +39,10 @@ def get_datastream(
         oracle = list(initial_state.pools[pool or instance].oracles.keys())
     elif prop == 'all':
         if oracle:
-            prop = list(vars(initial_state.pools[pool or instance].oracles[oracle]).keys())
+            prop = list(filter(
+                lambda x: isinstance(x, dict),
+                list(vars(initial_state.pools[pool or instance].oracles[oracle]).keys())
+            ))
         else:
             prop = list(vars(getattr(initial_state, group)[instance]).keys())
     elif key == 'all':
@@ -96,7 +99,7 @@ def get_single_stream(
         key: str = ''
 ) -> list[Number]:
     """
-    Takes a set of parameters and returns a function which will return the appropriate data stream.
+    Takes a set of parameters and returns a list of values from the state
     """
 
     if group == 'external_market':
@@ -109,13 +112,10 @@ def get_single_stream(
         return [getattr(event['state'], group)[instance or key] for event in events]
     elif not oracle:
         # prop may be either a dict or a function
-        def get_prop(state):
-            if isinstance(getattr(getattr(state, group)[instance], prop), Callable):
-                return getattr(getattr(state, group)[instance], prop)(key)
-            else:
-                return getattr(getattr(state, group)[instance], prop)[key]
-
-        return [get_prop(event['state']) for event in events]
+        if isinstance(getattr(getattr(initial_state, group)[instance], prop), Callable):
+            return [getattr(getattr(event['state'], group)[instance], prop)(key) for event in events]
+        else:
+            return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
     else:
         # oracle
         if key:
