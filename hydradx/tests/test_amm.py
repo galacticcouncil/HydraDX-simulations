@@ -193,14 +193,10 @@ def test_LP(initial_state: GlobalState):
     events = run.run(old_state, time_steps=100, silent=True)
     final_state: GlobalState = events[-1]['state']
 
-    # post-process
-    processing.postprocessing(events, optional_params=['withdraw_val'])
-
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
-    initial_agent: Agent = initial_state.agents['LP']
-    if final_state.agents['LP'].withdraw_val < initial_state.cash_out(initial_agent):
+    if final_state.cash_out(final_state.agents['LP']) < initial_state.cash_out(initial_state.agents['LP']):
         print('failed, lost money.')
         raise AssertionError('The LP lost money!')
     # print('test passed.')
@@ -497,7 +493,7 @@ def test_omnipool_arbitrage():
         },
         agents={
             'Arbitrageur': Agent(
-                holdings={tkn: float('inf') for tkn in list(assets.keys()) + ['LRNA']},
+                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
                 trade_strategy=omnipool_arbitrage('Omnipool')
             )
         },
@@ -508,11 +504,11 @@ def test_omnipool_arbitrage():
     # print(initial_state)
     time_steps = 100  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
-    prices = pu.get_datastream(events, asset='DOT')
+    dot_prices = pu.get_datastream(events, asset='DOT')
     hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
     pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
-    oracles = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='all', key='all')
+    oracles_hdx_liquidity = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='liquidity', key='HDX')
     oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
-    oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='all', key='USD')
-    agent_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
+    short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
+    arb_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
     er = 1
