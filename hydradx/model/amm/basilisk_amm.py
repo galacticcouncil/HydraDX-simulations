@@ -1,5 +1,5 @@
 import math
-from .amm import AMM, FeeMechanism
+from .amm import AMM, FeeMechanism, basic_fee
 from .agents import Agent
 from mpmath import mpf, mp
 mp.dps = 50
@@ -24,7 +24,7 @@ class ConstantProductPoolState(AMM):
         """
         super().__init__()
         self.trade_fee: FeeMechanism = trade_fee.assign(self) if isinstance(trade_fee, FeeMechanism)\
-            else self.basic_fee(trade_fee).assign(self)
+            else basic_fee(trade_fee).assign(self)
         self.liquidity = dict()
         self.asset_list: list[str] = []
 
@@ -182,6 +182,7 @@ def remove_liquidity(
             withdraw_quantity = new_state.liquidity[tkn] * withdraw_fraction
             new_state.liquidity[tkn] -= withdraw_quantity
             new_agent.holdings[tkn] += withdraw_quantity
+        new_agent.holdings[tkn_remove] -= quantity
     else:
         withdraw_quantity = abs(quantity) / old_state.shares * old_state.liquidity[tkn_remove]
         new_state, new_agent = add_liquidity(
