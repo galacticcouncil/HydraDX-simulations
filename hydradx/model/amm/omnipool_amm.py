@@ -238,8 +238,10 @@ class OmnipoolState(AMM):
                    f'Omnipool: {self.unique_id}\n'
                    f'********************************\n'
                    f'tvl cap: {self.tvl_cap}\n'
-                   f'lrna fee: \n{newline.join([tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n'
-                   f'asset fee: \n{newline.join([tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n'
+                   f'lrna fee:'
+                   f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n'
+                   f'asset fee:'
+                   f'{newline.join(["    " + tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n'
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
@@ -341,13 +343,17 @@ class OmnipoolState(AMM):
                 modify_imbalance=modify_imbalance
             )
 
-        elif buy_quantity:
+        elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+            # including both buy_quantity and sell_quantity potentially introduces a 'hack'
+            # where you could include both and *not* have them match, but we're not worried about that
+            # because this is not a production environment. Just don't do it.
             return self.execute_swap(
                 agent=agent,
                 tkn_buy=tkn_buy,
                 tkn_sell=tkn_sell,
+                buy_quantity=buy_quantity,
                 sell_quantity=delta_Ri
             )
         else:
@@ -381,18 +387,14 @@ class OmnipoolState(AMM):
 
             # per-block trade limits
             if (
-                -delta_Rj
-                - self.current_block.volume_in[tkn_buy]
-                + self.current_block.volume_out[tkn_buy]
+                -delta_Rj - self.current_block.volume_in[tkn_buy] + self.current_block.volume_out[tkn_buy]
                 > self.trade_limit_per_block * self.current_block.liquidity[tkn_buy]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
                 )
             elif (
-                delta_Ri
-                + self.current_block.volume_in[tkn_sell]
-                - self.current_block.volume_out[tkn_sell]
+                delta_Ri + self.current_block.volume_in[tkn_sell] - self.current_block.volume_out[tkn_sell]
                 > self.trade_limit_per_block * self.current_block.liquidity[tkn_sell]
             ):
                 return self.fail_transaction(
@@ -401,14 +403,14 @@ class OmnipoolState(AMM):
             self.lrna[i] += delta_Qi
             self.lrna[j] += delta_Qj
             self.liquidity[i] += delta_Ri
-            self.liquidity[j] += delta_Rj
+            self.liquidity[j] += -buy_quantity or delta_Rj
             self.lrna['HDX'] += delta_QH
             self.lrna_imbalance += delta_L
 
             if j not in agent.holdings:
                 agent.holdings[j] = 0
             agent.holdings[i] -= delta_Ri
-            agent.holdings[j] -= delta_Rj
+            agent.holdings[j] -= -buy_quantity or delta_Rj
 
             return_val = self, agent
 
@@ -455,13 +457,13 @@ class OmnipoolState(AMM):
             )
             # buying LRNA
             if delta_qa > 0:
-                delta_qi = -delta_qa / (1 - lrna_fee)
+                delta_qi = -delta_qa
                 delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) / (1 - lrna_fee)
                 delta_ra = -delta_ri
             else:
                 delta_ri = -delta_ra
                 delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
-                delta_qa = -delta_qi * (1 - lrna_fee)
+                delta_qa = -delta_qi
         else:
             return self.fail_transaction('Buying LRNA not implemented.', agent)
 
@@ -530,6 +532,7 @@ class OmnipoolState(AMM):
                 delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
                 sub_pool.execute_remove_liquidity(agent, delta_shares, tkn_buy)
                 return self, agent
+
         elif sub_pool_sell_id and tkn_buy in self.asset_list:
             sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_sell_id]
             if sell_quantity:
@@ -557,6 +560,7 @@ class OmnipoolState(AMM):
                     return self.fail_transaction(sub_pool.fail, agent)
                 self.execute_swap(agent, tkn_buy, sub_pool.unique_id, buy_quantity)
                 return self, agent
+
         elif sub_pool_buy_id and tkn_sell in self.asset_list:
             sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_buy_id]
             if buy_quantity:
