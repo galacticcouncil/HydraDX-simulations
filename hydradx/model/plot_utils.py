@@ -54,6 +54,10 @@ def get_datastream(
                 key = ''
         else:
             key = list(getattr(getattr(initial_state, group)[instance], prop).keys())
+    elif prop and key == '':
+        if hasattr(getattr(initial_state, group)[instance], prop):
+            if isinstance(getattr(getattr(initial_state, group)[instance], prop), dict):
+                key = list(getattr(getattr(initial_state, group)[instance], prop).keys())
 
     if isinstance(instance, list):
         return {
@@ -165,11 +169,12 @@ def plot(
         use_range = ''
 
     if pool:
-        title = f'{pool} {" " + oracle + " " or " "}{prop}{" " + key + " " if isinstance(key, str) else " "}{use_range}'
+        title = f'{pool}{" " + oracle + " " or " "}{prop}'
     elif agent:
-        title = f'{agent} {prop}{" " + key + " " if isinstance(key, str) else " "}{use_range}'
+        title = f'{agent} {prop}'
     elif asset:
-        title = f'asset price: {asset if isinstance(asset, str) else ""} {use_range}'
+        title = f'asset price:'
+        key = asset
 
     if events and isinstance(events[0], Number):
         y = events
@@ -179,16 +184,16 @@ def plot(
         title = title or y
         y = [event[y] for event in events]
 
-    if isinstance(y[0], dict):
-        for i, k in enumerate(y[0].keys()):
-            if isinstance(y[1][k], Number):
-                subplot = plt.subplot(1, len(y[0]), i + 1, title=f'{title} {k}')
-            plot(x=x, y=[y[k] for y in y], title=f'{title} {k}', subplot=subplot)
+    if isinstance(y, dict):
+        for i, k in enumerate(y.keys()):
+            if isinstance(y[k][0], Number):
+                subplot = plt.subplot(1, len(y.keys()), i + 1, title=f'{title} {k}')
+            plot(x=x, y=y[k], title=f'{title} {k}', subplot=subplot)
         return
     if not x or x == 'time':
         x = range(len(y))
 
-    ax = subplot or plt.subplot(1, 1, 1, title=title)
+    ax = subplot or plt.subplot(1, 1, 1, title=f'{title} {key} {use_range}')
     ax.plot(x, y, label=label)
     return ax
 
