@@ -136,3 +136,16 @@ def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[P
 
     price_data.sort(key=lambda x: x.timestamp)
     return price_data
+
+
+def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
+    price_data = []
+    with open(input_path + input_filename, newline='') as input_file:
+        fieldnames = ['timestamp', 'price']
+        reader = DictReader(input_file, fieldnames=fieldnames)
+        next(reader)  # skip header
+        for row in reader:
+            price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
+
+    price_data.sort(key=lambda x: x.timestamp)
+    return price_data
