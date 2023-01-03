@@ -107,16 +107,14 @@ class GlobalState:
             tkn_sell: str,
             tkn_buy: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0,
-            modify_imbalance: bool = True
+            sell_quantity: float = 0
     ):
         self.pools[pool_id].execute_swap(
             agent=self.agents[agent_id],
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             buy_quantity=buy_quantity,
-            sell_quantity=sell_quantity,
-            modify_imbalance=modify_imbalance
+            sell_quantity=sell_quantity
         )
         return self
 
