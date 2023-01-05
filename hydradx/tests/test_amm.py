@@ -445,13 +445,14 @@ def test_sell_fee_derivation(initial_state: GlobalState):
     #     raise ValueError('fee is higher than expected')
 
 
+# @given(st.integers(min_value=1, max_value=100000))
 def test_omnipool_arbitrage():
     import random
 
     from hydradx.model import run
-    from hydradx.model.amm.omnipool_amm import OmnipoolState
+    from hydradx.model.amm.omnipool_amm import OmnipoolState, dynamicadd_lrna_fee
     from hydradx.model.amm.agents import Agent
-    from hydradx.model.amm.trade_strategies import omnipool_arbitrage
+    from hydradx.model.amm.trade_strategies import omnipool_arbitrage, random_swaps
     from hydradx.model.amm.global_state import GlobalState
     from hydradx.model import plot_utils as pu
 
@@ -486,7 +487,13 @@ def test_omnipool_arbitrage():
                     'medium': 40,
                     'long': 160
                 },
-                lrna_fee=0,
+                lrna_fee=dynamicadd_lrna_fee(
+                    minimum=0.0025,
+                    amplification=10,
+                    raise_oracle_name='medium',
+                    decay=0.00001,
+                    fee_max=0.1,
+                ),
                 asset_fee=0,
                 preferred_stablecoin='USD'
             )
@@ -495,20 +502,38 @@ def test_omnipool_arbitrage():
             'Arbitrageur': Agent(
                 holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
                 trade_strategy=omnipool_arbitrage('Omnipool')
+            ),
+            'Trader': Agent(
+                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
+                trade_strategy=random_swaps(
+                    pool_id='Omnipool',
+                    amount={'USD': 1000, 'HDX': 1000, 'AUSD': 1000, 'ETH': 1000, 'DOT': 1000}
+                )
             )
         },
-        evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
+        # evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
         external_market={tkn: assets[tkn]['usd price'] for tkn in assets},
     )
 
     # print(initial_state)
     time_steps = 100  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
-    dot_prices = pu.get_datastream(events, asset='DOT')
-    hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
-    pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
-    oracles_hdx_liquidity = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='liquidity', key='HDX')
-    oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
-    short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
+    # asset_prices = pu.get_datastream(events, asset='all')
+    # dot_prices = pu.get_datastream(events, asset='DOT')
+    # hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
+    # pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
+    # oracles_hdx_liquidity = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='liquidity', key='HDX')
+    # oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
+    # short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
     arb_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
-    er = 1
+    arb_holdings = [
+        {tkn: arb_holdings[tkn][i] for tkn in arb_holdings} for i in range(len(arb_holdings['LRNA']))
+    ]
+    profit = (
+        GlobalState.value_assets(arb_holdings[-1], initial_state.external_market)
+        - GlobalState.value_assets(arb_holdings[0], initial_state.external_market)
+    )
+    if profit < 0:
+        raise ValueError(f'Arbitrageur lost {profit} USD')
+    # pu.plot(events, pool='Omnipool', prop='liquidity')
+    # er = 1
