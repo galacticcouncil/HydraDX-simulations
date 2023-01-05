@@ -386,24 +386,26 @@ def omnipool_arbitrage(pool_id: str, skip_assets=None):
             if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
                 size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
-        agent_wealth = state.cash_out(agent)
+        agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
+        temp_omnipool = omnipool.copy()
+        temp_agent = agent.copy()
         for i in range(len(prices)):
             asset = asset_list[i]
             if dr[i] > 0:
-                omnipool.execute_lrna_swap(agent, 0, dq[i]*size_mult, asset)
-        if state.cash_out(agent) > agent_wealth:
-            for i in range(len(prices)):
-                asset = asset_list[i]
-                if dr[i] > 0:
-                    omnipool.execute_swap(
-                        agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i]*size_mult, modify_imbalance=False
-                    )
-                else:
-                    omnipool.execute_swap(
-                        agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i]*size_mult, modify_imbalance=False
-                    )
+                temp_omnipool.execute_swap(
+                    temp_agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult, modify_imbalance=False
+                )
+            else:
+                temp_omnipool.execute_swap(
+                    temp_agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult, modify_imbalance=False
+                )
+        if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
+            state.pools[pool_id] = temp_omnipool
+            state.agents[agent_id] = temp_agent
+        else:
+            pass
         return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
