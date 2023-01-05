@@ -1,7 +1,7 @@
 import copy
 import pytest
 import random
-from hypothesis import given, strategies as st, assume
+from hypothesis import given, strategies as st, assume, reproduce_failure
 from mpmath import mpf, mp
 
 from hydradx.model.amm import omnipool_amm as oamm
@@ -906,11 +906,12 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Execution price out of bounds.')
 
 
+# @reproduce_failure('6.39.6', b'AXicY2DAAyQdq1ZKfuN+rybf3azHsE4yaIXmbAaupsVnuibg0wYFAAFJCqI=')
 @given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
 def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
     initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
     initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
-    initial_agent = Agent(holdings={tkn: 1000 for tkn in initial_state.asset_list})
+    initial_agent = Agent(holdings={tkn: 1000000 for tkn in initial_state.asset_list})
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = initial_state.asset_list[3]
     sell_quantity = 1
