@@ -238,10 +238,10 @@ class OmnipoolState(AMM):
                    f'Omnipool: {self.unique_id}\n'
                    f'********************************\n'
                    f'tvl cap: {self.tvl_cap}\n'
-                   f'lrna fee:'
-                   f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n'
-                   f'asset fee:'
-                   f'{newline.join(["    " + tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n'
+                   f'lrna fee:\n\n'
+                   f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n\n'
+                   f'asset fee:\n\n'
+                   f'{newline.join(["    " + tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n\n'
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
@@ -261,7 +261,7 @@ class OmnipoolState(AMM):
                 for pool_desc in
                 [repr(pool) for pool in self.sub_pools.values()]
             ]
-        ) + '\n)'
+        ) + '\n)' + f'\n\nerror message: {self.fail or "None"}'
 
     def calculate_sell_from_buy(
             self,
