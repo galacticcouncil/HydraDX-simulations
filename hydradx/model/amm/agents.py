@@ -31,7 +31,7 @@ class Agent:
     def __repr__(self):
         precision = 10
         holdings = {tkn: round(self.holdings[tkn], precision) for tkn in self.holdings}
-        share_prices = {tkn: round(self.holdings[tkn], precision) for tkn in self.share_prices}
+        share_prices = {tkn: round(self.share_prices[tkn], precision) for tkn in self.share_prices}
         return (
             f'Agent: {self.unique_id}\n'
             f'********************************\n'

@@ -1,10 +1,11 @@
 import copy
 from .agents import Agent
-from .amm import AMM, FeeMechanism
+from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
 from mpmath import mpf, mp
 from typing import Callable
+from numbers import Number
 
 mp.dps = 50
 
@@ -16,8 +17,8 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 asset_fee: FeeMechanism or float = 0,
-                 lrna_fee: FeeMechanism or float = 0,
+                 asset_fee: dict or FeeMechanism or float = 0.0,
+                 lrna_fee: dict or FeeMechanism or float = 0.0,
                  oracles: dict[str: int] = None,
                  trade_limit_per_block: float = float('inf'),
                  update_function: Callable = None,
@@ -54,7 +55,14 @@ class OmnipoolState(AMM):
         self.weight_cap = {}
         self.liquidity_coefficient = {}
         self.liquidity_offline = {}
-
+        self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
+        self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
+        self.lrna_imbalance = mpf(0)  # AKA "L"
+        self.tvl_cap = tvl_cap
+        self.stablecoin = preferred_stablecoin
+        self.fail = ''
+        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
+        self.update_function = update_function
         self.oracles = {
             name: Oracle(sma_equivalent_length=period, first_block=Block(self))
             for name, period in oracles.items()
@@ -79,20 +87,44 @@ class OmnipoolState(AMM):
                 protocol_shares=pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
-
-        self.asset_fee: FeeMechanism = asset_fee.assign(self) if isinstance(asset_fee, FeeMechanism) \
-            else self.basic_fee(asset_fee).assign(self)
-        self.lrna_fee: FeeMechanism = lrna_fee.assign(self) if isinstance(lrna_fee, FeeMechanism) \
-            else self.basic_fee(lrna_fee).assign(self)
-        self.lrna_imbalance = mpf(0)  # AKA "L"
-        self.tvl_cap = tvl_cap
-        self.stablecoin = preferred_stablecoin
-        self.fail = ''
-        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
-        self.update_function = update_function
+        self.asset_fee = self._get_fee(asset_fee)
+        self.lrna_fee = self._get_fee(lrna_fee)
 
         self.current_block = Block(self)
         self.update()
+
+        # record these for analysis later
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
+
+    def __setattr__(self, key, value):
+        # if key is a fee, make sure it's a dict[str: FeeMechanism]
+        if key in ['lrna_fee', 'asset_fee']:
+            super().__setattr__(key, self._get_fee(value))
+        else:
+            super().__setattr__(key, value)
+
+    def _get_fee(self, value: dict or FeeMechanism or float) -> dict:
+        return (
+            {
+                # if a dict of fees is assigned, but not all tokens are included, default to 0
+                tkn: (
+                    (
+                        value[tkn].assign(self)
+                        if isinstance(fee, FeeMechanism)
+                        else basic_fee(fee[tkn]).assign(self)
+                    )
+                    if tkn in value else basic_fee(0).assign(self)
+                )
+                for tkn, fee in value.items()
+            }
+            if isinstance(value, dict)
+            else (
+                {tkn: value.assign(self) for tkn in self.asset_list}
+                if isinstance(value, FeeMechanism)
+                else {tkn: basic_fee(value).assign(self) for tkn in self.asset_list}
+            )
+        )
 
     def add_token(
             self,
@@ -111,15 +143,12 @@ class OmnipoolState(AMM):
         self.weight_cap[tkn] = mpf(weight_cap)
         self.liquidity_offline[tkn] = 0
         self.liquidity_coefficient[tkn] = 1
+        if hasattr(self, 'asset_fee'):
+            self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
+            self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
 
     def remove_token(self, tkn: str):
         self.asset_list.remove(tkn)
-        # del self.liquidity[tkn]
-        # del self.lrna[tkn]
-        # del self.shares[tkn]
-        # del self.protocol_shares[tkn]
-        # del self.weight_cap[tkn]
-        # del self.liquidity_coefficient[tkn]
 
     def update(self):
         # update oracles
@@ -207,13 +236,16 @@ class OmnipoolState(AMM):
         lrna_total = round(self.lrna_total, precision)
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
-        price = {tkn: round(self.price(tkn), precision) for tkn in self.asset_list}
+        price = {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
+        newline = '\n'
         return (
                    f'Omnipool: {self.unique_id}\n'
                    f'********************************\n'
                    f'tvl cap: {self.tvl_cap}\n'
-                   f'lrna fee: {self.lrna_fee.name}\n'
-                   f'asset fee: {self.asset_fee.name}\n'
+                   f'lrna fee:\n\n'
+                   f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n\n'
+                   f'asset fee:\n\n'
+                   f'{newline.join(["    " + tkn + ": " + self.asset_fee[tkn].name for tkn in self.asset_list])}\n\n'
                    f'asset pools: (\n\n'
                ) + '\n'.join(
             [(
@@ -233,7 +265,7 @@ class OmnipoolState(AMM):
                 for pool_desc in
                 [repr(pool) for pool in self.sub_pools.values()]
             ]
-        ) + '\n)'
+        ) + '\n)' + f'\n\nerror message: {self.fail or "None"}'
 
     def calculate_sell_from_buy(
             self,
@@ -246,10 +278,10 @@ class OmnipoolState(AMM):
         """
         tkn_buy_liquidity = self.liquidity[tkn_buy] - self.liquidity_offline[tkn_buy]
         tkn_sell_liquidity = self.liquidity[tkn_sell] - self.liquidity_offline[tkn_sell]
-        asset_fee = self.asset_fee.compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+        asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 tkn_buy_liquidity * (1 - asset_fee) - buy_quantity)
-        lrna_fee = self.lrna_fee.compute(tkn=tkn_sell, delta_tkn=(
+        lrna_fee = self.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
                 tkn_buy_liquidity * delta_Qj /
                 (self.lrna[tkn_buy] - delta_Qj)
         ))
@@ -270,7 +302,12 @@ class OmnipoolState(AMM):
             self, agent: Agent,
             tkn_buy: str, tkn_sell: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0
+            sell_quantity: float = 0,
+            modify_imbalance: bool = True,  # this is a hack to avoid modifying the imbalance for arbitrager LRNA swaps,
+                                            # since those would not actually be executed as LRNA swaps
+                                            # note that we still apply the imbalance modification due to LRNA fee
+                                            # collection, we just don't apply the imbalance modification from
+                                            # the sale of LRNA back to the pool.
     ):
         """
         execute swap in place (modify and return self and agent)
@@ -298,23 +335,29 @@ class OmnipoolState(AMM):
                 agent=agent,
                 delta_ra=buy_quantity,
                 delta_qa=-sell_quantity,
-                tkn=tkn_buy
+                tkn=tkn_buy,
+                modify_imbalance=modify_imbalance
             )
         elif tkn_buy == 'LRNA':
             return_val = self.execute_lrna_swap(
                 agent=agent,
                 delta_qa=buy_quantity,
                 delta_ra=-sell_quantity,
-                tkn=tkn_sell
+                tkn=tkn_sell,
+                modify_imbalance=modify_imbalance
             )
 
-        elif buy_quantity:
+        elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+            # including both buy_quantity and sell_quantity potentially introduces a 'hack'
+            # where you could include both and *not* have them match, but we're not worried about that
+            # because this is not a production environment. Just don't do it.
             return self.execute_swap(
                 agent=agent,
                 tkn_buy=tkn_buy,
                 tkn_sell=tkn_sell,
+                buy_quantity=buy_quantity,
                 sell_quantity=delta_Ri
             )
         else:
@@ -329,8 +372,8 @@ class OmnipoolState(AMM):
                 return self.fail_transaction('sell amount must be greater than zero', agent)
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (tkn_sell_liquidity + delta_Ri)
-            asset_fee = self.asset_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-            lrna_fee = self.lrna_fee.compute(
+            asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            lrna_fee = self.lrna_fee[tkn_buy].compute(
                 tkn=tkn_buy,
                 delta_tkn=tkn_buy_liquidity * sell_quantity / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee)
             )
@@ -348,19 +391,15 @@ class OmnipoolState(AMM):
 
             # per-block trade limits
             if (
-                -delta_Rj / self.current_block.liquidity[tkn_buy]
-                - self.current_block.volume_in[tkn_buy]
-                + self.current_block.volume_out[tkn_buy]
-                > self.trade_limit_per_block
+                -delta_Rj - self.current_block.volume_in[tkn_buy] + self.current_block.volume_out[tkn_buy]
+                > self.trade_limit_per_block * self.current_block.liquidity[tkn_buy]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
                 )
             elif (
-                delta_Ri / self.current_block.liquidity[tkn_sell]
-                + self.current_block.volume_in[tkn_sell]
-                - self.current_block.volume_out[tkn_sell]
-                > self.trade_limit_per_block
+                delta_Ri + self.current_block.volume_in[tkn_sell] - self.current_block.volume_out[tkn_sell]
+                > self.trade_limit_per_block * self.current_block.liquidity[tkn_sell]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_sell}.', agent
@@ -368,25 +407,27 @@ class OmnipoolState(AMM):
             self.lrna[i] += delta_Qi
             self.lrna[j] += delta_Qj
             self.liquidity[i] += delta_Ri
-            self.liquidity[j] += delta_Rj
+            self.liquidity[j] += -buy_quantity or delta_Rj
             self.lrna['HDX'] += delta_QH
             self.lrna_imbalance += delta_L
 
             if j not in agent.holdings:
                 agent.holdings[j] = 0
             agent.holdings[i] -= delta_Ri
-            agent.holdings[j] -= delta_Rj
+            agent.holdings[j] -= -buy_quantity or delta_Rj
 
             return_val = self, agent
 
         # update oracle
         if tkn_buy in self.current_block.asset_list:
             buy_quantity = old_liquidity[tkn_buy] - self.liquidity[tkn_buy]
-            self.current_block.volume_out[tkn_buy] += buy_quantity / self.current_block.liquidity[tkn_buy]
+            # self.current_block.volume_out[tkn_buy] += buy_quantity / self.current_block.liquidity[tkn_buy]
+            self.current_block.volume_out[tkn_buy] += buy_quantity
             self.current_block.price[tkn_buy] = self.lrna[tkn_buy] / self.liquidity_online(tkn_buy)
         if tkn_sell in self.current_block.asset_list:
             sell_quantity = self.liquidity[tkn_sell] - old_liquidity[tkn_sell]
-            self.current_block.volume_in[tkn_sell] += sell_quantity / self.current_block.liquidity[tkn_sell]
+            # self.current_block.volume_in[tkn_sell] += sell_quantity / self.current_block.liquidity[tkn_sell]
+            self.current_block.volume_in[tkn_sell] += sell_quantity
             self.current_block.price[tkn_sell] = self.lrna[tkn_sell] / self.liquidity_online(tkn_sell)
         return return_val
 
@@ -395,32 +436,38 @@ class OmnipoolState(AMM):
             agent: Agent,
             delta_ra: float = 0,
             delta_qa: float = 0,
-            tkn: str = ''
+            tkn: str = '',
+            modify_imbalance: bool = True
     ):
         """
         Execute LRNA swap in place (modify and return)
         """
-        asset_fee = self.asset_fee.compute(
-            tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
-        )
 
-        if delta_qa < 0:
-            delta_qi = -delta_qa
-            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) * (1 - asset_fee)
-            delta_ra = -delta_ri
-        elif delta_ra > 0:
-            delta_ri = -delta_ra
-            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] * (1 - asset_fee) + delta_ri)
-            delta_qa = -delta_qi
-        # buying LRNA, feeless
-        elif delta_qa > 0:
-            delta_qi = -delta_qa
-            delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
-            delta_ra = -delta_ri
-        elif delta_ra < 0:
-            delta_ri = -delta_ra
-            delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] + delta_ri)
-            delta_qa = -delta_qi
+        if delta_qa < 0 or delta_ra > 0:
+            asset_fee = self.asset_fee[tkn].compute(
+                tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
+            )
+            if delta_qa < 0:
+                delta_qi = -delta_qa
+                delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) * (1 - asset_fee)
+                delta_ra = -delta_ri
+            else:
+                delta_ri = -delta_ra
+                delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] * (1 - asset_fee) + delta_ri)
+                delta_qa = -delta_qi
+        elif delta_qa > 0 or delta_ra < 0:
+            lrna_fee = self.lrna_fee[tkn].compute(
+                tkn=tkn, delta_tkn=delta_ra or self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
+            )
+            # buying LRNA
+            if delta_qa > 0:
+                delta_qi = -delta_qa
+                delta_ri = self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn]) / (1 - lrna_fee)
+                delta_ra = -delta_ri
+            else:
+                delta_ri = -delta_ra
+                delta_qi = self.lrna[tkn] * -delta_ri / (self.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
+                delta_qa = -delta_qi
         else:
             return self.fail_transaction('Buying LRNA not implemented.', agent)
 
@@ -441,11 +488,18 @@ class OmnipoolState(AMM):
         q = self.lrna_total
         self.lrna[tkn] += delta_qi
         self.liquidity[tkn] += delta_ri
-        self.lrna_imbalance = (
-                self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
-                * old_lrna / old_liquidity
-                * (1 + l / q) - self.lrna_total
-        )
+        if modify_imbalance:
+            self.lrna_imbalance = (
+                    self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
+                    * old_lrna / old_liquidity
+                    * (1 + l / q) - self.lrna_total
+            )
+        elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
+            lrna_fee_amt = -(delta_qa + delta_qi)
+            delta_l = min(-l, lrna_fee_amt)
+            self.lrna_imbalance += delta_l
+            self.lrna["HDX"] += lrna_fee_amt - delta_l
+
         return self, agent
 
     def execute_stable_swap(
@@ -482,6 +536,7 @@ class OmnipoolState(AMM):
                 delta_shares = agent.holdings[sub_pool.unique_id] - agent_shares
                 sub_pool.execute_remove_liquidity(agent, delta_shares, tkn_buy)
                 return self, agent
+
         elif sub_pool_sell_id and tkn_buy in self.asset_list:
             sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_sell_id]
             if sell_quantity:
@@ -509,6 +564,7 @@ class OmnipoolState(AMM):
                     return self.fail_transaction(sub_pool.fail, agent)
                 self.execute_swap(agent, tkn_buy, sub_pool.unique_id, buy_quantity)
                 return self, agent
+
         elif sub_pool_buy_id and tkn_sell in self.asset_list:
             sub_pool: StableSwapPoolState = self.sub_pools[sub_pool_buy_id]
             if buy_quantity:
@@ -702,6 +758,79 @@ class OmnipoolState(AMM):
 
         return self, agent
 
+    def calculate_remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str):
+        """
+        calculated the pool and agent deltas for removing liquidity from a sub pool
+        return as a tuple in this order:
+        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
+
+        delta_qa (agent LRNA)
+        delta_r (pool liquidity)
+        delta_q (pool LRNA)
+        delta_s (pool shares)
+        delta_b (protocol shares)
+        delta_l (LRNA imbalance)
+        """
+        quantity = -abs(quantity)
+        assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
+        assert tkn_remove in self.asset_list, f"invalid token name: {tkn_remove}"
+
+        # determine if they should get some LRNA back as well as the asset they invested
+        piq = self.lrna_price(tkn_remove)
+        p0 = agent.share_prices[(self.unique_id, tkn_remove)]
+        mult = (piq - p0) / (piq + p0)
+
+        # Share update
+        delta_b = max(mult * quantity, 0)
+        delta_s = quantity + delta_b
+
+        # Token amounts update
+        delta_r = self.liquidity[tkn_remove] * max((quantity + delta_b) / self.shares[tkn_remove], -1)
+
+        if piq >= p0:  # prevents rounding errors
+            if 'LRNA' not in agent.holdings:
+                agent.holdings['LRNA'] = 0
+            delta_qa = -piq * (
+                    2 * piq / (piq + p0) * quantity / self.shares[tkn_remove]
+                    * self.liquidity[tkn_remove] - delta_r
+            )
+        else:
+            delta_qa = 0
+
+        # LRNA burn
+        delta_q = lrna_price(self, tkn_remove) * delta_r
+
+        # L update: LRNA fees to be burned before they will start to accumulate again
+        delta_l = (
+                delta_r * self.lrna[tkn_remove] / self.liquidity[tkn_remove]
+                * self.lrna_imbalance / self.lrna_total
+        )
+
+        return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
+
+    def execute_remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str):
+        """
+        Remove liquidity from a sub pool.
+        """
+        quantity = abs(quantity)
+        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self.calculate_remove_liquidity(
+            agent, quantity, tkn_remove
+        )
+        if delta_r + self.liquidity[tkn_remove] < 0:
+            return self.fail_transaction('Cannot remove more liquidity than exists in the pool.', agent)
+        elif quantity > agent.holdings[(self.unique_id, tkn_remove)]:
+            return self.fail_transaction('Cannot remove more liquidity than the agent has invested.', agent)
+
+        self.liquidity[tkn_remove] += delta_r
+        self.shares[tkn_remove] += delta_s
+        self.protocol_shares[tkn_remove] += delta_b
+        self.lrna[tkn_remove] += delta_q
+        self.lrna_imbalance += delta_l
+        agent.holdings['LRNA'] += delta_qa
+        agent.holdings[(self.unique_id, tkn_remove)] -= quantity
+        agent.holdings[tkn_remove] -= delta_r
+        return self, agent
+
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
     """Invariant for specific asset"""
@@ -884,45 +1013,8 @@ def remove_liquidity(
 
         raise AssertionError(f"invalid value for i: {tkn_remove}")
 
-    quantity = -abs(quantity)
-    assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
-    assert tkn_remove in old_state.asset_list, f"invalid token name: {tkn_remove}"
-
-    # determine if they should get some LRNA back as well as the asset they invested
-    piq = old_state.lrna_price(tkn_remove)
-    p0 = new_agent.share_prices[(new_state.unique_id, tkn_remove)]
-    mult = (piq - p0) / (piq + p0)
-
-    # Share update
-    delta_B = max(mult * quantity, 0)
-    new_state.protocol_shares[tkn_remove] += delta_B
-    new_state.shares[tkn_remove] += quantity + delta_B
-    new_agent.holdings[(new_state.unique_id, tkn_remove)] += quantity
-
-    # Token amounts update
-    delta_R = old_state.liquidity[tkn_remove] * max((quantity + delta_B) / old_state.shares[tkn_remove], -1)
-    new_state.liquidity[tkn_remove] += delta_R
-    new_agent.holdings[tkn_remove] -= delta_R
-    if piq >= p0:  # prevents rounding errors
-        if 'LRNA' not in new_agent.holdings:
-            new_agent.holdings['LRNA'] = 0
-        new_agent.holdings['LRNA'] -= piq * (
-                2 * piq / (piq + p0) * quantity / old_state.shares[tkn_remove]
-                * old_state.liquidity[tkn_remove] - delta_R
-        )
-
-    # LRNA burn
-    delta_Q = lrna_price(old_state, tkn_remove) * delta_R
-    new_state.lrna[tkn_remove] += delta_Q
-
-    # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = (
-            delta_R * old_state.lrna[tkn_remove] / old_state.liquidity[tkn_remove]
-            * old_state.lrna_imbalance / old_state.lrna_total
-    )
-    new_state.lrna_imbalance += delta_L
-
-    return new_state, new_agent
+    else:
+        return new_state.execute_remove_liquidity(new_agent, quantity, tkn_remove)
 
 
 OmnipoolState.swap = staticmethod(swap)
@@ -940,26 +1032,294 @@ def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
     return FeeMechanism(fee_function, f"Slip fee (alpha={slip_factor}, min={minimum_fee}")
 
 
-def dynamic_fee(
+def dynamic_asset_fee(
         minimum: float = 0,
-        decay: float = 0.999,
         amplification: float = 1,
-        oracle_name: str = 'long',
+        raise_oracle_name: str = 'short'
 ) -> FeeMechanism:
     def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
     ) -> float:
         if not hasattr(exchange, 'last_fee'):
             # add a bit of extra state to the exchange
-            exchange.last_fee = 0
-        last_fee = exchange.last_fee
-        oracle: Oracle = exchange.oracles[oracle_name]
-        net = (oracle.volume_in[tkn] - oracle.volume_out[tkn]) / oracle.liquidity[tkn]
-        fee = max(minimum, last_fee * (1 - decay + amplification * net ** 2 / (net + 1)))
-        exchange.last_fee = fee
+            exchange.last_fee = {tkn: 0 for tkn in exchange.asset_list}
+        # if not hasattr(exchange, 'last_mult'):
+        #     exchange.last_mult = 1
+        if not hasattr(exchange, 'temp'):
+            exchange.temp = 0
+        # last_fee = exchange.last_fee
+        # last_lrna_fee = exchange.last_lrna_fee
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+        # lower_oracle: Oracle = exchange.oracles[lower_oracle_name]
+        # net = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
+        # net_lower = (lower_oracle.volume_in[tkn] - lower_oracle.volume_out[tkn]) / lower_oracle.liquidity[tkn]
+        # net_a = amplification * net
+        # temp = amplification * abs(net) / max(net + 1, 1)
+        # temp = max(temp, -1)
+        # temp = amplification * abs(net)
+        # decay_term = decay # if net_lower == 0 else min(decay, decay / abs(net_lower))
+        # mult = max(1,  last_fee/minimum*(1 - decay_term + temp))
+
+        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+            frac = 1
+        elif raise_oracle.volume_in[tkn] == 0:
+            frac = 200
+        else:
+            frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
+        else:
+            x = 0
+
+        # with liquidity fraction
+        temp = 1 + max(frac - 1, 0) * amplification * max(x, 0)
+
+        # without liquidity fraction
+        # temp = 1 + max(frac - 1, 0) * amplification
+        # temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification
+
+        fee = min(minimum * temp, 0.5)
+        # mult_lrna = max(1, last_lrna_fee / minimum * (1 - decay_term + temp_lrna))
+        # lrna_fee = min(minimum * mult_lrna, 0.5)
+        exchange.last_fee[tkn] = fee
+        # mult = max(1, last_fee / minimum * (1 - decay_term + temp))
+        # fee = min(minimum * mult, 0.5)
+
+        # exchange.last_mult = mult
+        exchange.temp = temp
+
         return fee
 
     return FeeMechanism(
         fee_function=fee_function,
-        name=f'Dynamic fee (oracle={oracle_name}, decay={decay}, amplification={amplification}, min={minimum})'
+        name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+
+def dynamicadd_asset_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        decay: float = 0.001,
+        fee_max: float = 0.5
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_fee'):
+            # add a bit of extra state to the exchange
+            exchange.last_fee = {tkn: minimum for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+            frac = 1
+        elif raise_oracle.volume_in[tkn] == 0:
+            frac = 200
+        else:
+            frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            # x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / exchange.liquidity[tkn]
+        else:
+            x = 0
+
+        # # with liquidity fraction
+        # if x >= 0:
+        #     fee_adj = max(frac - 1, 0) * amplification * x - decay
+        # else:
+        #     fee_adj = amplification * x - decay
+
+        fee_adj = amplification * x - decay
+
+        previous_fee = exchange.last_fee[tkn]
+
+        fee = min(max(previous_fee + fee_adj, minimum), fee_max)
+        # exchange.last_mult[tkn] = mult
+        exchange.last_fee[tkn] = fee
+
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+
+def dynamicmult_asset_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        fee_max: float = 0.5,
+        decay: float = 0.001
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_fee'):
+            # add a bit of extra state to the exchange
+            exchange.last_fee = {tkn: 0 for tkn in exchange.asset_list}
+        if not hasattr(exchange, 'last_mult'):
+            # add a bit of extra state to the exchange
+            exchange.last_mult = {tkn: 1 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
+        else:
+            x = 0
+
+        if x > -1:
+            temp = amplification * x / (x + 1)
+            mult = max(1, exchange.last_mult[tkn] * (1 - decay + temp))
+        else:
+            mult = 1
+
+        fee = min(minimum * mult, fee_max)
+        exchange.last_mult[tkn] = mult
+        exchange.last_fee[tkn] = fee
+
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+
+def dynamic_lrna_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short'
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_lrna_fee'):
+            exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+            frac_lrna = 1
+        elif raise_oracle.volume_out[tkn] == 0:
+            frac_lrna = 200
+        else:
+            frac_lrna = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x_lrna = (
+                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+             ) / raise_oracle.liquidity[tkn]
+        else:
+            x_lrna = 0
+
+        # with liquidity fraction
+        temp_lrna = 1 + max(frac_lrna - 1, 0) * amplification * max(x_lrna, 0)
+
+        lrna_fee = min(minimum * temp_lrna, 0.5)
+        exchange.last_lrna_fee[tkn] = lrna_fee
+
+        return lrna_fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic LRNA fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+
+def dynamicadd_lrna_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        decay: float = 0.001,
+        fee_max: float = 0.5,
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_lrna_fee'):
+            exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+            frac = 1
+        elif raise_oracle.volume_out[tkn] == 0:
+            frac = 200
+        else:
+            frac = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            # x = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
+            x = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / exchange.liquidity[tkn]
+        else:
+            x = 0
+
+        # # with liquidity fraction
+        # if x >= 0:
+        #     fee_adj = max(frac - 1, 0) * amplification * x - decay
+        # else:
+        #     fee_adj = amplification * x - decay
+
+        fee_adj = amplification * x - decay
+
+        previous_fee = exchange.last_lrna_fee[tkn]
+
+        fee = min(max(previous_fee + fee_adj, minimum), fee_max)
+        # exchange.last_mult[tkn] = mult
+        exchange.last_lrna_fee[tkn] = fee
+
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic LRNA fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+    )
+
+
+def dynamicmult_lrna_fee(
+        minimum: float = 0,
+        amplification: float = 1,
+        raise_oracle_name: str = 'short',
+        decay: float = 0.001,
+        fee_max: float = 0.5
+) -> FeeMechanism:
+    def fee_function(
+            exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+    ) -> float:
+        if not hasattr(exchange, 'last_lrna_fee'):
+            exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
+        if not hasattr(exchange, 'last_lrna_mult'):
+            exchange.last_lrna_mult = {tkn: 1 for tkn in exchange.asset_list}
+
+        raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
+
+        if raise_oracle.liquidity[tkn] != 0:
+            x = (
+                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+             ) / raise_oracle.liquidity[tkn]
+        else:
+            x = 0
+
+        if x > -1:
+            temp = amplification * x / (x + 1)
+            mult = max(1, exchange.last_lrna_mult[tkn] * (1 - decay + temp))
+        else:
+            mult = 1
+
+        fee = min(minimum * mult, fee_max)
+        exchange.last_lrna_mult[tkn] = mult
+        exchange.last_lrna_fee[tkn] = fee
+
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name=f'Dynamic LRNA fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
     )

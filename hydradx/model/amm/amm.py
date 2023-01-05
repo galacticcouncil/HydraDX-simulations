@@ -73,21 +73,21 @@ class AMM:
         self.fail = error
         return self, agent
 
-    @staticmethod
-    def basic_fee(f: float = 0) -> FeeMechanism:
-        def fee_function(
-                exchange: AMM, tkn: str, delta_tkn: float
-        ) -> float:
-            return f
-        return FeeMechanism(fee_function, f"{f * 100}%")
-
     def __setattr__(self, key, value):
         if hasattr(self, key):
             if isinstance(self.__getattribute__(key), FeeMechanism):
                 if not isinstance(value, FeeMechanism):
-                    super().__setattr__(key, self.basic_fee(value))
+                    super().__setattr__(key, basic_fee(value))
                     return
                 else:
                     super().__setattr__(key, value.assign(self))
                     return
         super().__setattr__(key, value)
+
+
+def basic_fee(f: float = 0) -> FeeMechanism:
+    def fee_function(
+            exchange: AMM, tkn: str, delta_tkn: float
+    ) -> float:
+        return f
+    return FeeMechanism(fee_function, f"{f * 100}%")

@@ -3,60 +3,13 @@ from dataclasses import dataclass
 
 from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
 from .amm.agents import Agent
-from .amm import global_state
 
-
-# functions for calculating extra parameters we may want to track
-def value_assets(prices: dict, assets: dict) -> float:
-    """
-    return the value of the agent's assets if they were sold at current spot prices
-    """
-    return sum([
-        assets[i] * prices[i] if i in prices else 0
-        for i in assets.keys()
-    ])
-
-
-def market_prices(state: GlobalState, shares: dict) -> dict:
-    """
-    return the market price of each asset in state.asset_list, as well as the price of each asset in shares
-    """
-    prices = {tkn: state.price(tkn) for tkn in state.asset_list}
-    for share_id in shares:
-        # if shares are for a specific asset in a specific pool, get prices according to that pool
-        if isinstance(share_id, tuple):
-            pool_id = share_id[0]
-            tkn_id = share_id[1]
-            prices[share_id] = state.pools[pool_id].usd_price(tkn_id)
-
-    return prices
-
-
-def cash_out(state: GlobalState, agent: Agent) -> float:
-    """
-    return the value of the agent's holdings if they withdraw all liquidity
-    and then sell at current spot prices
-    """
-    new_agent = withdraw_all_liquidity(state, agent.unique_id).agents[agent.unique_id]
-    prices = market_prices(state, agent.holdings)
-    return value_assets(prices, new_agent.holdings)
-
-
-def pool_val(state: GlobalState, pool: AMM):
-    """ get the total value of all liquidity in the pool. """
-    total = 0
-    for asset in pool.asset_list:
-        total += pool.liquidity[asset] * state.price(asset)
-    return total
-
-
-def impermanent_loss(state: GlobalState, agent_id: str) -> float:
-    return cash_out(  # withdraw_val
-        state, state.agents[agent_id]
-    ) / value_assets(  # deposit_val
-        market_prices(state, state.agents[agent_id].initial_holdings),
-        state.agents[agent_id].initial_holdings
-    ) - 1
+cash_out = GlobalState.cash_out
+value_assets = GlobalState.value_assets
+impermanent_loss = GlobalState.impermanent_loss
+pool_val = GlobalState.pool_val
+deposit_val = GlobalState.deposit_val
+market_prices = GlobalState.market_prices
 
 
 def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:
@@ -112,7 +65,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
 
         for pool in state.pools.values():
             if 'pool_val' in optional_params:
-                pool.pool_val = pool_val(state, pool)
+                pool.pool_val = state.pool_val(pool)
             # if 'usd_price' in optional_params:
             #     pool.usd_price = {tkn: pool.price(tkn) for tkn in pool.asset_list}
 
@@ -120,13 +73,13 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
         for agent in state.agents.values():
             if 'deposit_val' in optional_params:
                 # what are this agent's original holdings theoretically worth at current spot prices?
-                agent.deposit_val = value_assets(
-                    market_prices(state, agent.holdings),
+                agent.deposit_val = state.value_assets(
+                    state.market_prices(agent.holdings),
                     withdraw_state.agents[agent.unique_id].holdings
                 )
             if 'withdraw_val' in optional_params:
                 # what are this agent's holdings worth if sold?
-                agent.withdraw_val = cash_out(state, agent)
+                agent.withdraw_val = state.cash_out(agent)
             if 'holdings_val' in optional_params:
                 agent.holdings_val = sum([quantity * state.price(asset) for asset, quantity in agent.holdings.items()])
             if 'impermanent_loss' in optional_params:
