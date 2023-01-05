@@ -537,4 +537,3 @@ def test_omnipool_arbitrage():
         raise ValueError(f'Arbitrageur lost {profit} USD')
     # pu.plot(events, pool='Omnipool', prop='liquidity')
     # er = 1
-    raise ValueError(f'Just throwing this in here to make it fail')
