@@ -1,9 +1,12 @@
+import copy
 import math
+from pprint import pprint
+
+from . import omnipool_amm
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
 from .omnipool_amm import OmnipoolState
-from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
 import random
@@ -112,9 +115,9 @@ def back_and_forth(
             asset = omnipool.asset_list[i]
             dr = percentage / 2 * omnipool.liquidity[asset]
             lrna_init = state.agents[agent_id].holdings['LRNA']
-            oamm.execute_swap(omnipool, agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
+            omnipool.execute_swap(agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
             dq = state.agents[agent_id].holdings['LRNA'] - lrna_init
-            oamm.execute_swap(omnipool, agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq, modify_imbalance=False)
+            omnipool.execute_swap(agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq, modify_imbalance=False)
 
         return state
 
@@ -317,7 +320,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str, skip_assets=None):
+def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
     if skip_assets is None:
         skip_assets = []
 
@@ -373,7 +376,7 @@ def omnipool_arbitrage(pool_id: str, skip_assets=None):
                 continue
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
-            reserves.append(omnipool.liquidity[asset])
+            reserves.append(omnipool.liquidity_online(asset))
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
             asset_list.append(asset)
@@ -386,25 +389,23 @@ def omnipool_arbitrage(pool_id: str, skip_assets=None):
         agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
-        temp_omnipool = omnipool.copy()
-        temp_agent = agent.copy()
-        for i in range(len(prices)):
-            asset = asset_list[i]
-            if dr[i] > 0:
-                oamm.execute_swap(
-                    state=temp_omnipool, agent=temp_agent,
-                    tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult, modify_imbalance=False
-                )
-            else:
-                oamm.execute_swap(
-                    state=temp_omnipool, agent=temp_agent,
-                    tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult, modify_imbalance=False
-                )
-        if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
-            state.pools[pool_id] = temp_omnipool
-            state.agents[agent_id] = temp_agent
-        else:
-            pass
+        for scale_int in range(1,arb_attempts + 1):
+            temp_omnipool = omnipool.copy()
+            temp_agent = agent.copy()
+            for i in range(len(prices)):
+                asset = asset_list[i]
+                if dr[i] > 0:
+                    temp_omnipool.execute_swap(
+                        temp_agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult / scale_int, modify_imbalance=False
+                    )
+                else:
+                    temp_omnipool.execute_swap(
+                        temp_agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult / scale_int, modify_imbalance=False
+                    )
+            if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
+                state.pools[pool_id] = temp_omnipool
+                state.agents[agent_id] = temp_agent
+                break
         return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
