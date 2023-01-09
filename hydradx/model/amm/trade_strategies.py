@@ -369,17 +369,40 @@ def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
         asset_list = []
         usd_index = -1
         skip_ct = 0
+
+        for i in range(len(omnipool.asset_list)):
+            if omnipool.asset_list[i] == omnipool.stablecoin:
+                usd_index = i
+                break
+
+
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
+
             if asset in skip_assets:  # we may not want to arb all assets
                 skip_ct += 1
+                if i < usd_index:
+                    usd_index -= 1
                 continue
-            if asset == omnipool.stablecoin:
-                usd_index = i - skip_ct
+
+            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset, delta_tkn=0)
+            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset, delta_tkn=0)
+            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin, delta_tkn=0)
+            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin, delta_tkn=0)
+            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(asset)
+            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(asset)
+
+            if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+                skip_ct += 1
+                if i < usd_index:
+                    usd_index -= 1
+                continue
+
             reserves.append(omnipool.liquidity_online(asset))
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
             asset_list.append(asset)
+
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         size_mult = 1
         for i in range(len(prices)):
@@ -389,22 +412,23 @@ def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
         agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
-        for scale_int in range(1,arb_attempts + 1):
+        for j in range(arb_attempts):
             temp_omnipool = omnipool.copy()
             temp_agent = agent.copy()
             for i in range(len(prices)):
                 asset = asset_list[i]
                 if dr[i] > 0:
                     temp_omnipool.execute_swap(
-                        temp_agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult / scale_int, modify_imbalance=False
+                        temp_agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult / arb_attempts, modify_imbalance=False
                     )
                 else:
                     temp_omnipool.execute_swap(
-                        temp_agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult / scale_int, modify_imbalance=False
+                        temp_agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult / arb_attempts, modify_imbalance=False
                     )
             if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
                 state.pools[pool_id] = temp_omnipool
                 state.agents[agent_id] = temp_agent
+            else:
                 break
         return state
 
