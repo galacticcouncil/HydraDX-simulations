@@ -375,7 +375,6 @@ def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
                 usd_index = i
                 break
 
-
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
 
@@ -385,10 +384,10 @@ def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
                     usd_index -= 1
                 continue
 
-            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset, delta_tkn=0)
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset, delta_tkn=0)
-            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin, delta_tkn=0)
-            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin, delta_tkn=0)
+            asset_fee = omnipool.asset_fee[asset].compute()
+            asset_LRNA_fee = omnipool.lrna_fee[asset].compute()
+            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute()
+            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute()
             low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(asset)
             high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(asset)
 
@@ -419,17 +418,19 @@ def omnipool_arbitrage(pool_id: str, arb_attempts=1, skip_assets=None):
                 asset = asset_list[i]
                 if dr[i] > 0:
                     temp_omnipool.execute_swap(
-                        temp_agent, tkn_sell=asset, tkn_buy='LRNA', buy_quantity=-dq[i] * size_mult / arb_attempts, modify_imbalance=False
+                        agent=temp_agent, tkn_sell=asset, tkn_buy='LRNA',
+                        buy_quantity=-dq[i] * size_mult / arb_attempts, modify_imbalance=False
                     )
                 else:
                     temp_omnipool.execute_swap(
-                        temp_agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq[i] * size_mult / arb_attempts, modify_imbalance=False
+                        agent=temp_agent, tkn_sell='LRNA', tkn_buy=asset,
+                        sell_quantity=dq[i] * size_mult / arb_attempts, modify_imbalance=False
                     )
             if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
                 state.pools[pool_id] = temp_omnipool
                 state.agents[agent_id] = temp_agent
-            else:
                 break
+
         return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
