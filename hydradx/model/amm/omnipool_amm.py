@@ -111,17 +111,17 @@ class OmnipoolState(AMM):
                     (
                         value[tkn].assign(self)
                         if isinstance(fee, FeeMechanism)
-                        else basic_fee(fee[tkn]).assign(self)
+                        else basic_fee(fee[tkn]).assign(self, tkn)
                     )
-                    if tkn in value else basic_fee(0).assign(self)
+                    if tkn in value else basic_fee(0).assign(self, tkn)
                 )
                 for tkn, fee in value.items()
             }
             if isinstance(value, dict)
             else (
-                {tkn: value.assign(self) for tkn in self.asset_list}
+                {tkn: value.assign(self, tkn) for tkn in self.asset_list}
                 if isinstance(value, FeeMechanism)
-                else {tkn: basic_fee(value).assign(self) for tkn in self.asset_list}
+                else {tkn: basic_fee(value).assign(self, tkn) for tkn in self.asset_list}
             )
         )
 
