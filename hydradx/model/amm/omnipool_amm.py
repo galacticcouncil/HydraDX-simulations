@@ -1121,7 +1121,8 @@ def dynamicadd_asset_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
-        fee_adj = amplification * max(x,0) - decay
+        # fee_adj = amplification * max(x,0) - decay
+        fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_fee[tkn]
 
@@ -1255,7 +1256,8 @@ def dynamicadd_lrna_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
-        fee_adj = amplification * max(x,0) - decay
+        # fee_adj = amplification * max(x,0) - decay
+        fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_lrna_fee[tkn]
 
