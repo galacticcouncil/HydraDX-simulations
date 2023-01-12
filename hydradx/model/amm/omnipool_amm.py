@@ -109,7 +109,7 @@ class OmnipoolState(AMM):
                 # if a dict of fees is assigned, but not all tokens are included, default to 0
                 tkn: (
                     (
-                        value[tkn].assign(self)
+                        value[tkn].assign(self, tkn)
                         if isinstance(fee, FeeMechanism)
                         else basic_fee(fee[tkn]).assign(self, tkn)
                     )
