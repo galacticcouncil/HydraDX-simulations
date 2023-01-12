@@ -5,6 +5,7 @@ from hypothesis import given, strategies as st, assume
 from mpmath import mpf, mp
 
 from hydradx.model.amm import omnipool_amm as oamm
+from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 
@@ -81,7 +82,8 @@ def omnipool_config(
     )
 
     for name, pool in sub_pool_instances.items():
-        test_state.execute_create_sub_pool(
+        oamm.execute_create_sub_pool(
+            state=test_state,
             tkns_migrate=pool.asset_list,
             sub_pool_id=name,
             amplification=pool.amplification,
@@ -989,7 +991,9 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
         old_agent=initial_agent,
         quantity=100, tkn_add='DAI'
     )
-    migrated_state, migrated_lp = lp_state.copy().execute_migrate_asset('DAI', 'stableswap').execute_migrate_lp(
+    temp_state = oamm.execute_migrate_asset(lp_state.copy(), 'DAI', 'stableswap')
+    migrated_state, migrated_lp = oamm.execute_migrate_lp(
+        state=temp_state,
         agent=lp.copy(),
         sub_pool_id='stableswap',
         tkn_migrate='DAI'
@@ -1047,12 +1051,14 @@ def test_migration_scenarios(initial_state: oamm.OmnipoolState):
     r1 = s1_lp.holdings[asset1]
 
     # scenario 2: migrate assets to subpool, then withdraw an equal percentage of each
-    migrate_state, migrate_lp = initial_state.copy().execute_create_sub_pool(
+    migrate_state = oamm.execute_create_sub_pool(
+        state=initial_state.copy(),
         tkns_migrate=[asset1, asset2, asset3],
         sub_pool_id='stableswap',
         amplification=10
-    ).update(
-    ).execute_migrate_lp(
+    ).update()
+    migrate_state, migrate_lp = oamm.execute_migrate_lp(
+        state=migrate_state,
         agent=initial_lp.copy(),
         sub_pool_id='stableswap',
         tkn_migrate=asset1
@@ -1077,7 +1083,8 @@ def test_migration_scenarios(initial_state: oamm.OmnipoolState):
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset2, asset3]:
-        s3_sub_pool.execute_swap(
+        stableswap.execute_swap(
+            state=s3_sub_pool,
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset1,
@@ -1135,11 +1142,13 @@ def test_migration_scenarios(initial_state: oamm.OmnipoolState):
     q1 = s1_lp.holdings['LRNA']
     r1 = s1_lp.holdings[asset4]
 
-    migrate_state, migrate_lp = lp_state.copy().execute_migrate_asset(
+    migrate_state = oamm.execute_migrate_asset(
+        state=lp_state.copy(),
         tkn_migrate=asset4,
         sub_pool_id='stableswap'
-    ).update(
-    ).execute_migrate_lp(
+    ).update()
+    migrate_state, migrate_lp = oamm.execute_migrate_lp(
+        state=migrate_state,
         agent=invested_lp.copy(),
         sub_pool_id='stableswap',
         tkn_migrate=asset4
@@ -1163,7 +1172,8 @@ def test_migration_scenarios(initial_state: oamm.OmnipoolState):
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset1, asset2, asset3]:
-        s3_sub_pool.execute_swap(
+        stableswap.execute_swap(
+            state=s3_sub_pool,
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset4,
@@ -1333,7 +1343,8 @@ def test_dynamic_fees(agent_wealth: float, hdx_price: float):
         holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
     )
     test_state = initial_state.copy()
-    test_state.execute_swap(
+    oamm.execute_swap(
+        state=test_state,
         agent=test_agent,
         tkn_sell='USD',
         tkn_buy='HDX',
