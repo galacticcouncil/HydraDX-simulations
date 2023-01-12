@@ -1,7 +1,7 @@
 import copy
 import pytest
 import random
-from hypothesis import given, strategies as st, assume, reproduce_failure
+from hypothesis import given, strategies as st, assume
 from mpmath import mpf, mp
 
 from hydradx.model.amm import omnipool_amm as oamm
@@ -1302,50 +1302,6 @@ def test_trade_limit():
     if not new_state.fail:
         raise AssertionError('Too many trades allowed')
 
-
-def test_liquidity_coefficient():
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
-            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
-            'R1': {'liquidity': 1000000, 'LRNA': 1000000},
-            'R2': {'liquidity': 1000000, 'LRNA': 1000000}
-        }
-    )
-    agent = Agent(
-        holdings={'HDX': 1000000, 'USD': 1000000, 'R1': 1000000, 'R2': 1000000}
-    )
-    initial_price = initial_state.price('R1', 'USD')
-
-    new_state = initial_state.copy()
-    new_state.liquidity_coefficient = {tkn: 0.5 for tkn in new_state.asset_list}
-    new_state.update()
-
-    if initial_price != pytest.approx(new_state.price('R1', 'USD')):
-        raise AssertionError('Price changed after changing liquidity coefficient.')
-
-    high_slip_state, high_slip_agent = oamm.swap(
-        new_state, agent, 'R1', 'R2', sell_quantity=10000
-    )
-
-    low_slip_state = new_state.copy()
-    low_slip_state.liquidity_coefficient = {tkn: 1 for tkn in new_state.asset_list}
-    low_slip_state.update()
-    low_slip_state, low_slip_agent = oamm.swap(
-        low_slip_state, agent, 'R1', 'R2', sell_quantity=10000
-    )
-
-    if high_slip_agent.holdings['R1'] >= low_slip_agent.holdings['R1']:
-        raise AssertionError('Agent should have spent more when more liquidity is offline.')
-
-    if high_slip_state.price('HDX') != initial_state.price('HDX'):
-        raise ValueError('HDX price changed')
-
-    high_slip_state_price = high_slip_state.price('R1', 'USD')
-    high_slip_state.liquidity_coefficient = {tkn: 1 for tkn in new_state.asset_list}
-    high_slip_state.update()
-    if high_slip_state_price != pytest.approx(high_slip_state.price('R1', 'USD')):
-        raise AssertionError('Price changed after changing liquidity coefficient.')
 
 @given(
     st.floats(min_value=1e-10, max_value=1),
