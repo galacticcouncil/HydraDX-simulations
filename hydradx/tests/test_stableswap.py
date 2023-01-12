@@ -114,8 +114,8 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         initial_pool, initial_agent, delta_shares, tkn_remove
     )
     delta_tkn = withdraw_shares_agent.holdings[tkn_remove] - initial_agent.holdings[tkn_remove]
-    withdraw_asset_pool, withdraw_asset_agent = initial_pool.copy().execute_withdraw_asset(
-        initial_agent.copy(), delta_tkn, tkn_remove
+    withdraw_asset_pool, withdraw_asset_agent = stableswap.execute_withdraw_asset(
+        initial_pool.copy(), initial_agent.copy(), delta_tkn, tkn_remove
     )
     if (
         withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
@@ -140,8 +140,8 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
-    buy_shares_pool, buy_shares_agent = initial_pool.copy().execute_buy_shares(
-        initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
+    buy_shares_pool, buy_shares_agent = stableswap.execute_buy_shares(
+        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
     )
 
     if (
