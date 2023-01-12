@@ -489,10 +489,8 @@ class OmnipoolState(AMM):
         self.lrna[tkn] += delta_qi
         self.liquidity[tkn] += delta_ri
         if modify_imbalance:
-            self.lrna_imbalance = (
-                    self.lrna_total * self.liquidity[tkn] / self.lrna[tkn]
-                    * old_lrna / old_liquidity
-                    * (1 + l / q) - self.lrna_total
+            self.lrna_imbalance += (
+                - delta_qi * (q + l) / (q + delta_qi) - delta_qi
             )
         elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
             lrna_fee_amt = -(delta_qa + delta_qi)
