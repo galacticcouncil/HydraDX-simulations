@@ -469,6 +469,23 @@ def execute_lrna_swap(
         delta_l = min(-l, lrna_fee_amt)
         state.lrna_imbalance += delta_l
         state.lrna["HDX"] += lrna_fee_amt - delta_l
+        agent.holdings['LRNA'] += delta_qa
+        agent.holdings[tkn] += delta_ra
+        old_lrna = self.lrna[tkn]
+        old_liquidity = self.liquidity[tkn]
+        l = self.lrna_imbalance
+        q = self.lrna_total
+        self.lrna[tkn] += delta_qi
+        self.liquidity[tkn] += delta_ri
+        if modify_imbalance:
+            self.lrna_imbalance += (
+                - delta_qi * (q + l) / (q + delta_qi) - delta_qi
+            )
+        elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
+            lrna_fee_amt = -(delta_qa + delta_qi)
+            delta_l = min(-l, lrna_fee_amt)
+            self.lrna_imbalance += delta_l
+            self.lrna["HDX"] += lrna_fee_amt - delta_l
 
     return state, agent
 
@@ -1121,7 +1138,6 @@ def dynamicadd_asset_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
-        # fee_adj = amplification * max(x,0) - decay
         fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_fee[tkn]
@@ -1202,9 +1218,9 @@ def dynamic_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x_lrna = (
-                             raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                             - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-                     ) / raise_oracle.liquidity[tkn]
+                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+             ) / raise_oracle.liquidity[tkn]
         else:
             x_lrna = 0
 
@@ -1256,7 +1272,6 @@ def dynamicadd_lrna_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
-        # fee_adj = amplification * max(x,0) - decay
         fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_lrna_fee[tkn]
@@ -1292,9 +1307,9 @@ def dynamicmult_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x = (
-                        raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                        - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-                ) / raise_oracle.liquidity[tkn]
+                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+             ) / raise_oracle.liquidity[tkn]
         else:
             x = 0
 
