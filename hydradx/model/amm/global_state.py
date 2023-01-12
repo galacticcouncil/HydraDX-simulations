@@ -3,7 +3,7 @@ import copy
 import random
 from .amm import AMM, FeeMechanism
 from typing import Callable
-from .omnipool_amm import OmnipoolState
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 
 class GlobalState:
@@ -107,14 +107,17 @@ class GlobalState:
             tkn_sell: str,
             tkn_buy: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0
+            sell_quantity: float = 0,
+            **kwargs
     ):
         self.pools[pool_id].execute_swap(
+            state=self.pools[pool_id],
             agent=self.agents[agent_id],
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
             buy_quantity=buy_quantity,
-            sell_quantity=sell_quantity
+            sell_quantity=sell_quantity,
+            **kwargs  # pass any additional arguments to the pool
         )
         return self
 
@@ -163,7 +166,8 @@ class GlobalState:
                     if 'LRNA' not in withdraw_holdings:
                         withdraw_holdings['LRNA'] = 0
                     delta_qa, delta_r, delta_q,\
-                        delta_s, delta_b, delta_l = self.pools[pool_id].calculate_remove_liquidity(
+                        delta_s, delta_b, delta_l = calculate_remove_liquidity(
+                            self.pools[pool_id],
                             agent,
                             agent.holdings[key],
                             tkn_remove=tkn
@@ -319,7 +323,8 @@ def swap(
     tkn_sell: str,
     tkn_buy: str,
     buy_quantity: float = 0,
-    sell_quantity: float = 0
+    sell_quantity: float = 0,
+    **kwargs
 ) -> GlobalState:
     """
     copy state, execute swap, return swapped state
@@ -330,7 +335,8 @@ def swap(
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity,
-        sell_quantity=sell_quantity
+        sell_quantity=sell_quantity,
+        **kwargs  # pass through any extra arguments
     )
 
 
