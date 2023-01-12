@@ -111,17 +111,17 @@ class OmnipoolState(AMM):
                     (
                         value[tkn].assign(self)
                         if isinstance(fee, FeeMechanism)
-                        else basic_fee(fee[tkn]).assign(self)
+                        else basic_fee(fee[tkn]).assign(self, tkn)
                     )
-                    if tkn in value else basic_fee(0).assign(self)
+                    if tkn in value else basic_fee(0).assign(self, tkn)
                 )
                 for tkn, fee in value.items()
             }
             if isinstance(value, dict)
             else (
-                {tkn: value.assign(self) for tkn in self.asset_list}
+                {tkn: value.assign(self, tkn) for tkn in self.asset_list}
                 if isinstance(value, FeeMechanism)
-                else {tkn: basic_fee(value).assign(self) for tkn in self.asset_list}
+                else {tkn: basic_fee(value).assign(self, tkn) for tkn in self.asset_list}
             )
         )
 
@@ -1121,6 +1121,7 @@ def dynamicadd_asset_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
+        # fee_adj = amplification * max(x,0) - decay
         fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_fee[tkn]
@@ -1255,6 +1256,7 @@ def dynamicadd_lrna_fee(
         # else:
         #     fee_adj = amplification * x - decay
 
+        # fee_adj = amplification * max(x,0) - decay
         fee_adj = amplification * x - decay
 
         previous_fee = exchange.last_lrna_fee[tkn]
