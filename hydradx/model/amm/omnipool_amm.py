@@ -459,10 +459,8 @@ def execute_lrna_swap(
     state.lrna[tkn] += delta_qi
     state.liquidity[tkn] += delta_ri
     if modify_imbalance:
-        state.lrna_imbalance = (
-                state.lrna_total * state.liquidity[tkn] / state.lrna[tkn]
-                * old_lrna / old_liquidity
-                * (1 + l / q) - state.lrna_total
+        state.lrna_imbalance += (
+                - delta_qi * (q + l) / (q + delta_qi) - delta_qi
         )
     elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
         lrna_fee_amt = -(delta_qa + delta_qi)
@@ -471,21 +469,9 @@ def execute_lrna_swap(
         state.lrna["HDX"] += lrna_fee_amt - delta_l
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[tkn] += delta_ra
-        old_lrna = self.lrna[tkn]
-        old_liquidity = self.liquidity[tkn]
-        l = self.lrna_imbalance
-        q = self.lrna_total
-        self.lrna[tkn] += delta_qi
-        self.liquidity[tkn] += delta_ri
-        if modify_imbalance:
-            self.lrna_imbalance += (
-                - delta_qi * (q + l) / (q + delta_qi) - delta_qi
-            )
-        elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
-            lrna_fee_amt = -(delta_qa + delta_qi)
-            delta_l = min(-l, lrna_fee_amt)
-            self.lrna_imbalance += delta_l
-            self.lrna["HDX"] += lrna_fee_amt - delta_l
+        q = state.lrna_total
+        state.lrna[tkn] += delta_qi
+        state.liquidity[tkn] += delta_ri
 
     return state, agent
 
