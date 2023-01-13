@@ -405,9 +405,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
+        temp_omnipool = omnipool.copy()
+        temp_agent = agent.copy()
+
         for j in range(arb_precision):
-            temp_omnipool = omnipool.copy()
-            temp_agent = agent.copy()
             for i in range(len(prices)):
                 asset = asset_list[i]
                 if dr[i] > 0:
