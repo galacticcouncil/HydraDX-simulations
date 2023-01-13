@@ -467,11 +467,6 @@ def execute_lrna_swap(
         delta_l = min(-l, lrna_fee_amt)
         state.lrna_imbalance += delta_l
         state.lrna["HDX"] += lrna_fee_amt - delta_l
-        agent.holdings['LRNA'] += delta_qa
-        agent.holdings[tkn] += delta_ra
-        q = state.lrna_total
-        state.lrna[tkn] += delta_qi
-        state.liquidity[tkn] += delta_ri
 
     return state, agent
 
@@ -762,6 +757,9 @@ def calculate_remove_liquidity(state: OmnipoolState, agent: Agent, quantity: flo
     quantity = -abs(quantity)
     assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
     assert tkn_remove in state.asset_list, f"invalid token name: {tkn_remove}"
+
+    if (state.unique_id, tkn_remove) not in agent.share_prices:
+        return 0, 0, 0, 0, 0, 0
 
     # determine if they should get some LRNA back as well as the asset they invested
     piq = state.lrna_price(tkn_remove)
