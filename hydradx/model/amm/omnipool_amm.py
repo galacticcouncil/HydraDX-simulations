@@ -797,10 +797,104 @@ def calculate_remove_liquidity(state: OmnipoolState, agent: Agent, quantity: flo
     return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
 
 
+def execute_add_liquidity(
+        state: OmnipoolState,
+        agent: Agent = None,
+        quantity: float = 0,
+        tkn_add: str = ''
+) -> tuple[OmnipoolState, Agent]:
+    """Compute new state after liquidity addition"""
+
+    delta_Q = lrna_price(state, tkn_add) * quantity
+    if not (state.unique_id, tkn_add) in agent.holdings:
+        agent.holdings[(state.unique_id, tkn_add)] = 0
+
+    quantity = quantity or state.trade_limit_per_block * state.liquidity[tkn_add]
+    if agent.holdings[tkn_add] < quantity:
+        return state.fail_transaction(f'Agent has insufficient funds ({agent.holdings[tkn_add]} < {quantity}).', agent)
+
+    if (state.lrna[tkn_add] + delta_Q) / (state.lrna_total + delta_Q) > state.weight_cap[tkn_add]:
+        return state.fail_transaction(
+            'Transaction rejected because it would exceed the weight cap in pool[{i}].', agent
+        )
+
+    if (state.total_value_locked + quantity * state.usd_price(tkn_add)) > state.tvl_cap:
+        return state.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
+
+    if (state.liquidity[tkn_add] + quantity) > 10 ** 12:
+        # TODO: this may not actually exist as part of the protocol
+        return state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
+
+    # assert quantity > 0, f"delta_R must be positive: {quantity}"
+    if tkn_add not in state.asset_list:
+        for sub_pool in state.sub_pools.values():
+            if tkn_add in sub_pool.asset_list:
+                old_agent_holdings = agent.holdings[sub_pool.unique_id] if sub_pool.unique_id in agent.holdings else 0
+                stableswap.execute_add_liquidity(
+                    state=sub_pool,
+                    agent=agent,
+                    quantity=quantity,
+                    tkn_add=tkn_add
+                )
+                # deposit into the Omnipool
+                return execute_add_liquidity(
+                    state, agent,
+                    quantity=agent.holdings[sub_pool.unique_id] - old_agent_holdings,
+                    tkn_add=sub_pool.unique_id
+                )
+        raise AssertionError(f"invalid value for i: {tkn_add}")
+
+    # Share update
+    if state.shares[tkn_add]:
+        shares_added = ((state.liquidity[tkn_add] + quantity) / state.liquidity[tkn_add] - 1) * state.shares[tkn_add]
+    else:
+        shares_added = quantity
+    state.shares[tkn_add] += shares_added
+
+    # shares go to provisioning agent
+    agent.holdings[(state.unique_id, tkn_add)] += shares_added
+
+    # L update: LRNA fees to be burned before they will start to accumulate again
+    delta_L = (
+            quantity * state.lrna[tkn_add] / state.liquidity[tkn_add]
+            * state.lrna_imbalance / state.lrna_total
+    )
+    state.lrna_imbalance += delta_L
+
+    # LRNA add (mint)
+    state.lrna[tkn_add] += delta_Q
+
+    # Token amounts update
+    state.liquidity[tkn_add] += quantity
+    agent.holdings[tkn_add] -= quantity
+
+    # set price at which liquidity was added
+    agent.share_prices[(state.unique_id, tkn_add)] = state.lrna_price(tkn_add)
+
+    return state, agent
+
+
 def execute_remove_liquidity(state: OmnipoolState, agent: Agent, quantity: float, tkn_remove: str):
     """
     Remove liquidity from a sub pool.
     """
+
+    if quantity == 0:
+        return state, agent
+
+    if tkn_remove not in state.asset_list:
+        for sub_pool in state.sub_pools.values():
+            if tkn_remove in sub_pool.asset_list:
+                stableswap.execute_remove_liquidity(
+                    sub_pool, agent, quantity, tkn_remove
+                )
+                if sub_pool.fail:
+                    return state.fail_transaction(sub_pool.fail, agent)
+                else:
+                    return state, agent
+
+        raise AssertionError(f"invalid value for i: {tkn_remove}")
+
     quantity = abs(quantity)
     delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = calculate_remove_liquidity(
         state, agent, quantity, tkn_remove
@@ -897,86 +991,15 @@ def migrate(
 
 def add_liquidity(
         old_state: OmnipoolState,
-        old_agent: Agent = None,
+        old_agent: Agent,
         quantity: float = 0,
         tkn_add: str = ''
 ) -> tuple[OmnipoolState, Agent]:
-    """Compute new state after liquidity addition"""
-
+    """Copy state, then added liquidity and return new state"""
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    quantity = quantity or old_state.trade_limit_per_block * old_state.liquidity[tkn_add]
-
-    # assert quantity > 0, f"delta_R must be positive: {quantity}"
-    if tkn_add not in old_state.asset_list:
-        for sub_pool in new_state.sub_pools.values():
-            if tkn_add in sub_pool.asset_list:
-                stableswap.execute_add_liquidity(
-                    state=sub_pool,
-                    agent=new_agent,
-                    quantity=quantity,
-                    tkn_add=tkn_add
-                )
-            # deposit into the Omnipool
-            return add_liquidity(
-                new_state, new_agent,
-                quantity=(new_agent.holdings[sub_pool.unique_id] -
-                          (old_agent.holdings[sub_pool.unique_id] if sub_pool.unique_id in old_agent.holdings else 0)),
-                tkn_add=sub_pool.unique_id
-            )
-        raise AssertionError(f"invalid value for i: {tkn_add}")
-
-    # Token amounts update
-    new_state.liquidity[tkn_add] += quantity
-
-    if old_agent:
-        new_agent.holdings[tkn_add] -= quantity
-        if new_agent.holdings[tkn_add] < 0:
-            return old_state.fail_transaction('Transaction rejected because agent has insufficient funds.', old_agent)
-
-    # Share update
-    if new_state.shares[tkn_add]:
-        new_state.shares[tkn_add] *= new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add]
-    else:
-        new_state.shares[tkn_add] = new_state.liquidity[tkn_add]
-
-    if old_agent:
-        # shares go to provisioning agent
-        if not (new_state.unique_id, tkn_add) in new_agent.holdings:
-            new_agent.holdings[(new_state.unique_id, tkn_add)] = 0
-        new_agent.holdings[(new_state.unique_id, tkn_add)] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
-    else:
-        # shares go to protocol
-        new_state.protocol_shares[tkn_add] += new_state.shares[tkn_add] - old_state.shares[tkn_add]
-
-    # LRNA add (mint)
-    delta_Q = lrna_price(old_state, tkn_add) * quantity
-    new_state.lrna[tkn_add] += delta_Q
-
-    # L update: LRNA fees to be burned before they will start to accumulate again
-    delta_L = (
-            quantity * old_state.lrna[tkn_add] / old_state.liquidity[tkn_add]
-            * old_state.lrna_imbalance / old_state.lrna_total
-    )
-    new_state.lrna_imbalance += delta_L
-
-    if new_state.lrna[tkn_add] / new_state.lrna_total > new_state.weight_cap[tkn_add]:
-        return old_state.fail_transaction(
-            'Transaction rejected because it would exceed the weight cap in pool[{i}].', old_agent
-        )
-
-    if new_state.total_value_locked > new_state.tvl_cap:
-        return old_state.fail_transaction('Transaction rejected because it would exceed the TVL cap.', old_agent)
-
-    if new_state.liquidity[tkn_add] > 10 ** 12:
-        return old_state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', old_agent)
-
-    # set price at which liquidity was added
-    if old_agent:
-        new_agent.share_prices[(new_state.unique_id, tkn_add)] = new_state.lrna_price(tkn_add)
-
-    return new_state, new_agent
+    return execute_add_liquidity(new_state, new_agent, quantity, tkn_add)
 
 
 def remove_liquidity(
@@ -989,28 +1012,13 @@ def remove_liquidity(
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    if quantity == 0:
-        return new_state, new_agent
-
-    if tkn_remove not in new_state.asset_list:
-        for sub_pool in new_state.sub_pools.values():
-            if tkn_remove in sub_pool.asset_list:
-                stableswap.execute_remove_liquidity(
-                    sub_pool, new_agent, quantity, tkn_remove
-                )
-                if sub_pool.fail:
-                    return old_state.fail_transaction(sub_pool.fail, old_agent)
-                return new_state, new_agent
-
-        raise AssertionError(f"invalid value for i: {tkn_remove}")
-
-    else:
-        return execute_remove_liquidity(new_state, new_agent, quantity, tkn_remove)
+    return execute_remove_liquidity(new_state, new_agent, quantity, tkn_remove)
 
 
 OmnipoolState.swap = staticmethod(swap)
 OmnipoolState.execute_swap = staticmethod(execute_swap)
 OmnipoolState.add_liquidity = staticmethod(add_liquidity)
+OmnipoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
 OmnipoolState.remove_liquidity = staticmethod(remove_liquidity)
 
 
