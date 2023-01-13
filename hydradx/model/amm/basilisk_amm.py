@@ -134,36 +134,53 @@ def execute_swap(
     return state, agent
 
 
-def add_liquidity(
-        old_state: ConstantProductPoolState,
-        old_agent: Agent,
+def execute_add_liquidity(
+        state: ConstantProductPoolState,
+        agent: Agent,
         quantity: float,
         tkn_add: str
 ) -> tuple[ConstantProductPoolState, Agent]:
-    new_agent = old_agent.copy()
-    new_state = old_state.copy()
+    if state.unique_id not in agent.holdings:
+        agent.holdings[state.unique_id] = 0
 
-    if new_state.unique_id not in new_agent.holdings:
-        new_agent.holdings[new_state.unique_id] = 0
+    delta_r = {}
+    for tkn in state.asset_list:
+        delta_r[tkn] = quantity * state.liquidity[tkn] / state.liquidity[tkn_add]
 
-    for token in old_state.asset_list:
-        delta_r = quantity * old_state.liquidity[token] / old_state.liquidity[tkn_add]
-        new_agent.holdings[token] -= delta_r
-        new_state.liquidity[token] += delta_r
-
-        if new_agent.holdings[token] < 0:
+        if agent.holdings[tkn] - delta_r[tkn] < 0:
             # fail
-            return old_state.fail_transaction('Agent has insufficient funds.', old_agent)
+            return state.fail_transaction(f'Agent has insufficient funds ({tkn}).', agent)
 
-    new_shares = (new_state.liquidity[tkn_add] / old_state.liquidity[tkn_add] - 1) * old_state.shares
-    new_state.shares += new_shares
+    for tkn in state.asset_list:
+        agent.holdings[tkn] -= delta_r[tkn]
+        state.liquidity[tkn] += delta_r[tkn]
 
-    new_agent.holdings[new_state.unique_id] += new_shares
-    if new_agent.holdings[new_state.unique_id] > 0:
-        new_agent.share_prices[new_state.unique_id] = (
-            new_state.liquidity[new_state.asset_list[1]] / new_state.liquidity[new_state.asset_list[0]]
+    new_shares = (state.liquidity[tkn_add] / (state.liquidity[tkn_add] - quantity) - 1) * state.shares
+    state.shares += new_shares
+
+    agent.holdings[state.unique_id] += new_shares
+    if agent.holdings[state.unique_id] > 0:
+        agent.share_prices[state.unique_id] = (
+            state.liquidity[state.asset_list[1]] / state.liquidity[state.asset_list[0]]
         )
-    return new_state, new_agent
+    return state, agent
+
+
+def add_liquidity(
+    old_state: ConstantProductPoolState,
+    old_agent: Agent,
+    quantity: float,
+    tkn_add: str
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+
+    return execute_add_liquidity(
+        state=new_state,
+        agent=new_agent,
+        quantity=quantity,
+        tkn_add=tkn_add
+    )
 
 
 def remove_liquidity(
@@ -218,5 +235,6 @@ def swap(
 
 ConstantProductPoolState.swap = staticmethod(swap)
 ConstantProductPoolState.execute_swap = staticmethod(execute_swap)
+ConstantProductPoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
 ConstantProductPoolState.add_liquidity = staticmethod(add_liquidity)
 ConstantProductPoolState.remove_liquidity = staticmethod(remove_liquidity)
