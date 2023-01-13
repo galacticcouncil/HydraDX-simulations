@@ -151,7 +151,10 @@ class GlobalState:
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        if 'LRNA' not in agent.holdings:
+            agent.holdings['LRNA'] = 0
         withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
+
         for key in agent.holdings.keys():
             # shares.keys might just be the pool name, or it might be a tuple (pool, token)
             if isinstance(key, tuple):
@@ -163,8 +166,6 @@ class GlobalState:
             if pool_id in self.pools:
                 if isinstance(self.pools[pool_id], OmnipoolState):
                     # optimized for omnipool, no copy operations
-                    if 'LRNA' not in withdraw_holdings:
-                        withdraw_holdings['LRNA'] = 0
                     delta_qa, delta_r, delta_q,\
                         delta_s, delta_b, delta_l = calculate_remove_liquidity(
                             self.pools[pool_id],
@@ -195,12 +196,7 @@ class GlobalState:
         return total
 
     def impermanent_loss(self, agent: Agent) -> float:
-        return self.value_assets(  # deposit_val
-            self.market_prices(agent.initial_holdings),
-            agent.initial_holdings
-        ) / self.cash_out(  # withdraw_val
-            agent
-        ) - 1
+        return self.cash_out(agent) / self.deposit_val(agent) - 1
 
     def deposit_val(self, agent: Agent) -> float:
         return self.value_assets(
@@ -357,9 +353,9 @@ def add_liquidity(
             if hasattr(pool, 'sub_pools') and pool_id in pool.sub_pools:
                 pool_id = pool.unique_id
 
-    new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].add_liquidity(
-        old_state=new_state.pools[pool_id],
-        old_agent=new_state.agents[agent_id],
+    new_state.pools[pool_id].execute_add_liquidity(
+        state=new_state.pools[pool_id],
+        agent=new_state.agents[agent_id],
         quantity=quantity,
         tkn_add=tkn_add
     )
