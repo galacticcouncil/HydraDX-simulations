@@ -431,12 +431,12 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee[asset].compute()
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute()
-            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute()
-            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute()
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(asset)
+            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
 
             if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
                 skip_ct += 1
