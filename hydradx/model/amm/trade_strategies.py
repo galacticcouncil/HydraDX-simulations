@@ -167,7 +167,7 @@ def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
     return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
 
 
-def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
+def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool') -> TradeStrategy:
     class Strategy:
         def __init__(self):
             self.last_move = 0
@@ -189,14 +189,6 @@ def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sel
                                 agent=agent,
                                 quantity=agent.holdings[tkn],
                                 tkn_remove=tkn[1]
-                            )
-                        if sell_lrna:
-                            oamm.execute_swap(
-                                state=omnipool,
-                                agent=agent,
-                                tkn_sell='LRNA',
-                                tkn_buy='USD',
-                                sell_quantity=agent.holdings['LRNA']
                             )
                 else:
                     # invest
