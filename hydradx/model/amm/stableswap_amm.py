@@ -2,9 +2,7 @@ import copy
 
 from .amm import AMM
 from .agents import Agent
-from mpmath import mpf, mp
-
-mp.dps = 50
+from mpmath import mp, mpf
 
 
 class StableSwapPoolState(AMM):
@@ -40,9 +38,9 @@ class StableSwapPoolState(AMM):
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
-            self.liquidity[token] = mpf(quantity)
+            self.liquidity[token] = quantity
 
-        self.shares = mpf(self.d)
+        self.shares = self.calculate_d()
         self.conversion_metrics = {}
 
     @property
