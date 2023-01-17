@@ -2,19 +2,18 @@ import copy
 import pytest
 import random
 from hypothesis import given, strategies as st, assume
-from mpmath import mpf, mp
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
 asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
-
-mp.dps = 50
 
 
 @st.composite
@@ -23,8 +22,8 @@ def assets_config(draw, token_count: int = 0) -> dict:
     usd_price_lrna = draw(asset_price_strategy)
     return_dict = {
         'HDX': {
-            'liquidity': draw(asset_quantity_strategy),
-            'LRNA': draw(asset_quantity_strategy)
+            'liquidity': mpf(draw(asset_quantity_strategy)),
+            'LRNA': mpf(draw(asset_quantity_strategy))
         },
         'USD': {
             'liquidity': draw(asset_quantity_strategy),
@@ -89,6 +88,10 @@ def omnipool_config(
             amplification=pool.amplification,
             trade_fee=pool.trade_fee
         )
+
+    test_state.shares = {
+        tkn: mpf(test_state.shares[tkn]) for tkn in test_state.shares
+    }
 
     test_state.lrna_imbalance = -draw(asset_quantity_strategy)
     test_state.update()
@@ -176,7 +179,7 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
     # check enforcement of weight caps
     # first assign some weight caps
     for i in initial_state.asset_list:
-        initial_state.weight_cap[i] = mpf(min(initial_state.lrna[i] / initial_state.lrna_total * 1.1, 1))
+        initial_state.weight_cap[i] = min(initial_state.lrna[i] / initial_state.lrna_total * 1.1, 1)
 
     # calculate what should be the maximum allowable liquidity provision
     max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
@@ -204,7 +207,7 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
 def test_remove_liquidity(initial_state: oamm.OmnipoolState):
     i = initial_state.asset_list[2]
     initial_agent = Agent(
-        holdings={token: mpf(1000) for token in initial_state.asset_list + ['LRNA']},
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
     # add LP shares to the pool
     old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
@@ -440,11 +443,11 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
     # agent holds some of everything
-    agent = Agent(holdings={tkn: mpf(10000000000) for tkn in initial_state.asset_list + stable_pool.asset_list})
+    agent = Agent(holdings={tkn: 10000000000 for tkn in initial_state.asset_list + stable_pool.asset_list})
     # attempt buying an asset from the stableswap pool
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = stable_pool.asset_list[0]
-    sell_quantity = mpf(10)
+    sell_quantity = 10
     new_state, new_agent = oamm.swap(
         old_state=initial_state,
         old_agent=agent,
