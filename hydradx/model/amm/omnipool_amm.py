@@ -233,6 +233,35 @@ class OmnipoolState(AMM):
         ) + '\n)' + f'\n\nerror message: {self.fail or "None"}'
 
 
+class OmnipoolArchiveState:
+    def __init__(self, state: OmnipoolState):
+        self.asset_list = [tkn for tkn in state.asset_list]
+        self.liquidity = {k: v for (k,v) in state.liquidity.items()}
+        self.lrna = {k: v for (k,v) in state.lrna.items()}
+        self.lrna_total = sum(self.lrna.values())
+        self.shares = {k: v for (k,v) in state.shares.items()}
+        self.protocol_shares = {k: v for (k,v) in state.protocol_shares.items()}
+        self.lrna_imbalance = state.lrna_imbalance
+        self.fail = state.fail
+        self.stablecoin = state.stablecoin
+        # self.sub_pools = copy.deepcopy(state.sub_pools)
+        self.oracles = {k: v for (k,v) in state.oracles.items()}
+        self.unique_id = state.unique_id
+
+        # record these for analysis later
+        self.last_fee = {k: v for (k,v) in state.last_fee.items()}
+        self.last_lrna_fee = {k: v for (k,v) in state.last_lrna_fee.items()}
+
+
+# Works with OmnipoolState *or* OmnipoolArchiveState
+def price(state, tkn):
+    return state.lrna[tkn] / state.liquidity[tkn]
+
+
+def usd_price(state, tkn):
+    return price(state, tkn) / price(state, state.stablecoin)
+
+
 def calculate_sell_from_buy(
         state: OmnipoolState,
         tkn_buy: str,
@@ -762,13 +791,15 @@ def calculate_remove_liquidity(state: OmnipoolState, agent: Agent, quantity: flo
     """
     quantity = -abs(quantity)
     assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
-    assert tkn_remove in state.asset_list, f"invalid token name: {tkn_remove}"
+    # assert tkn_remove in state.asset_list, f"invalid token name: {tkn_remove}"
+    if tkn_remove not in state.asset_list:
+        return 0, 0, 0, 0, 0, 0
 
     if (state.unique_id, tkn_remove) not in agent.share_prices:
         return 0, 0, 0, 0, 0, 0
 
     # determine if they should get some LRNA back as well as the asset they invested
-    piq = state.lrna_price(tkn_remove)
+    piq = lrna_price(state, tkn_remove)
     p0 = agent.share_prices[(state.unique_id, tkn_remove)]
     mult = (piq - p0) / (piq + p0)
 
