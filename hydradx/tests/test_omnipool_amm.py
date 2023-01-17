@@ -254,6 +254,9 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     feeless_state = initial_state.copy()
     feeless_state.lrna_fee = 0
     feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_lrna_fee[asset] = 0
+        feeless_state.last_fee[asset] = 0
     feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra, 0, i)
     if oamm.asset_invariant(feeless_swap_state, i) != pytest.approx(oamm.asset_invariant(old_state, i)):
         raise
@@ -293,6 +296,8 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         raise AssertionError('LRNA imbalance is wrong.')
 
     if reverse_agent.holdings[i] != pytest.approx(old_agent.holdings[i]):
+        print(reverse_agent.holdings[i])
+        print(old_agent.holdings[i])
         raise AssertionError('Agent holdings are wrong.')
 
 
@@ -317,6 +322,9 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     asset_fee_only_state.lrna_fee = 0
     feeless_state = asset_fee_only_state.copy()
     feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_lrna_fee[asset] = 0
+        feeless_state.last_fee[asset] = 0
 
     asset_fee_only_state, asset_fee_only_agent = \
         oamm.swap(asset_fee_only_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
@@ -352,6 +360,9 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     buy_state = old_state.copy()
     buy_state.lrna_fee = 0
     buy_state.asset_fee = 0
+    for asset in buy_state.asset_list:
+        buy_state.last_lrna_fee[asset] = 0
+        buy_state.last_fee[asset] = 0
     buy_state, buy_agent = oamm.swap(
         buy_state, old_agent, i_buy, i_sell, buy_quantity=delta_out_new
     )
