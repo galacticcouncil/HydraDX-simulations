@@ -4,11 +4,8 @@ from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
 from . import stableswap_amm as stableswap
-from mpmath import mpf, mp
 from typing import Callable
 from numbers import Number
-
-mp.dps = 50
 
 
 class OmnipoolState(AMM):
@@ -56,7 +53,7 @@ class OmnipoolState(AMM):
         self.weight_cap = {}
         self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
-        self.lrna_imbalance = mpf(0)  # AKA "L"
+        self.lrna_imbalance = 0  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
         self.fail = ''
@@ -73,9 +70,9 @@ class OmnipoolState(AMM):
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
             if 'LRNA' in pool:
-                lrna = mpf(pool['LRNA'])
+                lrna = pool['LRNA']
             elif 'LRNA_price' in pool:
-                lrna = mpf(pool['liquidity'] * pool['LRNA_price'])
+                lrna = pool['liquidity'] * pool['LRNA_price']
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
             self.add_token(
@@ -135,11 +132,11 @@ class OmnipoolState(AMM):
             weight_cap: float = 1
     ):
         self.asset_list.append(tkn)
-        self.liquidity[tkn] = mpf(liquidity)
-        self.lrna[tkn] = mpf(lrna)
-        self.shares[tkn] = mpf(shares)
-        self.protocol_shares[tkn] = mpf(protocol_shares)
-        self.weight_cap[tkn] = mpf(weight_cap)
+        self.liquidity[tkn] = liquidity
+        self.lrna[tkn] = lrna
+        self.shares[tkn] = shares
+        self.protocol_shares[tkn] = protocol_shares
+        self.weight_cap[tkn] = weight_cap
         if hasattr(self, 'asset_fee'):
             self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
             self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
