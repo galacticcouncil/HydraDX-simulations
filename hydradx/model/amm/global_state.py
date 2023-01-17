@@ -248,23 +248,39 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
     """
     trend = trend or {}
 
-    def transform(state: GlobalState) -> GlobalState:
-        new_state = state  # .copy()
-        for asset in new_state.external_market:
-            change = volatility[asset] if asset in volatility else 0
-            bias = trend[asset] / 100 if asset in trend else 0
-            # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
-            # instead, we need to subtract (100/101)% to avoid a long-term downward trend
-            new_state.external_market[asset] *= (
-                (1 + random.random() * change / 100 if random.choice([True, False])
-                 else 1 - random.random() * (1 - 100 / (100 + change)))
-                # 1 / (1 + change / 100)
-                # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
-                + bias / 100
-            )
-        return new_state
+    class Transform:
+        def __init__(self):
+            self.volatility = volatility
+            self.trend = trend
+            self.initial_prices = {}
 
-    return transform
+        def fluctuate(self, state: GlobalState):
+            if not self.initial_prices:
+                self.initial_prices = {tkn: state.price(tkn) for tkn in state.asset_list}
+            for tkn in state.external_market.keys():
+                target_price = self.initial_prices[tkn] + state.time_step * self.trend.get(tkn, 0) / 100
+                state.external_market[tkn] *= 1 + (random.random() * 2 - 0.99) * self.volatility.get(tkn, 0) / 100
+                state.external_market[tkn] += (target_price - state.external_market[tkn]) / 100
+            return state
+
+    # def transform(state: GlobalState) -> GlobalState:
+    #
+    #     for asset in state.external_market:
+    #         change = volatility[asset] if asset in volatility else 0
+    #         bias = trend[asset] / 100 if asset in trend else 0
+    #         target_price = state.external_market[asset] * (1 + bias)
+    #         # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
+    #         # instead, we need to subtract (100/101)% to avoid a long-term downward trend
+    #         state.external_market[asset] *= (
+    #             (1 + random.random() * change / 100 if random.choice([True, False])
+    #              else 1 - random.random() * (1 - 100 / (100 + change)))
+    #             # 1 / (1 + change / 100)
+    #             # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
+    #             + bias / 100
+    #         )
+    #     return state
+
+    return Transform().fluctuate
 
 
 def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = None, period: int = 1) -> Callable:
