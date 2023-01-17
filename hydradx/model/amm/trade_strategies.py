@@ -1,4 +1,5 @@
 import math
+import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
@@ -137,6 +138,8 @@ def invest_all(pool_id: str) -> TradeStrategy:
                     tkn_add=asset
                 )
 
+        agent.initial_holdings = agent.holdings
+
         return state
 
     return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
@@ -162,6 +165,56 @@ def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
         return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
 
     return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
+
+
+def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
+    class Strategy:
+        def __init__(self):
+            self.last_move = 0
+            self.invested = False
+
+        def __call__(self, state: GlobalState, agent_id: str) -> GlobalState:
+
+            if (state.time_step - self.last_move) * frequency > random.random():
+                omnipool: OmnipoolState = state.pools[pool_id]
+                agent: Agent = state.agents[agent_id]
+                agent_holdings = copy.copy(agent.holdings)
+
+                if self.invested:
+                    # withdraw
+                    for tkn in agent_holdings:
+                        if isinstance(tkn, tuple) and tkn[0] == pool_id:
+                            oamm.execute_remove_liquidity(
+                                state=omnipool,
+                                agent=agent,
+                                quantity=agent.holdings[tkn],
+                                tkn_remove=tkn[1]
+                            )
+                        if sell_lrna:
+                            oamm.execute_swap(
+                                state=omnipool,
+                                agent=agent,
+                                tkn_sell='LRNA',
+                                tkn_buy='USD',
+                                sell_quantity=agent.holdings['LRNA']
+                            )
+                else:
+                    # invest
+                    for tkn in agent_holdings:
+                        if tkn in state.pools[pool_id].asset_list:
+                            oamm.execute_add_liquidity(
+                                state=omnipool,
+                                agent=agent,
+                                quantity=agent.holdings[tkn],
+                                tkn_add=tkn
+                            )
+
+                self.last_move = state.time_step
+                self.invested = not self.invested
+
+            return state
+
+    return TradeStrategy(Strategy(), name=f'invest and withdraw every {frequency} time steps')
 
 
 # iterative arbitrage method
@@ -354,7 +407,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         dq = [-lrna[i] * dr[i] / (reserves[i] + dr[i]) for i in range(len(reserves))]
         return dq
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str, min_profit: float = 0.01) -> GlobalState:
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -408,6 +461,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         temp_omnipool = omnipool.copy()
         temp_agent = agent.copy()
 
+        if len(reserves) == 1:
+            return state
+
         for j in range(arb_precision):
             for i in range(len(prices)):
                 asset = asset_list[i]
@@ -421,7 +477,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                         state=temp_omnipool, agent=temp_agent, tkn_sell='LRNA', tkn_buy=asset,
                         sell_quantity=dq[i] * size_mult / arb_precision, modify_imbalance=False
                     )
-            if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
+            if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth + min_profit:
                 state.pools[pool_id] = temp_omnipool
                 state.agents[agent_id] = temp_agent
             else:
