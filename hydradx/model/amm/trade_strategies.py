@@ -1,4 +1,3 @@
-import copy
 import math
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
@@ -369,8 +368,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
-        usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
-        usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        # usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_fee = omnipool.last_fee[omnipool.stablecoin]
+        # usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
@@ -383,8 +384,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            # asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            asset_fee = omnipool.last_fee[asset]
+            # asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            asset_LRNA_fee = omnipool.last_lrna_fee[asset]
             low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
             high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
 
@@ -415,8 +418,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         # temp_omnipool = omnipool.copy()
         # temp_agent = agent.copy()
 
-        r = copy.deepcopy(omnipool.liquidity)
-        q = copy.deepcopy(omnipool.lrna)
+        r = omnipool.liquidity
+        q = omnipool.lrna
 
         for j in range(arb_precision):
             dr = [0]*len(dq)
