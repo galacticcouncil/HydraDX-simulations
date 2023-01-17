@@ -2,6 +2,8 @@ import pytest
 from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=100000)
@@ -13,7 +15,7 @@ trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 def assets_config(draw) -> dict:
     token_count = 2
     return_dict = {
-        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
         for i in range(token_count)
     }
     return return_dict
