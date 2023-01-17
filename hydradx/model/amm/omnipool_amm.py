@@ -1109,12 +1109,12 @@ def dynamicadd_asset_fee(
 
         raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
-        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
-            frac = 1
-        elif raise_oracle.volume_in[tkn] == 0:
-            frac = 200
-        else:
-            frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
+        # if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+        #     frac = 1
+        # elif raise_oracle.volume_in[tkn] == 0:
+        #     frac = 200
+        # else:
+        #     frac = raise_oracle.volume_out[tkn] / raise_oracle.volume_in[tkn]
 
         if raise_oracle.liquidity[tkn] != 0:
             # x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
@@ -1243,12 +1243,12 @@ def dynamicadd_lrna_fee(
 
         raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
-        if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
-            frac = 1
-        elif raise_oracle.volume_out[tkn] == 0:
-            frac = 200
-        else:
-            frac = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
+        # if raise_oracle.volume_out[tkn] == 0 and raise_oracle.volume_in[tkn] == 0:
+        #     frac = 1
+        # elif raise_oracle.volume_out[tkn] == 0:
+        #     frac = 200
+        # else:
+        #     frac = raise_oracle.volume_in[tkn] / raise_oracle.volume_out[tkn]
 
         if raise_oracle.liquidity[tkn] != 0:
             # x = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
