@@ -1,8 +1,6 @@
 import math
 from .amm import AMM, FeeMechanism, basic_fee
 from .agents import Agent
-from mpmath import mpf, mp
-mp.dps = 50
 # when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
 precision_level = 20
 
@@ -30,7 +28,7 @@ class ConstantProductPoolState(AMM):
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
-            self.liquidity[token] = mpf(quantity)
+            self.liquidity[token] = quantity
 
         self.shares = self.liquidity[self.asset_list[0]]
 
