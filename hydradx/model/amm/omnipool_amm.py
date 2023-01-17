@@ -943,14 +943,15 @@ def swap_lrna(
         old_agent: Agent,
         delta_ra: float = 0,
         delta_qa: float = 0,
-        tkn: str = ''
+        tkn: str = '',
+        modify_imbalance=True
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn)
+    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
 
 
 def swap(
