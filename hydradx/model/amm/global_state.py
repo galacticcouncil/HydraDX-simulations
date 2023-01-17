@@ -1,9 +1,9 @@
-from .agents import Agent
+from .agents import Agent, AgentArchiveState
 import copy
 import random
 from .amm import AMM, FeeMechanism
 from typing import Callable
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity, OmnipoolArchiveState
 
 
 class GlobalState:
@@ -12,7 +12,8 @@ class GlobalState:
                  pools: dict[str: AMM],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
-                 save_data: dict = None
+                 save_data: dict = None,
+                 archive_all: bool = True
                  ):
         if external_market is None:
             self.external_market = {}
@@ -44,6 +45,7 @@ class GlobalState:
             for tag in save_data
         } if save_data else {}
         self.time_step = 0
+        self.archive_all = archive_all
 
     def price(self, asset: str):
         if asset in self.external_market:
@@ -79,19 +81,23 @@ class GlobalState:
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
             external_market=copy.copy(self.external_market),
             evolve_function=copy.copy(self._evolve_function),
-            save_data=self.datastreams
+            save_data=self.datastreams,
+            archive_all=self.archive_all
         )
         copy_state.time_step = self.time_step
         return copy_state
 
     def archive(self):
-        if not self.save_data:
+        if self.archive_all and not self.save_data:
             return {'state': self.copy()}
-        else:
+        elif self.save_data:
             return {
                 datastream: self.save_data[datastream](self)
                 for datastream in self.save_data
             }
+        else:
+            record_state = ArchiveState(self)
+            return record_state
 
     def evolve(self):
         self.time_step += 1
@@ -122,15 +128,7 @@ class GlobalState:
         return self
 
     # functions for calculating extra parameters we may want to track
-    @staticmethod
-    def value_assets(prices: dict, assets: dict) -> float:
-        """
-        return the value of the agent's assets if they were sold at current spot prices
-        """
-        return sum([
-            assets[i] * prices[i] if i in prices else 0
-            for i in assets.keys()
-        ])
+
 
     def market_prices(self, shares: dict) -> dict:
         """
@@ -231,6 +229,57 @@ class GlobalState:
             f'evolution function: {self.evolve_function}'
             f'{newline}'
         )
+
+
+class ArchiveState:
+    def __init__(self, state: GlobalState):
+        self.time_step = state.time_step
+        self.external_market = {k: v for k, v in state.external_market.items()}
+        self.pools = {k: OmnipoolArchiveState(v) for (k, v) in state.pools.items()}
+        self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
+
+
+def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
+    """
+    return the value of the agent's holdings if they withdraw all liquidity
+    and then sell at current spot prices
+    """
+    if 'LRNA' not in agent.holdings:
+        agent.holdings['LRNA'] = 0
+    withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
+
+    for key in agent.holdings.keys():
+        # shares.keys might just be the pool name, or it might be a tuple (pool, token)
+        if isinstance(key, tuple):
+            tkn = key[1]
+        else:
+            tkn = key
+        # optimized for omnipool, no copy operations
+        delta_qa, delta_r, delta_q,\
+            delta_s, delta_b, delta_l = calculate_remove_liquidity(
+                omnipool,
+                agent,
+                agent.holdings[key],
+                tkn_remove=tkn
+            )
+        withdraw_holdings[key] = 0
+        withdraw_holdings['LRNA'] += delta_qa
+        withdraw_holdings[tkn] -= delta_r
+
+    return value_assets(prices, withdraw_holdings)
+
+
+def value_assets(prices: dict, assets: dict) -> float:
+    """
+    return the value of the agent's assets if they were sold at current spot prices
+    """
+    return sum([
+        assets[i] * prices[i] if i in prices else 0
+        for i in assets.keys()
+    ])
+
+
+GlobalState.value_assets = staticmethod(value_assets)
 
 
 def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
