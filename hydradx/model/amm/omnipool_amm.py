@@ -90,8 +90,8 @@ class OmnipoolState(AMM):
         self.update()
 
         # record these for analysis later
-        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
-        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
 
     def __setattr__(self, key, value):
         # if key is a fee, make sure it's a dict[str: FeeMechanism]
@@ -148,6 +148,9 @@ class OmnipoolState(AMM):
         # update oracles
         for name, oracle in self.oracles.items():
             oracle.update(self.current_block)
+
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
 
         # update current block
         self.current_block = Block(self)
@@ -239,13 +242,15 @@ def calculate_sell_from_buy(
     """
     Given a buy quantity, calculate the effective price, so we can execute it as a sell
     """
-    asset_fee = state.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+    # asset_fee = state.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+    asset_fee = state.last_fee[tkn_buy]
     delta_Qj = state.lrna[tkn_buy] * buy_quantity / (
             state.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
-    lrna_fee = state.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
-            state.liquidity[tkn_buy] * delta_Qj /
-            (state.lrna[tkn_buy] - delta_Qj)
-    ))
+    # lrna_fee = state.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
+    #         state.liquidity[tkn_buy] * delta_Qj /
+    #         (state.lrna[tkn_buy] - delta_Qj)
+    # ))
+    lrna_fee = state.last_lrna_fee[tkn_sell]
     delta_Qi = -delta_Qj / (1 - lrna_fee)
     delta_Ri = -state.liquidity[tkn_sell] * delta_Qi / (state.lrna[tkn_sell] + delta_Qi)
     return delta_Ri
@@ -337,12 +342,14 @@ def execute_swap(
             return state.fail_transaction('sell amount must be greater than zero', agent)
 
         delta_Qi = state.lrna[tkn_sell] * -delta_Ri / (state.liquidity[tkn_sell] + delta_Ri)
-        asset_fee = state.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-        lrna_fee = state.lrna_fee[tkn_buy].compute(
-            tkn=tkn_buy,
-            delta_tkn=(state.liquidity[tkn_buy] * sell_quantity
-                       / (state.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
-        )
+        # asset_fee = state.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+        asset_fee = state.last_fee[tkn_sell]
+        # lrna_fee = state.lrna_fee[tkn_buy].compute(
+        #     tkn=tkn_buy,
+        #     delta_tkn=(state.liquidity[tkn_buy] * sell_quantity
+        #                / (state.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
+        # )
+        lrna_fee = state.last_lrna_fee[tkn_buy]
 
         delta_Qj = -delta_Qi * (1 - lrna_fee)
         delta_Rj = state.liquidity[tkn_buy] * -delta_Qj / (state.lrna[tkn_buy] + delta_Qj) * (1 - asset_fee)
@@ -411,9 +418,10 @@ def execute_lrna_swap(
     """
 
     if delta_qa < 0 or delta_ra > 0:
-        asset_fee = state.asset_fee[tkn].compute(
-            tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
-        )
+        # asset_fee = state.asset_fee[tkn].compute(
+        #     tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
+        # )
+        asset_fee = state.last_fee[tkn]
         if delta_qa < 0:
             delta_qi = -delta_qa
             delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) * (1 - asset_fee)
@@ -423,9 +431,10 @@ def execute_lrna_swap(
             delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] * (1 - asset_fee) + delta_ri)
             delta_qa = -delta_qi
     elif delta_qa > 0 or delta_ra < 0:
-        lrna_fee = state.lrna_fee[tkn].compute(
-            tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
-        )
+        # lrna_fee = state.lrna_fee[tkn].compute(
+        #     tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
+        # )
+        lrna_fee = state.last_lrna_fee[tkn]
         # buying LRNA
         if delta_qa > 0:
             delta_qi = -delta_qa
