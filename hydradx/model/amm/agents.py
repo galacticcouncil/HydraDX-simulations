@@ -47,3 +47,12 @@ class Agent:
     def copy(self):
         copy_self = copy.deepcopy(self)
         return copy_self
+
+
+class AgentArchiveState:
+    def __init__(self, agent: Agent):
+        self.unique_id = agent.unique_id
+        self.holdings = {k: v for k, v in agent.holdings.items()}
+        self.share_prices = {k: v for k, v in agent.share_prices.items()}
+        self.asset_list = [tkn for tkn in agent.asset_list]
+
