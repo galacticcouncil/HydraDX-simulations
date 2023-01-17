@@ -10,7 +10,7 @@ from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
 from hydradx.model import processing
-from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage
+from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage, invest_and_withdraw
 from hydradx.model.amm.amm import AMM
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
@@ -190,7 +190,7 @@ def test_LP(initial_state: GlobalState):
     }
 
     old_state = initial_state.copy()
-    events = run.run(old_state, time_steps=100, silent=True)
+    events = run.run(old_state, time_steps=10, silent=True)
     final_state: GlobalState = events[-1]['state']
 
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
@@ -509,14 +509,18 @@ def test_omnipool_arbitrage():
                     pool_id='Omnipool',
                     amount={'USD': 1000, 'HDX': 1000, 'AUSD': 1000, 'ETH': 1000, 'DOT': 1000}
                 )
+            ),
+            'LP': Agent(
+                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
+                trade_strategy=invest_and_withdraw(pool_id='Omnipool')
             )
         },
-        # evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
+        evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
         external_market={tkn: assets[tkn]['usd price'] for tkn in assets},
     )
 
     # print(initial_state)
-    time_steps = 100  # len(price_list) - 1
+    time_steps = 1000  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
     # asset_prices = pu.get_datastream(events, asset='all')
     # dot_prices = pu.get_datastream(events, asset='DOT')
@@ -526,6 +530,7 @@ def test_omnipool_arbitrage():
     # oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
     # short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
     arb_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
+    deposit_val = pu.get_datastream(events, agent='LP', prop='deposit_val')
     arb_holdings = [
         {tkn: arb_holdings[tkn][i] for tkn in arb_holdings} for i in range(len(arb_holdings['LRNA']))
     ]

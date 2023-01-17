@@ -7,6 +7,8 @@ from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrag
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
 from hypothesis import given, strategies as st
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
@@ -28,7 +30,7 @@ def stable_swap_equation(d: float, a: float, n: int, reserves: list):
 @st.composite
 def assets_config(draw, token_count: int, base_token: str = 'USD') -> dict:
     return_dict = {
-        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
         for i in range(token_count)
     }
     return return_dict
