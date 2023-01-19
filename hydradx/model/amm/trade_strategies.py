@@ -407,7 +407,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         dq = [-lrna[i] * dr[i] / (reserves[i] + dr[i]) for i in range(len(reserves))]
         return dq
 
-    def strategy(state: GlobalState, agent_id: str, min_profit: float = 0.01) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -417,8 +417,14 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         lrna = []
         prices = []
         asset_list = []
+        asset_fees = []
+        lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
+        # usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_fee = omnipool.last_fee[omnipool.stablecoin]
+        # usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
@@ -431,12 +437,12 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee[asset].compute()
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute()
-            usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute()
-            usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute()
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(asset)
+            # asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            asset_fee = omnipool.last_fee[asset]
+            # asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            asset_LRNA_fee = omnipool.last_lrna_fee[asset]
+            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
 
             if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
                 skip_ct += 1
@@ -448,40 +454,74 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             lrna.append(omnipool.lrna[asset])
             prices.append(state.external_market[asset])
             asset_list.append(asset)
+            asset_fees.append(asset_fee)
+            lrna_fees.append(asset_LRNA_fee)
 
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         size_mult = 1
+
         for i in range(len(prices)):
             if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
                 size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
-        agent_wealth = state.value_assets(state.external_market, agent.holdings)
+
+        # agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
-        temp_omnipool = omnipool.copy()
-        temp_agent = agent.copy()
+        # temp_omnipool = omnipool.copy()
+        # temp_agent = agent.copy()
 
-        if len(reserves) == 1:
-            return state
+        r = omnipool.liquidity
+        q = omnipool.lrna
 
         for j in range(arb_precision):
+            dr = [0]*len(dq)
             for i in range(len(prices)):
                 asset = asset_list[i]
-                if dr[i] > 0:
-                    oamm.execute_swap(
-                        state=temp_omnipool, agent=temp_agent, tkn_sell=asset, tkn_buy='LRNA',
-                        buy_quantity=-dq[i] * size_mult / arb_precision, modify_imbalance=False
-                    )
+                delta_Qi = dq[i] * (j+1) / arb_precision
+                if delta_Qi > 0:
+                    dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) * (1 - asset_fees[i])
                 else:
-                    oamm.execute_swap(
-                        state=temp_omnipool, agent=temp_agent, tkn_sell='LRNA', tkn_buy=asset,
-                        sell_quantity=dq[i] * size_mult / arb_precision, modify_imbalance=False
-                    )
-            if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth + min_profit:
-                state.pools[pool_id] = temp_omnipool
-                state.agents[agent_id] = temp_agent
-            else:
+                    dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) / (1 - lrna_fees[i])
+            profit = sum([dr[i] * prices[i] for i in range(len(prices))])
+            if profit < 0:
+                if j > 0:
+                    for i in range(len(asset_list)):
+                        if dq[i] > 0:
+                            oamm.execute_swap(state=omnipool, agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
+                                                   sell_quantity=dq[i] * j/arb_precision, modify_imbalance=False)
+                        else:
+                            oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
+                                                   buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
                 break
+            elif j == arb_precision - 1:
+                for i in range(len(asset_list)):
+                    if dq[i] > 0:
+                        oamm.execute_swap(state=omnipool, agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
+                                               sell_quantity=dq[i], modify_imbalance=False)
+                    else:
+                        oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
+                                               buy_quantity=-dq[i], modify_imbalance=False)
+                break  # technically unnecessary
+
+
+
+
+                # if dr[i] > 0:
+                #     oamm.execute_swap(
+                #         state=temp_omnipool, agent=temp_agent, tkn_sell=asset, tkn_buy='LRNA',
+                #         buy_quantity=-dq[i] * size_mult / arb_precision, modify_imbalance=False
+                #     )
+                # else:
+                #     oamm.execute_swap(
+                #         state=temp_omnipool, agent=temp_agent, tkn_sell='LRNA', tkn_buy=asset,
+                #         sell_quantity=dq[i] * size_mult / arb_precision, modify_imbalance=False
+                #     )
+            # if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
+            #     state.pools[pool_id] = temp_omnipool
+            #     state.agents[agent_id] = temp_agent
+            # else:
+            #     break
 
         return state
 
