@@ -89,15 +89,14 @@ class GlobalState:
 
     def archive(self):
         if self.archive_all and not self.save_data:
-            return {'state': self.copy()}
+            return self.copy()
         elif self.save_data:
             return {
                 datastream: self.save_data[datastream](self)
                 for datastream in self.save_data
             }
         else:
-            record_state = ArchiveState(self)
-            return record_state
+            return ArchiveState(self)
 
     def evolve(self):
         self.time_step += 1

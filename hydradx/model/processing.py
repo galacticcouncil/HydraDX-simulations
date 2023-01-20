@@ -26,7 +26,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
     'impermanent_loss': computes loss for LPs due to price movements in either direction
     """
     # save initial state
-    initial_state: GlobalState = events[0]['state']
+    initial_state: GlobalState = events[0]
     withdraw_state: GlobalState = initial_state.copy()
 
     optional_params = set(optional_params)
@@ -61,7 +61,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
             withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
 
     for step in events:
-        state: GlobalState = step['state']
+        state: GlobalState = step
 
         for pool in state.pools.values():
             if 'pool_val' in optional_params:
@@ -89,7 +89,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
             if 'trade_volume' in optional_params:
                 agent.trade_volume = 0
                 if state.time_step > 0:
-                    previous_agent = events[state.time_step - 1]['state'].agents[agent.unique_id]
+                    previous_agent = events[state.time_step - 1].agents[agent.unique_id]
                     agent.trade_volume += (
                         sum([
                             abs(previous_agent.holdings[tkn] - agent.holdings[tkn]) * state.price(tkn)

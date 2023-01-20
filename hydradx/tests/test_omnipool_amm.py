@@ -276,8 +276,10 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     qi_arb = old_state.lrna[i] + delta_qi * old_state.lrna[i] / old_state.lrna_total
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
-    if ((old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total))*ri_arb) != pytest.approx(
-        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total))*old_state.liquidity[i]
+    if (
+            (old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
+        ) != pytest.approx(
+        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
 
@@ -838,7 +840,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
             (new_agent.holdings[tkn_buy] - after_trade_agent.holdings[tkn_buy])
     )
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
-    if not(spot_price_after > execution_price > spot_price_before):
+    if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
 
 
@@ -925,7 +927,7 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
             (new_agent.holdings[tkn_buy] - after_trade_agent.holdings[tkn_buy])
     )
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
-    if not(spot_price_after > execution_price > spot_price_before):
+    if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
 
 
