@@ -15,7 +15,7 @@ def get_datastream(
         prop: str or list = '',
         key: str or list = ''
 ):
-    initial_state = events[0]['state']
+    initial_state = events[0]
 
     """
     generate a lit of values from the state, using the given parameters
@@ -109,25 +109,25 @@ def get_single_stream(
     if group == 'external_market':
         key = instance or key
 
-    initial_state = events[0]['state']
+    initial_state = events[0]
     if hasattr(initial_state, prop):
-        return [getattr(event['state'], prop)(getattr(event['state'], group)[instance]) for event in events]
+        return [getattr(event, prop)(getattr(event, group)[instance]) for event in events]
     elif not prop:
-        return [getattr(event['state'], group)[instance or key] for event in events]
+        return [getattr(event, group)[instance or key] for event in events]
     elif not oracle:
         # prop may be either a dict, a function or a number
         if isinstance(getattr(getattr(initial_state, group)[instance], prop), Callable):
-            return [getattr(getattr(event['state'], group)[instance], prop)(key) for event in events]
+            return [getattr(getattr(event, group)[instance], prop)(key) for event in events]
         elif isinstance(getattr(getattr(initial_state, group)[instance], prop), dict):
-            return [getattr(getattr(event['state'], group)[instance], prop)[key] for event in events]
+            return [getattr(getattr(event, group)[instance], prop)[key] for event in events]
         else:
-            return [getattr(getattr(event['state'], group)[instance], prop) for event in events]
+            return [getattr(getattr(event, group)[instance], prop) for event in events]
     else:
         # oracle
         if key:
-            return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop)[key] for event in events]
+            return [getattr(getattr(event, group)[instance].oracles[oracle], prop)[key] for event in events]
         else:
-            return [getattr(getattr(event['state'], group)[instance].oracles[oracle], prop) for event in events]
+            return [getattr(getattr(event, group)[instance].oracles[oracle], prop) for event in events]
 
 
 def plot(

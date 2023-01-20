@@ -179,19 +179,19 @@ def test_arbitrage(stable_pool):
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
     events = run.run(initial_state, time_steps=10, silent=True)
-    # print(events[0]['state'].pools['R1/R2'].spot_price, events[-1]['state'].pools['R1/R2'].spot_price)
+    # print(events[0].pools['R1/R2'].spot_price, events[-1].pools['R1/R2'].spot_price)
     if (
-        events[0]['state'].pools['R1/R2'].spot_price
-        != pytest.approx(events[-1]['state'].pools['R1/R2'].spot_price)
+        events[0].pools['R1/R2'].spot_price
+        != pytest.approx(events[-1].pools['R1/R2'].spot_price)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
-                             f"({events[0]['state'].pools['R1/R2'].spot_price})"
-                             f"{events[-1]['state'].pools['R1/R2'].spot_price}")
+                             f"({events[0].pools['R1/R2'].spot_price})"
+                             f"{events[-1].pools['R1/R2'].spot_price}")
     if (
-        events[0]['state'].agents['Arbitrageur'].holdings['R1']
-        + events[0]['state'].agents['Arbitrageur'].holdings['R2']
-        > events[-1]['state'].agents['Arbitrageur'].holdings['R1']
-        + events[-1]['state'].agents['Arbitrageur'].holdings['R2']
+        events[0].agents['Arbitrageur'].holdings['R1']
+        + events[0].agents['Arbitrageur'].holdings['R2']
+        > events[-1].agents['Arbitrageur'].holdings['R1']
+        + events[-1].agents['Arbitrageur'].holdings['R2']
     ):
         raise AssertionError("Arbitrageur didn't make money.")
 
