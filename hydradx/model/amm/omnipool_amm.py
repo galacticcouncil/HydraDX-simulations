@@ -90,8 +90,8 @@ class OmnipoolState(AMM):
         self.update()
 
         # record these for analysis later
-        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
-        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
 
     def __setattr__(self, key, value):
         # if key is a fee, make sure it's a dict[str: FeeMechanism]
@@ -201,7 +201,7 @@ class OmnipoolState(AMM):
         lrna_total = round(self.lrna_total, precision)
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
-        price = {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
+        prices = {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
         newline = '\n'
         return (
             f'Omnipool: {self.unique_id}\n'
@@ -217,7 +217,7 @@ class OmnipoolState(AMM):
                     f'    *{tkn}*\n'
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
-                    f'    USD price: {price[tkn]}\n' +
+                    f'    USD price: {prices[tkn]}\n' +
                     f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
@@ -236,21 +236,21 @@ class OmnipoolState(AMM):
 class OmnipoolArchiveState:
     def __init__(self, state: OmnipoolState):
         self.asset_list = [tkn for tkn in state.asset_list]
-        self.liquidity = {k: v for (k,v) in state.liquidity.items()}
-        self.lrna = {k: v for (k,v) in state.lrna.items()}
+        self.liquidity = {k: v for (k, v) in state.liquidity.items()}
+        self.lrna = {k: v for (k, v) in state.lrna.items()}
         self.lrna_total = sum(self.lrna.values())
-        self.shares = {k: v for (k,v) in state.shares.items()}
-        self.protocol_shares = {k: v for (k,v) in state.protocol_shares.items()}
+        self.shares = {k: v for (k, v) in state.shares.items()}
+        self.protocol_shares = {k: v for (k, v) in state.protocol_shares.items()}
         self.lrna_imbalance = state.lrna_imbalance
         self.fail = state.fail
         self.stablecoin = state.stablecoin
         # self.sub_pools = copy.deepcopy(state.sub_pools)
-        self.oracles = {k: v for (k,v) in state.oracles.items()}
+        self.oracles = {k: v for (k, v) in state.oracles.items()}
         self.unique_id = state.unique_id
 
         # record these for analysis later
-        self.last_fee = {k: v for (k,v) in state.last_fee.items()}
-        self.last_lrna_fee = {k: v for (k,v) in state.last_lrna_fee.items()}
+        self.last_fee = {k: v for (k, v) in state.last_fee.items()}
+        self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
 
 
 # Works with OmnipoolState *or* OmnipoolArchiveState
@@ -271,15 +271,16 @@ def calculate_sell_from_buy(
     """
     Given a buy quantity, calculate the effective price, so we can execute it as a sell
     """
-    # asset_fee = state.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
-    asset_fee = state.last_fee[tkn_buy]
+
+    asset_fee = state.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+    # asset_fee = state.last_fee[tkn_buy]
     delta_Qj = state.lrna[tkn_buy] * buy_quantity / (
             state.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
-    # lrna_fee = state.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
-    #         state.liquidity[tkn_buy] * delta_Qj /
-    #         (state.lrna[tkn_buy] - delta_Qj)
-    # ))
-    lrna_fee = state.last_lrna_fee[tkn_sell]
+    lrna_fee = state.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
+            state.liquidity[tkn_buy] * delta_Qj /
+            (state.lrna[tkn_buy] - delta_Qj)
+    ))
+    # lrna_fee = state.last_lrna_fee[tkn_sell]
     delta_Qi = -delta_Qj / (1 - lrna_fee)
     delta_Ri = -state.liquidity[tkn_sell] * delta_Qi / (state.lrna[tkn_sell] + delta_Qi)
     return delta_Ri
@@ -371,14 +372,14 @@ def execute_swap(
             return state.fail_transaction('sell amount must be greater than zero', agent)
 
         delta_Qi = state.lrna[tkn_sell] * -delta_Ri / (state.liquidity[tkn_sell] + delta_Ri)
-        # asset_fee = state.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-        asset_fee = state.last_fee[tkn_sell]
-        # lrna_fee = state.lrna_fee[tkn_buy].compute(
-        #     tkn=tkn_buy,
-        #     delta_tkn=(state.liquidity[tkn_buy] * sell_quantity
-        #                / (state.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
-        # )
-        lrna_fee = state.last_lrna_fee[tkn_buy]
+        asset_fee = state.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+        # asset_fee = state.last_fee[tkn_sell]
+        lrna_fee = state.lrna_fee[tkn_buy].compute(
+            tkn=tkn_buy,
+            delta_tkn=(state.liquidity[tkn_buy] * sell_quantity
+                       / (state.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
+        )
+        # lrna_fee = state.last_lrna_fee[tkn_buy]
 
         delta_Qj = -delta_Qi * (1 - lrna_fee)
         delta_Rj = state.liquidity[tkn_buy] * -delta_Qj / (state.lrna[tkn_buy] + delta_Qj) * (1 - asset_fee)
@@ -487,8 +488,6 @@ def execute_lrna_swap(
 
     agent.holdings['LRNA'] += delta_qa
     agent.holdings[tkn] += delta_ra
-    old_lrna = state.lrna[tkn]
-    old_liquidity = state.liquidity[tkn]
     l = state.lrna_imbalance
     q = state.lrna_total
     state.lrna[tkn] += delta_qi
