@@ -969,7 +969,7 @@ def swap_lrna(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance=True
+        modify_imbalance: bool = True
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
