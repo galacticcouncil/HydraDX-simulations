@@ -455,10 +455,12 @@ def execute_lrna_swap(
             delta_qi = -delta_qa
             delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) * (1 - asset_fee)
             delta_ra = -delta_ri
+            # delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
         else:
             delta_ri = -delta_ra
             delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] * (1 - asset_fee) + delta_ri)
             delta_qa = -delta_qi
+            # delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
     elif delta_qa > 0 or delta_ra < 0:
         # lrna_fee = state.lrna_fee[tkn].compute(
         #     tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
@@ -466,13 +468,21 @@ def execute_lrna_swap(
         lrna_fee = state.last_lrna_fee[tkn]
         # buying LRNA
         if delta_qa > 0:
-            delta_qi = -delta_qa
-            delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) / (1 - lrna_fee)
+            # delta_qi = -delta_qa
+            # delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) / (1 - lrna_fee)
+            # delta_ra = -delta_ri
+            delta_qi = -delta_qa / (1 - lrna_fee)
+            delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn])
             delta_ra = -delta_ri
+            # delta_ra = -state.liquidity[tkn] * (delta_qa / (1 - lrna_fee)) / (-delta_qa / (1 - lrna_fee) + state.lrna[tkn])
         else:
+            # delta_ri = -delta_ra
+            # delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
+            # delta_qa = -delta_qi
             delta_ri = -delta_ra
-            delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
-            delta_qa = -delta_qi
+            delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] + delta_ri)
+            delta_qa = -delta_qi * (1 - lrna_fee)
+            # delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] / (1 - lrna_fee) - delta_ra)
     else:
         return state.fail_transaction('Buying LRNA not implemented.', agent)
 
@@ -484,11 +494,8 @@ def execute_lrna_swap(
         return state.fail_transaction('insufficient assets in pool', agent)
     elif delta_qi + state.lrna[tkn] <= 0:
         return state.fail_transaction('insufficient lrna in pool', agent)
-
     agent.holdings['LRNA'] += delta_qa
     agent.holdings[tkn] += delta_ra
-    old_lrna = state.lrna[tkn]
-    old_liquidity = state.liquidity[tkn]
     l = state.lrna_imbalance
     q = state.lrna_total
     state.lrna[tkn] += delta_qi
@@ -980,14 +987,15 @@ def swap_lrna(
         old_agent: Agent,
         delta_ra: float = 0,
         delta_qa: float = 0,
-        tkn: str = ''
+        tkn: str = '',
+        modify_imbalance: bool = True
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn)
+    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
 
 
 def swap(
