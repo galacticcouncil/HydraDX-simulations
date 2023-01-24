@@ -8,7 +8,7 @@ from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
 import random
-from numbers import Number
+# from numbers import Number
 
 import numpy as np
 
@@ -421,10 +421,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
-        # usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
-        usd_fee = omnipool.last_fee[omnipool.stablecoin]
-        # usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
-        usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
+        usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        # usd_fee = omnipool.last_fee[omnipool.stablecoin]
+        usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        # usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
@@ -437,12 +437,12 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            # asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
-            asset_fee = omnipool.last_fee[asset]
-            # asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
-            asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            # asset_fee = omnipool.last_fee[asset]
+            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
+            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
 
             if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
                 skip_ct += 1
@@ -458,18 +458,12 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             lrna_fees.append(asset_LRNA_fee)
 
         dr = get_dr_list(prices, reserves, lrna, usd_index)
-        size_mult = 1
-
-        for i in range(len(prices)):
-            if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
-                size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
-
-
-        # agent_wealth = state.value_assets(state.external_market, agent.holdings)
         dq = get_dq_list(dr, reserves, lrna)
 
-        # temp_omnipool = omnipool.copy()
-        # temp_agent = agent.copy()
+        # size_mult = 1
+        # for i in range(len(prices)):
+        #     if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
+        #         size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
         r = omnipool.liquidity
         q = omnipool.lrna
@@ -489,39 +483,20 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                     for i in range(len(asset_list)):
                         if dq[i] > 0:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
-                                                   sell_quantity=dq[i] * j/arb_precision, modify_imbalance=False)
+                                              sell_quantity=dq[i] * j/arb_precision, modify_imbalance=False)
                         else:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
-                                                   buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
+                                              buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
                 break
             elif j == arb_precision - 1:
                 for i in range(len(asset_list)):
                     if dq[i] > 0:
                         oamm.execute_swap(state=omnipool, agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
-                                               sell_quantity=dq[i], modify_imbalance=False)
+                                          sell_quantity=dq[i], modify_imbalance=False)
                     else:
                         oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
-                                               buy_quantity=-dq[i], modify_imbalance=False)
+                                          buy_quantity=-dq[i], modify_imbalance=False)
                 break  # technically unnecessary
-
-
-
-
-                # if dr[i] > 0:
-                #     oamm.execute_swap(
-                #         state=temp_omnipool, agent=temp_agent, tkn_sell=asset, tkn_buy='LRNA',
-                #         buy_quantity=-dq[i] * size_mult / arb_precision, modify_imbalance=False
-                #     )
-                # else:
-                #     oamm.execute_swap(
-                #         state=temp_omnipool, agent=temp_agent, tkn_sell='LRNA', tkn_buy=asset,
-                #         sell_quantity=dq[i] * size_mult / arb_precision, modify_imbalance=False
-                #     )
-            # if state.value_assets(state.external_market, temp_agent.holdings) > agent_wealth:
-            #     state.pools[pool_id] = temp_omnipool
-            #     state.agents[agent_id] = temp_agent
-            # else:
-            #     break
 
         return state
 
@@ -583,10 +558,10 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
         state.external_market[asset_name] = 0
 
         omnipool: OmnipoolState = state.pools[pool_id]
-        current_price = omnipool.lrna_price(asset_name)
+        current_price = oamm.lrna_price(omnipool, asset_name)
         if current_price <= 0:
             return state
-        usd_price = omnipool.lrna_price(omnipool.stablecoin) / current_price
+        usd_price = oamm.lrna_price(omnipool, omnipool.stablecoin) / current_price
         if usd_price <= 0:
             return state
         quantity = (
