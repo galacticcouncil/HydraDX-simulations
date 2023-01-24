@@ -111,8 +111,8 @@ def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
                 raise
 
 
-@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3))
-def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list):
+@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
+def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
         holdings[asset] = 1000000000
@@ -120,7 +120,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list)
     external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
     external_market[omnipool.stablecoin] = 1.0
     state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
-    strat = omnipool_arbitrage('omnipool')
+    strat = omnipool_arbitrage('omnipool', arb_precision)
 
     old_holdings = copy.deepcopy(agent.holdings)
 
