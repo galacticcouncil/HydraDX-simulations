@@ -378,7 +378,6 @@ def test_lrna_buy_nonzero_fee_zero_imbalance(initial_state: oamm.OmnipoolState):
 
     expected_delta_qi = -delta_qa / (1-0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
-    delta_qh = new_state.lrna['HDX'] - old_state.lrna['HDX']
 
     if expected_fee != pytest.approx(new_state.lrna['HDX'] - old_state.lrna['HDX']):
         raise AssertionError('Fee to HDX pool is wrong.')
@@ -388,11 +387,6 @@ def test_lrna_buy_nonzero_fee_zero_imbalance(initial_state: oamm.OmnipoolState):
 
     if old_state.lrna_total - new_state.lrna_total != pytest.approx(new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']):
         raise AssertionError('Some LRNA is being incorrectly burned or minted.')
-
-
-
-
-
 
 
 @given(omnipool_config(token_count=3), st.integers(min_value=1, max_value=2))
