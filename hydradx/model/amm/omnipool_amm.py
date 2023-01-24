@@ -311,42 +311,31 @@ def execute_swap(
     execute swap in place (modify and return self and agent)
     all swaps, LRNA, sub-pool, and asset swaps, are executed through this function
     """
-    old_liquidity = {
-        tkn_buy: state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0,
-        tkn_sell: state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
-    }
-    if tkn_buy == tkn_sell:
-        return state, agent  # no-op
-    if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
-        # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
-        return_val = execute_stable_swap(
-            state=state,
-            agent=agent,
-            sub_pool_buy_id=get_sub_pool(state=state, tkn=tkn_buy),
-            sub_pool_sell_id=get_sub_pool(state=state, tkn=tkn_sell),
-            tkn_sell=tkn_sell, tkn_buy=tkn_buy,
-            buy_quantity=buy_quantity,
-            sell_quantity=sell_quantity
-        )
+    old_buy_liquidity = state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0
+    old_sell_liquidity = state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
+    # old_liquidity = {
+    #     tkn_buy: state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0,
+    #     tkn_sell: state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
+    # }
+    # if tkn_buy == tkn_sell:
+    #     return state, agent  # no-op
 
-    elif tkn_sell == 'LRNA':
-        return_val = execute_lrna_swap(
-            state=state,
-            agent=agent,
-            delta_ra=buy_quantity,
-            delta_qa=-sell_quantity,
-            tkn=tkn_buy,
-            modify_imbalance=modify_imbalance
-        )
+    # if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
+    #     # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
+    #     return_val = execute_stable_swap(
+    #         state=state,
+    #         agent=agent,
+    #         sub_pool_buy_id=get_sub_pool(state=state, tkn=tkn_buy),
+    #         sub_pool_sell_id=get_sub_pool(state=state, tkn=tkn_sell),
+    #         tkn_sell=tkn_sell, tkn_buy=tkn_buy,
+    #         buy_quantity=buy_quantity,
+    #         sell_quantity=sell_quantity
+    #     )
+
+    if tkn_sell == 'LRNA':
+        return_val = execute_lrna_swap(state, agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
     elif tkn_buy == 'LRNA':
-        return_val = execute_lrna_swap(
-            state=state,
-            agent=agent,
-            delta_qa=buy_quantity,
-            delta_ra=-sell_quantity,
-            tkn=tkn_sell,
-            modify_imbalance=modify_imbalance
-        )
+        return_val = execute_lrna_swap(state, agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
 
     elif buy_quantity and not sell_quantity:
         # back into correct delta_Ri, then execute sell
@@ -422,15 +411,13 @@ def execute_swap(
 
     # update oracle
     if tkn_buy in state.current_block.asset_list:
-        buy_quantity = old_liquidity[tkn_buy] - state.liquidity[tkn_buy]
-        # self.current_block.volume_out[tkn_buy] += buy_quantity / self.current_block.liquidity[tkn_buy]
+        buy_quantity = old_buy_liquidity - state.liquidity[tkn_buy]
         state.current_block.volume_out[tkn_buy] += buy_quantity
-        state.current_block.price[tkn_buy] = state.lrna[tkn_buy] / state.liquidity[tkn_buy]
+        # state.current_block.price[tkn_buy] = state.lrna[tkn_buy] / state.liquidity[tkn_buy]
     if tkn_sell in state.current_block.asset_list:
-        sell_quantity = state.liquidity[tkn_sell] - old_liquidity[tkn_sell]
-        # self.current_block.volume_in[tkn_sell] += sell_quantity / self.current_block.liquidity[tkn_sell]
+        sell_quantity = state.liquidity[tkn_sell] - old_sell_liquidity
         state.current_block.volume_in[tkn_sell] += sell_quantity
-        state.current_block.price[tkn_sell] = state.lrna[tkn_sell] / state.liquidity[tkn_sell]
+        # state.current_block.price[tkn_sell] = state.lrna[tkn_sell] / state.liquidity[tkn_sell]
     return return_val
 
 
@@ -446,69 +433,92 @@ def execute_lrna_swap(
     Execute LRNA swap in place (modify and return)
     """
 
-    if delta_qa < 0 or delta_ra > 0:
-        # asset_fee = state.asset_fee[tkn].compute(
-        #     tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
-        # )
+    if delta_qa < 0:
         asset_fee = state.last_fee[tkn]
-        if delta_qa < 0:
-            delta_qi = -delta_qa
-            delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) * (1 - asset_fee)
-            delta_ra = -delta_ri
-            # delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
-        else:
-            delta_ri = -delta_ra
-            delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] * (1 - asset_fee) + delta_ri)
-            delta_qa = -delta_qi
-            # delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
-    elif delta_qa > 0 or delta_ra < 0:
-        # lrna_fee = state.lrna_fee[tkn].compute(
-        #     tkn=tkn, delta_tkn=delta_ra or state.liquidity[tkn] * delta_qa / (delta_qa + state.lrna[tkn])
-        # )
-        lrna_fee = state.last_lrna_fee[tkn]
-        # buying LRNA
-        if delta_qa > 0:
-            # delta_qi = -delta_qa
-            # delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn]) / (1 - lrna_fee)
-            # delta_ra = -delta_ri
-            delta_qi = -delta_qa / (1 - lrna_fee)
-            delta_ri = state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn])
-            delta_ra = -delta_ri
-            # delta_ra = -state.liquidity[tkn] * (delta_qa / (1 - lrna_fee)) / (-delta_qa / (1 - lrna_fee) + state.lrna[tkn])
-        else:
-            # delta_ri = -delta_ra
-            # delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] / (1 - lrna_fee) + delta_ri)
-            # delta_qa = -delta_qi
-            delta_ri = -delta_ra
-            delta_qi = state.lrna[tkn] * -delta_ri / (state.liquidity[tkn] + delta_ri)
-            delta_qa = -delta_qi * (1 - lrna_fee)
-            # delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] / (1 - lrna_fee) - delta_ra)
-    else:
-        return state.fail_transaction('Buying LRNA not implemented.', agent)
+        # delta_qi = -delta_qa
+        if -delta_qa + state.lrna[tkn] <= 0:
+            return state.fail_transaction('insufficient lrna in pool', agent)
+        delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
+        # delta_ra = -delta_ri
 
-    if delta_qa + agent.holdings['LRNA'] < 0:
-        return state.fail_transaction("agent doesn't have enough lrna", agent)
-    elif delta_ra + agent.holdings[tkn] < 0:
-        return state.fail_transaction(f"agent doesn't have enough {tkn} holdings", agent)
-    elif delta_ri + state.liquidity[tkn] <= 0:
-        return state.fail_transaction('insufficient assets in pool', agent)
-    elif delta_qi + state.lrna[tkn] <= 0:
-        return state.fail_transaction('insufficient lrna in pool', agent)
-    agent.holdings['LRNA'] += delta_qa
-    agent.holdings[tkn] += delta_ra
-    l = state.lrna_imbalance
-    q = state.lrna_total
-    state.lrna[tkn] += delta_qi
-    state.liquidity[tkn] += delta_ri
-    if modify_imbalance:
-        state.lrna_imbalance += (
-                - delta_qi * (q + l) / (q + delta_qi) - delta_qi
-        )
-    elif delta_qa > 0:  # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
+
+        if modify_imbalance:
+            l = state.lrna_imbalance
+            q = state.lrna_total
+            state.lrna_imbalance += delta_qa * (q + l) / (q - delta_qa) + delta_qa
+
+        state.lrna[tkn] += -delta_qa
+        state.liquidity[tkn] += -delta_ra
+
+    elif delta_ra > 0:
+        asset_fee = state.last_fee[tkn]
+        # delta_ri = -delta_ra
+        if -delta_ra + state.liquidity[tkn] <= 0:
+            return state.fail_transaction('insufficient assets in pool', agent)
+        delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
+        # delta_qa = -delta_qi
+
+        if modify_imbalance:
+            l = state.lrna_imbalance
+            q = state.lrna_total
+            state.lrna_imbalance += delta_qa * (q + l) / (q - delta_qa) + delta_qa
+
+        state.lrna[tkn] += -delta_qa
+        state.liquidity[tkn] += -delta_ra
+
+    # buying LRNA
+    elif delta_qa > 0:
+        lrna_fee = state.last_lrna_fee[tkn]
+        delta_qi = -delta_qa / (1 - lrna_fee)
+        if delta_qi + state.lrna[tkn] <= 0:
+            return state.fail_transaction('insufficient lrna in pool', agent)
+        delta_ra = -state.liquidity[tkn] * -delta_qi / (delta_qi + state.lrna[tkn])
+        # delta_ra = -delta_ri
+        l = state.lrna_imbalance
+        # q = state.lrna_total
+        state.lrna[tkn] += delta_qi
+        state.liquidity[tkn] += -delta_ra
+        # if modify_imbalance:
+        #     state.lrna_imbalance += - delta_qi * (q + l) / (q + delta_qi) - delta_qi
+
+        # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
         lrna_fee_amt = -(delta_qa + delta_qi)
         delta_l = min(-l, lrna_fee_amt)
         state.lrna_imbalance += delta_l
         state.lrna["HDX"] += lrna_fee_amt - delta_l
+
+    elif delta_ra < 0:
+        lrna_fee = state.last_lrna_fee[tkn]
+        # delta_ri = -delta_ra
+        if state.liquidity[tkn] - delta_ra <= 0:
+            return state.fail_transaction('insufficient assets in pool', agent)
+        delta_qi = state.lrna[tkn] * delta_ra / (state.liquidity[tkn] - delta_ra)
+        delta_qa = -delta_qi * (1 - lrna_fee)
+        l = state.lrna_imbalance
+        # q = state.lrna_total
+        state.lrna[tkn] += delta_qi
+        state.liquidity[tkn] -= delta_ra
+        # if modify_imbalance:
+        #     state.lrna_imbalance += - delta_qi * (q + l) / (q + delta_qi) - delta_qi
+
+        # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
+        lrna_fee_amt = -(delta_qa + delta_qi)
+        delta_l = min(-l, lrna_fee_amt)
+        state.lrna_imbalance += delta_l
+        state.lrna["HDX"] += lrna_fee_amt - delta_l
+
+    else:
+        return state.fail_transaction('All deltas are zero.', agent)
+
+    # if delta_qa + agent.holdings['LRNA'] < 0:
+    #     return state.fail_transaction("agent doesn't have enough lrna", agent)
+    # elif delta_ra + agent.holdings[tkn] < 0:
+    #     return state.fail_transaction(f"agent doesn't have enough {tkn} holdings", agent)
+
+
+    agent.holdings['LRNA'] += delta_qa
+    agent.holdings[tkn] += delta_ra
+
 
     return state, agent
 
