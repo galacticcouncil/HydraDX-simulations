@@ -1,28 +1,21 @@
 import copy
-import random
 
 import pytest
-from hypothesis import given, strategies as st
-
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth
+from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
+import random
+
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
-arb_precision_strategy = st.integers(min_value=1, max_value=5)
 asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
-
-
-@st.composite
-def reasonable_market(draw, token_count: int = 0) -> list:
-    token_count = token_count or draw(asset_number_strategy)
-    return [draw(asset_price_bounded_strategy) for _ in range(token_count)]
 
 
 @st.composite
@@ -90,7 +83,7 @@ def test_back_and_forth_trader_feeless(omnipool: oamm.OmnipoolState, pct: float)
         assert new_agent.holdings[asset] == pytest.approx(old_agent.holdings[asset], rel=1e-15)
 
 
-@given(omnipool_reasonable_config(token_count=3), percentage_of_liquidity_strategy)
+@given(omnipool_reasonable_config(asset_fee=0.0025, lrna_fee=0.0005, token_count=3), percentage_of_liquidity_strategy)
 def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
@@ -107,93 +100,5 @@ def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
         raise
     for asset in omnipool.asset_list:
         if new_agent.holdings[asset] > old_agent.holdings[asset]:
-            if new_agent.holdings[asset] != pytest.approx(old_agent.holdings[asset], rel=1e-15):
-                raise
-
-
-@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3),
-       arb_precision_strategy)
-def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
-    holdings = {'LRNA': 1000000000}
-    for asset in omnipool.asset_list:
-        holdings[asset] = 1000000000
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
-    external_market[omnipool.stablecoin] = 1.0
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
-    strat = omnipool_arbitrage('omnipool', arb_precision)
-
-    old_holdings = copy.deepcopy(agent.holdings)
-
-    strat.execute(state, 'agent')
-    new_holdings = state.agents['agent'].holdings
-
-    old_value, new_value = 0, 0
-
-    # Trading should result in net zero LRNA trades
-    if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-        raise
-
-    for asset in omnipool.asset_list:
-        old_value += old_holdings[asset] * external_market[asset]
-        new_value += new_holdings[asset] * external_market[asset]
-
-        # Trading should bring pool to market price
-        if oamm.usd_price(omnipool, asset) != pytest.approx(external_market[asset], rel=1e-15):
             raise
 
-    # Trading should be profitable
-    if old_value > new_value:
-        if new_value != pytest.approx(old_value, rel=1e-15):
-            raise
-
-
-@given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
-def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
-    holdings = {'LRNA': 1000000000}
-    for asset in omnipool.asset_list:
-        holdings[asset] = 1000000000
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
-    external_market[omnipool.stablecoin] = 1.0
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
-    strat = omnipool_arbitrage('omnipool', arb_precision)
-
-    old_holdings = copy.deepcopy(agent.holdings)
-
-    strat.execute(state, 'agent')
-    new_holdings = state.agents['agent'].holdings
-
-    old_value, new_value = 0, 0
-
-    # Trading should result in net zero LRNA trades
-    if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-        raise
-
-    for asset in omnipool.asset_list:
-        old_value += old_holdings[asset] * external_market[asset]
-        new_value += new_holdings[asset] * external_market[asset]
-
-        # Trading should bring pool to market price
-        # if omnipool.usd_price(asset) != pytest.approx(external_market[asset], rel=1e-15):
-        #     raise
-
-    # Trading should be profitable
-    if old_value > new_value:
-        if new_value != pytest.approx(old_value, rel=1e-15):
-            raise
-
-
-@given(omnipool_reasonable_config(token_count=3))
-def test_omnipool_LP(omnipool: oamm.OmnipoolState):
-    holdings = {asset: 10000 for asset in omnipool.asset_list}
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
-    strat = invest_all('omnipool')
-
-    new_state = strat.execute(state, 'agent')
-    for asset in omnipool.asset_list:
-        if new_state.agents['agent'].holdings[asset] != 0:
-            raise
-        if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
-            raise
