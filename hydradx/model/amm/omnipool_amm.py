@@ -90,9 +90,8 @@ class OmnipoolState(AMM):
         self.current_block = Block(self)
         self.update()
 
-        # record these for analysis later
-        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
-        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn, 1) for tkn in self.asset_list}
+        self.last_fee = {tkn: 0 for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: 0 for tkn in self.asset_list}
 
     def __setattr__(self, key, value):
         # if key is a fee, make sure it's a dict[str: FeeMechanism]
