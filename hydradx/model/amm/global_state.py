@@ -3,7 +3,7 @@ import copy
 import random
 from .amm import AMM, FeeMechanism
 from typing import Callable
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity, OmnipoolArchiveState
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 
 class GlobalState:
@@ -128,7 +128,6 @@ class GlobalState:
 
     # functions for calculating extra parameters we may want to track
 
-
     def market_prices(self, shares: dict) -> dict:
         """
         return the market price of each asset in state.asset_list, as well as the price of each asset in shares
@@ -139,7 +138,7 @@ class GlobalState:
             if isinstance(share_id, tuple):
                 pool_id = share_id[0]
                 tkn_id = share_id[1]
-                prices[share_id] = self.pools[pool_id].usd_price(tkn_id)
+                prices[share_id] = self.pools[pool_id].usd_price(self.pools[pool_id], tkn_id)
 
         return prices
 
@@ -183,7 +182,7 @@ class GlobalState:
                     }
 
         prices = self.market_prices(withdraw_holdings)
-        return self.value_assets(prices, withdraw_holdings)
+        return value_assets(prices, withdraw_holdings)
 
     def pool_val(self, pool: AMM):
         """ get the total value of all liquidity in the pool. """
@@ -196,7 +195,7 @@ class GlobalState:
         return self.cash_out(agent) / self.deposit_val(agent) - 1
 
     def deposit_val(self, agent: Agent) -> float:
-        return self.value_assets(
+        return value_assets(
             self.market_prices(agent.holdings),
             agent.initial_holdings
         )
@@ -234,7 +233,7 @@ class ArchiveState:
     def __init__(self, state: GlobalState):
         self.time_step = state.time_step
         self.external_market = {k: v for k, v in state.external_market.items()}
-        self.pools = {k: OmnipoolArchiveState(v) for (k, v) in state.pools.items()}
+        self.pools = {k: v.archive() for (k, v) in state.pools.items()}
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
 
@@ -349,12 +348,11 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
     return transform
 
 
-def historical_prices(price_list: list[dict[str: float]]) -> Callable:
+def historical_prices(price_dict: [dict[str: list[float]]]) -> Callable:
 
     def transform(state: GlobalState) -> GlobalState:
-        new_prices = price_list[state.time_step]
-        for tkn in new_prices:
-            state.external_market[tkn] = new_prices[tkn]
+        for tkn in price_dict:
+            state.external_market[tkn] = price_dict[tkn][state.time_step]
         return state
 
     return transform
