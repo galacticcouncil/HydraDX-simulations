@@ -348,11 +348,11 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
     return transform
 
 
-def historical_prices(price_dict: [dict[str: list[float]]]) -> Callable:
+def historical_prices(price_list: list[dict[str: float]]) -> Callable:
 
     def transform(state: GlobalState) -> GlobalState:
-        for tkn in price_dict:
-            state.external_market[tkn] = price_dict[tkn][state.time_step]
+        for tkn in price_list[state.time_step]:
+            state.external_market[tkn] = price_list[state.time_step][tkn]
         return state
 
     return transform
