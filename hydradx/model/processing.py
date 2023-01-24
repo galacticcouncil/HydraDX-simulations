@@ -103,10 +103,7 @@ def import_binance_prices(
 
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
-    files = [
-        f"{tkn}BUSD-1s-{date}"
-        for tkn in assets for date in dates
-    ]
+
     # find the data folder
     while not os.path.exists("./data"):
         os.chdir("..")
@@ -130,15 +127,16 @@ def import_binance_prices(
                 with open(f'./data/{file}.csv', 'r') as input_file:
                     rows = input_file.readlines()
                 with open(f'./data/{file}.csv', 'w', newline='') as output_file:
-                   output_file.write('\n'.join([row.split(',')[1] for row in rows]))
+                    output_file.write('\n'.join([row.split(',')[1] for row in rows]))
 
     # now that we have all the files, read them in
     price_data = {tkn: [] for tkn in assets}
-    for file in files:
-        tkn = file.split('-')[0][:-4]
-        with open(f'./data/{file}.csv', 'r') as input_file:
-            csvreader = reader(input_file)
-            price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
+    for tkn in assets:
+        for date in dates:
+            file = f"{tkn}BUSD-1s-{date}"
+            with open(f'./data/{file}.csv', 'r') as input_file:
+                csvreader = reader(input_file)
+                price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
 
     if not return_as_dict:
         price_data = [
