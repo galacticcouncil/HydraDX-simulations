@@ -194,3 +194,5 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     for asset in omnipool.asset_list:
         if new_state.agents['agent'].holdings[asset] != 0:
             raise
+        if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
+            raise
