@@ -42,7 +42,8 @@ class AMM:
     def update(self):
         pass
 
-    def price(self, tkn: str, denomination: str = '') -> float:
+    @staticmethod
+    def price(state, tkn: str, denomination: str = '') -> float:
         return 0
 
     def swap(
