@@ -117,7 +117,8 @@ def get_single_stream(
     elif not oracle:
         # prop may be either a dict, a function or a number
         if isinstance(getattr(getattr(initial_state, group)[instance], prop), Callable):
-            return [getattr(getattr(event, group)[instance], prop)(key) for event in events]
+            return [getattr(getattr(event, group)[instance], prop)
+                    (getattr(event, group)[instance], key) for event in events]
         elif isinstance(getattr(getattr(initial_state, group)[instance], prop), dict):
             return [getattr(getattr(event, group)[instance], prop)[key] for event in events]
         else:
