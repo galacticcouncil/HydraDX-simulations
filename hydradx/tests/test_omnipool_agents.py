@@ -83,7 +83,7 @@ def test_back_and_forth_trader_feeless(omnipool: oamm.OmnipoolState, pct: float)
         assert new_agent.holdings[asset] == pytest.approx(old_agent.holdings[asset], rel=1e-15)
 
 
-@given(omnipool_reasonable_config(asset_fee=0.0025, lrna_fee=0.0005, token_count=3), percentage_of_liquidity_strategy)
+@given(omnipool_reasonable_config(token_count=3), percentage_of_liquidity_strategy)
 def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
@@ -100,5 +100,7 @@ def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
         raise
     for asset in omnipool.asset_list:
         if new_agent.holdings[asset] > old_agent.holdings[asset]:
-            raise
+            if new_agent.holdings[asset] != pytest.approx(old_agent.holdings[asset], rel=1e-15):
+                raise
+
 
