@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
 from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
@@ -180,4 +180,17 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
     # Trading should be profitable
     if old_value > new_value:
         if new_value != pytest.approx(old_value, rel=1e-15):
+            raise
+
+
+@given(omnipool_reasonable_config(token_count=3))
+def test_omnipool_LP(omnipool: oamm.OmnipoolState):
+    holdings = {asset: 10000 for asset in omnipool.asset_list}
+    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
+    strat = invest_all('omnipool')
+
+    new_state = strat.execute(state, 'agent')
+    for asset in omnipool.asset_list:
+        if new_state.agents['agent'].holdings[asset] != 0:
             raise
