@@ -98,7 +98,7 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
 
 
 def import_binance_prices(
-    assets: list[str], start_date: str, days: int, interval: int = 12
+    assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
 
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
@@ -139,4 +139,9 @@ def import_binance_prices(
         with open(f'./data/{file}.csv', 'r') as input_file:
             csvreader = reader(input_file)
             price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
+
+    if not return_as_dict:
+        price_data = [
+            {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
+        ]
     return price_data
