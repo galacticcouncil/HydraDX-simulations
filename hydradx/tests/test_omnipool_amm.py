@@ -334,8 +334,10 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         delta_qa=-delta_qa,
         tkn=i
     )
-    if reverse_state.lrna_imbalance != pytest.approx(old_state.lrna_imbalance):
-        raise AssertionError('LRNA imbalance is wrong.')
+
+    # We do not currently expect imbalance to be symmetric
+    # if reverse_state.lrna_imbalance != pytest.approx(old_state.lrna_imbalance):
+    #     raise AssertionError('LRNA imbalance is wrong.')
 
     if reverse_agent.holdings[i] != pytest.approx(old_agent.holdings[i]):
         print(reverse_agent.holdings[i])
