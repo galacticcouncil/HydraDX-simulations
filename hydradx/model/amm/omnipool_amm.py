@@ -320,19 +320,19 @@ def execute_swap(
     # if tkn_buy == tkn_sell:
     #     return state, agent  # no-op
 
-    # if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
-    #     # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
-    #     return_val = execute_stable_swap(
-    #         state=state,
-    #         agent=agent,
-    #         sub_pool_buy_id=get_sub_pool(state=state, tkn=tkn_buy),
-    #         sub_pool_sell_id=get_sub_pool(state=state, tkn=tkn_sell),
-    #         tkn_sell=tkn_sell, tkn_buy=tkn_buy,
-    #         buy_quantity=buy_quantity,
-    #         sell_quantity=sell_quantity
-    #     )
+    if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
+        # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
+        return_val = execute_stable_swap(
+            state=state,
+            agent=agent,
+            sub_pool_buy_id=get_sub_pool(state=state, tkn=tkn_buy),
+            sub_pool_sell_id=get_sub_pool(state=state, tkn=tkn_sell),
+            tkn_sell=tkn_sell, tkn_buy=tkn_buy,
+            buy_quantity=buy_quantity,
+            sell_quantity=sell_quantity
+        )
 
-    if tkn_sell == 'LRNA':
+    elif tkn_sell == 'LRNA':
         return_val = execute_lrna_swap(state, agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
     elif tkn_buy == 'LRNA':
         return_val = execute_lrna_swap(state, agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
