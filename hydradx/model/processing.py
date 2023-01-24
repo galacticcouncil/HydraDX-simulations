@@ -1,5 +1,9 @@
-from csv import DictReader, writer
+import datetime
+import os
+from csv import DictReader, writer, reader
+from zipfile import ZipFile
 from dataclasses import dataclass
+import requests
 
 from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
 from .amm.agents import Agent
@@ -123,18 +127,51 @@ def import_price_data(input_filename: str) -> list[PriceTick]:
     return price_data
 
 
-def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[PriceTick]:
-    price_data = []
-    for input_filename in input_filenames:
-        with open(input_path + input_filename, newline='') as input_file:
-            fieldnames = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume',
-                          'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
-            reader = DictReader(input_file, fieldnames=fieldnames)
-            # reader = DictReader(input_file)
-            for row in reader:
-                price_data.append(PriceTick(int(row["timestamp"]), float(row["open"])))
+def import_binance_prices(
+    assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
+) -> dict[str: list[float]]:
 
-    price_data.sort(key=lambda x: x.timestamp)
+    start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
+
+    # find the data folder
+    while not os.path.exists("./data"):
+        os.chdir("..")
+
+    # check that the files are all there, and if not, download them
+    for tkn in assets:
+        for date in dates:
+            file = f"{tkn}BUSD-1s-{date}"
+            if os.path.exists(f'./data/{file}.csv'):
+                continue
+            else:
+                print(f'Downloading {file}')
+                url = f"https://data.binance.vision/data/spot/daily/klines/{tkn}BUSD/1s/{file}.zip"
+                response = requests.get(url)
+                with open(f'./data/{file}.zip', 'wb') as f:
+                    f.write(response.content)
+                with ZipFile(f"./data/{file}.zip", 'r') as zipObj:
+                    zipObj.extractall(path='./data')
+                os.remove(f"./data/{file}.zip")
+                # strip out everything except close price
+                with open(f'./data/{file}.csv', 'r') as input_file:
+                    rows = input_file.readlines()
+                with open(f'./data/{file}.csv', 'w', newline='') as output_file:
+                    output_file.write('\n'.join([row.split(',')[1] for row in rows]))
+
+    # now that we have all the files, read them in
+    price_data = {tkn: [] for tkn in assets}
+    for tkn in assets:
+        for date in dates:
+            file = f"{tkn}BUSD-1s-{date}"
+            with open(f'./data/{file}.csv', 'r') as input_file:
+                csvreader = reader(input_file)
+                price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
+
+    if not return_as_dict:
+        price_data = [
+            {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
+        ]
     return price_data
 
 
