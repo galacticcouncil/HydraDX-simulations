@@ -186,6 +186,8 @@ def execute_swap(
         return state.fail_transaction('Pool has insufficient liquidity.', agent)
 
     new_agent = agent  # .copy()
+    if tkn_buy not in new_agent.holdings:
+        new_agent.holdings[tkn_buy] = 0
     new_agent.holdings[tkn_buy] += buy_quantity
     new_agent.holdings[tkn_sell] -= sell_quantity
     state.liquidity[tkn_buy] -= buy_quantity
@@ -257,7 +259,50 @@ def execute_withdraw_asset(
     state.shares -= shares_removed
     state.liquidity[tkn_remove] -= quantity
     agent.holdings[tkn_remove] += quantity
-    return state, agent
+    # return state, agent
+
+
+def execute_remove_shares_curve_style(
+        state: StableSwapPoolState,
+        agent: Agent,
+        shares_removed: float,
+        tkn_remove: str,
+        fail_on_overdraw: bool = True
+):
+    # First, need to calculate
+    # * Get current D
+    # * Solve Eqn against y_i for D - _token_amount
+
+    _fee = state.trade_fee  # / 1.5
+
+    initial_d = state.calculate_d()
+    reduced_d = initial_d - shares_removed * initial_d / state.shares
+
+    xp_reduced = copy.copy(state.liquidity)
+    xp_reduced.pop(tkn_remove)
+
+    reduced_y = state.calculate_y(state.modified_balances(omit=[tkn_remove]), reduced_d)
+    asset_reserve = state.liquidity[tkn_remove]
+
+    for tkn in state.asset_list:
+        if tkn == tkn_remove:
+            dx_expected = state.liquidity[tkn] * reduced_d / initial_d - reduced_y
+            asset_reserve -= _fee * dx_expected
+        else:
+            dx_expected = state.liquidity[tkn] - state.liquidity[tkn] * reduced_d / initial_d
+            xp_reduced[tkn] -= _fee * dx_expected
+
+    dy = asset_reserve - state.calculate_y(list(xp_reduced.values()), reduced_d)
+    dy0 = state.liquidity[tkn_remove] - reduced_y
+    # fee = dy0 - dy
+
+    agent.holdings[state.unique_id] -= shares_removed
+    state.shares -= shares_removed
+    state.liquidity[tkn_remove] -= dy
+    if tkn_remove not in agent.holdings:
+        agent.holdings[tkn_remove] = 0
+    agent.holdings[tkn_remove] += dy
+    return state, agent  # dy, dy_0 - dy
 
 
 def execute_add_liquidity(
