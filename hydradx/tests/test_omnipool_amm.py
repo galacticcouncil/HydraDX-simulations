@@ -1470,3 +1470,51 @@ def test_dynamic_fees(agent_wealth: float, hdx_price: float):
         raise AssertionError('Fee should increase when price increases.')
     if not lrna_fee > initial_lrna_fee:
         raise AssertionError('LRNA fee should increase when price decreases.')
+
+
+def test_curve_style_withdraw_fees():
+    initial_state = stableswap.StableSwapPoolState(
+        tokens={
+            'USDA': 1000000,
+            'USDB': 1000000,
+            'USDC': 1000000,
+            'USDD': 1000000,
+        }, amplification=100, trade_fee=0.003,
+        unique_id='test_pool'
+    )
+    initial_agent = Agent(
+        holdings={'USDA': 100000}
+    )
+    test_state, test_agent = stableswap.execute_add_liquidity(
+        state=initial_state.copy(),
+        agent=initial_agent.copy(),
+        quantity=initial_agent.holdings['USDA'],
+        tkn_add='USDA',
+    )
+    curve_state, curve_agent = stableswap.execute_remove_shares_curve_style(
+        state=test_state.copy(),
+        agent=test_agent.copy(),
+        shares_removed=test_agent.holdings['test_pool'],
+        tkn_remove='USDB'
+    )
+    effective_fee_curve = 1 - curve_agent.holdings['USDB'] / initial_agent.holdings['USDA']
+
+    stable_state, stable_agent = stableswap.execute_remove_liquidity(
+        state=test_state.copy(),
+        agent=test_agent.copy(),
+        shares_removed=test_agent.holdings['test_pool'],
+        tkn_remove='USDB'
+    )
+    effective_fee_stable = 1 - stable_agent.holdings['USDB'] / initial_agent.holdings['USDA']
+
+    swap_state, swap_agent = stableswap.execute_swap(
+        initial_state.copy(),
+        initial_agent.copy(),
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        sell_quantity=initial_agent.holdings['USDA']
+    )
+    effective_fee_swap = 1 - swap_agent.holdings['USDB'] / initial_agent.holdings['USDA']
+
+    # insert breakpoint here to see the effective fees
+    er = 1
