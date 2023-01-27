@@ -10,6 +10,7 @@ arb_precision_strategy = st.integers(min_value=1, max_value=5)
 asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
+reasonable_percentage_of_liquidity_strategy = st.floats(min_value=0.01, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
 
 
@@ -23,6 +24,12 @@ def reasonable_holdings(draw, token_count: int = 0):
 def reasonable_market(draw, token_count: int = 0):
     token_count = token_count or draw(asset_number_strategy)
     return [draw(asset_price_bounded_strategy) for _ in range(token_count)]
+
+
+@st.composite
+def reasonable_pct(draw, token_count: int=0):
+    token_count = token_count or draw(asset_number_strategy)
+    return [draw(reasonable_percentage_of_liquidity_strategy) for _ in range(token_count)]
 
 
 @st.composite
