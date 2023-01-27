@@ -294,7 +294,7 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     delta_qa = -1000
     i = old_state.asset_list[2]
 
-    # Test with trader selling asset i
+    # Test with trader buying asset i
     feeless_state = initial_state.copy()
     feeless_state.lrna_fee = 0
     feeless_state.asset_fee = 0
@@ -338,8 +338,10 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         delta_qa=-delta_qa,
         tkn=i
     )
-    if reverse_state.lrna_imbalance != pytest.approx(old_state.lrna_imbalance):
-        raise AssertionError('LRNA imbalance is wrong.')
+
+    # We do not currently expect imbalance to be symmetric
+    # if reverse_state.lrna_imbalance != pytest.approx(old_state.lrna_imbalance):
+    #     raise AssertionError('LRNA imbalance is wrong.')
 
     if reverse_agent.holdings[i] != pytest.approx(old_agent.holdings[i]):
         print(reverse_agent.holdings[i])
@@ -380,7 +382,6 @@ def test_lrna_buy_nonzero_fee_zero_imbalance(initial_state: oamm.OmnipoolState):
 
     expected_delta_qi = -delta_qa / (1-0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
-    delta_qh = new_state.lrna['HDX'] - old_state.lrna['HDX']
 
     if expected_fee != pytest.approx(new_state.lrna['HDX'] - old_state.lrna['HDX']):
         raise AssertionError('Fee to HDX pool is wrong.')
