@@ -15,11 +15,11 @@ def test_value_assets(market: dict, holdings: list):
         raise
 
 
-@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market_dict(token_count=3))
-def test_cash_out_usd_omnipool(omnipool: OmnipoolState, market: dict):
-    usd_amount = 100000
-    holdings = {omnipool.stablecoin: usd_amount}
-    agent = Agent(holdings=holdings)
+@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market_dict(token_count=3), reasonable_holdings(token_count=3))
+def test_cash_out_no_liquidity(omnipool: OmnipoolState, market: dict, holdings: list):
+    asset_list = list(market.keys())
+    holdings_dict = {tkn: holdings[i] for i, tkn in enumerate(asset_list)}
+    agent = Agent(holdings=holdings_dict)
     cash = cash_out_omnipool(omnipool, agent, market)
-    if cash != usd_amount:
+    if cash != sum([holdings_dict[tkn] * market[tkn] for tkn in asset_list]):
         raise
