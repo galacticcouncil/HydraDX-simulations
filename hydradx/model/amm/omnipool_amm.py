@@ -1401,6 +1401,7 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
         # shares.keys might just be the pool name, or it might be a tuple (pool, token)
         if isinstance(key, tuple):
             tkn = key[1]
+            withdraw_holdings[key] = 0
         else:
             tkn = key
         # optimized for omnipool, no copy operations
@@ -1411,8 +1412,9 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
                 agent.holdings[key],
                 tkn_remove=tkn
             )
-        # withdraw_holdings[key] = 0
         withdraw_holdings['LRNA'] += delta_qa
+        if tkn not in withdraw_holdings:
+            withdraw_holdings[tkn] = 0
         withdraw_holdings[tkn] -= delta_r
 
     return value_assets(prices, withdraw_holdings)
