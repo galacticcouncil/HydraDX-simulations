@@ -239,34 +239,34 @@ class ArchiveState:
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
 
-def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
-    """
-    return the value of the agent's holdings if they withdraw all liquidity
-    and then sell at current spot prices
-    """
-    if 'LRNA' not in agent.holdings:
-        agent.holdings['LRNA'] = 0
-    withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
-
-    for key in agent.holdings.keys():
-        # shares.keys might just be the pool name, or it might be a tuple (pool, token)
-        if isinstance(key, tuple):
-            tkn = key[1]
-        else:
-            tkn = key
-        # optimized for omnipool, no copy operations
-        delta_qa, delta_r, delta_q,\
-            delta_s, delta_b, delta_l = calculate_remove_liquidity(
-                omnipool,
-                agent,
-                agent.holdings[key],
-                tkn_remove=tkn
-            )
-        withdraw_holdings[key] = 0
-        withdraw_holdings['LRNA'] += delta_qa
-        withdraw_holdings[tkn] -= delta_r
-
-    return value_assets(prices, withdraw_holdings)
+# def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
+#     """
+#     return the value of the agent's holdings if they withdraw all liquidity
+#     and then sell at current spot prices
+#     """
+#     if 'LRNA' not in agent.holdings:
+#         agent.holdings['LRNA'] = 0
+#     withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
+#
+#     for key in agent.holdings.keys():
+#         # shares.keys might just be the pool name, or it might be a tuple (pool, token)
+#         if isinstance(key, tuple):
+#             tkn = key[1]
+#         else:
+#             tkn = key
+#         # optimized for omnipool, no copy operations
+#         delta_qa, delta_r, delta_q,\
+#             delta_s, delta_b, delta_l = calculate_remove_liquidity(
+#                 omnipool,
+#                 agent,
+#                 agent.holdings[key],
+#                 tkn_remove=tkn
+#             )
+#         # withdraw_holdings[key] = 0
+#         withdraw_holdings['LRNA'] += delta_qa
+#         withdraw_holdings[tkn] -= delta_r
+#
+#     return value_assets(prices, withdraw_holdings)
 
 
 def value_assets(prices: dict, assets: dict) -> float:
