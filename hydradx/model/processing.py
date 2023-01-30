@@ -106,7 +106,10 @@ def import_binance_prices(
 
     # find the data folder
     while not os.path.exists("./data"):
+        cwd = os.getcwd()
         os.chdir("..")
+        if cwd == os.getcwd():
+            raise FileNotFoundError("Could not find the data folder")
 
     # check that the files are all there, and if not, download them
     for tkn in assets:
