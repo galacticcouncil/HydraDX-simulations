@@ -193,8 +193,9 @@ def import_monthly_binance_prices(
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
 
     if not return_as_dict:
+        data_length = min([len(price_data[tkn]) for tkn in assets])
         price_data = [
-            {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
+            {tkn: price_data[tkn][i] for tkn in assets} for i in range(data_length)
         ]
     return price_data
 
