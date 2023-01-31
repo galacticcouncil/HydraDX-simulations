@@ -40,28 +40,6 @@ def assets_config(draw, token_count: int = 0) -> dict:
     })
     return return_dict
 
-@st.composite
-def assets_reasonable_config(draw, token_count: int = 0) -> dict:
-    token_count = token_count or draw(asset_number_strategy)
-    usd_price_lrna = draw(asset_price_bounded_strategy)
-    return_dict = {
-        'HDX': {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA': draw(asset_quantity_bounded_strategy)
-        },
-        'USD': {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA_price': usd_price_lrna
-        }
-    }
-    return_dict.update({
-        ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA': draw(asset_quantity_bounded_strategy)
-        } for _ in range(token_count - 2)
-    })
-    return return_dict
-
 
 @st.composite
 def assets_reasonable_config(draw, token_count: int = 0) -> dict:
@@ -137,54 +115,6 @@ def omnipool_config(
         )
 
     test_state.lrna_imbalance = -draw(asset_quantity_strategy)
-    test_state.update()
-    return test_state
-
-
-@st.composite
-def omnipool_reasonable_config(
-        draw,
-        asset_dict=None,
-        token_count=0,
-        lrna_fee=None,
-        asset_fee=None,
-        tvl_cap_usd=0,
-        imbalance=None,
-) -> oamm.OmnipoolState:
-    asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
-
-    test_state = oamm.OmnipoolState(
-        tokens=asset_dict,
-        tvl_cap=tvl_cap_usd or float('inf'),
-        asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
-        lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-    )
-
-    test_state.lrna_imbalance = -draw(asset_quantity_strategy) if imbalance is None else imbalance
-    test_state.update()
-    return test_state
-
-
-@st.composite
-def omnipool_reasonable_config(
-        draw,
-        asset_dict=None,
-        token_count=0,
-        lrna_fee=None,
-        asset_fee=None,
-        tvl_cap_usd=0,
-        imbalance=None,
-) -> oamm.OmnipoolState:
-    asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
-
-    test_state = oamm.OmnipoolState(
-        tokens=asset_dict,
-        tvl_cap=tvl_cap_usd or float('inf'),
-        asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
-        lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-    )
-
-    test_state.lrna_imbalance = -draw(asset_quantity_strategy) if imbalance is None else imbalance
     test_state.update()
     return test_state
 

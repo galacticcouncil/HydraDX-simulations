@@ -1,11 +1,12 @@
 import copy
+from numbers import Number
+from typing import Callable
+
+from . import stableswap_amm as stableswap
 from .agents import Agent
 from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
-from . import stableswap_amm as stableswap
-from typing import Callable
-from numbers import Number
 
 
 class OmnipoolState(AMM):
