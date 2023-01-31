@@ -1,6 +1,7 @@
 import copy
-import pytest
 import random
+
+import pytest
 from hypothesis import given, strategies as st, assume
 
 from hydradx.model.amm import omnipool_amm as oamm
@@ -37,6 +38,7 @@ def assets_config(draw, token_count: int = 0) -> dict:
         } for _ in range(token_count - 2)
     })
     return return_dict
+
 
 @st.composite
 def assets_reasonable_config(draw, token_count: int = 0) -> dict:
@@ -318,8 +320,9 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     qi_arb = old_state.lrna[i] + delta_qi * old_state.lrna[i] / old_state.lrna_total
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
-    if ((old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total))*ri_arb) != pytest.approx(
-        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total))*old_state.liquidity[i]
+    if ((old_state.lrna[i] + old_state.lrna_imbalance * (
+            old_state.lrna[i] / old_state.lrna_total)) * ri_arb) != pytest.approx(
+            (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
 
@@ -357,10 +360,11 @@ def test_lrna_buy_nonzero_fee_nonzero_imbalance(initial_state: oamm.OmnipoolStat
     # Test with trader selling asset i
     new_state, new_agent = oamm.swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
 
-    expected_delta_qi = -delta_qa / (1-0.0005)
+    expected_delta_qi = -delta_qa / (1 - 0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
 
-    if old_state.lrna_total - new_state.lrna_total != pytest.approx(new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_fee):
+    if old_state.lrna_total - new_state.lrna_total != pytest.approx(
+            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_fee):
         raise AssertionError('LRNA total is wrong.')
 
 
@@ -376,16 +380,18 @@ def test_lrna_buy_nonzero_fee_zero_imbalance(initial_state: oamm.OmnipoolState):
     # Test with trader selling asset i
     new_state, new_agent = oamm.swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
 
-    expected_delta_qi = -delta_qa / (1-0.0005)
+    expected_delta_qi = -delta_qa / (1 - 0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
 
     if expected_fee != pytest.approx(new_state.lrna['HDX'] - old_state.lrna['HDX']):
         raise AssertionError('Fee to HDX pool is wrong.')
 
-    if old_state.lrna[i] - new_state.lrna[i] != pytest.approx(new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_fee):
+    if old_state.lrna[i] - new_state.lrna[i] != pytest.approx(
+            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_fee):
         raise AssertionError('Delta Qi is wrong.')
 
-    if old_state.lrna_total - new_state.lrna_total != pytest.approx(new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']):
+    if old_state.lrna_total - new_state.lrna_total != pytest.approx(
+            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']):
         raise AssertionError('Some LRNA is being incorrectly burned or minted.')
 
 
@@ -756,14 +762,14 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
 
     delta_qi = new_state.lrna[stable_pool.unique_id] - initial_state.lrna[stable_pool.unique_id]
     qi_arb = (
-        initial_state.lrna[stable_pool.unique_id] + delta_qi
-        * initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total
+            initial_state.lrna[stable_pool.unique_id] + delta_qi
+            * initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total
     )
     ri_arb = initial_state.liquidity[stable_pool.unique_id] * initial_state.lrna_total / new_state.lrna_total
 
     if (
-        (initial_state.lrna[stable_pool.unique_id] + initial_state.lrna_imbalance
-         * (initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)) * ri_arb
+            (initial_state.lrna[stable_pool.unique_id] + initial_state.lrna_imbalance
+             * (initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)) * ri_arb
     ) != pytest.approx(
         (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total))
         * initial_state.liquidity[stable_pool.unique_id]
@@ -831,9 +837,9 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
     ):
         raise AssertionError("Shares in stable pool and omnipool do not add up.")
     if (
-        new_state.liquidity[stable_pool.unique_id] *
-        (initial_state.lrna_total + initial_state.lrna_imbalance *
-         initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)
+            new_state.liquidity[stable_pool.unique_id] *
+            (initial_state.lrna_total + initial_state.lrna_imbalance *
+             initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)
     ) != pytest.approx(
         new_state.liquidity[stable_pool.unique_id] *
         (initial_state.lrna_total + initial_state.lrna_imbalance *
@@ -872,13 +878,13 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     if not new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy] == buy_quantity:
         raise AssertionError('Agent did not get what it paid for, but transaction passed!')
     if (
-        round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
-        < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
+            round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
+            < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
     ):
         raise AssertionError('Pool_buy rice moved in the wrong direction.')
     if (
-        round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
-        < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)
+            round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
+            < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)
     ):
         raise AssertionError('Pool_sell price moved in the wrong direction.')
 
@@ -888,13 +894,13 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Shares * invariant inconsistent in pool_sell.')
 
     if (
-        new_state.liquidity[pool_buy.unique_id] + pool_buy.shares
-        != pytest.approx(initial_state.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
+            new_state.liquidity[pool_buy.unique_id] + pool_buy.shares
+            != pytest.approx(initial_state.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_buy.")
     if (
-        new_state.liquidity[pool_sell.unique_id] + pool_sell.shares
-        != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
+            new_state.liquidity[pool_sell.unique_id] + pool_sell.shares
+            != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
     sell_quantity = initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]
@@ -926,7 +932,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
             (new_agent.holdings[tkn_buy] - after_trade_agent.holdings[tkn_buy])
     )
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
-    if not(spot_price_after > execution_price > spot_price_before):
+    if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
 
 
@@ -960,13 +966,13 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     if not initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell] == sell_quantity:
         raise AssertionError('Agent did not get what it paid for, but transaction passed!')
     if (
-        round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
-        < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
+            round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
+            < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
     ):
         raise AssertionError('Pool_buy rice moved in the wrong direction.')
     if (
-        round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
-        < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)
+            round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
+            < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)
     ):
         raise AssertionError('Pool_sell price moved in the wrong direction.')
     if new_pool_buy.shares * pool_buy.d != pytest.approx(new_pool_buy.d * pool_buy.shares):
@@ -975,13 +981,13 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Shares * invariant inconsistent in pool_sell.')
 
     if (
-        new_state.liquidity[pool_buy.unique_id] + pool_buy.shares
-        != pytest.approx(initial_state.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
+            new_state.liquidity[pool_buy.unique_id] + pool_buy.shares
+            != pytest.approx(initial_state.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_buy.")
     if (
-        new_state.liquidity[pool_sell.unique_id] + pool_sell.shares
-        != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
+            new_state.liquidity[pool_sell.unique_id] + pool_sell.shares
+            != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
     buy_quantity = initial_agent.holdings[tkn_buy] - new_agent.holdings[tkn_buy]
@@ -1013,8 +1019,9 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
             (new_agent.holdings[tkn_buy] - after_trade_agent.holdings[tkn_buy])
     )
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
-    if not(spot_price_after > execution_price > spot_price_before):
+    if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
+
 
 # TODO: reenable this test
 # @reproduce_failure('6.39.6', b'AXicY2DAAyQdq1ZKfuN+rybf3azHsE4yaIXmbAaupsVnuibg0wYFAAFJCqI=')
