@@ -511,7 +511,6 @@ def execute_stable_swap(
         buy_quantity: float = 0,
         sell_quantity: float = 0
 ) -> tuple[AMM, Agent]:
-
     if tkn_sell == 'LRNA':
         if buy_quantity:
             sub_pool = state.sub_pools[sub_pool_buy_id]
@@ -1240,9 +1239,9 @@ def dynamic_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x_lrna = (
-                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-             ) / raise_oracle.liquidity[tkn]
+                             raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                             - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+                     ) / raise_oracle.liquidity[tkn]
         else:
             x_lrna = 0
 
@@ -1333,9 +1332,9 @@ def dynamicmult_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x = (
-                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-             ) / raise_oracle.liquidity[tkn]
+                        raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                        - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+                ) / raise_oracle.liquidity[tkn]
         else:
             x = 0
 
@@ -1384,13 +1383,13 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
         else:
             tkn = key
         # optimized for omnipool, no copy operations
-        delta_qa, delta_r, delta_q,\
+        delta_qa, delta_r, delta_q, \
             delta_s, delta_b, delta_l = calculate_remove_liquidity(
-                omnipool,
-                agent,
-                agent.holdings[key],
-                tkn_remove=tkn
-            )
+            omnipool,
+            agent,
+            agent.holdings[key],
+            tkn_remove=tkn
+        )
         withdraw_holdings['LRNA'] += delta_qa
         if tkn not in withdraw_holdings:
             withdraw_holdings[tkn] = 0

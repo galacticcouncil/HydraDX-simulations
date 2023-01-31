@@ -1,7 +1,8 @@
-import pytest, random, copy
-from hypothesis import given, strategies as st, assume
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+import random
 
+from hypothesis import strategies as st
+
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -27,7 +28,7 @@ def reasonable_market(draw, token_count: int = 0):
 
 
 @st.composite
-def reasonable_pct(draw, token_count: int=0):
+def reasonable_pct(draw, token_count: int = 0):
     token_count = token_count or draw(asset_number_strategy)
     return [draw(reasonable_percentage_of_liquidity_strategy) for _ in range(token_count)]
 
@@ -38,8 +39,9 @@ def reasonable_market_dict(draw, token_count: int = 0):
     price_dict = {'HDX': price_list[1], 'USD': 1.0}
     price_dict.update({
         ''.join(
-            random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): price_list[i+2] for i in range(token_count - 2)
-                        })
+            random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): price_list[i + 2] for i in
+        range(token_count - 2)
+    })
     return price_dict
 
 
