@@ -1,9 +1,11 @@
-from .agents import Agent, AgentArchiveState
 import copy
 import random
-from .amm import AMM, FeeMechanism
 from typing import Callable
 from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
+
+from .agents import Agent, AgentArchiveState
+from .amm import AMM, FeeMechanism
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity, OmnipoolArchiveState
 
 
 class GlobalState:
@@ -68,8 +70,8 @@ class GlobalState:
 
     def total_asset(self, tkn):
         return (
-            sum([pool.liquidity[tkn] if tkn in pool.liquidity else 0 for pool in self.pools.values()])
-            + sum([agent.holdings[tkn] if tkn in agent.holdings else 0 for agent in self.agents.values()])
+                sum([pool.liquidity[tkn] if tkn in pool.liquidity else 0 for pool in self.pools.values()])
+                + sum([agent.holdings[tkn] if tkn in agent.holdings else 0 for agent in self.agents.values()])
         )
 
     def total_assets(self):
@@ -162,13 +164,13 @@ class GlobalState:
             if pool_id in self.pools:
                 if isinstance(self.pools[pool_id], OmnipoolState):
                     # optimized for omnipool, no copy operations
-                    delta_qa, delta_r, delta_q,\
+                    delta_qa, delta_r, delta_q, \
                         delta_s, delta_b, delta_l = calculate_remove_liquidity(
-                            self.pools[pool_id],
-                            agent,
-                            agent.holdings[key],
-                            tkn_remove=tkn
-                        )
+                        self.pools[pool_id],
+                        agent,
+                        agent.holdings[key],
+                        tkn_remove=tkn
+                    )
                     withdraw_holdings[key] = 0
                     withdraw_holdings['LRNA'] += delta_qa
                     withdraw_holdings[tkn] -= delta_r
@@ -207,25 +209,25 @@ class GlobalState:
         newline = "\n"
         indent = '    '
         return (
-            f'global state {newline}'
-            f'pools: {newline + newline + indent}' +
-            ((newline + indent).join([
-                (newline + indent).join(pool_desc.split('\n'))
-                for pool_desc in [repr(pool) for pool in self.pools.values()]
-            ])) +
-            newline + newline +
-            f'agents: {newline + newline}    ' +
-            ((newline + indent).join([
-                (newline + indent).join(agent_desc.split('\n'))
-                for agent_desc in [repr(agent) for agent in self.agents.values()]
-            ])) + newline +
-            f'market prices: {newline + newline}    ' +
-            ((newline + indent).join([
-                f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
-            ])) +
-            f'{newline}{newline}'
-            f'evolution function: {self.evolve_function}'
-            f'{newline}'
+                f'global state {newline}'
+                f'pools: {newline + newline + indent}' +
+                ((newline + indent).join([
+                    (newline + indent).join(pool_desc.split('\n'))
+                    for pool_desc in [repr(pool) for pool in self.pools.values()]
+                ])) +
+                newline + newline +
+                f'agents: {newline + newline}    ' +
+                ((newline + indent).join([
+                    (newline + indent).join(agent_desc.split('\n'))
+                    for agent_desc in [repr(agent) for agent in self.agents.values()]
+                ])) + newline +
+                f'market prices: {newline + newline}    ' +
+                ((newline + indent).join([
+                    f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
+                ])) +
+                f'{newline}{newline}'
+                f'evolution function: {self.evolve_function}'
+                f'{newline}'
         )
 
 
@@ -273,11 +275,11 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
             # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
             # instead, we need to subtract (100/101)% to avoid a long-term downward trend
             new_state.external_market[asset] *= (
-                (1 + random.random() * change / 100 if random.choice([True, False])
-                 else 1 - random.random() * (1 - 100 / (100 + change)))
-                # 1 / (1 + change / 100)
-                # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
-                + bias / 100
+                    (1 + random.random() * change / 100 if random.choice([True, False])
+                     else 1 - random.random() * (1 - 100 / (100 + change)))
+                    # 1 / (1 + change / 100)
+                    # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
+                    + bias / 100
             )
         return new_state
 
@@ -309,8 +311,8 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
                 updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
                 updown[tkn].inertia = 0
             state.external_market[tkn] += (
-                updown[tkn].direction / 100 / updown[tkn].wavelength
-                + updown[tkn].bias / 100 / updown[tkn].wavelength
+                    updown[tkn].direction / 100 / updown[tkn].wavelength
+                    + updown[tkn].bias / 100 / updown[tkn].wavelength
             )
             updown[tkn].inertia += 1
         return state
@@ -319,7 +321,6 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
 
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
-
     def transform(state: GlobalState) -> GlobalState:
         for tkn in price_list[state.time_step]:
             state.external_market[tkn] = price_list[state.time_step][tkn]
@@ -329,14 +330,14 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
 
 
 def swap(
-    old_state: GlobalState,
-    pool_id: str,
-    agent_id: str,
-    tkn_sell: str,
-    tkn_buy: str,
-    buy_quantity: float = 0,
-    sell_quantity: float = 0,
-    **kwargs
+        old_state: GlobalState,
+        pool_id: str,
+        agent_id: str,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0,
+        **kwargs
 ) -> GlobalState:
     """
     copy state, execute swap, return swapped state
@@ -353,11 +354,11 @@ def swap(
 
 
 def add_liquidity(
-    old_state: GlobalState,
-    pool_id: str,
-    agent_id: str,
-    quantity: float,
-    tkn_add: str
+        old_state: GlobalState,
+        pool_id: str,
+        agent_id: str,
+        quantity: float,
+        tkn_add: str
 ) -> GlobalState:
     """
     copy state, execute add liquidity
@@ -379,13 +380,12 @@ def add_liquidity(
 
 
 def remove_liquidity(
-    old_state: GlobalState,
-    pool_id: str,
-    agent_id: str,
-    quantity: float,
-    tkn_remove: str
+        old_state: GlobalState,
+        pool_id: str,
+        agent_id: str,
+        quantity: float,
+        tkn_remove: str
 ) -> GlobalState:
-
     new_state = old_state.copy()
     new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].remove_liquidity(
         old_state=new_state.pools[pool_id],
@@ -414,14 +414,13 @@ def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
 
 
 def external_market_trade(
-    old_state: GlobalState,
-    agent_id: str,
-    tkn_buy: str,
-    tkn_sell: str,
-    buy_quantity: float = 0,
-    sell_quantity: float = 0
+        old_state: GlobalState,
+        agent_id: str,
+        tkn_buy: str,
+        tkn_sell: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
 ) -> GlobalState:
-
     # do a trade at spot price on the external market
     # this should maybe only work in USD, because we're probably talking about coinbase or something
     new_state = old_state.copy()
@@ -452,10 +451,10 @@ def external_market_trade(
 
 
 def migrate(
-    old_state: GlobalState,
-    pool_id: str,
-    sub_pool_id: str,
-    tkn_migrate: str
+        old_state: GlobalState,
+        pool_id: str,
+        sub_pool_id: str,
+        tkn_migrate: str
 ) -> GlobalState:
     if not hasattr(old_state.pools[pool_id], 'execute_migrate_asset'):
         raise AttributeError(f"Pool {pool_id} does not implement migrations.")
@@ -468,11 +467,11 @@ def migrate(
 
 
 def migrate_lp(
-    old_state: GlobalState,
-    pool_id: str,
-    agent_id: str,
-    sub_pool_id: str,
-    tkn_migrate: str
+        old_state: GlobalState,
+        pool_id: str,
+        agent_id: str,
+        sub_pool_id: str,
+        tkn_migrate: str
 ) -> GlobalState:
     if not hasattr(old_state.pools[pool_id], 'execute_migrate_lp'):
         raise AttributeError(f"Pool {pool_id} does not implement migrations.")
@@ -486,12 +485,12 @@ def migrate_lp(
 
 
 def create_sub_pool(
-    old_state: GlobalState,
-    pool_id: str,
-    sub_pool_id: str,
-    tkns_migrate: list[str],
-    amplification: float,
-    trade_fee: FeeMechanism or float
+        old_state: GlobalState,
+        pool_id: str,
+        sub_pool_id: str,
+        tkns_migrate: list[str],
+        amplification: float,
+        trade_fee: FeeMechanism or float
 ):
     new_state = old_state.copy()
     new_pool = new_state.pools[pool_id]

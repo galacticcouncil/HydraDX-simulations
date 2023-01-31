@@ -98,9 +98,8 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
 
 
 def import_binance_prices(
-    assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
+        assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
 
@@ -150,13 +149,12 @@ def import_binance_prices(
 
 
 def import_monthly_binance_prices(
-    assets: list[str], start_month: str, months: int, interval: int = 12, return_as_dict: bool = False
+        assets: list[str], start_month: str, months: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-
     start_mth, start_year = start_month.split(' ')
 
     start_date = datetime.datetime.strptime(start_mth + ' 15 ' + start_year, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i*30), ("%Y-%m")) for i in range(months)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), ("%Y-%m")) for i in range(months)]
 
     # find the data folder
     while not os.path.exists("./data"):
