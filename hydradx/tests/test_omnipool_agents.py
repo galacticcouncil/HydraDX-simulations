@@ -139,7 +139,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
         new_value += new_holdings[asset] * external_market[asset]
 
         # Trading should bring pool to market price
-        if omnipool.usd_price(asset) != pytest.approx(external_market[asset], rel=1e-15):
+        if oamm.usd_price(omnipool, asset) != pytest.approx(external_market[asset], rel=1e-15):
             raise
 
     # Trading should be profitable
