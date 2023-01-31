@@ -1,7 +1,8 @@
 import math
 
-import pytest, random, copy
-from hypothesis import given, strategies as st, assume
+import pytest
+from hypothesis import given
+
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool
@@ -18,7 +19,8 @@ def test_value_assets(market: dict, holdings: list):
         raise
 
 
-@given(omnipool_reasonable_config(token_count=5), reasonable_market_dict(token_count=5), reasonable_holdings(token_count=5))
+@given(omnipool_reasonable_config(token_count=5), reasonable_market_dict(token_count=5),
+       reasonable_holdings(token_count=5))
 def test_cash_out_no_liquidity(omnipool: OmnipoolState, market: dict, holdings: list):
     asset_list = list(market.keys())
     holdings_dict = {tkn: holdings[i] for i, tkn in enumerate(asset_list)}
@@ -35,7 +37,8 @@ def test_cash_out_only_liquidity_at_spot(omnipool: OmnipoolState, pct_list: list
         (omnipool.unique_id, tkn): omnipool.liquidity[tkn] * pct_list[i] for i, tkn in enumerate(asset_list)
     }
     market = {tkn: omnipool.usd_price(tkn) for tkn in asset_list}
-    agent = Agent(holdings=holdings, share_prices={(omnipool.unique_id, tkn): omnipool.price(tkn) for tkn in asset_list})
+    agent = Agent(holdings=holdings,
+                  share_prices={(omnipool.unique_id, tkn): omnipool.price(tkn) for tkn in asset_list})
     cash = cash_out_omnipool(omnipool, agent, market)
     if cash != sum([pct_list[i] * omnipool.liquidity[tkn] * market[tkn] for i, tkn in enumerate(asset_list)]):
         raise
