@@ -1,13 +1,13 @@
 import copy
+import random
 
 import pytest
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
-from hypothesis import given, strategies as st, assume
+from hypothesis import given, strategies as st
+
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-import random
-
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -111,7 +111,8 @@ def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
                 raise
 
 
-@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
+@given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3),
+       arb_precision_strategy)
 def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
