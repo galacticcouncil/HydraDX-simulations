@@ -1,11 +1,12 @@
 import copy
+from numbers import Number
+from typing import Callable
+
+from . import stableswap_amm as stableswap
 from .agents import Agent
 from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block
 from .stableswap_amm import StableSwapPoolState
-from . import stableswap_amm as stableswap
-from typing import Callable
-from numbers import Number
 
 
 class OmnipoolState(AMM):
@@ -236,21 +237,21 @@ class OmnipoolState(AMM):
 class OmnipoolArchiveState:
     def __init__(self, state: OmnipoolState):
         self.asset_list = [tkn for tkn in state.asset_list]
-        self.liquidity = {k: v for (k,v) in state.liquidity.items()}
-        self.lrna = {k: v for (k,v) in state.lrna.items()}
+        self.liquidity = {k: v for (k, v) in state.liquidity.items()}
+        self.lrna = {k: v for (k, v) in state.lrna.items()}
         self.lrna_total = sum(self.lrna.values())
-        self.shares = {k: v for (k,v) in state.shares.items()}
-        self.protocol_shares = {k: v for (k,v) in state.protocol_shares.items()}
+        self.shares = {k: v for (k, v) in state.shares.items()}
+        self.protocol_shares = {k: v for (k, v) in state.protocol_shares.items()}
         self.lrna_imbalance = state.lrna_imbalance
         self.fail = state.fail
         self.stablecoin = state.stablecoin
         # self.sub_pools = copy.deepcopy(state.sub_pools)
-        self.oracles = {k: v for (k,v) in state.oracles.items()}
+        self.oracles = {k: v for (k, v) in state.oracles.items()}
         self.unique_id = state.unique_id
 
         # record these for analysis later
-        self.last_fee = {k: v for (k,v) in state.last_fee.items()}
-        self.last_lrna_fee = {k: v for (k,v) in state.last_lrna_fee.items()}
+        self.last_fee = {k: v for (k, v) in state.last_fee.items()}
+        self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
 
 
 # Works with OmnipoolState *or* OmnipoolArchiveState
@@ -311,14 +312,10 @@ def execute_swap(
     execute swap in place (modify and return self and agent)
     all swaps, LRNA, sub-pool, and asset swaps, are executed through this function
     """
-    old_buy_liquidity = state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0
-    old_sell_liquidity = state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
-    # old_liquidity = {
-    #     tkn_buy: state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0,
-    #     tkn_sell: state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
-    # }
-    # if tkn_buy == tkn_sell:
-    #     return state, agent  # no-op
+    old_liquidity = {
+        tkn_buy: state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0,
+        tkn_sell: state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
+    }
 
     if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
         # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
@@ -441,7 +438,6 @@ def execute_lrna_swap(
         delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
         # delta_ra = -delta_ri
 
-
         if modify_imbalance:
             l = state.lrna_imbalance
             q = state.lrna_total
@@ -515,10 +511,8 @@ def execute_lrna_swap(
     # elif delta_ra + agent.holdings[tkn] < 0:
     #     return state.fail_transaction(f"agent doesn't have enough {tkn} holdings", agent)
 
-
     agent.holdings['LRNA'] += delta_qa
     agent.holdings[tkn] += delta_ra
-
 
     return state, agent
 
@@ -532,7 +526,6 @@ def execute_stable_swap(
         buy_quantity: float = 0,
         sell_quantity: float = 0
 ) -> tuple[AMM, Agent]:
-
     if tkn_sell == 'LRNA':
         if buy_quantity:
             sub_pool = state.sub_pools[sub_pool_buy_id]
@@ -1265,9 +1258,9 @@ def dynamic_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x_lrna = (
-                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-             ) / raise_oracle.liquidity[tkn]
+                             raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                             - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+                     ) / raise_oracle.liquidity[tkn]
         else:
             x_lrna = 0
 
@@ -1354,9 +1347,9 @@ def dynamicmult_lrna_fee(
 
         if raise_oracle.liquidity[tkn] != 0:
             x = (
-                 raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
-                 - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
-             ) / raise_oracle.liquidity[tkn]
+                        raise_oracle.volume_in[tkn]  # / exchange.lrna_price(tkn)
+                        - raise_oracle.volume_out[tkn]  # / exchange.lrna_price(tkn)
+                ) / raise_oracle.liquidity[tkn]
         else:
             x = 0
 
@@ -1405,13 +1398,13 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
         else:
             tkn = key
         # optimized for omnipool, no copy operations
-        delta_qa, delta_r, delta_q,\
+        delta_qa, delta_r, delta_q, \
             delta_s, delta_b, delta_l = calculate_remove_liquidity(
-                omnipool,
-                agent,
-                agent.holdings[key],
-                tkn_remove=tkn
-            )
+            omnipool,
+            agent,
+            agent.holdings[key],
+            tkn_remove=tkn
+        )
         withdraw_holdings['LRNA'] += delta_qa
         if tkn not in withdraw_holdings:
             withdraw_holdings[tkn] = 0

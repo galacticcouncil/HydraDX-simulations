@@ -1,12 +1,12 @@
 import datetime
 import os
 from csv import DictReader, writer, reader
-from zipfile import ZipFile
 from dataclasses import dataclass
+from zipfile import ZipFile
+
 import requests
 
-from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
-from .amm.agents import Agent
+from .amm.global_state import GlobalState, withdraw_all_liquidity
 
 cash_out = GlobalState.cash_out
 value_assets = GlobalState.value_assets
@@ -128,9 +128,8 @@ def import_price_data(input_filename: str) -> list[PriceTick]:
 
 
 def import_binance_prices(
-    assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
+        assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
 
@@ -176,13 +175,12 @@ def import_binance_prices(
 
 
 def import_monthly_binance_prices(
-    assets: list[str], start_month: str, months: int, interval: int = 12, return_as_dict: bool = False
+        assets: list[str], start_month: str, months: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-
     start_mth, start_year = start_month.split(' ')
 
     start_date = datetime.datetime.strptime(start_mth + ' 15 ' + start_year, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i*30), ("%Y-%m")) for i in range(months)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), ("%Y-%m")) for i in range(months)]
 
     # find the data folder
     while not os.path.exists("./data"):
