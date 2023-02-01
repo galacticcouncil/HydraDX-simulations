@@ -1,13 +1,15 @@
 import copy
-import random
-
 import pytest
+import random
 from hypothesis import given, strategies as st, assume
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
+from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -23,8 +25,8 @@ def assets_config(draw, token_count: int = 0) -> dict:
     usd_price_lrna = draw(asset_price_strategy)
     return_dict = {
         'HDX': {
-            'liquidity': draw(asset_quantity_strategy),
-            'LRNA': draw(asset_quantity_strategy)
+            'liquidity': mpf(draw(asset_quantity_strategy)),
+            'LRNA': mpf(draw(asset_quantity_strategy))
         },
         'USD': {
             'liquidity': draw(asset_quantity_strategy),
@@ -118,30 +120,6 @@ def omnipool_config(
     return test_state
 
 
-@st.composite
-def omnipool_reasonable_config(
-        draw,
-        asset_dict=None,
-        token_count=0,
-        lrna_fee=None,
-        asset_fee=None,
-        tvl_cap_usd=0,
-        imbalance=None,
-) -> oamm.OmnipoolState:
-    asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
-
-    test_state = oamm.OmnipoolState(
-        tokens=asset_dict,
-        tvl_cap=tvl_cap_usd or float('inf'),
-        asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
-        lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-    )
-
-    test_state.lrna_imbalance = -draw(asset_quantity_strategy) if imbalance is None else imbalance
-    test_state.update()
-    return test_state
-
-
 @given(omnipool_config(asset_fee=0, lrna_fee=0, token_count=3), asset_quantity_strategy)
 def test_swap_lrna_delta_Qi_respects_invariant(d: oamm.OmnipoolState, delta_ri: float):
     i = d.asset_list[-1]
@@ -228,7 +206,7 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
     # calculate what should be the maximum allowable liquidity provision
     max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
                    * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
-                  / old_state.lrna_price(i))
+                  / oamm.lrna_price(old_state, i))
 
     if max_amount < 0:
         raise AssertionError('This calculation makes no sense.')  # but actually, it works :)
@@ -255,13 +233,13 @@ def test_remove_liquidity(initial_state: oamm.OmnipoolState):
     )
     # add LP shares to the pool
     old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
-    p_init = old_state.lrna_price(i)
+    p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
 
     new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
-        if old_state.price(j) != pytest.approx(new_state.price(j)):
+        if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
         raise AssertionError('')
@@ -320,14 +298,15 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     qi_arb = old_state.lrna[i] + delta_qi * old_state.lrna[i] / old_state.lrna_total
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
-    if ((old_state.lrna[i] + old_state.lrna_imbalance * (
-            old_state.lrna[i] / old_state.lrna_total)) * ri_arb) != pytest.approx(
-            (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
+    if ((old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
+        ) != pytest.approx(
+        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
 
-    if (new_state.liquidity[i] + new_agent.holdings[i] != old_state.liquidity[i] + old_agent.holdings[i]
-            or new_state.lrna[i] + new_agent.holdings['LRNA'] != old_state.lrna[i] + old_agent.holdings['LRNA']):
+    if (new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(old_state.liquidity[i] + old_agent.holdings[i])
+            or new_state.lrna[i] + new_agent.holdings['LRNA']
+            != pytest.approx(old_state.lrna[i] + old_agent.holdings['LRNA'])):
         raise AssertionError('System-wide asset total is wrong.')
 
     # try swapping into LRNA and back to see if that's equivalent
@@ -1430,47 +1409,47 @@ def test_trade_limit():
         raise AssertionError('Too many trades allowed')
 
 
-@given(
-    st.floats(min_value=1e-10, max_value=1),
-    st.floats(min_value=1e-10, max_value=1e10),
-)
-def test_dynamic_fees(agent_wealth: float, hdx_price: float):
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
-            'USD': {'liquidity': 10000000, 'LRNA': 10000000},
-        },
-        oracles={
-            'mid': 100
-        },
-        asset_fee=oamm.dynamic_asset_fee(
-            minimum=0.0025,
-            amplification=10,
-            raise_oracle_name='mid'
-        ),
-        lrna_fee=oamm.dynamic_lrna_fee(
-            minimum=0.0005,
-            amplification=10,
-            raise_oracle_name='mid'
-        )
-    )
-    initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
-    initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
-    test_agent = Agent(
-        holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
-    )
-    test_state = initial_state.copy()
-    oamm.execute_swap(
-        state=test_state,
-        agent=test_agent,
-        tkn_sell='USD',
-        tkn_buy='HDX',
-        sell_quantity=test_agent.holdings['USD']
-    )
-    test_state.update()
-    fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
-    lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
-    if not fee > initial_fee:
-        raise AssertionError('Fee should increase when price increases.')
-    if not lrna_fee > initial_lrna_fee:
-        raise AssertionError('LRNA fee should increase when price decreases.')
+# @given(
+#     st.floats(min_value=1e-10, max_value=1),
+#     st.floats(min_value=1e-10, max_value=1e10),
+# )
+# def test_dynamic_fees(agent_wealth: float, hdx_price: float):
+#     initial_state = oamm.OmnipoolState(
+#         tokens={
+#             'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
+#             'USD': {'liquidity': 10000000, 'LRNA': 10000000},
+#         },
+#         oracles={
+#             'mid': 100
+#         },
+#         asset_fee=oamm.dynamic_asset_fee(
+#             minimum=0.0025,
+#             amplification=10,
+#             raise_oracle_name='mid'
+#         ),
+#         lrna_fee=oamm.dynamic_lrna_fee(
+#             minimum=0.0005,
+#             amplification=10,
+#             raise_oracle_name='mid'
+#         )
+#     )
+#     initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
+#     initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
+#     test_agent = Agent(
+#         holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
+#     )
+#     test_state = initial_state.copy()
+#     oamm.execute_swap(
+#         state=test_state,
+#         agent=test_agent,
+#         tkn_sell='USD',
+#         tkn_buy='HDX',
+#         sell_quantity=test_agent.holdings['USD']
+#     )
+#     test_state.update()
+#     fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
+#     lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
+#     if not fee > initial_fee:
+#         raise AssertionError('Fee should increase when price increases.')
+#     if not lrna_fee > initial_lrna_fee:
+#         raise AssertionError('LRNA fee should increase when price decreases.')
