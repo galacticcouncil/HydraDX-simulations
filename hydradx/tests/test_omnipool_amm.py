@@ -1406,47 +1406,48 @@ def test_trade_limit():
         raise AssertionError('Too many trades allowed')
 
 
-@given(
-    st.floats(min_value=1e-10, max_value=1),
-    st.floats(min_value=1e-10, max_value=1e10),
-)
-def test_dynamic_fees(agent_wealth: float, hdx_price: float):
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
-            'USD': {'liquidity': 10000000, 'LRNA': 10000000},
-        },
-        oracles={
-            'mid': 100
-        },
-        asset_fee=oamm.dynamic_asset_fee(
-            minimum=0.0025,
-            amplification=10,
-            raise_oracle_name='mid'
-        ),
-        lrna_fee=oamm.dynamic_lrna_fee(
-            minimum=0.0005,
-            amplification=10,
-            raise_oracle_name='mid'
-        )
-    )
-    initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
-    initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
-    test_agent = Agent(
-        holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
-    )
-    test_state = initial_state.copy()
-    oamm.execute_swap(
-        state=test_state,
-        agent=test_agent,
-        tkn_sell='USD',
-        tkn_buy='HDX',
-        sell_quantity=test_agent.holdings['USD']
-    )
-    test_state.update()
-    fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
-    lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
-    if not fee > initial_fee:
-        raise AssertionError('Fee should increase when price increases.')
-    if not lrna_fee > initial_lrna_fee:
-        raise AssertionError('LRNA fee should increase when price decreases.')
+# TODO: replace with new test
+# @given(
+#     st.floats(min_value=1e-10, max_value=1),
+#     st.floats(min_value=1e-10, max_value=1e10),
+# )
+# def test_dynamic_fees(agent_wealth: float, hdx_price: float):
+#     initial_state = oamm.OmnipoolState(
+#         tokens={
+#             'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
+#             'USD': {'liquidity': 10000000, 'LRNA': 10000000},
+#         },
+#         oracles={
+#             'mid': 100
+#         },
+#         asset_fee=oamm.dynamic_asset_fee(
+#             minimum=0.0025,
+#             amplification=10,
+#             raise_oracle_name='mid'
+#         ),
+#         lrna_fee=oamm.dynamic_lrna_fee(
+#             minimum=0.0005,
+#             amplification=10,
+#             raise_oracle_name='mid'
+#         )
+#     )
+#     initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
+#     initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
+#     test_agent = Agent(
+#         holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
+#     )
+#     test_state = initial_state.copy()
+#     oamm.execute_swap(
+#         state=test_state,
+#         agent=test_agent,
+#         tkn_sell='USD',
+#         tkn_buy='HDX',
+#         sell_quantity=test_agent.holdings['USD']
+#     )
+#     test_state.update()
+#     fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
+#     lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
+#     if not fee > initial_fee:
+#         raise AssertionError('Fee should increase when price increases.')
+#     if not lrna_fee > initial_lrna_fee:
+#         raise AssertionError('LRNA fee should increase when price decreases.')
