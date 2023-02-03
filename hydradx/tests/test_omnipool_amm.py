@@ -1433,8 +1433,10 @@ def test_dynamic_fees(hdx_price: float):
             fee_max=0.10
         )
     )
-    initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
-    initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
+    initial_hdx_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
+    initial_usd_fee = initial_state.asset_fee['USD'].compute('USD', 1000000)
+    initial_usd_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
+    initial_hdx_lrna_fee = initial_state.lrna_fee['HDX'].compute('HDX', 1000000)
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
@@ -1447,9 +1449,15 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
-    fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
-    lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
-    if not fee > initial_fee:
+    hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
+    usd_fee = test_state.asset_fee['USD'].compute('USD', 1000000)
+    usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
+    hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 1000000)
+    if not hdx_fee > initial_hdx_fee:
         raise AssertionError('Fee should increase when price increases.')
-    if not lrna_fee > initial_lrna_fee:
+    if not usd_lrna_fee > initial_usd_lrna_fee:
         raise AssertionError('LRNA fee should increase when price decreases.')
+    if not usd_fee == initial_usd_fee:
+        raise AssertionError('Asset fee should not change.')
+    if not hdx_lrna_fee == initial_hdx_lrna_fee:
+        raise AssertionError('LRNA fee should not change.')
