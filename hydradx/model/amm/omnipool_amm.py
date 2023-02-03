@@ -21,6 +21,9 @@ class OmnipoolState(AMM):
                  oracles: dict[str: int] = None,
                  trade_limit_per_block: float = float('inf'),
                  update_function: Callable = None,
+                 last_asset_fee: dict or float = None,
+                 last_lrna_fee: dict or float = None,
+                 imbalance: float = 0.0,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -54,7 +57,7 @@ class OmnipoolState(AMM):
         self.weight_cap = {}
         self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
-        self.lrna_imbalance = 0.0  # AKA "L"
+        self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
         self.fail = ''
@@ -91,8 +94,19 @@ class OmnipoolState(AMM):
         self.current_block = Block(self)
         self.update()
 
-        self.last_fee = {tkn: 0 for tkn in self.asset_list}
-        self.last_lrna_fee = {tkn: 0 for tkn in self.asset_list}
+        if isinstance(last_asset_fee, Number):
+            self.last_fee = {tkn: last_asset_fee for tkn in self.asset_list}
+        elif isinstance(last_asset_fee, dict):
+            self.last_fee = {tkn: last_asset_fee[tkn] if tkn in last_asset_fee else 0 for tkn in self.asset_list}
+        else:
+            self.last_fee = {tkn: 0 for tkn in self.asset_list}
+
+        if isinstance(last_lrna_fee, Number):
+            self.last_lrna_fee = {tkn: last_lrna_fee for tkn in self.asset_list}
+        elif isinstance(last_lrna_fee, dict):
+            self.last_lrna_fee = {tkn: last_lrna_fee[tkn] if tkn in last_lrna_fee else 0 for tkn in self.asset_list}
+        else:
+            self.last_lrna_fee = {tkn: 0 for tkn in self.asset_list}
 
     def __setattr__(self, key, value):
         # if key is a fee, make sure it's a dict[str: FeeMechanism]
@@ -102,26 +116,24 @@ class OmnipoolState(AMM):
             super().__setattr__(key, value)
 
     def _get_fee(self, value: dict or FeeMechanism or float) -> dict:
-        return (
-            {
-                # if a dict of fees is assigned, but not all tokens are included, default to 0
+
+        if isinstance(value, dict):
+            if set(value.keys()) != set(self.asset_list):
+                # I do not believe we were handling this case correctly
+                # we can extend this when it is a priority
+                raise ValueError(f'fee dict keys must match asset list: {self.asset_list}')
+            return ({
                 tkn: (
-                    (
                         value[tkn].assign(self, tkn)
                         if isinstance(fee, FeeMechanism)
-                        else basic_fee(fee[tkn]).assign(self, tkn)
+                        else basic_fee(fee).assign(self, tkn)
                     )
-                    if tkn in value else basic_fee(0).assign(self, tkn)
-                )
                 for tkn, fee in value.items()
-            }
-            if isinstance(value, dict)
-            else (
-                {tkn: value.assign(self, tkn) for tkn in self.asset_list}
-                if isinstance(value, FeeMechanism)
-                else {tkn: basic_fee(value or 0).assign(self, tkn) for tkn in self.asset_list}
-            )
-        )
+            })
+        elif isinstance(value, FeeMechanism):
+            return {tkn: value.assign(self, tkn) for tkn in self.asset_list}
+        else:
+            return {tkn: basic_fee(value or 0).assign(self, tkn) for tkn in self.asset_list}
 
     def add_token(
             self,

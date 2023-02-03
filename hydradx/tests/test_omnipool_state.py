@@ -5,9 +5,94 @@ from hypothesis import given
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool
+from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool, dynamicadd_asset_fee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
+
+
+def test_omnipool_constructor_dynamic_fee_dict_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},  # , 'fee_lower': 7200},
+            lrna_fee=0.0005,
+            asset_fee={
+                'HDX': 0.0030,
+                'USD': dynamicadd_asset_fee(
+                    minimum=0.0031,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+                'DOT': dynamicadd_asset_fee(
+                    minimum=0.0032,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+            },
+        )
+
+    assert omnipool.last_lrna_fee['HDX'] == 0.0
+    assert omnipool.last_lrna_fee['USD'] == 0.0
+    assert omnipool.last_lrna_fee['DOT'] == 0.0
+    assert omnipool.last_fee['HDX'] == 0.0
+    assert omnipool.last_fee['USD'] == 0.0
+    assert omnipool.last_fee['DOT'] == 0.0
+
+    assert omnipool.lrna_fee['HDX'].compute() == 0.0005
+    assert omnipool.lrna_fee['USD'].compute() == 0.0005
+    assert omnipool.lrna_fee['DOT'].compute() == 0.0005
+    assert omnipool.asset_fee['HDX'].compute() == 0.0030
+    assert omnipool.asset_fee['USD'].compute() == 0.0031
+    assert omnipool.asset_fee['DOT'].compute() == 0.0032
+
+
+def test_omnipool_constructor_last_fee_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},
+            lrna_fee=0.0005,
+            asset_fee={
+                'HDX': 0.0030,
+                'USD': dynamicadd_asset_fee(
+                    minimum=0.0031,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+                'DOT': dynamicadd_asset_fee(
+                    minimum=0.0032,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+            },
+            last_lrna_fee=0.0005,
+            last_asset_fee={
+                'HDX': 0.0035,
+                'USD': 0.0036,
+                'DOT': 0.0037,
+            },
+        )
+
+    assert omnipool.last_lrna_fee['HDX'] == 0.0005
+    assert omnipool.last_lrna_fee['USD'] == 0.0005
+    assert omnipool.last_lrna_fee['DOT'] == 0.0005
+    assert omnipool.last_fee['HDX'] == 0.0035
+    assert omnipool.last_fee['USD'] == 0.0036
+    assert omnipool.last_fee['DOT'] == 0.0037
 
 
 @given(reasonable_market_dict(token_count=5), reasonable_holdings(token_count=5))
