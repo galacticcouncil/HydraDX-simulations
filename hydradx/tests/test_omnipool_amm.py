@@ -1002,110 +1002,107 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Execution price out of bounds.')
 
 
-# TODO: reenable this test
-# @reproduce_failure('6.39.6', b'AXicY2DAAyQdq1ZKfuN+rybf3azHsE4yaIXmbAaupsVnuibg0wYFAAFJCqI=')
-# @given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
-# def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
-#     initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
-#     initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
-#     initial_agent = Agent(holdings={tkn: 1000000 for tkn in initial_state.asset_list})
-#     tkn_buy = initial_state.asset_list[2]
-#     tkn_sell = initial_state.asset_list[3]
-#     sell_quantity = 1
-#     sell_state, sell_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, sell_quantity=sell_quantity)
-#     split_sell_state, split_sell_agent = initial_state.copy(), initial_agent.copy()
-#     next_state, next_agent = {}, {}
-#     for i in range(2):
-#         next_state[i], next_agent[i] = oamm.swap(
-#             old_state=split_sell_state,
-#             old_agent=split_sell_agent,
-#             tkn_sell=tkn_sell,
-#             tkn_buy=tkn_buy,
-#             sell_quantity=sell_quantity / 2
-#         )
-#         split_sell_state, split_sell_agent = next_state[i], next_agent[i]
-#     if split_sell_agent.holdings[tkn_buy] < sell_agent.holdings[tkn_buy]:
-#         raise AssertionError('Agent failed to save money by splitting the sell order.')
-#
-#     buy_quantity = 1
-#     buy_state, buy_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, buy_quantity=buy_quantity)
-#     split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
-#     next_state, next_agent = {}, {}
-#     for i in range(2):
-#         next_state[i], next_agent[i] = oamm.swap(
-#             old_state=split_buy_state,
-#             old_agent=split_buy_agent,
-#             tkn_sell=tkn_sell,
-#             tkn_buy=tkn_buy,
-#             buy_quantity=buy_quantity / 2
-#         )
-#         split_buy_state, split_buy_agent = next_state[i], next_agent[i]
-#     if split_buy_agent.holdings[tkn_sell] < buy_agent.holdings[tkn_sell]:
-#         raise AssertionError('Agent failed to save money by splitting the buy order.')
-#
-#     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
-#          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-#             != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
-#                              + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
-#         raise AssertionError('Asset quantity is not constant after trade (one-part)')
-#
-#     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
-#          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-#             != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
-#                              + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
-#         raise AssertionError('Asset quantity is not constant after trade (two-part)')
+@given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
+def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
+    initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
+    initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
+    initial_agent = Agent(holdings={tkn: 1000000 for tkn in initial_state.asset_list})
+    tkn_buy = initial_state.asset_list[2]
+    tkn_sell = initial_state.asset_list[3]
+    sell_quantity = 1
+    sell_state, sell_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, sell_quantity=sell_quantity)
+    split_sell_state, split_sell_agent = initial_state.copy(), initial_agent.copy()
+    next_state, next_agent = {}, {}
+    for i in range(2):
+        next_state[i], next_agent[i] = oamm.swap(
+            old_state=split_sell_state,
+            old_agent=split_sell_agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=sell_quantity / 2
+        )
+        split_sell_state, split_sell_agent = next_state[i], next_agent[i]
+    if split_sell_agent.holdings[tkn_buy] < sell_agent.holdings[tkn_buy]:
+        raise AssertionError('Agent failed to save money by splitting the sell order.')
+
+    buy_quantity = 1
+    buy_state, buy_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, buy_quantity=buy_quantity)
+    split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
+    next_state, next_agent = {}, {}
+    for i in range(2):
+        next_state[i], next_agent[i] = oamm.swap(
+            old_state=split_buy_state,
+            old_agent=split_buy_agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            buy_quantity=buy_quantity / 2
+        )
+        split_buy_state, split_buy_agent = next_state[i], next_agent[i]
+    if split_buy_agent.holdings[tkn_sell] < buy_agent.holdings[tkn_sell]:
+        raise AssertionError('Agent failed to save money by splitting the buy order.')
+
+    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
+                             + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (one-part)')
+
+    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
+                             + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (two-part)')
 
 
-# TODO re-enable this test
-# @given(omnipool_config(
-#     asset_dict={
-#         'USD': {'liquidity': 1000, 'LRNA': 1000},
-#         'HDX': {'liquidity': 1000, 'LRNA': 1000},
-#         'DAI': {'liquidity': 1000, 'LRNA': 1000}
-#     },
-#     sub_pools={'stableswap': {'token_count': 2}}
-# ))
-# def test_migrate_asset(initial_state: oamm.OmnipoolState):
-#     s = 'stableswap'
-#     i = 'DAI'
-#     initial_agent = Agent(
-#         holdings={'DAI': 100}
-#     )
-#     new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
-#     if (
-#             pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
-#             != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
-#             + initial_state.lrna[s] * initial_state.protocol_shares[s] / initial_state.shares[s]
-#     ):
-#         raise AssertionError("Protocol didn't get the right number of shares.")
-#     new_sub_pool: StableSwapPoolState = new_state.sub_pools[s]
-#     if new_state.shares[s] != new_sub_pool.shares:
-#         raise AssertionError("Subpool and Omnipool shares aren't equal.")
-#
-#     lp_state, lp = oamm.add_liquidity(
-#         old_state=initial_state,
-#         old_agent=initial_agent,
-#         quantity=100, tkn_add='DAI'
-#     )
-#     temp_state = oamm.execute_migrate_asset(lp_state.copy(), 'DAI', 'stableswap')
-#     migrated_state, migrated_lp = oamm.execute_migrate_lp(
-#         state=temp_state,
-#         agent=lp.copy(),
-#         sub_pool_id='stableswap',
-#         tkn_migrate='DAI'
-#     )
-#     migrated_sub_pool: StableSwapPoolState = migrated_state.sub_pools[s]
-#     pui = migrated_sub_pool.conversion_metrics['DAI']['price']
-#     pa = lp.share_prices[(initial_state.unique_id, 'DAI')]
-#     pb = migrated_lp.share_prices['stableswap']
-#     if pui * pb != pa:
-#         raise AssertionError("Share prices didn't come out right.")
-#     sa = lp.holdings[(initial_state.unique_id, 'DAI')]
-#     sb = migrated_lp.holdings[s]
-#     d_si = migrated_sub_pool.conversion_metrics[i]['old_shares']
-#     d_ss = migrated_state.shares[s] - initial_state.shares[s]
-#     if sb / sa != abs(d_ss / d_si):
-#         raise AssertionError("Share quantities didn't come out right.")
+@given(omnipool_config(
+    asset_dict={
+        'USD': {'liquidity': 1000, 'LRNA': 1000},
+        'HDX': {'liquidity': 1000, 'LRNA': 1000},
+        'DAI': {'liquidity': 1000, 'LRNA': 1000}
+    },
+    sub_pools={'stableswap': {'token_count': 2}}
+))
+def test_migrate_asset(initial_state: oamm.OmnipoolState):
+    s = 'stableswap'
+    i = 'DAI'
+    initial_agent = Agent(
+        holdings={'DAI': 100}
+    )
+    new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
+    if (
+            pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
+            != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
+            + initial_state.lrna[s] * initial_state.protocol_shares[s] / initial_state.shares[s]
+    ):
+        raise AssertionError("Protocol didn't get the right number of shares.")
+    new_sub_pool: StableSwapPoolState = new_state.sub_pools[s]
+    if new_state.shares[s] != new_sub_pool.shares:
+        raise AssertionError("Subpool and Omnipool shares aren't equal.")
+
+    lp_state, lp = oamm.add_liquidity(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        quantity=100, tkn_add='DAI'
+    )
+    temp_state = oamm.execute_migrate_asset(lp_state.copy(), 'DAI', 'stableswap')
+    migrated_state, migrated_lp = oamm.execute_migrate_lp(
+        state=temp_state,
+        agent=lp.copy(),
+        sub_pool_id='stableswap',
+        tkn_migrate='DAI'
+    )
+    migrated_sub_pool: StableSwapPoolState = migrated_state.sub_pools[s]
+    pui = migrated_sub_pool.conversion_metrics['DAI']['price']
+    pa = lp.share_prices[(initial_state.unique_id, 'DAI')]
+    pb = migrated_lp.share_prices['stableswap']
+    if pui * pb != pa:
+        raise AssertionError("Share prices didn't come out right.")
+    sa = lp.holdings[(initial_state.unique_id, 'DAI')]
+    sb = migrated_lp.holdings[s]
+    d_si = migrated_sub_pool.conversion_metrics[i]['old_shares']
+    d_ss = migrated_state.shares[s] - initial_state.shares[s]
+    if sb / sa != pytest.approx(abs(d_ss / d_si), rel=1e-10):
+        raise AssertionError("Share quantities didn't come out right.")
 
 
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
@@ -1409,47 +1406,47 @@ def test_trade_limit():
         raise AssertionError('Too many trades allowed')
 
 
-# @given(
-#     st.floats(min_value=1e-10, max_value=1),
-#     st.floats(min_value=1e-10, max_value=1e10),
-# )
-# def test_dynamic_fees(agent_wealth: float, hdx_price: float):
-#     initial_state = oamm.OmnipoolState(
-#         tokens={
-#             'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
-#             'USD': {'liquidity': 10000000, 'LRNA': 10000000},
-#         },
-#         oracles={
-#             'mid': 100
-#         },
-#         asset_fee=oamm.dynamic_asset_fee(
-#             minimum=0.0025,
-#             amplification=10,
-#             raise_oracle_name='mid'
-#         ),
-#         lrna_fee=oamm.dynamic_lrna_fee(
-#             minimum=0.0005,
-#             amplification=10,
-#             raise_oracle_name='mid'
-#         )
-#     )
-#     initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
-#     initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
-#     test_agent = Agent(
-#         holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
-#     )
-#     test_state = initial_state.copy()
-#     oamm.execute_swap(
-#         state=test_state,
-#         agent=test_agent,
-#         tkn_sell='USD',
-#         tkn_buy='HDX',
-#         sell_quantity=test_agent.holdings['USD']
-#     )
-#     test_state.update()
-#     fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
-#     lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
-#     if not fee > initial_fee:
-#         raise AssertionError('Fee should increase when price increases.')
-#     if not lrna_fee > initial_lrna_fee:
-#         raise AssertionError('LRNA fee should increase when price decreases.')
+@given(
+    st.floats(min_value=1e-10, max_value=1),
+    st.floats(min_value=1e-10, max_value=1e10),
+)
+def test_dynamic_fees(agent_wealth: float, hdx_price: float):
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
+            'USD': {'liquidity': 10000000, 'LRNA': 10000000},
+        },
+        oracles={
+            'mid': 100
+        },
+        asset_fee=oamm.dynamic_asset_fee(
+            minimum=0.0025,
+            amplification=10,
+            raise_oracle_name='mid'
+        ),
+        lrna_fee=oamm.dynamic_lrna_fee(
+            minimum=0.0005,
+            amplification=10,
+            raise_oracle_name='mid'
+        )
+    )
+    initial_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
+    initial_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
+    test_agent = Agent(
+        holdings={tkn: initial_state.liquidity[tkn] * agent_wealth for tkn in initial_state.asset_list}
+    )
+    test_state = initial_state.copy()
+    oamm.execute_swap(
+        state=test_state,
+        agent=test_agent,
+        tkn_sell='USD',
+        tkn_buy='HDX',
+        sell_quantity=test_agent.holdings['USD']
+    )
+    test_state.update()
+    fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
+    lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
+    if not fee > initial_fee:
+        raise AssertionError('Fee should increase when price increases.')
+    if not lrna_fee > initial_lrna_fee:
+        raise AssertionError('LRNA fee should increase when price decreases.')
