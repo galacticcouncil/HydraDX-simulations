@@ -36,19 +36,3 @@ def test_initialization_from_last_values():
         assert oracle.volume_in[tkn] == last_values['volume_in'][tkn]
         assert oracle.volume_out[tkn] == last_values['volume_out'][tkn]
         assert oracle.price[tkn] == last_values['price'][tkn]
-
-# def test_price_update():
-#     initial_state = oamm.OmnipoolState(
-#         tokens={
-#             'HDX': {'liquidity': 10000000 / 0.05, 'LRNA': 1000000},
-#             'USD': {'liquidity': 10000000, 'LRNA': 1000000},
-#         },
-#         asset_fee=0.0025,
-#         lrna_fee=0.0005
-#     )
-#     first_block = Block(initial_state)
-#     oracle = Oracle(first_block, sma_equivalent_length=100)
-#
-#     oracle.update(second_block)
-#     assert oracle.price["DAI"] == 1
-#     assert oracle.price["USDC"] == 1
