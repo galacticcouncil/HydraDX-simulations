@@ -24,6 +24,7 @@ class OmnipoolState(AMM):
                  last_asset_fee: dict or float = None,
                  last_lrna_fee: dict or float = None,
                  imbalance: float = 0.0,
+                 last_oracle_values: dict = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -85,7 +86,7 @@ class OmnipoolState(AMM):
             )
 
         self.oracles = {
-            name: Oracle(sma_equivalent_length=period, first_block=Block(self))
+            name: Oracle(sma_equivalent_length=period, first_block=Block(self), last_values=last_oracle_values[name])
             for name, period in oracles.items()
         } if oracles else {}
         self.asset_fee = self._get_fee(asset_fee)
@@ -125,10 +126,10 @@ class OmnipoolState(AMM):
                 raise ValueError(f'fee dict keys must match asset list: {self.asset_list}')
             return ({
                 tkn: (
-                        value[tkn].assign(self, tkn)
-                        if isinstance(fee, FeeMechanism)
-                        else basic_fee(fee).assign(self, tkn)
-                    )
+                    value[tkn].assign(self, tkn)
+                    if isinstance(fee, FeeMechanism)
+                    else basic_fee(fee).assign(self, tkn)
+                )
                 for tkn, fee in value.items()
             })
         elif isinstance(value, FeeMechanism):
