@@ -294,7 +294,7 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     delta_qa = -1000
     i = old_state.asset_list[2]
 
-    # Test with trader selling asset i
+    # Test with trader buying asset i
     feeless_state = initial_state.copy()
     feeless_state.lrna_fee = 0
     feeless_state.asset_fee = 0
