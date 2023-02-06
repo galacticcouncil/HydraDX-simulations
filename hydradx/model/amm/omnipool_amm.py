@@ -93,7 +93,6 @@ class OmnipoolState(AMM):
 
         self.time_step = 0
         self.current_block = Block(self)
-        self.update()
 
         if isinstance(last_asset_fee, Number):
             self.last_fee = {tkn: last_asset_fee for tkn in self.asset_list}
