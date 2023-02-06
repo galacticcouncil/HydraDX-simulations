@@ -24,6 +24,7 @@ class OmnipoolState(AMM):
                  last_asset_fee: dict or float = None,
                  last_lrna_fee: dict or float = None,
                  imbalance: float = 0.0,
+                 last_oracle_values: dict = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -64,7 +65,7 @@ class OmnipoolState(AMM):
         self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
         self.oracles = {
-            name: Oracle(sma_equivalent_length=period, first_block=Block(self))
+            name: Oracle(sma_equivalent_length=period, first_block=Block(self), last_values=last_oracle_values[name])
             for name, period in oracles.items()
         } if oracles else {}
 
@@ -124,10 +125,10 @@ class OmnipoolState(AMM):
                 raise ValueError(f'fee dict keys must match asset list: {self.asset_list}')
             return ({
                 tkn: (
-                        value[tkn].assign(self, tkn)
-                        if isinstance(fee, FeeMechanism)
-                        else basic_fee(fee).assign(self, tkn)
-                    )
+                    value[tkn].assign(self, tkn)
+                    if isinstance(fee, FeeMechanism)
+                    else basic_fee(fee).assign(self, tkn)
+                )
                 for tkn, fee in value.items()
             })
         elif isinstance(value, FeeMechanism):
@@ -1065,9 +1066,9 @@ OmnipoolArchiveState.lrna_price = staticmethod(lrna_price)
 OmnipoolArchiveState.price = staticmethod(price)
 
 
-#===============================================================================
+# ===============================================================================
 # fee mechanisms
-#===============================================================================
+# ===============================================================================
 def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
     def fee_function(
             exchange: AMM, tkn: str, delta_tkn: float
@@ -1134,7 +1135,7 @@ def dynamicadd_lrna_fee(
             self.time_step = -1
 
         def fee_function(
-            self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+                self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
             if not hasattr(exchange, 'last_lrna_fee'):
                 exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
