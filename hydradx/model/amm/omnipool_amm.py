@@ -85,10 +85,18 @@ class OmnipoolState(AMM):
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
-        self.oracles = {
-            name: Oracle(sma_equivalent_length=period, first_block=Block(self), last_values=last_oracle_values[name])
-            for name, period in oracles.items()
-        } if oracles else {}
+        if oracles and last_oracle_values is not None:
+            self.oracles = {
+                name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name])
+                for name, period in oracles.items()
+            } if oracles else {}
+        elif oracles:
+            self.oracles = {
+                name: Oracle(sma_equivalent_length=period, first_block=Block(self))
+                for name, period in oracles.items()
+            }
+        else:
+            self.oracles = {}
         self.asset_fee = self._get_fee(asset_fee)
         self.lrna_fee = self._get_fee(lrna_fee)
 
