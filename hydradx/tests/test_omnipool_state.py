@@ -95,6 +95,55 @@ def test_omnipool_constructor_last_fee_works():
     assert omnipool.last_fee['DOT'] == 0.0037
 
 
+def test_constructor_oracle_from_block_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},
+            lrna_fee=0.0005,
+            asset_fee=0.0025,
+        )
+
+    assert omnipool.oracles['fee_raise'].liquidity['HDX'] == pytest.approx(1000000/.05, rel=1e-10)
+    assert omnipool.oracles['fee_raise'].price['HDX'] == pytest.approx(0.05/20, rel=1e-10)
+    assert omnipool.oracles['fee_raise'].volume_in['HDX'] == 0.0
+    assert omnipool.oracles['fee_raise'].volume_out['HDX'] == 0.0
+
+
+def test_constructor_last_oracle_values_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50, 'test2': 100},
+            lrna_fee=0.0005,
+            asset_fee=0.0025,
+            last_oracle_values={
+                'fee_raise': {
+                    'liquidity': {'HDX': 5000000, 'USD': 500000, 'DOT': 100000},
+                    'volume_in': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+                    'volume_out': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+                    'price': {'HDX': 0.05, 'USD': 1, 'DOT': 5},
+                },
+                'test2': {
+                    'liquidity': {'HDX': 5000000*1.1, 'USD': 500000*1.1, 'DOT': 100000*1.1},
+                    'volume_in': {'HDX': 10000*1.1, 'USD': 10000*1.1, 'DOT': 10000*1.1},
+                    'volume_out': {'HDX': 10000*1.1, 'USD': 10000*1.1, 'DOT': 10000*1.1},
+                    'price': {'HDX': 0.05*1.1, 'USD': 1*1.1, 'DOT': 5*1.1},
+                }
+            }
+        )
+
+    assert omnipool.oracles['fee_raise'].liquidity['HDX'] == 5000000
+    assert omnipool.oracles['test2'].volume_in['USD'] == 10000*1.1
+    assert omnipool.oracles['fee_raise'].volume_out['DOT'] == 10000
+    assert omnipool.oracles['test2'].price['HDX'] == 0.05*1.1
+
 @given(reasonable_market_dict(token_count=5), reasonable_holdings(token_count=5))
 def test_value_assets(market: dict, holdings: list):
     asset_list = list(market.keys())
