@@ -2,7 +2,7 @@ import math
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState
+from .omnipool_amm import OmnipoolState, usd_price
 from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
@@ -33,7 +33,7 @@ class TradeStrategy:
             new_state = self.execute(state, agent_id)
             return other.execute(new_state, agent_id)
 
-        return TradeStrategy(combo_function, name='\n'.join([self.name, other.name]))
+        return TradeStrategy(combo_function, name='\n + '.join([self.name, other.name]))
 
 
 def random_swaps(
@@ -87,7 +87,7 @@ def steady_swaps(
 
         buy_asset = assets[buy_index]
         sell_asset = assets[sell_index]
-        sell_quantity = usd_amount / state.price(sell_asset)
+        sell_quantity = usd_amount / usd_price(state.pools[pool_id], sell_asset)
 
         return state.execute_swap(
             pool_id=pool_id,
@@ -468,6 +468,30 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
+
+
+def extra_trade_volume(pool_id: str, percent: float, absolute: float = 0) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        agent: Agent = state.agents[agent_id]
+        pool: OmnipoolState = state.pools[pool_id]
+        volume_so_far = sum([
+            (pool.current_block.volume_in[tkn] + pool.current_block.volume_out[tkn])
+            * oamm.lrna_price(pool, tkn)
+            for tkn in pool.asset_list
+        ])
+        tkn_sell = random.choice(pool.asset_list)
+        tkn_buy = random.choice(pool.asset_list)
+        trade_volume = (volume_so_far * percent / 100 + absolute) / oamm.lrna_price(pool, tkn_sell)
+        oamm.execute_swap(
+            state=pool,
+            agent=agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=trade_volume,
+        )
+        return state
+
+    return TradeStrategy(strategy, name=f'extra trade volume ({percent}%)')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
