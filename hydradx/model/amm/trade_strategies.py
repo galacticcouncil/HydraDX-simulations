@@ -88,7 +88,7 @@ def steady_swaps(
 
         buy_asset = assets[buy_index]
         sell_asset = assets[sell_index]
-        sell_quantity = usd_amount / state.price(sell_asset)
+        sell_quantity = usd_amount / usd_price(state.pools[pool_id], sell_asset)
 
         return state.execute_swap(
             pool_id=pool_id,
