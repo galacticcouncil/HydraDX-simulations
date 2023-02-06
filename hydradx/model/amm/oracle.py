@@ -19,7 +19,7 @@ class Oracle:
         else:
             raise ValueError('Either decay_factor or sma_equivalent_length must be specified')
         self.length = sma_equivalent_length or 2 / self.decay_factor - 1
-        self.asset_list = []
+        self.asset_list = first_block.asset_list
         self.liquidity = first_block.liquidity
         self.price = first_block.price
         self.volume_in = first_block.volume_in
@@ -51,3 +51,12 @@ class Oracle:
                 tkn, 'volume_out', block.volume_out[tkn]
             ) if tkn in self.volume_out else block.volume_out[tkn]
         return self
+
+
+class OracleArchiveState:
+    def __init__(self, oracle: Oracle):
+        self.liquidity = {tkn: oracle.liquidity[tkn] for tkn in oracle.asset_list}
+        self.price = {tkn: oracle.price[tkn] for tkn in oracle.asset_list}
+        self.volume_in = {tkn: oracle.volume_in[tkn] for tkn in oracle.asset_list}
+        self.volume_out = {tkn: oracle.volume_out[tkn] for tkn in oracle.asset_list}
+        self.age = oracle.age
