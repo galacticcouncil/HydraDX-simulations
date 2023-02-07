@@ -5,10 +5,144 @@ from hypothesis import given
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool
+from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool, dynamicadd_asset_fee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
 
+
+def test_omnipool_constructor_dynamic_fee_dict_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},  # , 'fee_lower': 7200},
+            lrna_fee=0.0005,
+            asset_fee={
+                'HDX': 0.0030,
+                'USD': dynamicadd_asset_fee(
+                    minimum=0.0031,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+                'DOT': dynamicadd_asset_fee(
+                    minimum=0.0032,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+            },
+        )
+
+    assert omnipool.last_lrna_fee['HDX'] == 0.0
+    assert omnipool.last_lrna_fee['USD'] == 0.0
+    assert omnipool.last_lrna_fee['DOT'] == 0.0
+    assert omnipool.last_fee['HDX'] == 0.0
+    assert omnipool.last_fee['USD'] == 0.0
+    assert omnipool.last_fee['DOT'] == 0.0
+
+    assert omnipool.lrna_fee['HDX'].compute() == 0.0005
+    assert omnipool.lrna_fee['USD'].compute() == 0.0005
+    assert omnipool.lrna_fee['DOT'].compute() == 0.0005
+    assert omnipool.asset_fee['HDX'].compute() == 0.0030
+    assert omnipool.asset_fee['USD'].compute() == 0.0031
+    assert omnipool.asset_fee['DOT'].compute() == 0.0032
+
+
+def test_omnipool_constructor_last_fee_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},
+            lrna_fee=0.0005,
+            asset_fee={
+                'HDX': 0.0030,
+                'USD': dynamicadd_asset_fee(
+                    minimum=0.0031,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+                'DOT': dynamicadd_asset_fee(
+                    minimum=0.0032,
+                    amplification=0.2,
+                    raise_oracle_name='fee_raise',
+                    decay=0.00005,
+                    fee_max=0.4,
+                ),
+            },
+            last_lrna_fee=0.0005,
+            last_asset_fee={
+                'HDX': 0.0035,
+                'USD': 0.0036,
+                'DOT': 0.0037,
+            },
+        )
+
+    assert omnipool.last_lrna_fee['HDX'] == 0.0005
+    assert omnipool.last_lrna_fee['USD'] == 0.0005
+    assert omnipool.last_lrna_fee['DOT'] == 0.0005
+    assert omnipool.last_fee['HDX'] == 0.0035
+    assert omnipool.last_fee['USD'] == 0.0036
+    assert omnipool.last_fee['DOT'] == 0.0037
+
+
+def test_constructor_oracle_from_block_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50},
+            lrna_fee=0.0005,
+            asset_fee=0.0025,
+        )
+
+    assert omnipool.oracles['fee_raise'].liquidity['HDX'] == pytest.approx(1000000/.05, rel=1e-10)
+    assert omnipool.oracles['fee_raise'].price['HDX'] == pytest.approx(0.05/20, rel=1e-10)
+    assert omnipool.oracles['fee_raise'].volume_in['HDX'] == 0.0
+    assert omnipool.oracles['fee_raise'].volume_out['HDX'] == 0.0
+
+
+def test_constructor_last_oracle_values_works():
+    omnipool = OmnipoolState(
+            tokens={
+                'HDX': {'liquidity': 1000000/.05, 'LRNA': 1000000/20},
+                'USD': {'liquidity': 1000000, 'LRNA': 1000000/20},
+                'DOT': {'liquidity': 1000000/5, 'LRNA': 1000000/20},
+            },
+            oracles={'fee_raise': 50, 'test2': 100},
+            lrna_fee=0.0005,
+            asset_fee=0.0025,
+            last_oracle_values={
+                'fee_raise': {
+                    'liquidity': {'HDX': 5000000, 'USD': 500000, 'DOT': 100000},
+                    'volume_in': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+                    'volume_out': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+                    'price': {'HDX': 0.05, 'USD': 1, 'DOT': 5},
+                },
+                'test2': {
+                    'liquidity': {'HDX': 5000000*1.1, 'USD': 500000*1.1, 'DOT': 100000*1.1},
+                    'volume_in': {'HDX': 10000*1.1, 'USD': 10000*1.1, 'DOT': 10000*1.1},
+                    'volume_out': {'HDX': 10000*1.1, 'USD': 10000*1.1, 'DOT': 10000*1.1},
+                    'price': {'HDX': 0.05*1.1, 'USD': 1*1.1, 'DOT': 5*1.1},
+                }
+            }
+        )
+
+    assert omnipool.oracles['fee_raise'].liquidity['HDX'] == 5000000
+    assert omnipool.oracles['test2'].volume_in['USD'] == 10000*1.1
+    assert omnipool.oracles['fee_raise'].volume_out['DOT'] == 10000
+    assert omnipool.oracles['test2'].price['HDX'] == 0.05*1.1
 
 @given(reasonable_market_dict(token_count=5), reasonable_holdings(token_count=5))
 def test_value_assets(market: dict, holdings: list):
