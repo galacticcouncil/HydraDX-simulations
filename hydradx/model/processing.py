@@ -128,8 +128,9 @@ def import_price_data(input_filename: str) -> list[PriceTick]:
 
 
 def import_binance_prices(
-        assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
+    assets: list[str], start_date: str, days: int, interval: int = 12, return_as_dict: bool = False
 ) -> dict[str: list[float]]:
+
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
 
@@ -167,6 +168,7 @@ def import_binance_prices(
                 csvreader = reader(input_file)
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
 
+    data_length = min([len(price_data[tkn]) for tkn in assets])
     if not return_as_dict:
         price_data = [
             {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
@@ -221,16 +223,3 @@ def import_monthly_binance_prices(
             {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
         ]
     return price_data
-
-
-# def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
-#     price_data = []
-#     with open(input_path + input_filename, newline='') as input_file:
-#         fieldnames = ['timestamp', 'price']
-#         reader = DictReader(input_file, fieldnames=fieldnames)
-#         next(reader)  # skip header
-#         for row in reader:
-#             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-#
-#     price_data.sort(key=lambda x: x.timestamp)
-#     return price_data
