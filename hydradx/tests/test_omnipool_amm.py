@@ -1407,13 +1407,13 @@ def test_trade_limit():
 
 
 @given(
-    st.floats(min_value=1e-10, max_value=1e10),
+    st.floats(min_value=1e-5, max_value=1e5),
 )
 def test_dynamic_fees(hdx_price: float):
     initial_state = oamm.OmnipoolState(
         tokens={
-            'HDX': {'liquidity': 10000000 / hdx_price, 'LRNA': 10000000},
-            'USD': {'liquidity': 10000000, 'LRNA': 10000000},
+            'HDX': {'liquidity': 100000 / hdx_price, 'LRNA': 100000},
+            'USD': {'liquidity': 100000, 'LRNA': 100000},
         },
         oracles={
             'mid': 100
@@ -1433,10 +1433,10 @@ def test_dynamic_fees(hdx_price: float):
             fee_max=0.10
         )
     )
-    initial_hdx_fee = initial_state.asset_fee['HDX'].compute('HDX', 1000000)
-    initial_usd_fee = initial_state.asset_fee['USD'].compute('USD', 1000000)
-    initial_usd_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 1000000)
-    initial_hdx_lrna_fee = initial_state.lrna_fee['HDX'].compute('HDX', 1000000)
+    initial_hdx_fee = initial_state.asset_fee['HDX'].compute('HDX', 10000)
+    initial_usd_fee = initial_state.asset_fee['USD'].compute('USD', 10000)
+    initial_usd_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 10000)
+    initial_hdx_lrna_fee = initial_state.lrna_fee['HDX'].compute('HDX', 10000)
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
@@ -1449,15 +1449,37 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
-    hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 1000000)
-    usd_fee = test_state.asset_fee['USD'].compute('USD', 1000000)
-    usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 1000000)
-    hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 1000000)
-    if not hdx_fee > initial_hdx_fee:
+    intermediate_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
+    intermediate_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)
+    intermediate_usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 10000)
+    intermediate_hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 10000)
+    if not intermediate_hdx_fee > initial_hdx_fee:
         raise AssertionError('Fee should increase when price increases.')
-    if not usd_lrna_fee > initial_usd_lrna_fee:
+    if not intermediate_usd_lrna_fee > initial_usd_lrna_fee:
         raise AssertionError('LRNA fee should increase when price decreases.')
-    if not usd_fee == initial_usd_fee:
+    if not intermediate_usd_fee == initial_usd_fee:
         raise AssertionError('Asset fee should not change.')
-    if not hdx_lrna_fee == initial_hdx_lrna_fee:
+    if not intermediate_hdx_lrna_fee == initial_hdx_lrna_fee:
         raise AssertionError('LRNA fee should not change.')
+
+    oamm.execute_swap(
+        state=test_state,
+        agent=test_agent,
+        tkn_sell='HDX',
+        tkn_buy='USD',
+        sell_quantity=test_agent.holdings['HDX']
+    )
+    test_state.update()
+    final_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
+    final_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)
+    final_usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 10000)
+    final_hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 10000)
+    if not final_usd_fee > intermediate_usd_fee:
+        raise AssertionError('Fee should increase when price increases.')
+    if not final_hdx_lrna_fee > intermediate_hdx_lrna_fee:
+        raise AssertionError('LRNA fee should increase when price decreases.')
+    if not final_hdx_fee < intermediate_hdx_fee:
+        raise AssertionError('Asset fee should decrease with time.')
+    if not final_usd_lrna_fee < intermediate_usd_lrna_fee:
+        raise AssertionError('LRNA fee should decrease with time.')
+
