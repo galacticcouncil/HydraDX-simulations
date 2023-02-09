@@ -164,8 +164,8 @@ class OmnipoolState(AMM):
         for name, oracle in self.oracles.items():
             oracle.update(self.current_block)
 
-        # self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
-        # self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
 
         # update current block
         self.time_step += 1
