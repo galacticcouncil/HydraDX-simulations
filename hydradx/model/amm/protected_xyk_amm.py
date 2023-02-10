@@ -104,63 +104,114 @@ def calculate_reserve_at_intersection(
     else:
         return (new_y + state.a) / state.p
 
-# def execute_swap(
-#         state: ProtectedXYKState,
-#         agent: Agent,
-#         tkn_sell: str,
-#         tkn_buy: str,
-#         buy_quantity: float = 0,
-#         sell_quantity: float = 0
-# ):
-#     if not (tkn_buy in state.asset_list and tkn_sell in state.asset_list):
-#         return state.fail_transaction('Invalid token name.', agent)
-#
-#     # turn a negative buy into a sell and vice versa
-#     if buy_quantity < 0:
-#         sell_quantity = -buy_quantity
-#         buy_quantity = 0
-#         t = tkn_sell
-#         tkn_sell = tkn_buy
-#         tkn_buy = t
-#     elif sell_quantity < 0:
-#         buy_quantity = -sell_quantity
-#         sell_quantity = 0
-#         t = tkn_sell
-#         tkn_sell = tkn_buy
-#         tkn_buy = t
-#
-#     if sell_quantity != 0:
-#         # when amount to be paid in is specified, calculate payout
-#         buy_quantity = sell_quantity * state.liquidity[tkn_buy] / (
-#                 state.liquidity[tkn_sell] + sell_quantity)
-#         if math.isnan(buy_quantity):
-#             buy_quantity = sell_quantity  # this allows infinite liquidity for testing
-#         trade_fee = state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-#         buy_quantity *= 1 - trade_fee
-#
-#     elif buy_quantity != 0:
-#         # calculate input price from a given payout
-#         sell_quantity = buy_quantity * state.liquidity[tkn_sell] / (state.liquidity[tkn_buy] - buy_quantity)
-#         if math.isnan(sell_quantity):
-#             sell_quantity = buy_quantity  # this allows infinite liquidity for testing
-#         trade_fee = state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-#         sell_quantity /= 1 - trade_fee
-#
-#     else:
-#         return state.fail_transaction('Must specify buy quantity or sell quantity.', agent)
-#
-#     if state.liquidity[tkn_sell] + sell_quantity <= 0 or state.liquidity[tkn_buy] - buy_quantity <= 0:
-#         return state.fail_transaction('Not enough liquidity in the pool.', agent)
-#
-#     if agent.holdings[tkn_sell] - sell_quantity < 0 or agent.holdings[tkn_buy] + buy_quantity < 0:
-#         return state.fail_transaction('Agent has insufficient holdings.', agent)
-#
-#     agent.holdings[tkn_buy] += buy_quantity
-#     agent.holdings[tkn_sell] -= sell_quantity
-#     state.liquidity[tkn_sell] += sell_quantity
-#     state.liquidity[tkn_buy] -= buy_quantity
-#
-#     return state, agent
-#
-#
-# ProtectedXYKPoolState.execute_swap = staticmethod(execute_swap)
+
+def execute_swap(
+        state: ProtectedXYKState,
+        agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
+):
+    if not (tkn_buy in state.asset_list and tkn_sell in state.asset_list):
+        return state.fail_transaction('Invalid token name.', agent)
+
+    # turn a negative buy into a sell and vice versa
+    if buy_quantity < 0:
+        sell_quantity = -buy_quantity
+        buy_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
+    elif sell_quantity < 0:
+        buy_quantity = -sell_quantity
+        sell_quantity = 0
+        t = tkn_sell
+        tkn_sell = tkn_buy
+        tkn_buy = t
+
+    i_buy = 0 if tkn_buy == state.asset_list[0] else 1
+    i_sell = 1 - i_buy
+
+    braek_reserve = calculate_reserve_at_intersection(state, 0)
+    break_liquidity = [braek_reserve, (braek_reserve + state.a) / state.p]
+
+    if i_sell == 0 and sell_quantity != 0:  # stable asset being sold, so price is increasing
+        if state.price_one() >= state.p:
+            # we entirely follow the upper invariant
+            buy_quantity = sell_quantity * state.liquidity[1] / (state.liquidity[0] + state.a + sell_quantity)
+        elif break_liquidity[0] - state.liquidity[0] >= sell_quantity:
+            # we entirely follow the lower invariant
+            buy_quantity = sell_quantity * (state.liquidity[1] - state.a / state.p) / (
+                        state.liquidity[0] + sell_quantity)
+        else:
+            # we must transition invariants
+            first_sell = break_liquidity[0] - state.liquidity[0]
+            first_buy = state.liquidity[1] - break_liquidity[1]
+            second_sell = sell_quantity - first_sell
+            second_buy = second_sell * state.liquidity[1] / (state.liquidity[0] + state.a + second_sell)
+            buy_quantity = first_buy + second_buy
+
+    elif i_sell == 0 and buy_quantity != 0:  # stable asset being sold, so price is increasing
+        if state.price_one() >= state.p:
+            # we entirely follow the upper invariant
+            sell_quantity = buy_quantity * (state.liquidity[0] + state.a) / (state.liquidity[1] - buy_quantity)
+        elif state.liquidity[1] - break_liquidity[1] >= buy_quantity:
+            # we entirely follow the lower invariant
+            sell_quantity = buy_quantity * state.liquidity[0] / (state.liquidity[1] - state.a / state.p - buy_quantity)
+        else:
+            # we must transition invariants
+            first_sell = break_liquidity[0] - state.liquidity[0]
+            first_buy = state.liquidity[1] - break_liquidity[1]
+            second_buy = buy_quantity - first_buy
+            second_sell = second_buy * (state.liquidity[0] + state.a) / (state.liquidity[1] - second_buy)
+            sell_quantity = first_sell + second_sell
+
+    elif i_sell == 1 and sell_quantity != 0:  # volatile asset being sold, so price is decreasing
+        if state.price_one() <= state.p:
+            # we entirely follow the lower invariant
+            buy_quantity = sell_quantity * state.liquidity[0] / (state.liquidity[1] - state.a / state.p + sell_quantity)
+        elif break_liquidity[1] - state.liquidity[1] >= sell_quantity:
+            # we entirely follow the upper invariant
+            buy_quantity = sell_quantity * (state.liquidity[0] + state.a) / (state.liquidity[1] + sell_quantity)
+        else:
+            # we must transition invariants
+            first_sell = break_liquidity[1] - state.liquidity[1]
+            first_buy = state.liquidity[0] - break_liquidity[0]
+            second_sell = sell_quantity - first_sell
+            second_buy = second_sell * state.liquidity[0] / (state.liquidity[1] - state.a / state.p + second_sell)
+            buy_quantity = first_buy + second_buy
+
+    elif i_sell == 1 and buy_quantity != 0:  # volatile asset being sold, so price is decreasing
+        if state.price_one() <= state.p:
+            # we entirely follow the lower invariant
+            sell_quantity = buy_quantity * (state.liquidity[1] - state.a / state.p) / (state.liquidity[0] - buy_quantity)
+        elif state.liquidity[0] - break_liquidity[0] >= buy_quantity:
+            # we entirely follow the upper invariant
+            sell_quantity = buy_quantity * state.liquidity[1] / (state.liquidity[0] + state.a - buy_quantity)
+        else:
+            # we must transition invariants
+            first_sell = break_liquidity[1] - state.liquidity[1]
+            first_buy = state.liquidity[0] - break_liquidity[0]
+            second_buy = buy_quantity - first_buy
+            second_sell = second_buy * (state.liquidity[1] - state.a / state.p) / (state.liquidity[0] - second_buy)
+            sell_quantity = first_sell + second_sell
+
+    else:
+        return state.fail_transaction('Must specify buy quantity or sell quantity.', agent)
+
+    if state.liquidity[i_sell] + sell_quantity <= 0 or state.liquidity[i_buy] - buy_quantity <= 0:
+        return state.fail_transaction('Not enough liquidity in the pool.', agent)
+
+    if agent.holdings[tkn_sell] - sell_quantity < 0 or agent.holdings[tkn_buy] + buy_quantity < 0:
+        return state.fail_transaction('Agent has insufficient holdings.', agent)
+
+    agent.holdings[tkn_buy] += buy_quantity
+    agent.holdings[tkn_sell] -= sell_quantity
+    state.liquidity[i_sell] += sell_quantity
+    state.liquidity[i_buy] -= buy_quantity
+
+    return state, agent
+
+
+ProtectedXYKState.execute_swap = staticmethod(execute_swap)

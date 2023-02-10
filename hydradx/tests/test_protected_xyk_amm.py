@@ -150,3 +150,233 @@ def test_calculate_reserve_at_intersection_from_below():
 
     assert state.get_invariant_two() == after_state.get_invariant_two()
     assert pxyk.price(after_state) == state.p
+
+
+def test_execute_swap_buy_stable_above_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=5,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+                                             buy_quantity=10)
+    assert initial_state.get_invariant_one() == pytest.approx(new_state.get_invariant_one(), 1e-10)
+
+
+def test_execute_swap_sell_stable_above_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=5,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+                                             sell_quantity=10)
+    assert initial_state.get_invariant_one() == pytest.approx(new_state.get_invariant_one(), 1e-10)
+
+
+def test_execute_swap_buy_volatile_above_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=5,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+                                             buy_quantity=10)
+    assert initial_state.get_invariant_one() == pytest.approx(new_state.get_invariant_one(), 1e-10)
+
+
+def test_execute_swap_sell_volatile_above_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=5,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+                                             sell_quantity=10)
+    assert initial_state.get_invariant_one() == pytest.approx(new_state.get_invariant_one(), 1e-10)
+
+
+def test_execute_swap_buy_stable_below_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=10,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+                                             buy_quantity=10)
+    assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+
+
+def test_execute_swap_sell_stable_below_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=10,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+                                             sell_quantity=10)
+    assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+
+
+def test_execute_swap_buy_volatile_below_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=10,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+                                             buy_quantity=10)
+    assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+
+
+def test_execute_swap_sell_volatile_below_break():
+    initial_state = pxyk.ProtectedXYKState(
+        stable_asset='LRNA',
+        stable_asset_quantity=1000000,
+        stable_asset_virtual_quantity=500000,
+        volatile_asset='TKN',
+        volatile_asset_quantity=200000,
+        break_price=10,
+        trade_fee=0,
+        unique_id='pool'
+    )
+    holdings = {'LRNA': 1000000, 'TKN': 1000000}
+    agent = Agent(holdings=holdings)
+
+    new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+                                             sell_quantity=10)
+    assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+
+
+# TODO
+# def test_execute_swap_buy_stable_across_break():
+#     initial_state = pxyk.ProtectedXYKState(
+#         stable_asset='LRNA',
+#         stable_asset_quantity=1000000,
+#         stable_asset_virtual_quantity=500000,
+#         volatile_asset='TKN',
+#         volatile_asset_quantity=200000,
+#         break_price=5,
+#         trade_fee=0,
+#         unique_id='pool'
+#     )
+#     holdings = {'LRNA': 1000000, 'TKN': 1000000}
+#     agent = Agent(holdings=holdings)
+#
+#     new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+#                                              buy_quantity=500000)
+#     assert initial_state.get_invariant_one() == pytest.approx(new_state.get_invariant_one(), 1e-10)
+#     assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+#
+#
+# def test_execute_swap_sell_stable_below_break():
+#     initial_state = pxyk.ProtectedXYKState(
+#         stable_asset='LRNA',
+#         stable_asset_quantity=1000000,
+#         stable_asset_virtual_quantity=500000,
+#         volatile_asset='TKN',
+#         volatile_asset_quantity=200000,
+#         break_price=10,
+#         trade_fee=0,
+#         unique_id='pool'
+#     )
+#     holdings = {'LRNA': 1000000, 'TKN': 1000000}
+#     agent = Agent(holdings=holdings)
+#
+#     new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+#                                              sell_quantity=10)
+#     assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+#
+#
+# def test_execute_swap_buy_volatile_below_break():
+#     initial_state = pxyk.ProtectedXYKState(
+#         stable_asset='LRNA',
+#         stable_asset_quantity=1000000,
+#         stable_asset_virtual_quantity=500000,
+#         volatile_asset='TKN',
+#         volatile_asset_quantity=200000,
+#         break_price=10,
+#         trade_fee=0,
+#         unique_id='pool'
+#     )
+#     holdings = {'LRNA': 1000000, 'TKN': 1000000}
+#     agent = Agent(holdings=holdings)
+#
+#     new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_buy='TKN', tkn_sell='LRNA',
+#                                              buy_quantity=10)
+#     assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
+#
+#
+# def test_execute_swap_sell_volatile_below_break():
+#     initial_state = pxyk.ProtectedXYKState(
+#         stable_asset='LRNA',
+#         stable_asset_quantity=1000000,
+#         stable_asset_virtual_quantity=500000,
+#         volatile_asset='TKN',
+#         volatile_asset_quantity=200000,
+#         break_price=10,
+#         trade_fee=0,
+#         unique_id='pool'
+#     )
+#     holdings = {'LRNA': 1000000, 'TKN': 1000000}
+#     agent = Agent(holdings=holdings)
+#
+#     new_state, new_agent = pxyk.execute_swap(copy.deepcopy(initial_state), agent, tkn_sell='TKN', tkn_buy='LRNA',
+#                                              sell_quantity=10)
+#     assert initial_state.get_invariant_two() == pytest.approx(new_state.get_invariant_two(), 1e-10)
