@@ -1414,6 +1414,7 @@ def test_dynamic_fees(hdx_price: float):
         tokens={
             'HDX': {'liquidity': 100000 / hdx_price, 'LRNA': 100000},
             'USD': {'liquidity': 100000, 'LRNA': 100000},
+            'R1': {'liquidity': 100000, 'LRNA': 100000},
         },
         oracles={
             'mid': 100
@@ -1431,12 +1432,14 @@ def test_dynamic_fees(hdx_price: float):
             raise_oracle_name='mid',
             decay=0.0001,
             fee_max=0.10
-        )
+        ), last_asset_fee={'R1': 0.1}, last_lrna_fee={'R1': 0.1}
     )
     initial_hdx_fee = initial_state.asset_fee['HDX'].compute('HDX', 10000)
     initial_usd_fee = initial_state.asset_fee['USD'].compute('USD', 10000)
     initial_usd_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 10000)
     initial_hdx_lrna_fee = initial_state.lrna_fee['HDX'].compute('HDX', 10000)
+    initial_R1_fee = initial_state.asset_fee['R1'].compute('R1', 10000)
+    initial_R1_lrna_fee = initial_state.lrna_fee['R1'].compute('R1', 10000)
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
@@ -1449,6 +1452,10 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
+    if test_state.asset_fee['R1'].compute('R1', 10000) >= initial_R1_fee:
+        raise AssertionError('R1 fee should be decreasing due to decay.')
+    if test_state.lrna_fee['R1'].compute('R1', 10000) >= initial_R1_lrna_fee:
+        raise AssertionError('R1 LRNA fee should be decreasing due to decay.')
     intermediate_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
     intermediate_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)
     intermediate_usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 10000)
