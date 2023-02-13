@@ -160,8 +160,8 @@ class OmnipoolState(AMM):
         self.protocol_shares[tkn] = protocol_shares
         self.weight_cap[tkn] = weight_cap
         if hasattr(self, 'asset_fee'):
-            self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self)
-            self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self)
+            self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self, tkn)
+            self.lrna_fee[tkn] = basic_fee(self.default_lrna_fee).assign(self, tkn)
             self.last_fee[tkn] = 0
             self.last_lrna_fee[tkn] = 0
 
@@ -173,12 +173,14 @@ class OmnipoolState(AMM):
         for name, oracle in self.oracles.items():
             oracle.update(self.current_block)
 
-        # self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
-        # self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
-
         # update current block
         self.time_step += 1
         self.current_block = Block(self)
+
+        # update fees
+        self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
+        self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
+
         if self.update_function:
             self.update_function(self)
         return self
@@ -1096,18 +1098,19 @@ def dynamicadd_asset_fee(
     class Fee:
         def __init__(self):
             # force compute on first call
-            self.time_step = -1
+            self.time_step = dict()
 
         def fee_function(
                 self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
-
-            if self.time_step == exchange.time_step:
+            if tkn not in self.time_step:
+                self.time_step[tkn] = 0
+            elif self.time_step[tkn] == exchange.time_step:
                 # since fee is the same regardless of delta_tkn, just return the last fee
-                # if it's already been computed for this block
+                # if it's already been computed for this tkn and block
                 return exchange.last_fee[tkn]
             else:
-                self.time_step = exchange.time_step
+                self.time_step[tkn] = exchange.time_step
 
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
@@ -1140,13 +1143,19 @@ def dynamicadd_lrna_fee(
 ) -> FeeMechanism:
     class Fee:
         def __init__(self):
-            self.time_step = -1
+            self.time_step = dict()
 
         def fee_function(
             self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
-            if not hasattr(exchange, 'last_lrna_fee'):
-                exchange.last_lrna_fee = {tkn: 0 for tkn in exchange.asset_list}
+            if tkn not in self.time_step:
+                self.time_step[tkn] = 0
+            elif self.time_step[tkn] == exchange.time_step:
+                # since fee is the same regardless of delta_tkn, just return the last fee
+                # if it's already been computed for this tkn and block
+                return exchange.last_lrna_fee[tkn]
+            else:
+                self.time_step[tkn] = exchange.time_step
 
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
