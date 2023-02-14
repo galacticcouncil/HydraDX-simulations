@@ -1,14 +1,16 @@
 import copy
-import pytest
 import random
+
+import pytest
 from hypothesis import given, strategies as st, assume
+from mpmath import mp, mpf
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
-from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
-from mpmath import mp, mpf
+from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
+
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -299,7 +301,7 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
     if ((old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
-        ) != pytest.approx(
+    ) != pytest.approx(
         (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
@@ -1490,3 +1492,51 @@ def test_dynamic_fees(hdx_price: float):
     if not final_usd_lrna_fee < intermediate_usd_lrna_fee:
         raise AssertionError('LRNA fee should decrease with time.')
 
+
+def test_oracle_one_empty_block():
+    n = 10
+    alpha = 2 / (n + 1)
+
+    init_liquidity = {
+        'HDX': {'liquidity': 100000 / 0.05, 'LRNA': 100000},
+        'USD': {'liquidity': 100000, 'LRNA': 100000},
+        'DOT': {'liquidity': 100000 / 5, 'LRNA': 100000},
+    }
+
+    init_oracle = {
+        'liquidity': {'HDX': 5000000, 'USD': 500000, 'DOT': 100000},
+        'volume_in': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+        'volume_out': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
+        'price': {'HDX': 0.06, 'USD': 1, 'DOT': 6},
+    }
+
+    state = oamm.OmnipoolState(
+        tokens=copy.deepcopy(init_liquidity),
+        oracles={
+            'oracle': n
+        },
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
+        last_oracle_values={
+            'oracle': copy.deepcopy(init_oracle)
+        }
+    )
+
+    state.update()
+    for tkn in ['HDX', 'USD', 'DOT']:
+        expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
+        if state.oracles['oracle'].liquidity[tkn] != expected_liquidity:
+            raise AssertionError('Liquidity is not correct.')
+
+        expected_vol_in = init_oracle['volume_in'][tkn] * (1 - alpha)
+        if state.oracles['oracle'].volume_in[tkn] != expected_vol_in:
+            raise AssertionError('Volume is not correct.')
+
+        expected_vol_out = init_oracle['volume_out'][tkn] * (1 - alpha)
+        if state.oracles['oracle'].volume_out[tkn] != expected_vol_out:
+            raise AssertionError('Volume is not correct.')
+
+        init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
+        expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
+        if state.oracles['oracle'].price[tkn] != expected_price:
+            raise AssertionError('Price is not correct.')
