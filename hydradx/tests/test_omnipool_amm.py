@@ -5,9 +5,11 @@ import pytest
 from hypothesis import given, strategies as st, assume
 from mpmath import mp, mpf
 
+from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
+from hydradx.model.amm.global_state import GlobalState
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 
@@ -1493,21 +1495,31 @@ def test_dynamic_fees(hdx_price: float):
         raise AssertionError('LRNA fee should decrease with time.')
 
 
-def test_oracle_one_empty_block():
-    n = 10
+@given(
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_bounded_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_price_strategy, min_size=2, max_size=2),
+    st.integers(min_value=10, max_value=1000),
+)
+def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
+                                oracle_volume_in: list[float], oracle_volume_out: list[float],
+                                oracle_prices: list[float], n):
     alpha = 2 / (n + 1)
 
     init_liquidity = {
-        'HDX': {'liquidity': 100000 / 0.05, 'LRNA': 100000},
-        'USD': {'liquidity': 100000, 'LRNA': 100000},
-        'DOT': {'liquidity': 100000 / 5, 'LRNA': 100000},
+        'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
+        'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
+        'DOT': {'liquidity': liquidity[2], 'LRNA': lrna[2]},
     }
 
     init_oracle = {
-        'liquidity': {'HDX': 5000000, 'USD': 500000, 'DOT': 100000},
-        'volume_in': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
-        'volume_out': {'HDX': 10000, 'USD': 10000, 'DOT': 10000},
-        'price': {'HDX': 0.06, 'USD': 1, 'DOT': 6},
+        'liquidity': {'HDX': oracle_liquidity[0], 'USD': oracle_liquidity[1], 'DOT': oracle_liquidity[2]},
+        'volume_in': {'HDX': oracle_volume_in[0], 'USD': oracle_volume_in[1], 'DOT': oracle_volume_in[2]},
+        'volume_out': {'HDX': oracle_volume_out[0], 'USD': oracle_volume_out[1], 'DOT': oracle_volume_out[2]},
+        'price': {'HDX': oracle_prices[0], 'USD': 1, 'DOT': oracle_prices[1]},
     }
 
     state = oamm.OmnipoolState(
@@ -1522,21 +1534,27 @@ def test_oracle_one_empty_block():
         }
     )
 
-    state.update()
+    initial_state = GlobalState(
+        pools={'omnipool': state},
+        agents={}
+    )
+
+    events = run.run(initial_state=initial_state, time_steps=1, silent=True)
+    omnipool_oracle = events[0].pools['omnipool'].oracles['oracle']
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
-        if state.oracles['oracle'].liquidity[tkn] != expected_liquidity:
+        if omnipool_oracle.liquidity[tkn] != expected_liquidity:
             raise AssertionError('Liquidity is not correct.')
 
         expected_vol_in = init_oracle['volume_in'][tkn] * (1 - alpha)
-        if state.oracles['oracle'].volume_in[tkn] != expected_vol_in:
+        if omnipool_oracle.volume_in[tkn] != expected_vol_in:
             raise AssertionError('Volume is not correct.')
 
         expected_vol_out = init_oracle['volume_out'][tkn] * (1 - alpha)
-        if state.oracles['oracle'].volume_out[tkn] != expected_vol_out:
+        if omnipool_oracle.volume_out[tkn] != expected_vol_out:
             raise AssertionError('Volume is not correct.')
 
         init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
         expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
-        if state.oracles['oracle'].price[tkn] != expected_price:
+        if omnipool_oracle.price[tkn] != expected_price:
             raise AssertionError('Price is not correct.')
