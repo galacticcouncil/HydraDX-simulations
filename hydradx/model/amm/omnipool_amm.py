@@ -170,6 +170,8 @@ class OmnipoolState(AMM):
 
     def update(self):
         # update oracles
+        self.current_block.price['HDX'] = self.lrna['HDX'] / self.liquidity['HDX']
+
         for name, oracle in self.oracles.items():
             oracle.update(self.current_block)
 
@@ -436,7 +438,6 @@ def execute_swap(
         sell_quantity = state.liquidity[tkn_sell] - old_sell_liquidity
         state.current_block.volume_in[tkn_sell] += sell_quantity
         state.current_block.price[tkn_sell] = state.lrna[tkn_sell] / state.liquidity[tkn_sell]
-    state.current_block.price['HDX'] = state.lrna['HDX'] / state.liquidity['HDX']  # in case of LRNA fee
     return return_val
 
 
