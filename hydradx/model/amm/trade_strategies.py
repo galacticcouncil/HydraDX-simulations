@@ -101,6 +101,26 @@ def steady_swaps(
     return TradeStrategy(strategy, name=f'steady swaps (${usd_amount})')
 
 
+def constant_swaps(
+    pool_id: str,
+    sell_quantity: float,
+    sell_asset: str,
+    buy_asset: str
+) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+
+        return state.execute_swap(
+            pool_id=pool_id,
+            agent_id=agent_id,
+            tkn_sell=sell_asset,
+            tkn_buy=buy_asset,
+            sell_quantity=sell_quantity
+        )
+
+    return TradeStrategy(strategy, name=f'constant swaps (${sell_quantity})')
+
+
 def back_and_forth(
     pool_id: str,
     percentage: float  # percentage of TVL to trade each block

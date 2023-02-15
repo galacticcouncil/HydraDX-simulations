@@ -10,6 +10,8 @@ from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.omnipool_amm import price
+from hydradx.model.amm.trade_strategies import steady_swaps, constant_swaps
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 
@@ -1557,4 +1559,124 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
         init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
         expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
         if omnipool_oracle.price[tkn] != expected_price:
+            raise AssertionError('Price is not correct.')
+
+
+@given(
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_bounded_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    st.lists(asset_price_strategy, min_size=2, max_size=2),
+    st.lists(st.floats(min_value=10, max_value=1000), min_size=2, max_size=2),
+    st.integers(min_value=10, max_value=1000),
+)
+def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
+                                     oracle_volume_in: list[float], oracle_volume_out: list[float],
+                                     oracle_prices: list[float], trade_sizes: list[float], n):
+    alpha = 2 / (n + 1)
+
+    init_liquidity = {
+        'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
+        'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
+        'DOT': {'liquidity': liquidity[2], 'LRNA': lrna[2]},
+    }
+
+    init_oracle = {
+        'liquidity': {'HDX': oracle_liquidity[0], 'USD': oracle_liquidity[1], 'DOT': oracle_liquidity[2]},
+        'volume_in': {'HDX': oracle_volume_in[0], 'USD': oracle_volume_in[1], 'DOT': oracle_volume_in[2]},
+        'volume_out': {'HDX': oracle_volume_out[0], 'USD': oracle_volume_out[1], 'DOT': oracle_volume_out[2]},
+        'price': {'HDX': oracle_prices[0], 'USD': 1, 'DOT': oracle_prices[1]},
+    }
+
+    state = oamm.OmnipoolState(
+        tokens=copy.deepcopy(init_liquidity),
+        oracles={
+            'oracle': n
+        },
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
+        last_oracle_values={
+            'oracle': copy.deepcopy(init_oracle)
+        }
+    )
+
+    trader1_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
+    trader2_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
+
+    initial_state = GlobalState(
+        pools={'omnipool': state},
+        agents={
+            'Trader1': Agent(
+                holdings=trader1_holdings,
+                trade_strategy=constant_swaps(
+                    pool_id='omnipool',
+                    sell_quantity=trade_sizes[0],
+                    sell_asset='LRNA',
+                    buy_asset='DOT'
+                )
+            ),
+            'Trader2': Agent(
+                holdings=trader2_holdings,
+                trade_strategy=constant_swaps(
+                    pool_id='omnipool',
+                    sell_quantity=trade_sizes[1],
+                    sell_asset='DOT',
+                    buy_asset='LRNA'
+                )
+            ),
+        }
+    )
+
+    events = run.run(initial_state=initial_state, time_steps=2, silent=True)
+    omnipool_oracle_0 = events[0].pools['omnipool'].oracles['oracle']
+
+    vol_in = {
+        'HDX': 0,
+        'USD': 0,
+        'DOT': trader2_holdings['DOT'] - events[0].agents['Trader2'].holdings['DOT'],
+    }
+
+    vol_out = {
+        'HDX': 0,
+        'USD': 0,
+        'DOT': events[0].agents['Trader1'].holdings['DOT'] - trader1_holdings['DOT'],
+    }
+
+    for tkn in ['HDX', 'USD', 'DOT']:
+        expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
+        if omnipool_oracle_0.liquidity[tkn] != expected_liquidity:
+            raise AssertionError('Liquidity is not correct.')
+
+        expected_vol_in = init_oracle['volume_in'][tkn] * (1 - alpha)
+        if omnipool_oracle_0.volume_in[tkn] != expected_vol_in:
+            raise AssertionError('Volume is not correct.')
+
+        expected_vol_out = init_oracle['volume_out'][tkn] * (1 - alpha)
+        if omnipool_oracle_0.volume_out[tkn] != expected_vol_out:
+            raise AssertionError('Volume is not correct.')
+
+        init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
+        expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
+        if omnipool_oracle_0.price[tkn] != expected_price:
+            raise AssertionError('Price is not correct.')
+
+    omnipool_oracle_1 = events[1].pools['omnipool'].oracles['oracle']
+    for tkn in ['HDX', 'USD', 'DOT']:
+        expected_liquidity = omnipool_oracle_0.liquidity[tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
+        if omnipool_oracle_1.liquidity[tkn] != pytest.approx(expected_liquidity, 1e-10):
+            raise AssertionError('Liquidity is not correct.')
+
+        expected_vol_in = omnipool_oracle_0.volume_in[tkn] * (1 - alpha) + alpha * vol_in[tkn]
+        if omnipool_oracle_1.volume_in[tkn] != pytest.approx(expected_vol_in, 1e-10):
+            raise AssertionError('Volume is not correct.')
+
+        expected_vol_out = omnipool_oracle_0.volume_out[tkn] * (1 - alpha) + alpha * vol_out[tkn]
+        if omnipool_oracle_1.volume_out[tkn] != pytest.approx(expected_vol_out, 1e-9):
+            raise AssertionError('Volume is not correct.')
+
+        price_1 = price(events[0].pools['omnipool'], tkn)
+        expected_price = omnipool_oracle_0.price[tkn] * (1 - alpha) + alpha * price_1
+        if omnipool_oracle_1.price[tkn] != pytest.approx(expected_price, 1e-10):
             raise AssertionError('Price is not correct.')
