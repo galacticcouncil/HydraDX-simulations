@@ -462,11 +462,11 @@ def execute_swap(
     if tkn_buy in state.current_block.asset_list:
         buy_quantity = old_buy_liquidity - state.liquidity[tkn_buy]
         state.current_block.volume_out[tkn_buy] += buy_quantity
-        # state.current_block.price[tkn_buy] = state.lrna[tkn_buy] / state.liquidity[tkn_buy]
+        state.current_block.price[tkn_buy] = state.lrna[tkn_buy] / state.liquidity[tkn_buy]
     if tkn_sell in state.current_block.asset_list:
         sell_quantity = state.liquidity[tkn_sell] - old_sell_liquidity
         state.current_block.volume_in[tkn_sell] += sell_quantity
-        # state.current_block.price[tkn_sell] = state.lrna[tkn_sell] / state.liquidity[tkn_sell]
+        state.current_block.price[tkn_sell] = state.lrna[tkn_sell] / state.liquidity[tkn_sell]
     return return_val
 
 
