@@ -1524,7 +1524,7 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
         'price': {'HDX': oracle_prices[0], 'USD': 1, 'DOT': oracle_prices[1]},
     }
 
-    state = oamm.OmnipoolState(
+    initial_omnipool = oamm.OmnipoolState(
         tokens=copy.deepcopy(init_liquidity),
         oracles={
             'oracle': n
@@ -1537,7 +1537,7 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
     )
 
     initial_state = GlobalState(
-        pools={'omnipool': state},
+        pools={'omnipool': initial_omnipool},
         agents={}
     )
 
@@ -1590,7 +1590,7 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
         'price': {'HDX': oracle_prices[0], 'USD': 1, 'DOT': oracle_prices[1]},
     }
 
-    state = oamm.OmnipoolState(
+    initial_omnipool = oamm.OmnipoolState(
         tokens=copy.deepcopy(init_liquidity),
         oracles={
             'oracle': n
@@ -1606,7 +1606,7 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
     trader2_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
 
     initial_state = GlobalState(
-        pools={'omnipool': state},
+        pools={'omnipool': initial_omnipool},
         agents={
             'Trader1': Agent(
                 holdings=trader1_holdings,
