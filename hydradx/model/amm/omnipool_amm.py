@@ -1117,7 +1117,7 @@ def dynamicadd_asset_fee(
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
             if raise_oracle.liquidity[tkn] != 0:
-                x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / exchange.liquidity[tkn]
+                x = (raise_oracle.volume_out[tkn] - raise_oracle.volume_in[tkn]) / raise_oracle.liquidity[tkn]
             else:
                 x = 0
 
@@ -1162,7 +1162,7 @@ def dynamicadd_lrna_fee(
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
             if raise_oracle.liquidity[tkn] != 0:
-                x = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / exchange.liquidity[tkn]
+                x = (raise_oracle.volume_in[tkn] - raise_oracle.volume_out[tkn]) / raise_oracle.liquidity[tkn]
             else:
                 x = 0
 
