@@ -537,7 +537,11 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
-def extra_trade_volume(pool_id: str, percent_of_arb: float, percent_of_pool: float = 0) -> TradeStrategy:
+def extra_trade_volume(
+        pool_id: str,
+        percent_of_arb: float,
+        percent_of_pool: float = 0
+) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         agent: Agent = state.agents[agent_id]
         pool: OmnipoolState = state.pools[pool_id]
@@ -562,6 +566,33 @@ def extra_trade_volume(pool_id: str, percent_of_arb: float, percent_of_pool: flo
         return state
 
     return TradeStrategy(strategy, name=f'extra trade volume ({percent_of_arb}%)')
+
+
+def price_sensitive_trading(pool_id: str, max_volume_usd: float, price_sensitivity: float) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        agent: Agent = state.agents[agent_id]
+        pool: OmnipoolState = state.pools[pool_id]
+        options = list(set(agent.asset_list) & set(pool.asset_list))
+        tkn_sell = random.choice(options)
+        options.remove(tkn_sell)
+        tkn_buy = random.choice(options)
+        slip_rate = (
+            oamm.calculate_sell_from_buy(pool, tkn_sell, tkn_buy, 1)
+            / state.external_market[tkn_sell] * state.external_market[tkn_buy]
+        ) - 1  # find the price of buying from the pool vs. buying from the market
+        trade_volume = (
+            max_volume_usd / oamm.usd_price(pool, tkn_sell) / (1 + price_sensitivity * slip_rate)
+        )
+        oamm.execute_swap(
+            state=pool,
+            agent=agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=trade_volume,
+        )
+        return state
+
+    return TradeStrategy(strategy, name=f'price sensitive trading (sensitivity ={price_sensitivity})')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
