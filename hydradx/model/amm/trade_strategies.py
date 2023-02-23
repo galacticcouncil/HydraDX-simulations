@@ -101,6 +101,26 @@ def steady_swaps(
     return TradeStrategy(strategy, name=f'steady swaps (${usd_amount})')
 
 
+def constant_swaps(
+    pool_id: str,
+    sell_quantity: float,
+    sell_asset: str,
+    buy_asset: str
+) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+
+        return state.execute_swap(
+            pool_id=pool_id,
+            agent_id=agent_id,
+            tkn_sell=sell_asset,
+            tkn_buy=buy_asset,
+            sell_quantity=sell_quantity
+        )
+
+    return TradeStrategy(strategy, name=f'constant swaps (${sell_quantity})')
+
+
 def back_and_forth(
     pool_id: str,
     percentage: float  # percentage of TVL to trade each block
@@ -503,18 +523,25 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
-def extra_trade_volume(pool_id: str, percent: float, absolute: float = 0) -> TradeStrategy:
+def extra_trade_volume(
+        pool_id: str,
+        percent_of_arb: float,
+        percent_of_pool: float = 0
+) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         agent: Agent = state.agents[agent_id]
         pool: OmnipoolState = state.pools[pool_id]
         volume_so_far = sum([
             (pool.current_block.volume_in[tkn] + pool.current_block.volume_out[tkn])
-            * oamm.lrna_price(pool, tkn)
+            * oamm.usd_price(pool, tkn)
             for tkn in pool.asset_list
         ])
         tkn_sell = random.choice(pool.asset_list)
         tkn_buy = random.choice(pool.asset_list)
-        trade_volume = (volume_so_far * percent / 100 + absolute) / oamm.lrna_price(pool, tkn_sell)
+        trade_volume = (
+                (volume_so_far * percent_of_arb / 100 + percent_of_pool * pool.liquidity[tkn_sell])
+                / oamm.usd_price(pool, tkn_sell)
+        )
         oamm.execute_swap(
             state=pool,
             agent=agent,
@@ -524,7 +551,34 @@ def extra_trade_volume(pool_id: str, percent: float, absolute: float = 0) -> Tra
         )
         return state
 
-    return TradeStrategy(strategy, name=f'extra trade volume ({percent}%)')
+    return TradeStrategy(strategy, name=f'extra trade volume ({percent_of_arb}%)')
+
+
+def price_sensitive_trading(pool_id: str, max_volume_usd: float, price_sensitivity: float) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        agent: Agent = state.agents[agent_id]
+        pool: OmnipoolState = state.pools[pool_id]
+        options = list(set(agent.asset_list) & set(pool.asset_list))
+        tkn_sell = random.choice(options)
+        options.remove(tkn_sell)
+        tkn_buy = random.choice(options)
+        slip_rate = (
+            oamm.calculate_sell_from_buy(pool, tkn_sell, tkn_buy, 1)
+            / state.external_market[tkn_sell] * state.external_market[tkn_buy]
+        ) - 1  # find the price of buying from the pool vs. buying from the market
+        trade_volume = (
+            max_volume_usd / oamm.usd_price(pool, tkn_sell) / (1 + price_sensitivity * slip_rate)
+        )
+        oamm.execute_swap(
+            state=pool,
+            agent=agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=trade_volume,
+        )
+        return state
+
+    return TradeStrategy(strategy, name=f'price sensitive trading (sensitivity ={price_sensitivity})')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
