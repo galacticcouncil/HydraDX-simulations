@@ -8,3 +8,5 @@
 /venv/
 /.idea/
 /hydradx/tests/.hypothesis/
+/hydradx/notebooks/Omnipool/data
+/hydradx/tests/data
