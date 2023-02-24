@@ -545,13 +545,15 @@ def extra_trade_volume(
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         agent: Agent = state.agents[agent_id]
         pool: OmnipoolState = state.pools[pool_id]
+        options = list(set(agent.asset_list) & set(pool.asset_list))
+        tkn_sell = random.choice(options)
+        options.remove(tkn_sell)
+        tkn_buy = random.choice(options)
         volume_so_far = sum([
             (pool.current_block.volume_in[tkn] + pool.current_block.volume_out[tkn])
             * oamm.usd_price(pool, tkn)
             for tkn in pool.asset_list
         ])
-        tkn_sell = random.choice(pool.asset_list)
-        tkn_buy = random.choice(pool.asset_list)
         trade_volume = (
                 (volume_so_far * percent_of_arb / 100 + percent_of_pool * pool.liquidity[tkn_sell])
                 / oamm.usd_price(pool, tkn_sell)
@@ -577,9 +579,10 @@ def price_sensitive_trading(pool_id: str, max_volume_usd: float, price_sensitivi
         options.remove(tkn_sell)
         tkn_buy = random.choice(options)
         slip_rate = (
-            oamm.calculate_sell_from_buy(pool, tkn_sell, tkn_buy, 1)
-            / state.external_market[tkn_sell] * state.external_market[tkn_buy]
-        ) - 1  # find the price of buying from the pool vs. buying from the market
+            oamm.calculate_sell_from_buy(pool, tkn_buy, tkn_sell, max_volume_usd / oamm.usd_price(pool, tkn_buy))
+            / (state.external_market[tkn_buy] / state.external_market[tkn_sell])
+            / (max_volume_usd / state.external_market[tkn_buy])
+        ) ** 2 - 1  # find the price of buying from the pool vs. buying from the market
         trade_volume = (
             max_volume_usd / oamm.usd_price(pool, tkn_sell) / (1 + price_sensitivity * slip_rate)
         )
