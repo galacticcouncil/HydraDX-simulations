@@ -1458,9 +1458,9 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
-    if test_state.asset_fee['R1'].compute('R1', 10000) >= initial_R1_fee:
+    if test_state.last_fee['R1'] >= initial_R1_fee:
         raise AssertionError('R1 fee should be decreasing due to decay.')
-    if test_state.lrna_fee['R1'].compute('R1', 10000) >= initial_R1_lrna_fee:
+    if test_state.last_lrna_fee['R1'] >= initial_R1_lrna_fee:
         raise AssertionError('R1 LRNA fee should be decreasing due to decay.')
     intermediate_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
     intermediate_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)

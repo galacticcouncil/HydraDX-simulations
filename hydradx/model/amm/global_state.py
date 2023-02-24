@@ -1,6 +1,7 @@
 import copy
 import random
 from typing import Callable
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 from .agents import Agent, AgentArchiveState
 from .amm import AMM, FeeMechanism
@@ -90,15 +91,14 @@ class GlobalState:
 
     def archive(self):
         if self.archive_all and not self.save_data:
-            return {'state': self.copy()}
+            return self.copy()
         elif self.save_data:
             return {
                 datastream: self.save_data[datastream](self)
                 for datastream in self.save_data
             }
         else:
-            record_state = ArchiveState(self)
-            return record_state
+            return ArchiveState(self)
 
     def evolve(self):
         self.time_step += 1
@@ -140,7 +140,7 @@ class GlobalState:
             if isinstance(share_id, tuple):
                 pool_id = share_id[0]
                 tkn_id = share_id[1]
-                prices[share_id] = self.pools[pool_id].usd_price(tkn_id)
+                prices[share_id] = self.pools[pool_id].usd_price(self.pools[pool_id], tkn_id)
 
         return prices
 
@@ -184,7 +184,7 @@ class GlobalState:
                     }
 
         prices = self.market_prices(withdraw_holdings)
-        return self.value_assets(prices, withdraw_holdings)
+        return value_assets(prices, withdraw_holdings)
 
     def pool_val(self, pool: AMM):
         """ get the total value of all liquidity in the pool. """
@@ -197,7 +197,7 @@ class GlobalState:
         return self.cash_out(agent) / self.deposit_val(agent) - 1
 
     def deposit_val(self, agent: Agent) -> float:
-        return self.value_assets(
+        return value_assets(
             self.market_prices(agent.holdings),
             agent.initial_holdings
         )
@@ -235,7 +235,7 @@ class ArchiveState:
     def __init__(self, state: GlobalState):
         self.time_step = state.time_step
         self.external_market = {k: v for k, v in state.external_market.items()}
-        self.pools = {k: OmnipoolArchiveState(v) for (k, v) in state.pools.items()}
+        self.pools = {k: v.archive() for (k, v) in state.pools.items()}
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
 
@@ -322,9 +322,8 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
-        new_prices = price_list[state.time_step]
-        for tkn in new_prices:
-            state.external_market[tkn] = new_prices[tkn]
+        for tkn in price_list[state.time_step]:
+            state.external_market[tkn] = price_list[state.time_step][tkn]
         return state
 
     return transform

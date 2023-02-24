@@ -1,22 +1,20 @@
-import datetime
-import os
 from csv import DictReader, writer, reader
 from dataclasses import dataclass
-from zipfile import ZipFile
-
 import requests
+from zipfile import ZipFile
+import datetime
+import os
 
-from .amm.global_state import GlobalState, withdraw_all_liquidity
+from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM, value_assets
+# from .amm.agents import Agent
 
 cash_out = GlobalState.cash_out
-value_assets = GlobalState.value_assets
 impermanent_loss = GlobalState.impermanent_loss
 pool_val = GlobalState.pool_val
 deposit_val = GlobalState.deposit_val
-market_prices = GlobalState.market_prices
 
 
-def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[dict]:
+def postprocessing(events: list, optional_params: list[str] = ()) -> list:
     """
     Definition:
     Compute more abstract metrics from the simulation
@@ -30,7 +28,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
     'impermanent_loss': computes loss for LPs due to price movements in either direction
     """
     # save initial state
-    initial_state: GlobalState = events[0]['state']
+    initial_state: GlobalState = events[0]
     withdraw_state: GlobalState = initial_state.copy()
 
     optional_params = set(optional_params)
@@ -54,8 +52,6 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
     if unrecognized_params:
         raise ValueError(f'Unrecognized parameter {unrecognized_params}')
 
-    # print(f'processing {optional_params}')
-    #
     # a little pre-processing
     if 'deposit_val' in optional_params:
         # move the agents' liquidity deposits back into holdings, as something to compare against later
@@ -65,19 +61,17 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
             withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
 
     for step in events:
-        state: GlobalState = step['state']
+        state: GlobalState = step
 
         for pool in state.pools.values():
             if 'pool_val' in optional_params:
                 pool.pool_val = state.pool_val(pool)
-            # if 'usd_price' in optional_params:
-            #     pool.usd_price = {tkn: pool.price(tkn) for tkn in pool.asset_list}
 
         # agents
         for agent in state.agents.values():
             if 'deposit_val' in optional_params:
                 # what are this agent's original holdings theoretically worth at current spot prices?
-                agent.deposit_val = state.value_assets(
+                agent.deposit_val = value_assets(
                     state.market_prices(agent.holdings),
                     withdraw_state.agents[agent.unique_id].holdings
                 )
@@ -93,7 +87,7 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
             if 'trade_volume' in optional_params:
                 agent.trade_volume = 0
                 if state.time_step > 0:
-                    previous_agent = events[state.time_step - 1]['state'].agents[agent.unique_id]
+                    previous_agent = events[state.time_step - 1].agents[agent.unique_id]
                     agent.trade_volume += (
                         sum([
                             abs(previous_agent.holdings[tkn] - agent.holdings[tkn]) * state.price(tkn)
@@ -101,30 +95,6 @@ def postprocessing(events: list[dict], optional_params: list[str] = ()) -> list[
                     )
 
     return events
-
-
-@dataclass
-class PriceTick:
-    timestamp: int
-    price: float
-
-
-def write_price_data(price_data: list[PriceTick], output_filename: str) -> None:
-    with open(output_filename, 'w', newline='') as output_file:
-        fieldnames = ['timestamp', 'price']
-        csvwriter = writer(output_file)
-        csvwriter.writerow(fieldnames)
-        for row in price_data:
-            csvwriter.writerow([row.timestamp, row.price])
-
-
-def import_price_data(input_filename: str) -> list[PriceTick]:
-    price_data = []
-    with open(input_filename, newline='') as input_file:
-        reader = DictReader(input_file)
-        for row in reader:
-            price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-    return price_data
 
 
 def import_binance_prices(
@@ -135,7 +105,10 @@ def import_binance_prices(
 
     # find the data folder
     while not os.path.exists("./data"):
+        cwd = os.getcwd()
         os.chdir("..")
+        if cwd == os.getcwd():
+            raise FileNotFoundError("Could not find the data folder")
 
     # check that the files are all there, and if not, download them
     for tkn in assets:
@@ -168,8 +141,9 @@ def import_binance_prices(
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
 
     if not return_as_dict:
+        data_length = min([len(price_data[tkn]) for tkn in assets])
         price_data = [
-            {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
+            {tkn: price_data[tkn][i] for tkn in assets} for i in range(data_length)
         ]
     return price_data
 

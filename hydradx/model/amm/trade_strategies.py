@@ -1,4 +1,5 @@
 import math
+import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
@@ -157,6 +158,8 @@ def invest_all(pool_id: str) -> TradeStrategy:
                     tkn_add=asset
                 )
 
+        agent.initial_holdings = agent.holdings
+
         return state
 
     return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
@@ -182,6 +185,56 @@ def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
         return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
 
     return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
+
+
+def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
+    class Strategy:
+        def __init__(self):
+            self.last_move = 0
+            self.invested = False
+
+        def __call__(self, state: GlobalState, agent_id: str) -> GlobalState:
+
+            if (state.time_step - self.last_move) * frequency > random.random():
+                omnipool: OmnipoolState = state.pools[pool_id]
+                agent: Agent = state.agents[agent_id]
+                agent_holdings = copy.copy(agent.holdings)
+
+                if self.invested:
+                    # withdraw
+                    for tkn in agent_holdings:
+                        if isinstance(tkn, tuple) and tkn[0] == pool_id:
+                            oamm.execute_remove_liquidity(
+                                state=omnipool,
+                                agent=agent,
+                                quantity=agent.holdings[tkn],
+                                tkn_remove=tkn[1]
+                            )
+                        if sell_lrna:
+                            oamm.execute_swap(
+                                state=omnipool,
+                                agent=agent,
+                                tkn_sell='LRNA',
+                                tkn_buy='USD',
+                                sell_quantity=agent.holdings['LRNA']
+                            )
+                else:
+                    # invest
+                    for tkn in agent_holdings:
+                        if tkn in state.pools[pool_id].asset_list:
+                            oamm.execute_add_liquidity(
+                                state=omnipool,
+                                agent=agent,
+                                quantity=agent.holdings[tkn],
+                                tkn_add=tkn
+                            )
+
+                self.last_move = state.time_step
+                self.invested = not self.invested
+
+            return state
+
+    return TradeStrategy(Strategy(), name=f'invest and withdraw every {frequency} time steps')
 
 
 # iterative arbitrage method

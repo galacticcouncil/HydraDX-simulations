@@ -5,7 +5,7 @@ from typing import Callable
 from . import stableswap_amm as stableswap
 from .agents import Agent
 from .amm import AMM, FeeMechanism, basic_fee
-from .oracle import Oracle, Block
+from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
 
 
@@ -64,10 +64,6 @@ class OmnipoolState(AMM):
         self.fail = ''
         self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
-        self.oracles = {
-            name: Oracle(sma_equivalent_length=period, first_block=Block(self), last_values=last_oracle_values[name])
-            for name, period in oracles.items()
-        } if oracles else {}
 
         # trades per block cannot exceed this fraction of the pool's liquidity
         self.trade_limit_per_block = trade_limit_per_block
@@ -88,6 +84,19 @@ class OmnipoolState(AMM):
                 protocol_shares=pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
+
+        if oracles and last_oracle_values is not None:
+            self.oracles = {
+                name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name])
+                for name, period in oracles.items()
+            } if oracles else {}
+        elif oracles:
+            self.oracles = {
+                name: Oracle(sma_equivalent_length=period, first_block=Block(self))
+                for name, period in oracles.items()
+            }
+        else:
+            self.oracles = {}
         self.asset_fee = self._get_fee(asset_fee)
         self.lrna_fee = self._get_fee(lrna_fee)
 
@@ -246,7 +255,7 @@ class OmnipoolArchiveState:
         self.fail = state.fail
         self.stablecoin = state.stablecoin
         # self.sub_pools = copy.deepcopy(state.sub_pools)
-        self.oracles = {k: v for (k, v) in state.oracles.items()}
+        self.oracles = {k: OracleArchiveState(v) for (k, v) in state.oracles.items()}
         self.unique_id = state.unique_id
 
         # record these for analysis later
@@ -1069,9 +1078,9 @@ OmnipoolArchiveState.lrna_price = staticmethod(lrna_price)
 OmnipoolArchiveState.price = staticmethod(price)
 
 
-# ===============================================================================
+#===============================================================================
 # fee mechanisms
-# ===============================================================================
+#===============================================================================
 def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
     def fee_function(
             exchange: AMM, tkn: str, delta_tkn: float
@@ -1139,7 +1148,7 @@ def dynamicadd_lrna_fee(
             self.time_step = dict()
 
         def fee_function(
-                self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
+            self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
             if tkn not in self.time_step:
                 self.time_step[tkn] = 0
