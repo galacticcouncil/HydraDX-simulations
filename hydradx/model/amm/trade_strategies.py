@@ -124,7 +124,6 @@ def constant_swaps(
 def back_and_forth(
     pool_id: str,
     percentage: float = None,  # percentage of TVL to trade each block
-    slippage: float = None,  # slippage to trade each block
 ) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
@@ -132,16 +131,7 @@ def back_and_forth(
         agent: Agent = state.agents[agent_id]
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
-            if percentage is not None:
-                dr = percentage / 2 * omnipool.liquidity[asset]
-            elif slippage is not None:
-                f = omnipool.last_fee[asset] + omnipool.last_lrna_fee[asset]
-                if f >= slippage:
-                    continue
-                else:
-                    dr = omnipool.liquidity[asset] * (slippage - f) / (1 - slippage)
-            else:
-                raise
+            dr = percentage / 2 * omnipool.liquidity[asset]
             lrna_init = state.agents[agent_id].holdings['LRNA']
             oamm.execute_swap(omnipool, agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
             dq = state.agents[agent_id].holdings['LRNA'] - lrna_init
@@ -150,6 +140,33 @@ def back_and_forth(
         return state
 
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
+
+
+def trade_to_slippage(
+    pool_id: str,
+    slippage: float,
+    trade_chance: float = 1.0
+) -> TradeStrategy:
+
+    def strategy(state: GlobalState, agent_id: str):
+        omnipool: OmnipoolState = state.pools[pool_id]
+        agent: Agent = state.agents[agent_id]
+        for i in range(len(omnipool.asset_list)):
+            asset = omnipool.asset_list[i]
+            f = omnipool.last_fee[asset] + omnipool.last_lrna_fee[asset]
+            if f >= slippage:
+                continue
+            else:
+                rand_draw = random.random()
+                if rand_draw < trade_chance:
+                    dr = omnipool.liquidity[asset] * (slippage - f) / (1 - slippage)
+                else:
+                    continue
+            oamm.execute_swap(omnipool, agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
+
+        return state
+
+    return TradeStrategy(strategy, name=f'trade to price (${slippage})')
 
 
 def invest_all(pool_id: str) -> TradeStrategy:
