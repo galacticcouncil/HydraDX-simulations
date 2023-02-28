@@ -245,9 +245,14 @@ def test_price_sensitive_trading(omnipool: oamm.OmnipoolState):
     initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
     initial_state.external_market = {asset: oamm.usd_price(omnipool, asset) for asset in omnipool.asset_list}
 
-    strat_1 = price_sensitive_trading('omnipool', max_volume_usd=100, price_sensitivity=0.0)
-    strat_2 = price_sensitive_trading('omnipool', max_volume_usd=100, price_sensitivity=1.0)
-
+    tkn_sell = omnipool.asset_list[0]
+    tkn_buy = omnipool.asset_list[1]
+    strat_1 = price_sensitive_trading(
+        'omnipool', max_volume_usd=100, price_sensitivity=0.0, tkn_sell=tkn_sell, tkn_buy=tkn_buy
+    )
+    strat_2 = price_sensitive_trading(
+        'omnipool', max_volume_usd=100, price_sensitivity=1.0, tkn_sell=tkn_sell, tkn_buy=tkn_buy
+    )
     new_state_1 = strat_1.execute(initial_state.copy(), 'agent')
     new_state_2 = strat_2.execute(initial_state.copy(), 'agent')
 
@@ -267,7 +272,7 @@ def test_price_sensitive_trading(omnipool: oamm.OmnipoolState):
         raise AssertionError('Volume should decrease with higher price sensitivity.')
 
     new_state_3 = initial_state.copy()
-    for tkn in new_state_3.asset_list:
+    for tkn in omnipool.asset_list:
         new_state_3.pools['omnipool'].liquidity[tkn] /= 2
         new_state_2.pools['omnipool'].lrna[tkn] /= 2
     strat_2.execute(new_state_3, 'agent')
@@ -282,7 +287,7 @@ def test_price_sensitive_trading(omnipool: oamm.OmnipoolState):
         raise AssertionError('Volume should decrease with lower liquidity.')
 
     new_state_4 = initial_state.copy()
-    new_state_4.pools['omnipool'].asset_fee = {tkn: 0.01 for tkn in new_state_4.asset_list}
+    new_state_4.pools['omnipool'].asset_fee = {tkn: 0.01 for tkn in omnipool.asset_list}
     strat_2.execute(new_state_4, 'agent')
 
     volume_4 = sum([
@@ -293,3 +298,16 @@ def test_price_sensitive_trading(omnipool: oamm.OmnipoolState):
 
     if volume_4 >= volume_2:
         raise AssertionError('Volume should decrease with higher fees.')
+
+    new_state_5 = initial_state.copy()
+    new_state_5.pools['omnipool'].liquidity[tkn_buy] *= 2
+    strat_2.execute(new_state_5, 'agent')
+
+    volume_5 = sum([
+        (new_state_5.pools['omnipool'].current_block.volume_in[tkn]
+         + new_state_5.pools['omnipool'].current_block.volume_out[tkn]) * oamm.lrna_price(omnipool, tkn)
+        for tkn in omnipool.asset_list
+    ])
+
+    if volume_5 <= volume_2:
+        raise AssertionError('Volume should increase with favorable price.')
