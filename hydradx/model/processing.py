@@ -114,12 +114,12 @@ def import_binance_prices(
     # check that the files are all there, and if not, download them
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"{tkn}USDT-1s-{date}"
             if os.path.exists(f'./data/{file}.csv'):
                 continue
             else:
                 print(f'Downloading {file}')
-                url = f"https://data.binance.vision/data/spot/daily/klines/{tkn}BUSD/1s/{file}.zip"
+                url = f"https://data.binance.vision/data/spot/daily/klines/{tkn}USDT/1s/{file}.zip"
                 response = requests.get(url)
                 with open(f'./data/{file}.zip', 'wb') as f:
                     f.write(response.content)
@@ -136,7 +136,7 @@ def import_binance_prices(
     price_data = {tkn: [] for tkn in assets}
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"{tkn}USDT-1s-{date}"
             with open(f'./data/{file}.csv', 'r') as input_file:
                 csvreader = reader(input_file)
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
@@ -165,12 +165,12 @@ def import_monthly_binance_prices(
     # check that the files are all there, and if not, download them
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"USDT{tkn}-1s-{date}"
             if os.path.exists(f'./data/{file}.csv'):
                 continue
             else:
                 print(f'Downloading {file}')
-                url = f"https://data.binance.vision/data/spot/monthly/klines/{tkn}BUSD/1s/{file}.zip"
+                url = f"https://data.binance.vision/data/spot/monthly/klines/{tkn}USDT/1s/{file}.zip"
                 response = requests.get(url)
                 with open(f'./data/{file}.zip', 'wb') as f:
                     f.write(response.content)
@@ -187,7 +187,7 @@ def import_monthly_binance_prices(
     price_data = {tkn: [] for tkn in assets}
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"{tkn}USDT-1s-{date}"
             with open(f'./data/{file}.csv', 'r') as input_file:
                 csvreader = reader(input_file)
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
