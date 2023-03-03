@@ -576,8 +576,11 @@ def price_sensitive_trading(
         price_sensitivity: float,
         tkn_sell: str = None,
         tkn_buy: str = None,
+        trade_frequency: float = 0.1
 ) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if random.random() > trade_frequency:
+            return state
         agent: Agent = state.agents[agent_id]
         pool: OmnipoolState = state.pools[pool_id]
         options = list(set(agent.asset_list) & set(pool.asset_list))
@@ -594,9 +597,9 @@ def price_sensitive_trading(
             / (max_volume_usd / state.external_market[buy])
         ) - 1  # find the price of buying from the pool vs. buying from the market
         trade_volume = max(
-            max_volume_usd / state.external_market[sell] * (1 - price_sensitivity * slip_rate),
+            max_volume_usd / state.external_market[sell] * min(1 - price_sensitivity * slip_rate, 1),
             0
-        )
+        ) / trade_frequency
         oamm.execute_swap(
             state=pool,
             agent=agent,
