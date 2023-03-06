@@ -417,7 +417,10 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
+def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequency: int = 1):
+    if not isinstance(frequency, int):
+        raise ValueError('frequency must be an integer')
+
     if skip_assets is None:
         skip_assets = []
 
@@ -455,6 +458,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         return dq
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if state.time_step % frequency != 0:
+            return state
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -610,7 +615,7 @@ def price_sensitive_trading(
             / (max_volume_usd / state.external_market[buy])
         ) - 1  # find the price of buying from the pool vs. buying from the market
         trade_volume = max(
-            max_volume_usd / state.external_market[sell] * min(1 - price_sensitivity * slip_rate, 1),
+            max_volume_usd / state.external_market[sell] * max(min(1 - price_sensitivity * slip_rate, 1), 0) ** 10,
             0
         ) / trade_frequency
         oamm.execute_swap(
