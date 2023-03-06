@@ -1,5 +1,7 @@
+import csv, json
 from csv import DictReader, writer
 from dataclasses import dataclass
+from pprint import pprint
 
 from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM
 from .amm.agents import Agent
@@ -136,3 +138,70 @@ def import_binance_prices(input_path: str, input_filenames: list[str]) -> list[P
 
     price_data.sort(key=lambda x: x.timestamp)
     return price_data
+
+
+def read_trade_file():
+    paths = ['input/OmnipoolTrades1.csv', 'input/OmnipoolTrades2.csv']
+    trades = []
+    for path in paths:
+        with open(path) as csv_file:
+            reader = csv.DictReader(csv_file, delimiter=',')
+            trades.extend(list(reader))
+    return trades
+
+
+def get_trade_list():
+    old_trades = read_trade_file()
+    trades = []
+
+    token_metadata = [
+        ('HDX', 12),
+        ('LRNA', 12),
+        ('DAI', 18),
+        ('WBTC', 8),
+        ('WETH', 18),
+        ('DOT', 10),
+        ('APE', 18),
+        ('USDC', 6),
+        ('PHA', 12),
+    ]
+
+    for old_trade in old_trades:
+        trade_dict = {
+            'tx_id': old_trade['id'].split('-')[1],
+            'block_number': old_trade['block_id'].split('-')[0],
+            'name': old_trade['name'].split('.')[1],
+            'success': bool(old_trade['success']),
+        }
+        arg_dict = json.loads(old_trade['args'])
+
+        if trade_dict['name'] == 'sell':
+            trade_dict['args'] = {
+                'asset_in': token_metadata[int(arg_dict['assetIn'])][0],
+                'asset_out': token_metadata[int(arg_dict['assetOut'])][0],
+                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['assetIn'])][1],
+                'limit_amount': float(arg_dict['minBuyAmount']) / 10 ** token_metadata[int(arg_dict['assetOut'])][1],
+            }
+        elif trade_dict['name'] == 'buy':
+            trade_dict['args'] = {
+                'asset_in': token_metadata[int(arg_dict['assetIn'])][0],
+                'asset_out': token_metadata[int(arg_dict['assetOut'])][0],
+                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['assetOut'])][1],
+                'limit_amount': float(arg_dict['maxSellAmount']) / 10 ** token_metadata[int(arg_dict['assetIn'])][1],
+            }
+        elif trade_dict['name'] == 'add_liquidity':
+            trade_dict['args'] = {
+                'asset': token_metadata[int(arg_dict['asset'])][0],
+                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['asset'])][1],
+            }
+        elif trade_dict['name'] == 'remove_liquidity':
+            trade_dict['args'] = {
+                'amount': float(arg_dict['amount']) / 10 ** 12,
+                'position_id': int(arg_dict['positionId']),
+            }
+        else:
+            raise
+
+        trades.append(trade_dict)
+
+    pprint(trades[0:5])
