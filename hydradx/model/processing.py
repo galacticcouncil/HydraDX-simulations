@@ -1,3 +1,4 @@
+import pickle
 from csv import DictReader, writer, reader
 from dataclasses import dataclass
 import requests
@@ -199,3 +200,32 @@ def import_monthly_binance_prices(
             {tkn: price_data[tkn][i] for tkn in assets} for i in range(len(price_data[assets[0]]))
         ]
     return price_data
+
+
+def save_output(data: object, filename: str, folder: str = 'output') -> None:
+    """Save the output data to a file.
+
+    Args:
+        data (object): The data to be saved.
+        filename (str): The name of the file to be saved.
+        folder (str, optional): The name of the folder to save the file in. Defaults to 'output'.
+    """
+    if not os.path.exists(f'./{folder}'):
+        os.mkdir(f'./{folder}')
+    with open(f'./{folder}/{filename}.pickle', 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_output(filename: str, folder: str = 'output') -> object:
+    """Load the output data from a file.
+
+    Args:
+        filename (str): The name of the file to be loaded.
+        folder (str, optional): The name of the folder to load the file from. Defaults to 'output'.
+
+    Returns:
+        object: The data that was saved in the file.
+    """
+    with open(f'./{folder}/{filename}.pickle', 'rb') as f:
+        data = pickle.load(f)
+    return data
