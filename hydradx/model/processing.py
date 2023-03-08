@@ -212,7 +212,8 @@ def import_monthly_binance_prices(
 
 
 def read_trade_file():
-    paths = ['input/OmnipoolTrades1.csv', 'input/OmnipoolTrades2.csv']
+    # paths = ['input/OmnipoolTrades1.csv', 'input/OmnipoolTrades2.csv']
+    paths = ['input/OmnipoolTrades3.csv']  # TODO: fix this
     trades = []
     for path in paths:
         with open(path) as csv_file:
@@ -222,8 +223,8 @@ def read_trade_file():
 
 
 def get_trade_list():
-    old_trades = read_trade_file()
-    trades = []
+    rows = read_trade_file()
+    txs = {}
 
     token_metadata = [
         ('HDX', 12),
@@ -237,40 +238,80 @@ def get_trade_list():
         ('PHA', 12),
     ]
 
-    for old_trade in old_trades:
-        trade_dict = {
-            'tx_id': old_trade['id'].split('-')[1],
-            'block_number': old_trade['block_id'].split('-')[0],
-            'name': old_trade['name'].split('.')[1],
-            'success': bool(old_trade['success']),
-        }
-        arg_dict = json.loads(old_trade['args'])
+    token_names = [token[0] for token in token_metadata]
+    token_decimals = [token[1] for token in token_metadata]
 
-        if trade_dict['name'] == 'sell':
-            trade_dict['args'] = {
-                'asset_in': token_metadata[int(arg_dict['assetIn'])][0],
-                'asset_out': token_metadata[int(arg_dict['assetOut'])][0],
-                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['assetIn'])][1],
-                'limit_amount': float(arg_dict['minBuyAmount']) / 10 ** token_metadata[int(arg_dict['assetOut'])][1],
-            }
-        elif trade_dict['name'] == 'buy':
-            trade_dict['args'] = {
-                'asset_in': token_metadata[int(arg_dict['assetIn'])][0],
-                'asset_out': token_metadata[int(arg_dict['assetOut'])][0],
-                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['assetOut'])][1],
-                'limit_amount': float(arg_dict['maxSellAmount']) / 10 ** token_metadata[int(arg_dict['assetIn'])][1],
-            }
-        elif trade_dict['name'] == 'add_liquidity':
-            trade_dict['args'] = {
-                'asset': token_metadata[int(arg_dict['asset'])][0],
-                'amount': float(arg_dict['amount']) / 10 ** token_metadata[int(arg_dict['asset'])][1],
-            }
-        elif trade_dict['name'] == 'remove_liquidity':
-            trade_dict['args'] = {
-                'amount': float(arg_dict['amount']) / 10 ** 12,
-                'position_id': int(arg_dict['positionId']),
-            }
-        else:
-            raise
+    for row in rows:
+        tx_id = row['extrinsic_id']
+        name = row['call_name'].split('.')[1]
+        event_name = row['event_name']
 
-        trades.append(trade_dict)
+        call_args = json.loads(row['call_args'])
+        event_args = json.loads(row['event_args'])
+
+        if tx_id not in txs:
+            tx_dict = {
+                'tx_id': tx_id,
+                'block_number': int(tx_id.split('-')[0]),
+                'name': name,
+                'success': bool(row['call_success']),
+                'fee': float(row['fee']),  # TODO: fix this
+                'tip': float(row['tip']),  # TODO: fix this
+            }
+
+            if name == 'sell' or name == 'buy':
+                if call_args['assetIn'] != event_args['assetIn'] or call_args['assetOut'] != event_args['assetOut']:
+                    raise
+                out_i = int(call_args['assetOut'])
+                in_i = int(call_args['assetIn'])
+                if call_args['amount'] not in [event_args['amountIn'], event_args['amountOut']]:
+                    print(tx_id)
+                    raise ValueError(call_args['amount'] + ' != ' + event_args['amountIn'])
+                (limit_name, limit_i) = ('minBuyAmount', out_i) if name == 'sell' else ('maxSellAmount', in_i)
+                tx_dict['args'] = {
+                    'asset_in': token_names[in_i],
+                    'asset_out': token_names[out_i],
+                    'amount_in': float(event_args['amountIn']) / 10 ** token_decimals[in_i],
+                    'amount_out': float(event_args['amountOut']) / 10 ** token_decimals[out_i],
+                    'limit_amount': float(call_args[limit_name]) / 10 ** token_decimals[limit_i],
+                }
+                tx_dict['who'] = event_args['who']
+                txs[tx_id] = tx_dict
+
+            elif name == 'add_liquidity':
+                if event_name == 'Omnipool.PositionCreated':
+                    if event_args['asset'] != call_args['asset']:
+                        raise
+                    asset_i = int(call_args['asset'])
+                    if event_args['amount'] != call_args['amount']:
+                        raise
+                    tx_dict['args'] = {
+                        'asset': token_names[asset_i],
+                        'amount': float(event_args['amount']) / 10 ** token_decimals[asset_i],
+                        'price': float(event_args['price']),  # TODO: fix this
+                        'shares': float(event_args['shares']),  # TODO: fix this
+                        'position_id': int(event_args['positionId'])
+                    }
+                    tx_dict['who'] = event_args['owner']
+                    txs[tx_id] = tx_dict
+
+            elif name == 'remove_liquidity':
+                txs[tx_id] = tx_dict
+
+            else:
+                raise
+        if name == 'remove_liquidity':
+            if event_name == 'Tokens.Transfer':
+                tx_dict = txs[tx_id]
+                if 'args' not in tx_dict:
+                    tx_dict['args'] = {}
+                asset_i = int(event_args['currencyId'])
+                if asset_i == 1:  # LRNA
+                    tx_dict['args']['lrna_out'] = float(event_args['amount']) / 10 ** token_decimals[asset_i]
+                else:
+                    tx_dict['args']['amount_out'] = float(event_args['amount']) / 10 ** token_decimals[asset_i]
+                    tx_dict['args']['asset'] = token_names[asset_i]
+                tx_dict['args']['shares'] = float(call_args['amount'])  # TODO fix decimals
+                tx_dict['args']['position_id'] = int(call_args['positionId'])
+                tx_dict['who'] = event_args['to']
+
