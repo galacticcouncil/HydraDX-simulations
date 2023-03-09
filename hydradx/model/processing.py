@@ -14,6 +14,19 @@ impermanent_loss = GlobalState.impermanent_loss
 pool_val = GlobalState.pool_val
 deposit_val = GlobalState.deposit_val
 
+TOKEN_METADATA = [
+    ('HDX', 12),
+    ('LRNA', 12),
+    ('DAI', 18),
+    ('WBTC', 8),
+    ('WETH', 18),
+    ('DOT', 10),
+    ('APE', 18),
+    ('USDC', 6),
+    ('PHA', 12),
+]
+LRNA_I = 1
+
 
 def postprocessing(events: list, optional_params: list[str] = ()) -> list:
     """
@@ -211,107 +224,110 @@ def import_monthly_binance_prices(
 #     return price_data
 
 
-def read_trade_file():
-    # paths = ['input/OmnipoolTrades1.csv', 'input/OmnipoolTrades2.csv']
-    paths = ['input/OmnipoolTrades3.csv']  # TODO: fix this
-    trades = []
+def read_csvs_to_list_of_dicts(paths: list[str]) -> list:
+    dicts = []
     for path in paths:
         with open(path) as csv_file:
             reader = DictReader(csv_file, delimiter=',')
-            trades.extend(list(reader))
+            dicts.extend(list(reader))
+    return dicts
+
+
+def import_trades(paths: list[str]) -> list[dict]:
+    rows = read_csvs_to_list_of_dicts(paths)
+
+    token_names = [token[0] for token in TOKEN_METADATA]
+    token_decimals = [token[1] for token in TOKEN_METADATA]
+
+    trades = []
+    for row in rows:
+        name = row['call_name'].split('.')[1]
+        out_i = int(row['asset_out'])
+        in_i = int(row['asset_in'])
+        limit_decimals = token_decimals[out_i] if name == 'sell' else token_decimals[in_i]
+        trade_dict = {
+            'id': row['extrinsic_id'],
+            'block_no': int(row['extrinsic_id'].split('-')[0]),
+            'tx_no': int(row['extrinsic_id'].split('-')[1]),
+            'type': name,
+            'success': bool(row['call_success']),
+            'who': row['who'],
+            'fee': int(row['fee']),
+            'tip': int(row['tip']),
+            'asset_in': token_names[in_i],
+            'asset_out': token_names[out_i],
+            'amount_in': int(row['amount_in']) / 10 ** token_decimals[in_i],
+            'amount_out': int(row['amount_out']) / 10 ** token_decimals[out_i],
+            'limit_amount': int(row['limit_amount']) / 10 ** limit_decimals,
+        }
+        trades.append(trade_dict)
     return trades
 
 
-def get_trade_list():
-    rows = read_trade_file()
-    txs = {}
+def import_add_liq(paths: list[str]) -> list[dict]:
+    rows = read_csvs_to_list_of_dicts(paths)
 
-    token_metadata = [
-        ('HDX', 12),
-        ('LRNA', 12),
-        ('DAI', 18),
-        ('WBTC', 8),
-        ('WETH', 18),
-        ('DOT', 10),
-        ('APE', 18),
-        ('USDC', 6),
-        ('PHA', 12),
-    ]
+    token_names = [token[0] for token in TOKEN_METADATA]
+    token_decimals = [token[1] for token in TOKEN_METADATA]
 
-    token_names = [token[0] for token in token_metadata]
-    token_decimals = [token[1] for token in token_metadata]
-
+    txs = []
     for row in rows:
-        tx_id = row['extrinsic_id']
-        name = row['call_name'].split('.')[1]
-        event_name = row['event_name']
+        tx_dict = {
+            'id': row['extrinsic_id'],
+            'block_no': int(row['extrinsic_id'].split('-')[0]),
+            'tx_no': int(row['extrinsic_id'].split('-')[1]),
+            'type': row['call_name'].split('.')[1],
+            'success': bool(row['call_success']),
+            'who': row['who'],
+            'fee': int(row['fee']),
+            'tip': int(row['tip']),
+            'asset': token_names[int(row['asset'])],
+            'amount': int(row['amount']) / 10 ** token_decimals[int(row['asset'])],
+            'price': int(row['price']) / 10 ** (18 + token_decimals[LRNA_I] - token_decimals[int(row['asset'])]),
+            'shares': int(row['shares']) / 10 ** token_decimals[int(row['asset'])],
+            'position_id': row['position_id'],
+        }
+        txs.append(tx_dict)
+    return txs
 
-        call_args = json.loads(row['call_args'])
-        event_args = json.loads(row['event_args'])
 
-        if tx_id not in txs:
-            tx_dict = {
-                'tx_id': tx_id,
-                'block_number': int(tx_id.split('-')[0]),
-                'name': name,
-                'success': bool(row['call_success']),
-                'fee': float(row['fee']),  # TODO: fix this
-                'tip': float(row['tip']),  # TODO: fix this
-            }
+def import_remove_liq(paths: list[str]) -> list[dict]:
+    rows = read_csvs_to_list_of_dicts(paths)
 
-            if name == 'sell' or name == 'buy':
-                if call_args['assetIn'] != event_args['assetIn'] or call_args['assetOut'] != event_args['assetOut']:
-                    raise
-                out_i = int(call_args['assetOut'])
-                in_i = int(call_args['assetIn'])
-                if call_args['amount'] not in [event_args['amountIn'], event_args['amountOut']]:
-                    print(tx_id)
-                    raise ValueError(call_args['amount'] + ' != ' + event_args['amountIn'])
-                (limit_name, limit_i) = ('minBuyAmount', out_i) if name == 'sell' else ('maxSellAmount', in_i)
-                tx_dict['args'] = {
-                    'asset_in': token_names[in_i],
-                    'asset_out': token_names[out_i],
-                    'amount_in': float(event_args['amountIn']) / 10 ** token_decimals[in_i],
-                    'amount_out': float(event_args['amountOut']) / 10 ** token_decimals[out_i],
-                    'limit_amount': float(call_args[limit_name]) / 10 ** token_decimals[limit_i],
-                }
-                tx_dict['who'] = event_args['who']
-                txs[tx_id] = tx_dict
+    token_names = [token[0] for token in TOKEN_METADATA]
+    token_decimals = [token[1] for token in TOKEN_METADATA]
 
-            elif name == 'add_liquidity':
-                if event_name == 'Omnipool.PositionCreated':
-                    if event_args['asset'] != call_args['asset']:
-                        raise
-                    asset_i = int(call_args['asset'])
-                    if event_args['amount'] != call_args['amount']:
-                        raise
-                    tx_dict['args'] = {
-                        'asset': token_names[asset_i],
-                        'amount': float(event_args['amount']) / 10 ** token_decimals[asset_i],
-                        'price': float(event_args['price']),  # TODO: fix this
-                        'shares': float(event_args['shares']),  # TODO: fix this
-                        'position_id': int(event_args['positionId'])
-                    }
-                    tx_dict['who'] = event_args['owner']
-                    txs[tx_id] = tx_dict
+    txs = []
+    for row in rows:
+        tx_dict = {
+            'id': row['extrinsic_id'],
+            'block_no': int(row['extrinsic_id'].split('-')[0]),
+            'tx_no': int(row['extrinsic_id'].split('-')[1]),
+            'type': row['call_name'].split('.')[1],
+            'success': bool(row['success']),
+            'who': row['who'],
+            'fee': int(row['fee']),
+            'tip': int(row['tip']),
+            'asset': token_names[int(row['asset'])],
+            'amount': int(row['amount']) / 10 ** token_decimals[int(row['asset'])],
+            'lrna_amount': int(row['lrna_amount']) / 10 ** token_decimals[LRNA_I] if row['lrna_amount'] != '' else 0,
+            'shares': int(row['shares']) / 10 ** token_decimals[int(row['asset'])],
+            'position_id': row['position_id'],
+        }
+        txs.append(tx_dict)
+    return txs
 
-            elif name == 'remove_liquidity':
-                txs[tx_id] = tx_dict
 
-            else:
-                raise
-        if name == 'remove_liquidity':
-            if event_name == 'Tokens.Transfer':
-                tx_dict = txs[tx_id]
-                if 'args' not in tx_dict:
-                    tx_dict['args'] = {}
-                asset_i = int(event_args['currencyId'])
-                if asset_i == 1:  # LRNA
-                    tx_dict['args']['lrna_out'] = float(event_args['amount']) / 10 ** token_decimals[asset_i]
-                else:
-                    tx_dict['args']['amount_out'] = float(event_args['amount']) / 10 ** token_decimals[asset_i]
-                    tx_dict['args']['asset'] = token_names[asset_i]
-                tx_dict['args']['shares'] = float(call_args['amount'])  # TODO fix decimals
-                tx_dict['args']['position_id'] = int(call_args['positionId'])
-                tx_dict['who'] = event_args['to']
+def import_tx_data():
+    trade_paths = ['input/trades.csv']
+    liq_add_paths = ['input/add_liquidity.csv']
+    liq_rem_paths = ['input/remove_liquidity.csv']
 
+    trades = import_trades(trade_paths)
+    liq_adds = import_add_liq(liq_add_paths)
+    liq_rems = import_remove_liq(liq_rem_paths)
+
+    txs = trades + liq_adds + liq_rems
+    txs.sort(key=lambda x: (x['block_no'], x['tx_no']))
+
+    return txs
