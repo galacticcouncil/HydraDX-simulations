@@ -25,6 +25,8 @@ class OmnipoolState(AMM):
                  last_lrna_fee: dict or float = None,
                  imbalance: float = 0.0,
                  last_oracle_values: dict = None,
+                 shares: dict[str: float] = None,
+                 protocol_shares: dict[str: float] = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -80,8 +82,8 @@ class OmnipoolState(AMM):
                 token,
                 liquidity=pool['liquidity'],
                 lrna=lrna,
-                shares=pool['liquidity'],
-                protocol_shares=pool['liquidity'],
+                shares=shares[token] if shares is not None else pool['liquidity'],
+                protocol_shares=protocol_shares[token] if protocol_shares is not None else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 

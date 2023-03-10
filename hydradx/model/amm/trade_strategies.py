@@ -611,3 +611,34 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
         return state
 
     return TradeStrategy(strategy, name=f'toxic asset attack (asset={asset_name}, trade_size={trade_size})')
+
+
+def tx_processor(pool_id: str, tx_list: list) -> TradeStrategy:
+    tx_dict = {}
+    for tx in tx_list:
+        if tx['block_no'] not in tx_dict:
+            tx_dict[tx['block_no']] = []
+        tx_dict[tx['block_no']].append(tx)
+        tx_dict[tx['block_no']].sort(key=lambda x: (x['block_no'], x['tx_no']))
+
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if state.block_number in tx_dict:
+            for tx in tx_dict[state.block_number]:
+                if tx['type'] == 'buy':
+                    state = swap(
+                        state, pool_id, agent_id,
+                        tkn_sell=tx['asset_in'],
+                        tkn_buy=tx['asset_out'],
+                        buy_quantity=tx['amount_out']
+                    )
+                elif tx['type'] == 'sell':
+                    state = swap(
+                        state, pool_id, agent_id,
+                        tkn_sell=tx['asset_in'],
+                        tkn_buy=tx['asset_out'],
+                        sell_quantity=tx['amount_in']
+                    )
+        return state
+
+
+    return TradeStrategy(strategy, name='tx processor')

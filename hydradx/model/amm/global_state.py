@@ -15,7 +15,8 @@ class GlobalState:
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
                  save_data: dict = None,
-                 archive_all: bool = True
+                 archive_all: bool = True,
+                 initial_block: int = 0
                  ):
         if external_market is None:
             self.external_market = {}
@@ -48,6 +49,7 @@ class GlobalState:
         } if save_data else {}
         self.time_step = 0
         self.archive_all = archive_all
+        self.block_number = initial_block
 
     def price(self, asset: str):
         if asset in self.external_market:
@@ -84,7 +86,8 @@ class GlobalState:
             external_market=copy.copy(self.external_market),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
-            archive_all=self.archive_all
+            archive_all=self.archive_all,
+            initial_block=self.block_number
         )
         copy_state.time_step = self.time_step
         return copy_state
@@ -102,6 +105,7 @@ class GlobalState:
 
     def evolve(self):
         self.time_step += 1
+        self.block_number += 1
         for pool in self.pools.values():
             pool.update()
         if self._evolve_function:
