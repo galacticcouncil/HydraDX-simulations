@@ -638,6 +638,12 @@ def tx_processor(pool_id: str, tx_list: list) -> TradeStrategy:
                         tkn_buy=tx['asset_out'],
                         sell_quantity=tx['amount_in']
                     )
+                elif tx['type'] == 'add_liquidity':
+                    state = add_liquidity(
+                        state, pool_id, agent_id,
+                        quantity=tx['amount'],
+                        tkn_add=tx['asset']
+                    )
         return state
 
 
