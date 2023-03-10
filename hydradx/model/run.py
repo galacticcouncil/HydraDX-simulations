@@ -1,5 +1,8 @@
-from .amm.global_state import GlobalState
 import time
+
+from .amm.global_state import GlobalState
+
+
 from .cadCad import init_utils
 from .cadCad.run import config as config_cadcad, run as run_cadcad
 
@@ -33,7 +36,7 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False, use_c
             if agent.trade_strategy:
                 new_global_state = agent.trade_strategy.execute(new_global_state, agent.unique_id)
 
-        events[new_global_state.time_step-1] = new_global_state.archive()
+        events[new_global_state.time_step - 1] = new_global_state.archive()
 
     if not silent:
         print(f'Execution time: {round(time.time() - start_time, 3)} seconds.')

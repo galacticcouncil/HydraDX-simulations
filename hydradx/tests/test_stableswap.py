@@ -7,6 +7,8 @@ from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrag
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
 from hypothesis import given, strategies as st
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
@@ -28,7 +30,7 @@ def stable_swap_equation(d: float, a: float, n: int, reserves: list):
 @st.composite
 def assets_config(draw, token_count: int, base_token: str = 'USD') -> dict:
     return_dict = {
-        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": draw(asset_quantity_strategy)
+        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
         for i in range(token_count)
     }
     return return_dict
@@ -114,8 +116,8 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         initial_pool, initial_agent, delta_shares, tkn_remove
     )
     delta_tkn = withdraw_shares_agent.holdings[tkn_remove] - initial_agent.holdings[tkn_remove]
-    withdraw_asset_pool, withdraw_asset_agent = initial_pool.copy().execute_withdraw_asset(
-        initial_agent.copy(), delta_tkn, tkn_remove
+    withdraw_asset_pool, withdraw_asset_agent = stableswap.execute_withdraw_asset(
+        initial_pool.copy(), initial_agent.copy(), delta_tkn, tkn_remove
     )
     if (
         withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
@@ -140,8 +142,8 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
-    buy_shares_pool, buy_shares_agent = initial_pool.copy().execute_buy_shares(
-        initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
+    buy_shares_pool, buy_shares_agent = stableswap.execute_buy_shares(
+        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
     )
 
     if (
@@ -177,19 +179,19 @@ def test_arbitrage(stable_pool):
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
     events = run.run(initial_state, time_steps=10, silent=True)
-    # print(events[0]['state'].pools['R1/R2'].spot_price, events[-1]['state'].pools['R1/R2'].spot_price)
+    # print(events[0].pools['R1/R2'].spot_price, events[-1].pools['R1/R2'].spot_price)
     if (
-        events[0]['state'].pools['R1/R2'].spot_price
-        != pytest.approx(events[-1]['state'].pools['R1/R2'].spot_price)
+        events[0].pools['R1/R2'].spot_price
+        != pytest.approx(events[-1].pools['R1/R2'].spot_price)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
-                             f"({events[0]['state'].pools['R1/R2'].spot_price})"
-                             f"{events[-1]['state'].pools['R1/R2'].spot_price}")
+                             f"({events[0].pools['R1/R2'].spot_price})"
+                             f"{events[-1].pools['R1/R2'].spot_price}")
     if (
-        events[0]['state'].agents['Arbitrageur'].holdings['R1']
-        + events[0]['state'].agents['Arbitrageur'].holdings['R2']
-        > events[-1]['state'].agents['Arbitrageur'].holdings['R1']
-        + events[-1]['state'].agents['Arbitrageur'].holdings['R2']
+        events[0].agents['Arbitrageur'].holdings['R1']
+        + events[0].agents['Arbitrageur'].holdings['R2']
+        > events[-1].agents['Arbitrageur'].holdings['R1']
+        + events[-1].agents['Arbitrageur'].holdings['R2']
     ):
         raise AssertionError("Arbitrageur didn't make money.")
 

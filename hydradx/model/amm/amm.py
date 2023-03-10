@@ -9,15 +9,17 @@ class FeeMechanism:
         self.name = name
         self.fee_function = fee_function
         self.exchange = None
+        self.tkn = None
 
-    def assign(self, exchange):
+    def assign(self, exchange, tkn=''):
         self.exchange = exchange
+        self.tkn = tkn
         return self
 
-    def compute(self, tkn: str, delta_tkn: float) -> float:
+    def compute(self, tkn: str = '', delta_tkn: float = 0) -> float:
         return self.fee_function(
             exchange=self.exchange,
-            tkn=tkn,
+            tkn=tkn or self.tkn,
             delta_tkn=delta_tkn
         )
 
@@ -40,7 +42,8 @@ class AMM:
     def update(self):
         pass
 
-    def price(self, tkn: str, denomination: str = '') -> float:
+    @staticmethod
+    def price(state, tkn: str, denomination: str = '') -> float:
         return 0
 
     def swap(

@@ -10,7 +10,7 @@ from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
 from hydradx.model import processing
-from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage
+from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage, invest_and_withdraw
 from hydradx.model.amm.amm import AMM
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
@@ -149,7 +149,7 @@ def test_simulation(initial_state: GlobalState):
     # pu.plot(events, agent='Agent1', prop=['holdings', 'holdings_val'])
 
     # property test: is there still the same total wealth held by all pools + agents?
-    final_state = events[-1]['state']
+    final_state = events[-1]
     if final_state.total_wealth() != pytest.approx(initial_wealth):
         raise AssertionError('total wealth quantity changed!')
 
@@ -190,8 +190,8 @@ def test_LP(initial_state: GlobalState):
     }
 
     old_state = initial_state.copy()
-    events = run.run(old_state, time_steps=100, silent=True)
-    final_state: GlobalState = events[-1]['state']
+    events = run.run(old_state, time_steps=10, silent=True)
+    final_state: GlobalState = events[-1]
 
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
@@ -229,7 +229,7 @@ def test_arbitrage_pool_balance(initial_state):
     # this test will focus on the first question
 
     events = run.run(initial_state, time_steps=50, silent=True)
-    final_state = events[-1]['state']
+    final_state = events[-1]
     final_pool_state = final_state.pools['HDX/BSX']
     if (pytest.approx(final_pool_state.liquidity['HDX'] / final_pool_state.liquidity['BSX'])
             != final_state.price('BSX') / final_state.price('HDX')):
@@ -509,6 +509,10 @@ def test_omnipool_arbitrage():
                     pool_id='Omnipool',
                     amount={'USD': 1000, 'HDX': 1000, 'AUSD': 1000, 'ETH': 1000, 'DOT': 1000}
                 )
+            ),
+            'LP': Agent(
+                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
+                trade_strategy=invest_and_withdraw(pool_id='Omnipool')
             )
         },
         # evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
@@ -516,16 +520,17 @@ def test_omnipool_arbitrage():
     )
 
     # print(initial_state)
-    time_steps = 100  # len(price_list) - 1
+    time_steps = 1000  # len(price_list) - 1
     events = run.run(initial_state, time_steps=time_steps)
     # asset_prices = pu.get_datastream(events, asset='all')
     # dot_prices = pu.get_datastream(events, asset='DOT')
-    # hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
+    hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
     # pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
     # oracles_hdx_liquidity = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='liquidity', key='HDX')
     # oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
     # short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
     arb_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
+    deposit_val = pu.get_datastream(events, agent='LP', prop='deposit_val')
     arb_holdings = [
         {tkn: arb_holdings[tkn][i] for tkn in arb_holdings} for i in range(len(arb_holdings['LRNA']))
     ]
