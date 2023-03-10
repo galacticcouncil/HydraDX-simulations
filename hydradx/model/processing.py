@@ -242,6 +242,8 @@ def import_trades(paths: list[str]) -> list[dict]:
     trades = []
     for row in rows:
         name = row['call_name'].split('.')[1]
+        if row['asset_out'] == '':
+            raise
         out_i = int(row['asset_out'])
         in_i = int(row['asset_in'])
         limit_decimals = token_decimals[out_i] if name == 'sell' else token_decimals[in_i]
@@ -304,7 +306,7 @@ def import_remove_liq(paths: list[str]) -> list[dict]:
             'block_no': int(row['extrinsic_id'].split('-')[0]),
             'tx_no': int(row['extrinsic_id'].split('-')[1]),
             'type': row['call_name'].split('.')[1],
-            'success': bool(row['success']),
+            'success': bool(row['call_success']),
             'who': row['who'],
             'fee': int(row['fee']),
             'tip': int(row['tip']),
