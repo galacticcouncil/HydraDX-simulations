@@ -1,5 +1,6 @@
 import copy
 import random
+from hydradx.model import run
 
 import pytest
 from hypothesis import given, strategies as st
@@ -7,7 +8,7 @@ from hypothesis import given, strategies as st
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all, price_manipulation
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -197,3 +198,43 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
             raise
         if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
             raise
+
+
+@given(omnipool_reasonable_config(token_count=3, asset_fee=0.0025, lrna_fee=0.0005))
+def test_price_manipulation(omnipool: oamm.OmnipoolState):
+    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
+            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
+            'DAI': {'liquidity': 1000000, 'LRNA': 1000000},
+        },
+        lrna_fee=0.0005,
+        asset_fee=0.0025
+    )
+
+    agent = Agent(
+        holdings={tkn: omnipool.liquidity[tkn] / 2 for tkn in omnipool.asset_list},
+        trade_strategy=price_manipulation(
+            pool_id='omnipool',
+            asset1='USD',
+            asset2='DAI'
+        )
+    )
+    agent.holdings['LRNA'] = 0
+
+    state = GlobalState(
+        pools={'omnipool': omnipool},
+        agents={'agent': agent}
+    )
+
+    start_holdings = copy.deepcopy(agent.holdings)
+    events = run.run(state, 10, silent=True)
+
+    profit = sum(list(events[-1].agents['agent'].holdings.values())) - sum(list(start_holdings.values()))
+    holdings = events[-1].agents['agent'].holdings
+    er = 1
+    if profit > 0:
+        raise AssertionError(f'Profit: {profit}, Holdings: {holdings}')
+    else:
+        print('no profit')
+

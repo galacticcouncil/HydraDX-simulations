@@ -611,3 +611,66 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
         return state
 
     return TradeStrategy(strategy, name=f'toxic asset attack (asset={asset_name}, trade_size={trade_size})')
+
+
+def price_manipulation(pool_id: str, asset1: str, asset2: str):
+    def price_manipulation_strategy(state: GlobalState, agent_id: str):
+        omnipool: OmnipoolState = state.pools[pool_id]
+        agent: Agent = state.agents[agent_id]
+        agent_holdings = copy.copy(agent.holdings)
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset1, tkn_buy=asset2,
+            sell_quantity=agent.holdings[asset1]
+        )
+        oamm.execute_add_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[asset2] / 2,
+            tkn_add=asset2
+        )
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset2, tkn_buy=asset1,
+            sell_quantity=agent.holdings[asset2]
+        )
+        oamm.execute_remove_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[(omnipool.unique_id, asset2)],
+            tkn_remove=asset2
+        )
+        # back the other way
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset2, tkn_buy=asset1,
+            sell_quantity=agent.holdings[asset2]
+        )
+        oamm.execute_add_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[asset1] / 2,
+            tkn_add=asset1
+        )
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset1, tkn_buy=asset2,
+            sell_quantity=agent.holdings[asset1]
+        )
+        oamm.execute_remove_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[(omnipool.unique_id, asset1)],
+            tkn_remove=asset1
+        )
+        profit = sum(agent.holdings.values()) - sum(agent_holdings.values())
+        return state
+
+    return TradeStrategy(
+        strategy_function=price_manipulation_strategy,
+        name='price_manipulation',
+    )
