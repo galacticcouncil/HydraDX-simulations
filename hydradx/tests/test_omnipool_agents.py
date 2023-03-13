@@ -200,20 +200,23 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
             raise
 
 
-@given(omnipool_reasonable_config(token_count=3, asset_fee=0.0025, lrna_fee=0.0005))
-def test_price_manipulation(omnipool: oamm.OmnipoolState):
+@given(
+    st.floats(min_value=100000.0, max_value=10000000.0),
+    st.floats(min_value=100000.0, max_value=10000000.0)
+)
+def test_price_manipulation(usd_liquidity, dai_liquidity):
     omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
-            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
-            'DAI': {'liquidity': 1000000, 'LRNA': 1000000},
+            'USD': {'liquidity': usd_liquidity, 'LRNA': usd_liquidity},
+            'DAI': {'liquidity': dai_liquidity, 'LRNA': dai_liquidity},
         },
         lrna_fee=0.0005,
         asset_fee=0.0025
     )
 
     agent = Agent(
-        holdings={tkn: omnipool.liquidity[tkn] / 2 for tkn in omnipool.asset_list},
+        holdings={tkn: omnipool.liquidity[tkn] / 2 for tkn in ['USD', 'DAI']},
         trade_strategy=price_manipulation(
             pool_id='omnipool',
             asset1='USD',
