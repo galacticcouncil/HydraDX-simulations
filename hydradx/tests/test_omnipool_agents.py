@@ -208,8 +208,8 @@ def test_price_manipulation(usd_liquidity, dai_liquidity):
     omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
-            'USD': {'liquidity': usd_liquidity, 'LRNA': usd_liquidity},
-            'DAI': {'liquidity': dai_liquidity, 'LRNA': dai_liquidity},
+            'USD': {'liquidity': 1000000, 'LRNA': 1000000},
+            'DAI': {'liquidity': 1000000, 'LRNA': 1000000},
         },
         lrna_fee=0.0005,
         asset_fee=0.0025
@@ -240,4 +240,3 @@ def test_price_manipulation(usd_liquidity, dai_liquidity):
         raise AssertionError(f'Profit: {profit}, Holdings: {holdings}')
     else:
         print('no profit')
-
