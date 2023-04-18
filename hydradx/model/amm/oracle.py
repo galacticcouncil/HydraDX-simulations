@@ -7,8 +7,6 @@ class Block:
         self.price = {tkn: input_state.price(input_state, tkn) for tkn in input_state.asset_list}
         self.volume_in = {tkn: 0 for tkn in input_state.asset_list}
         self.volume_out = {tkn: 0 for tkn in input_state.asset_list}
-        self.withdrawals = {tkn: 0 for tkn in input_state.asset_list}
-        self.lps = {tkn: 0 for tkn in input_state.asset_list}
         self.asset_list = input_state.asset_list.copy()
 
 
@@ -44,20 +42,23 @@ class Oracle:
         self.volume_out[tkn] = 0
         self.asset_list.append(tkn)
 
+    def update_value(self, tkn: str, attribute: str, value: float):
+        return (1 - self.decay_factor) * getattr(self, attribute)[tkn] + self.decay_factor * value
+
     def update(self, block: Block):
         self.age += 1
         for tkn in block.liquidity:
-            self.liquidity[tkn] = (
-                (1 - self.decay_factor) * self.liquidity[tkn] + self.decay_factor * block.liquidity[tkn]
+            self.liquidity[tkn] = self.update_value(
+                tkn, 'liquidity', block.liquidity[tkn]
             ) if tkn in self.liquidity else block.liquidity[tkn]
-            self.price[tkn] = (
-                (1 - self.decay_factor) * self.price[tkn] + self.decay_factor * block.price[tkn]
+            self.price[tkn] = self.update_value(
+                tkn, 'price', block.price[tkn]
             ) if tkn in self.price else block.price[tkn]
-            self.volume_in[tkn] = (
-                (1 - self.decay_factor) * self.volume_in[tkn] + self.decay_factor * block.volume_in[tkn]
+            self.volume_in[tkn] = self.update_value(
+                tkn, 'volume_in', block.volume_in[tkn]
             ) if tkn in self.volume_in else block.volume_in[tkn]
-            self.volume_out[tkn] = (
-                (1 - self.decay_factor) * self.volume_out[tkn] + self.decay_factor * block.volume_out[tkn]
+            self.volume_out[tkn] = self.update_value(
+                tkn, 'volume_out', block.volume_out[tkn]
             ) if tkn in self.volume_out else block.volume_out[tkn]
         return self
 
