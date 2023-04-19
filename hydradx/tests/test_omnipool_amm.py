@@ -1,9 +1,8 @@
 import copy
 import random
 
-import math
 import pytest
-from hypothesis import given, strategies as st, assume, settings
+from hypothesis import given, strategies as st, assume
 from mpmath import mp, mpf
 
 from hydradx.model import run
@@ -12,7 +11,7 @@ from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
-from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
+from hydradx.model.amm.trade_strategies import steady_swaps, constant_swaps
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
 
@@ -80,9 +79,7 @@ def omnipool_config(
         lrna_fee=None,
         asset_fee=None,
         tvl_cap_usd=0,
-        sub_pools: dict = None,
-        imbalance: float = None,
-        withdrawal_fee=True
+        sub_pools: dict = None
 ) -> oamm.OmnipoolState:
     asset_dict: dict = asset_dict or draw(assets_config(token_count))
 
@@ -113,8 +110,6 @@ def omnipool_config(
         tvl_cap=tvl_cap_usd or float('inf'),
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-        imbalance=imbalance if imbalance is not None else draw(st.floats(min_value=-1, max_value=1)),
-        withdrawal_fee=withdrawal_fee
     )
 
     for name, pool in sub_pool_instances.items():
@@ -236,8 +231,8 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'legal transaction failed against weight limit in {i} ({new_state.fail})')
 
 
-@given(omnipool_config(token_count=3, withdrawal_fee=False))
-def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
+@given(omnipool_config(token_count=3))
+def test_remove_liquidity(initial_state: oamm.OmnipoolState):
     i = initial_state.asset_list[2]
     initial_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
@@ -1116,8 +1111,8 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
         raise AssertionError("Share quantities didn't come out right.")
 
 
-@given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, withdrawal_fee=False))
-def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState):
+@given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
+def test_migration_scenarios(initial_state: oamm.OmnipoolState):
     asset1 = initial_state.asset_list[2]
     asset2 = 'DAI'
     asset3 = 'USDC'
@@ -1222,7 +1217,6 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
         shares=initial_state.lrna['stableswap'] / 3,
         protocol_shares=initial_state.lrna['stableswap'] / 3
     )
-    initial_state.update()
 
     initial_lp = Agent(
         holdings={
@@ -1300,23 +1294,23 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
         raise AssertionError("Equivalent transactions didn't come out the same.")
 
 
-# @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, sub_pools={'stableswap': {}}))
-# def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
-#     stable_pool: StableSwapPoolState = initial_state.sub_pools['stableswap']
-#     agent = Agent(
-#         holdings={stable_pool.asset_list[0]: 1000}
-#     )
-#     new_state, new_agent = oamm.add_liquidity(
-#         initial_state, agent,
-#         quantity=1000, tkn_add=stable_pool.asset_list[0]
-#     )
-#     if new_state.fail:
-#         # this could be due to liquidity overload or whatever
-#         return
-#     if (initial_state.unique_id, stable_pool.unique_id) not in new_agent.holdings:
-#         raise ValueError("Agent did not receive shares.")
-#     if not (new_agent.holdings[(initial_state.unique_id, stable_pool.unique_id)] > 0):
-#         raise AssertionError("Sanity check failed.")
+@given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, sub_pools={'stableswap': {}}))
+def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
+    stable_pool: StableSwapPoolState = initial_state.sub_pools['stableswap']
+    agent = Agent(
+        holdings={stable_pool.asset_list[0]: 1000}
+    )
+    new_state, new_agent = oamm.add_liquidity(
+        initial_state, agent,
+        quantity=1000, tkn_add=stable_pool.asset_list[0]
+    )
+    if new_state.fail:
+        # this could be due to liquidity overload or whatever
+        return
+    if (initial_state.unique_id, stable_pool.unique_id) not in new_agent.holdings:
+        raise ValueError("Agent did not receive shares.")
+    if not (new_agent.holdings[(initial_state.unique_id, stable_pool.unique_id)] > 0):
+        raise AssertionError("Sanity check failed.")
 
 
 def test_arbitrage():
@@ -1698,8 +1692,9 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
     st.integers(min_value=10, max_value=1000),
 )
 def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
-                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
-                                  oracle_prices: list[float], n):
+                                     oracle_volume_in: list[float], oracle_volume_out: list[float],
+                                     oracle_prices: list[float], n):
+
     lrna_fees = [0.0005, 0.0010, 0.0050]
     asset_fees = [0.01, 0.0025, 0.0040]
 
@@ -1819,8 +1814,7 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
             raise AssertionError('LRNA fee is not correct.')
 
         df = asset_fee_params['amplification'] * x - asset_fee_params['decay']
-        expected_asset_fee = min(max(init_asset_fees[tkn] + df, asset_fee_params['minimum']),
-                                 asset_fee_params['fee_max'])
+        expected_asset_fee = min(max(init_asset_fees[tkn] + df, asset_fee_params['minimum']), asset_fee_params['fee_max'])
         if omnipool.last_fee[tkn] != pytest.approx(expected_asset_fee, rel=1e-15):
             raise AssertionError('Asset fee is not correct.')
 
@@ -1843,6 +1837,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_prices: list[float], n, trade_size: float, lrna_fees: list[float],
                                  asset_fees: list[float], amp: list[float], decay: list[float]):
+
     init_liquidity = {
         'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
         'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
@@ -1976,948 +1971,6 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
             raise AssertionError('LRNA fee is not correct.')
 
         df = asset_fee_params['amplification'] * x - asset_fee_params['decay']
-        expected_asset_fee = min(max(prev_asset_fees[tkn] + df, asset_fee_params['minimum']),
-                                 asset_fee_params['fee_max'])
+        expected_asset_fee = min(max(prev_asset_fees[tkn] + df, asset_fee_params['minimum']), asset_fee_params['fee_max'])
         if omnipool.last_fee[tkn] != pytest.approx(expected_asset_fee, rel=1e-15):
             raise AssertionError('Asset fee is not correct.')
-
-
-@given(asset_quantity_strategy, omnipool_config())
-def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
-    agent = Agent(
-        holdings={
-            tkn: 100000000 for tkn in omnipool.asset_list
-        }
-    )
-    initial_asset_holdings = copy.deepcopy(agent.holdings)
-    oamm.execute_add_liquidity(
-        state=omnipool,
-        agent=agent,
-        quantity=lp_amount,
-        tkn_add='HDX'
-    )
-    if agent.holdings['HDX'] != initial_asset_holdings['HDX'] - agent.delta_r[('omnipool', 'HDX')]:
-        raise AssertionError('Delta_r is not correct.')
-
-
-@given(omnipool_reasonable_config(remove_liquidity_volatility_threshold=0.01))
-def test_volatility_limit(omnipool: oamm.OmnipoolState):
-    agent = Agent(holdings={'HDX': 1000000000})
-    market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-    oamm.execute_add_liquidity(omnipool, agent, quantity=1000, tkn_add='HDX')
-    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 100)
-    oamm.execute_remove_liquidity(omnipool, agent, quantity=1000, tkn_remove='HDX')
-
-    if not omnipool.fail:
-        raise ValueError("Volatility limit should be exceeded")
-
-    # reset
-    omnipool.fail = False
-    for i in range(10):
-        omnipool.update()
-
-    oamm.execute_remove_liquidity(omnipool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
-    if omnipool.fail:
-        raise ValueError("Volatility limit should not be exceeded")
-
-
-@given(omnipool_reasonable_config(), st.floats(min_value=0.01, max_value=0.1), st.floats(min_value=0.01, max_value=0.1))
-def test_withdraw_size_limit(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_lp_per_block):
-    omnipool.max_withdrawal_per_block = max_withdrawal_per_block
-    omnipool.max_lp_per_block = max_lp_per_block
-    agent = Agent(holdings={'HDX': 1000000000})
-    original_shares = omnipool.shares['HDX']
-    oamm.execute_add_liquidity(
-        state=omnipool,
-        agent=agent,
-        tkn_add='HDX',
-        quantity=min(agent.holdings['HDX'], omnipool.liquidity['HDX'] * max_lp_per_block)
-    )
-    total_shares = omnipool.shares['HDX']
-    if total_shares / original_shares - 1 - omnipool.max_lp_per_block > 1e-15:
-        raise AssertionError('Agent was able to add too much liquidity.')
-
-    oamm.execute_remove_liquidity(
-        state=omnipool,
-        agent=agent,
-        tkn_remove='HDX',
-        quantity=min(total_shares * 0.1, agent.holdings[('omnipool', 'HDX')])
-    )
-    shares_fraction_sold = 1 - omnipool.shares['HDX'] / total_shares
-    if shares_fraction_sold - omnipool.max_withdrawal_per_block > 1e-15:
-        raise AssertionError('Agent was able to remove too much liquidity.')
-
-
-@given(
-    omnipool_reasonable_config(),
-    st.floats(min_value=0.01, max_value=2),
-    st.integers(min_value=1, max_value=99)
-)
-def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_index):
-    lp_asset = omnipool.asset_list[lp_index % len(omnipool.asset_list)]
-    agent = Agent(
-        holdings={tkn: omnipool.liquidity[tkn] * 0.1 for tkn in omnipool.asset_list}
-    )
-    agent.holdings[('omnipool', lp_asset)] = agent.holdings[lp_asset]
-    agent.holdings[lp_asset] = 0
-    agent.share_prices[('omnipool', lp_asset)] = oamm.lrna_price(omnipool, lp_asset) * share_price_ratio
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-    cash_out = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-
-    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_remove=lp_asset,
-        quantity=agent.holdings[('omnipool', lp_asset)]
-    )
-    delta_r = withdraw_agent.holdings[lp_asset]
-
-    if 'LRNA' in withdraw_agent.holdings:
-        lrna_sells = {
-            tkn: withdraw_agent.holdings['LRNA'] * withdraw_state.lrna[tkn] / withdraw_state.lrna_total
-            for tkn in omnipool.asset_list
-        }
-        lrna_profits = dict()
-        for tkn, delta_q in lrna_sells.items():
-            agent_holdings = withdraw_agent.holdings[tkn]
-            oamm.execute_swap(
-                state=withdraw_state,
-                agent=withdraw_agent,
-                tkn_sell='LRNA',
-                tkn_buy=tkn,
-                sell_quantity=delta_q
-            )
-            lrna_profits[tkn] = withdraw_agent.holdings[tkn] - agent_holdings
-
-        er = 1
-
-    del withdraw_agent.holdings['LRNA']
-    del withdraw_agent.holdings[('omnipool', lp_asset)]
-    cash_count = sum([market_prices[tkn] * withdraw_agent.holdings[tkn] for tkn in withdraw_agent.holdings])
-    if cash_count != pytest.approx(cash_out, rel=1e-15):
-        raise AssertionError('Cash out calculation is not accurate.')
-
-
-@given(
-    st.floats(min_value=0.50, max_value=1.5)
-)
-def test_liquidity_operations_and_spot_prices(oracle_mult):
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-            'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-            'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-            'DOT': {'liquidity': 88000, 'LRNA': 546461},
-            'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-        },
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-    )
-
-    agent = Agent(holdings={'DOT': 10000})
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_add='DOT',
-        quantity=agent.holdings['DOT']
-    )
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
-        tkn_remove='DOT',
-        quantity=add_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    if add_agent.holdings[('omnipool', 'DOT')] == 0:
-        raise
-
-    for tkn in omnipool.asset_list:
-        initial_price = price(omnipool, tkn)
-        add_price = price(add_state, tkn)
-        remove_price = price(remove_state, tkn)
-        if initial_price != pytest.approx(add_price, rel=1e-15):
-            raise AssertionError('Price is not correct after add liquidity.')
-
-        if initial_price != pytest.approx(remove_price, rel=1e-15):
-            raise AssertionError('Price is not correct after remove liquidity.')
-
-
-# @settings(max_examples=10000)
-@given(
-    st.floats(min_value=0, max_value=0.1, exclude_min=True),
-    st.floats(min_value=-0.02, max_value=0, exclude_max=True),
-    st.floats(min_value=0.50, max_value=1.5)
-)
-def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
-    # def test_lowering_price(lp_multiplier, price_movement):
-    # lp_multiplier = 0.1
-    # price_movement = -0.1
-    # mult = 0.99
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    trade_size = tokens['DOT']['liquidity'] * 1 / math.sqrt(1 + price_movement) - tokens['DOT']['liquidity']
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_sell='DOT',
-        tkn_buy='DAI',
-        sell_quantity=trade_size
-    )
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
-        tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
-    )
-
-    global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
-        external_market=market_prices
-    )
-
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
-        agent_id='attacker'
-    )
-
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
-        tkn_remove='DOT',
-        quantity=arbed_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
-    profit = final_value - initial_value
-    if profit > 0:
-        raise
-
-
-def test_add_and_remove_liquidity():
-    lp_multiplier = 0.1
-    oracle_mult = 0.99
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_add='DOT',
-        quantity=omnipool.liquidity['DOT'] * lp_multiplier
-    )
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
-        tkn_remove='DOT',
-        quantity=add_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
-    profit = final_value - initial_value
-    if profit > 0:
-        raise
-
-
-# @settings(max_examples=1)
-@given(
-    st.floats(min_value=0, max_value=0.10, exclude_min=True),
-    st.floats(min_value=0, max_value=0.01, exclude_min=True),
-    # st.floats(min_value=0.90, max_value=1.1)
-)
-def test_add_liquidity_exploit(lp_multiplier, trade_mult):
-    oracle_mult = 1.0
-    # lp_multiplier = 0.5
-    # trade_mult = 0.5
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-    trade_size = tokens['DOT']['liquidity'] * trade_mult
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_sell='DAI',
-        tkn_buy='DOT',
-        buy_quantity=trade_size
-    )
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
-        tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
-    )
-
-    global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
-        external_market=market_prices
-    )
-
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
-        agent_id='attacker'
-    )
-
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
-        tkn_remove='DOT',
-        quantity=arbed_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
-    profit = final_value - initial_value
-    if profit > 0:
-        raise
-
-
-@given(
-    st.floats(min_value=0, max_value=0.10, exclude_min=True),
-    st.floats(min_value=0, max_value=0.01, exclude_min=True),
-    # st.floats(min_value=0.90, max_value=1.1)
-)
-def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
-    oracle_mult = 1.0
-    # lp_multiplier = 0.5
-    # trade_mult = 0.5
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-    trade_size = tokens['DOT']['liquidity'] * trade_mult
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_sell='DOT',
-        tkn_buy='DAI',
-        sell_quantity=trade_size
-    )
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
-        tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
-    )
-
-    global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
-        external_market=market_prices
-    )
-
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
-        agent_id='attacker'
-    )
-
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
-        tkn_remove='DOT',
-        quantity=arbed_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
-    profit = final_value - initial_value
-    if profit > 0:
-        raise
-
-
-def test_withdraw_exploit():
-    oracle_mult = 1.0
-    lp_multiplier = 0.1
-    trade_mult = 0.01
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-    trade_size = tokens['DOT']['liquidity'] * trade_mult
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_add='DOT',
-        quantity=omnipool.liquidity['DOT'] * lp_multiplier
-    )
-
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
-        tkn_sell='DAI',
-        tkn_buy='DOT',
-        buy_quantity=trade_size
-    )
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
-        tkn_remove='DOT',
-        quantity=swap_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    global_state = GlobalState(
-        pools={'omnipool': remove_state},
-        agents={'attacker': remove_agent},
-        external_market=market_prices
-    )
-
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
-        agent_id='attacker'
-    )
-
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
-
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
-    profit = final_value - initial_value
-    if profit > 0:
-        raise
-
-
-@settings(max_examples=1)
-@given(
-    st.floats(min_value=0, max_value=0.05, exclude_min=True),
-    st.floats(min_value=0, max_value=0.1, exclude_min=True),
-    st.floats(min_value=0.50, max_value=1.5)
-)
-def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
-    lp_multiplier = 0.2
-    trade_mult = 0.01
-    oracle_mult = 0.99
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    trade_size = tokens['DOT']['liquidity'] * trade_mult
-
-    prices = {tkn: tokens[tkn]['LRNA'] / tokens[tkn]['liquidity'] for tkn in tokens}
-
-    init_oracle = {
-        'liquidity': {tkn: tokens[tkn]['liquidity'] for tkn in tokens},
-        'volume_in': {tkn: 0 for tkn in tokens},
-        'volume_out': {tkn: 0 for tkn in tokens},
-        'price': {tkn: oracle_mult * prices[tkn] for tkn in tokens},
-    }
-
-    omnipool: oamm.OmnipoolState = oamm.OmnipoolState(
-        tokens=tokens,
-        preferred_stablecoin='DAI',
-        oracles={'price': 19, 'volatility': 19},
-        last_oracle_values={
-            'price': copy.deepcopy(init_oracle),
-            'volatility': copy.deepcopy(init_oracle),
-        },
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
-
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_add='DOT',
-        quantity=omnipool.liquidity['DOT'] * lp_multiplier
-    )
-
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
-        tkn_sell='DOT',
-        tkn_buy='DAI',
-        sell_quantity=trade_size
-    )
-
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
-        tkn_remove='DOT',
-        quantity=swap_agent.holdings[('omnipool', 'DOT')]
-    )
-
-    swap_alone_state, swap_alone_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
-        tkn_sell='DOT',
-        tkn_buy='DAI',
-        sell_quantity=trade_size
-    )
-
-    swap_alone_dai = oamm.cash_out_omnipool(swap_alone_state, swap_alone_agent, market_prices)
-    manipulated_dai = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
-    profit = manipulated_dai - swap_alone_dai
-    if profit > 0:
-        raise
-
-
-@given(
-    omnipool_reasonable_config(),
-    st.floats(min_value=-.02, max_value=0.02),
-    st.floats(min_value=0.0, max_value=0.1, exclude_min=True),
-    st.floats(min_value=0.1, max_value=10.0),
-)
-def test_withdraw_manipulation(
-        initial_state: oamm.OmnipoolState,
-        price_move: float,
-        lp_percent: float,
-        price_ratio: float
-):
-    # uncommenting this will cause the test to fail, demonstrating that oracle length > 1 helps solve the problem
-    # initial_state.oracles = {'price': Oracle(
-    #     first_block=initial_state.current_block,
-    #     sma_equivalent_length=1
-    # )}
-
-    agent_holdings = {
-        tkn: 10000000 / oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list
-    }
-
-    initial_agent = Agent(
-        holdings=agent_holdings
-    )
-
-    asset_index = 1
-    options = copy.copy(initial_state.asset_list)
-    lp_token = options[asset_index % len(options)]
-    options.remove(lp_token)
-    trade_token = options[asset_index % len(options)]
-    lp_quantity = int(initial_state.liquidity[lp_token] * lp_percent)
-
-    initial_agent.holdings[('omnipool', lp_token)] = lp_quantity
-    initial_agent.share_prices[('omnipool', lp_token)] = price_ratio
-
-    market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
-
-    # trade to manipulate the price
-    first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_sell=trade_token,
-        tkn_buy=lp_token,
-        buy_quantity=first_trade
-    )
-
-    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
-        quantity=trade_agent.holdings[('omnipool', lp_token)],
-        tkn_remove=lp_token
-    )
-
-    glob = omnipool_arbitrage(pool_id='omnipool').execute(
-        state=GlobalState(
-            pools={
-                'omnipool': withdraw_state.copy()
-            },
-            agents={
-                'agent': withdraw_agent.copy()
-            },
-            external_market=market_prices
-        ),
-        agent_id='agent'
-    )
-
-    final_state, final_agent = glob.pools['omnipool'], glob.agents['agent']
-
-    profit = (
-            oamm.cash_out_omnipool(final_state, final_agent, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    )
-
-    if profit > 0:
-        raise AssertionError(f'profit with manipulation {profit} > 0')
-
-
-@given(
-    omnipool_config(imbalance=0, asset_fee=0, lrna_fee=0),
-    st.floats(min_value=0, max_value=0.02),
-    st.floats(min_value=0.001, max_value=0.10)
-)
-def test_add_manipulation(
-        initial_state: oamm.OmnipoolState,
-        price_move: float,
-        lp_percent: float
-):
-    initial_state.remove_liquidity_volatility_threshold = 0.01
-    initial_state.trade_limit_per_block = 0.05
-    initial_state.max_withdrawal_per_block = 0.05
-    initial_state.max_lp_per_block = 0.05
-    # uncommenting this will cause the test to fail, demonstrating that oracle length > 1 helps solve the problem
-    # initial_state.oracles = {'price': Oracle(
-    #     first_block=initial_state.current_block,
-    #     sma_equivalent_length=1
-    # )}
-
-    agent_holdings = {
-        tkn: 1000000 / oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list
-    }
-
-    initial_agent = Agent(
-        holdings=agent_holdings
-    )
-
-    asset_index = 1
-    options = copy.copy(initial_state.asset_list)
-    asset1 = options[asset_index % len(options)]
-    options.remove(asset1)
-    asset2 = options[asset_index % len(options)]
-    market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
-
-    # trade to manipulate the price
-    first_trade = initial_state.liquidity[asset1] * (1 - 1 / math.sqrt(1 + price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_sell=asset2,
-        tkn_buy=asset1,
-        buy_quantity=first_trade
-    )
-
-    # add liquidity
-    lp_quantity = lp_percent * initial_agent.holdings[asset1]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
-        tkn_add=asset1,
-        quantity=lp_quantity
-    )
-
-    lp_quantity = lp_percent * initial_agent.holdings[asset2]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=add_state,
-        agent=add_agent,
-        tkn_add=asset2,
-        quantity=lp_quantity
-    )
-
-    glob = omnipool_arbitrage(pool_id='omnipool').execute(
-        state=GlobalState(
-            pools={
-                'omnipool': add_state.copy()
-            },
-            agents={
-                'agent': add_agent.copy()
-            },
-            external_market=market_prices
-        ),
-        agent_id='agent'
-    )
-
-    sell_state, sell_agent = glob.pools['omnipool'], glob.agents['agent']
-
-    profit = (
-            oamm.cash_out_omnipool(sell_state, sell_agent, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    )
-
-    if profit > 0:
-        raise AssertionError(f'profit with manipulation {profit} > 0')
-
-
-@given(
-    omnipool_config(imbalance=0),
-    st.integers(min_value=1, max_value=7),
-    st.floats(min_value=0.1, max_value=1.0),
-    st.floats(min_value=1000, max_value=1000000),
-)
-def test_trade_manipulation(
-        initial_state: oamm.OmnipoolState,
-        asset_index: int,
-        lp_percent: float,
-        sell_quantity: float,
-):
-    initial_state.remove_liquidity_volatility_threshold = 0.01
-    initial_state.trade_limit_per_block = 0.05
-    initial_state.max_withdrawal_per_block = 0.05
-    initial_state.max_lp_per_block = 0.05
-
-    initial_agent = Agent(
-        holdings=copy.copy(initial_state.liquidity)
-    )
-
-    options = copy.copy(initial_state.asset_list)
-    asset1 = options[asset_index % len(options)]
-    options.remove(asset1)
-    asset2 = options[asset_index % len(options)]
-    market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
-
-    lp1_state, lp1_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_add=asset1,
-        quantity=min(
-            lp_percent * initial_state.liquidity[asset1],
-            initial_state.liquidity[asset1] * initial_state.max_lp_per_block
-        )
-    )
-
-    lp2_state, lp2_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_add=asset2,
-        quantity=min(
-            lp_percent * initial_state.liquidity[asset2],
-            initial_state.liquidity[asset2] * initial_state.max_lp_per_block
-        )
-    )
-
-    trade_state_1, trade_agent_1 = oamm.execute_remove_liquidity(
-        *oamm.execute_swap(
-            state=lp1_state.copy(),
-            agent=lp1_agent.copy(),
-            tkn_sell=asset1,
-            tkn_buy=asset2,
-            sell_quantity=sell_quantity
-        ),
-        tkn_remove=asset1,
-        quantity=lp1_agent.holdings[('omnipool', asset1)]
-    )
-
-    trade_state_2, trade_agent_2 = oamm.execute_remove_liquidity(
-        *oamm.execute_swap(
-            state=lp2_state.copy(),
-            agent=lp2_agent.copy(),
-            tkn_sell=asset1,
-            tkn_buy=asset2,
-            sell_quantity=sell_quantity
-        ),
-        tkn_remove=asset2,
-        quantity=lp2_agent.holdings[('omnipool', asset2)]
-    )
-
-    trade_state_3, trade_agent_3 = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_sell=asset1,
-        tkn_buy=asset2,
-        sell_quantity=sell_quantity
-    )
-
-    lp1_profit = (
-            oamm.cash_out_omnipool(trade_state_1, trade_agent_1, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    )
-
-    lp2_profit = (
-            oamm.cash_out_omnipool(trade_state_2, trade_agent_2, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    )
-
-    no_lp_profit = (
-            oamm.cash_out_omnipool(trade_state_3, trade_agent_3, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    )
-
-    if lp1_profit > no_lp_profit:
-        raise AssertionError(f'profit with LP asset1 ({asset1}) = {lp1_profit} > without {no_lp_profit}')
-
-    if lp2_profit > no_lp_profit:
-        raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
