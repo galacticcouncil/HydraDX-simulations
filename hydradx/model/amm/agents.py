@@ -7,6 +7,7 @@ class Agent:
     def __init__(self,
                  holdings: dict[str: float] = None,
                  share_prices: dict[str: float] = None,
+                 delta_r: dict[str: float] = None,
                  trade_strategy: any = None,
                  unique_id: str = 'agent'
                  ):
@@ -24,6 +25,7 @@ class Agent:
         self.holdings = holdings or {}
         self.initial_holdings = copy.copy(holdings)
         self.share_prices = share_prices or {}
+        self.delta_r = delta_r or {}
         self.trade_strategy = trade_strategy
         self.asset_list = list(self.holdings.keys())
         self.unique_id = unique_id
