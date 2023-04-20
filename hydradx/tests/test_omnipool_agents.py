@@ -99,6 +99,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
 
 @given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
 def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
+    omnipool.trade_limit_per_block = float('inf')
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
         holdings[asset] = 1000000000
