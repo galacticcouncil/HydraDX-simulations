@@ -2787,7 +2787,7 @@ def test_add_manipulation(
         state=trade_state.copy(),
         agent=trade_agent.copy(),
         tkn_add=asset1,
-        quantity=lp_quantity
+        quantity=min(lp_quantity, trade_state.liquidity[asset1] * trade_state.max_lp_per_block)
     )
 
     lp_quantity = lp_percent * initial_agent.holdings[asset2]
