@@ -1,7 +1,7 @@
 import math
 
 import pytest
-from hypothesis import given
+from hypothesis import given, strategies as st
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
@@ -265,3 +265,54 @@ def test_cash_out_lrna(omnipool: OmnipoolState):
 
     if cash_out_omnipool(omnipool, agent, market) <= cash:
         raise ValueError("Cash out should be higher after adding new token")
+
+
+@given(
+    omnipool_reasonable_config(),
+    st.floats(min_value=0.01, max_value=2),
+    st.integers(min_value=1, max_value=99)
+)
+def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_index):
+    lp_asset = omnipool.asset_list[lp_index % len(omnipool.asset_list)]
+    agent = Agent(
+        holdings={tkn: omnipool.liquidity[tkn] * 0.1 for tkn in omnipool.asset_list}
+    )
+    agent.holdings[('omnipool', lp_asset)] = agent.holdings[lp_asset]
+    agent.holdings[lp_asset] = 0
+    agent.share_prices[('omnipool', lp_asset)] = oamm.lrna_price(omnipool, lp_asset) * share_price_ratio
+
+    market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
+    cash_out = oamm.cash_out_omnipool(omnipool, agent, market_prices)
+
+    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
+        state=omnipool.copy(),
+        agent=agent.copy(),
+        tkn_remove=lp_asset,
+        quantity=agent.holdings[('omnipool', lp_asset)]
+    )
+    delta_r = withdraw_agent.holdings[lp_asset]
+
+    if 'LRNA' in withdraw_agent.holdings:
+        lrna_sells = {
+            tkn: withdraw_agent.holdings['LRNA'] * withdraw_state.lrna[tkn] / withdraw_state.lrna_total
+            for tkn in omnipool.asset_list
+        }
+        lrna_profits = dict()
+        for tkn, delta_q in lrna_sells.items():
+            agent_holdings = withdraw_agent.holdings[tkn]
+            oamm.execute_swap(
+                state=withdraw_state,
+                agent=withdraw_agent,
+                tkn_sell='LRNA',
+                tkn_buy=tkn,
+                sell_quantity=delta_q
+            )
+            lrna_profits[tkn] = withdraw_agent.holdings[tkn] - agent_holdings
+
+        er = 1
+
+    del withdraw_agent.holdings['LRNA']
+    del withdraw_agent.holdings[('omnipool', lp_asset)]
+    cash_count = sum([market_prices[tkn] * withdraw_agent.holdings[tkn] for tkn in withdraw_agent.holdings])
+    if cash_count != pytest.approx(cash_out, rel=1e-15):
+        raise AssertionError('Cash out calculation is not accurate.')
