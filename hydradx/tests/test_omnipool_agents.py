@@ -8,7 +8,7 @@ from hypothesis import given, strategies as st  # , settings
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all, withdraw_all
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -145,6 +145,22 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
         if new_state.agents['agent'].holdings[asset] != 0:
             raise
         if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
+            raise
+
+    withdraw_state = withdraw_all(new_state.time_step).execute(new_state, 'agent')
+    hdx_state = invest_all('omnipool', 'HDX').execute(withdraw_state, 'agent')
+
+    if hdx_state.agents['agent'].holdings['HDX'] != 0:
+        raise AssertionError('HDX not reinvested')
+    if hdx_state.agents['agent'].holdings[('omnipool', 'HDX')] == 0:
+        raise AssertionError('HDX not reinvested')
+
+    for asset in omnipool.asset_list:
+        if asset == 'HDX':
+            continue
+        if hdx_state.agents['agent'].holdings[asset] == 0:
+            raise
+        if hdx_state.agents['agent'].holdings[('omnipool', asset)] != 0:
             raise
 
 
