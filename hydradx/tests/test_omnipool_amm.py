@@ -2608,13 +2608,15 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
 
 @given(
     omnipool_reasonable_config(),
-    st.floats(min_value=-.02, max_value=0.02),
+    st.floats(min_value=0, max_value=0.02, exclude_min=True),
+    st.booleans(),
     st.floats(min_value=0.0, max_value=0.1, exclude_min=True),
     st.floats(min_value=0.1, max_value=10.0),
 )
 def test_withdraw_manipulation(
         initial_state: oamm.OmnipoolState,
         price_move: float,
+        price_move_is_up: bool,
         lp_percent: float,
         price_ratio: float
 ):
@@ -2645,7 +2647,8 @@ def test_withdraw_manipulation(
     market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
 
     # trade to manipulate the price
-    first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + price_move))
+    signed_price_move = price_move if price_move_is_up else -price_move
+    first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + signed_price_move))
     trade_state, trade_agent = oamm.execute_swap(
         state=initial_state.copy(),
         agent=initial_agent.copy(),
@@ -2736,7 +2739,7 @@ def test_add_manipulation(
         state=trade_state.copy(),
         agent=trade_agent.copy(),
         tkn_add=asset1,
-        quantity=lp_quantity
+        quantity=min(lp_quantity, trade_state.liquidity[asset1] * trade_state.max_lp_per_block)
     )
 
     lp_quantity = lp_percent * initial_agent.holdings[asset2]
