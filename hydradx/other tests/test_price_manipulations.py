@@ -477,5 +477,3 @@ def test_double_add_manipulation_scenario():
             oamm.value_assets(market_prices, final_state.liquidity)
             - oamm.value_assets(market_prices, initial_state.liquidity)
     )
-
-    er = 1
