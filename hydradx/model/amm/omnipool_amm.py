@@ -99,9 +99,8 @@ class OmnipoolState(AMM):
         self.oracles = {}
 
         if oracles is None or 'price' not in oracles:
-            self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
-
-        if last_oracle_values is not None:
+            self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self), last_values=last_oracle_values)
+        if last_oracle_values is not None and oracles is not None:
             self.oracles.update({
                 name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name]
                 if name in last_oracle_values else None)
