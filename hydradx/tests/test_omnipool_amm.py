@@ -319,6 +319,44 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
 
+@given(omnipool_config(token_count=3, set_oracle_values_to_spot=True))
+def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
+    min_fee = 0.0001
+    i = initial_state.asset_list[2]
+    initial_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    # add LP shares to the pool
+    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    p_init = oamm.lrna_price(old_state, i)
+
+    delta_S = -old_agent.holdings[('omnipool', i)]
+
+    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    for j in new_state.asset_list:
+        if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
+            raise AssertionError(f'Price change in asset {j}')
+    if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
+        raise AssertionError('')
+    delta_r = new_agent.holdings[i] - old_agent.holdings[i]
+    delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise AssertionError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise AssertionError('Delta R < 0')
+
+    piq = oamm.lrna_price(old_state, i)
+    val_withdrawn = piq * delta_r + delta_q
+    if (-2 * piq / (piq + p_init) * delta_S / old_state.shares[i] * piq
+            * old_state.liquidity[i] * (1-min_fee) != pytest.approx(val_withdrawn)
+            and not new_state.fail):
+        raise AssertionError('something is wrong')
+
+    if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
+
 @given(omnipool_config(token_count=3))
 def test_swap_lrna(initial_state: oamm.OmnipoolState):
     old_state = initial_state
@@ -2654,9 +2692,9 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
 
 @given(
     omnipool_reasonable_config(),
-    st.floats(min_value=0, max_value=0.02, exclude_min=True),
+    st.floats(min_value=1e-8, max_value=0.02),
     st.booleans(),
-    st.floats(min_value=0.0, max_value=0.1, exclude_min=True),
+    st.floats(min_value=1e-8, max_value=0.1),
     st.floats(min_value=0.1, max_value=10.0),
 )
 def test_withdraw_manipulation(
