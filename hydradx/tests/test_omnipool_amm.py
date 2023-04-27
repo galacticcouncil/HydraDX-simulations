@@ -122,7 +122,7 @@ def omnipool_config(
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
         imbalance=imbalance if imbalance is not None else draw(st.floats(min_value=-1, max_value=1)),
         withdrawal_fee=withdrawal_fee,
-        last_oracle_values=last_oracle_values if set_oracle_values_to_spot else None
+        last_oracle_values={'price': last_oracle_values} if set_oracle_values_to_spot else None
     )
 
     for name, pool in sub_pool_instances.items():
@@ -298,7 +298,7 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
     for j in new_state.asset_list:
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
-    if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
+    if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
         raise AssertionError('')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
