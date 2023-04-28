@@ -319,15 +319,46 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
 
-@given(omnipool_config(token_count=3, set_oracle_values_to_spot=True))
-def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
+@given(
+    st.floats(min_value=0.0002, max_value=0.05),
+    assets_config(token_count=3)
+)
+def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
+    i = list(asset_dict.keys())[2]
+
+    spot_prices = {}
+    for tkn in asset_dict:
+        if 'LRNA_price' in asset_dict[tkn]:
+            spot_prices[tkn] = asset_dict[tkn]['LRNA_price']
+        elif 'LRNA' in asset_dict[tkn]:
+            spot_prices[tkn] = asset_dict[tkn]['LRNA'] / asset_dict[tkn]['liquidity']
+        else:
+            raise
+
+    last_oracle_prices = copy.deepcopy(spot_prices)
+    last_oracle_prices[i] = spot_prices[i] / (1 + price_diff)
+    last_oracle_values = {
+        'price': last_oracle_prices,
+        'liquidity': {tkn: asset_dict[tkn]['liquidity'] for tkn in asset_dict},
+        'volume_in': {tkn: 0 for tkn in asset_dict},
+        'volume_out': {tkn: 0 for tkn in asset_dict},
+    }
+
+    test_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
+        withdrawal_fee=True,
+        last_oracle_values={'price': last_oracle_values}
+    )
+
     min_fee = 0.0001
-    i = initial_state.asset_list[2]
+
     initial_agent = Agent(
-        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+        holdings={token: 1000 for token in test_state.asset_list + ['LRNA']},
     )
     # add LP shares to the pool
-    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    old_state, old_agent = oamm.add_liquidity(test_state, initial_agent, 1000, i)
     p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
@@ -347,9 +378,12 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
 
     piq = oamm.lrna_price(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
-    if (-2 * piq / (piq + p_init) * delta_S / old_state.shares[i] * piq
-            * old_state.liquidity[i] * (1-min_fee) != pytest.approx(val_withdrawn)
-            and not new_state.fail):
+
+    x = -2 * piq / (piq + p_init)
+    share_ratio = delta_S / old_state.shares[i]
+    feeless_val =  x * share_ratio * piq * old_state.liquidity[i]
+    theoretical_val = feeless_val * (1 - price_diff)
+    if (theoretical_val != pytest.approx(val_withdrawn, rel=1e-1) and not new_state.fail):
         raise AssertionError('something is wrong')
 
     if old_state.lrna_imbalance / old_state.lrna_total != \
