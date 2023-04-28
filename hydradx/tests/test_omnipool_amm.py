@@ -1017,7 +1017,7 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
 def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
     initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
     initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
-    initial_agent = Agent(holdings={tkn: 1000000 for tkn in initial_state.asset_list})
+    initial_agent = Agent(holdings={tkn: 10000000 for tkn in initial_state.asset_list})
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = initial_state.asset_list[3]
     sell_quantity = 1
@@ -2022,30 +2022,56 @@ def test_volatility_limit(omnipool: oamm.OmnipoolState):
 
 
 @given(omnipool_reasonable_config(), st.floats(min_value=0.01, max_value=0.1), st.floats(min_value=0.01, max_value=0.1))
-def test_withdraw_size_limit(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_lp_per_block):
+def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_lp_per_block):
     omnipool.max_withdrawal_per_block = max_withdrawal_per_block
     omnipool.max_lp_per_block = max_lp_per_block
-    agent = Agent(holdings={'HDX': 1000000000})
-    original_shares = omnipool.shares['HDX']
+    agent = Agent(holdings={'HDX': 10000000000})
     oamm.execute_add_liquidity(
         state=omnipool,
         agent=agent,
         tkn_add='HDX',
-        quantity=min(agent.holdings['HDX'], omnipool.liquidity['HDX'] * max_lp_per_block)
+        quantity=omnipool.liquidity['HDX'] * max_lp_per_block
     )
+    if omnipool.fail:
+        raise AssertionError('Valid LP operation failed.')
+    omnipool.update()
+    oamm.execute_add_liquidity(
+        state=omnipool,
+        agent=agent,
+        tkn_add='HDX',
+        quantity=omnipool.liquidity['HDX'] * max_lp_per_block + 1
+    )
+    if not omnipool.fail:
+        raise AssertionError('Invalid LP operation succeeded.')
+    omnipool.update()
+    # add liquidity again to test remove liquidity
+    oamm.execute_add_liquidity(
+        state=omnipool,
+        agent=agent,
+        tkn_add='HDX',
+        quantity=omnipool.liquidity['HDX'] * max_lp_per_block
+    )
+    if omnipool.fail:
+        raise AssertionError('Second LP operation failed.')
+    withdraw_quantity = agent.holdings[('omnipool', 'HDX')]
     total_shares = omnipool.shares['HDX']
-    if total_shares / original_shares - 1 - omnipool.max_lp_per_block > 1e-15:
-        raise AssertionError('Agent was able to add too much liquidity.')
-
     oamm.execute_remove_liquidity(
         state=omnipool,
         agent=agent,
         tkn_remove='HDX',
-        quantity=min(total_shares * 0.1, agent.holdings[('omnipool', 'HDX')])
+        quantity=withdraw_quantity  # agent.holdings[('omnipool', 'HDX')]
     )
-    shares_fraction_sold = 1 - omnipool.shares['HDX'] / total_shares
-    if shares_fraction_sold - omnipool.max_withdrawal_per_block > 1e-15:
+    if withdraw_quantity / total_shares > max_withdrawal_per_block and not omnipool.fail:
         raise AssertionError('Agent was able to remove too much liquidity.')
+    omnipool.update()
+    oamm.execute_remove_liquidity(
+        state=omnipool,
+        agent=agent,
+        tkn_remove='HDX',
+        quantity=omnipool.shares['HDX'] * max_withdrawal_per_block
+    )
+    if omnipool.fail:
+        raise AssertionError('Agent was not able to remove liquidity.')
 
 
 @given(
