@@ -408,7 +408,7 @@ def execute_swap(
         if delta_Ri <= 0:
             return state.fail_transaction('sell amount must be greater than zero', agent)
         if delta_Ri > agent.holdings[i]:
-            return state.fail_transaction('insufficient funds', agent)
+            return state.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
         delta_Qi = state.lrna[tkn_sell] * -delta_Ri / (state.liquidity[tkn_sell] + delta_Ri)
         asset_fee = state.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
@@ -427,9 +427,6 @@ def execute_swap(
 
         if state.liquidity[i] + sell_quantity > 10 ** 12:
             return state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
-
-        if agent.holdings[i] < sell_quantity:
-            return state.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
         # per-block trade limits
         if (
