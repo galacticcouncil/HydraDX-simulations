@@ -383,10 +383,56 @@ def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
     share_ratio = delta_S / old_state.shares[i]
     feeless_val =  x * share_ratio * piq * old_state.liquidity[i]
     theoretical_val = feeless_val * (1 - price_diff)
-    if (theoretical_val != pytest.approx(val_withdrawn, rel=1e-1) and not new_state.fail):
+    if (theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail):
         raise AssertionError('something is wrong')
 
     if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
+
+@given(omnipool_config(token_count=3, withdrawal_fee=False),
+       st.floats(min_value=0.001, max_value=0.2))
+def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolState, trade_size_ratio: float):
+    i = initial_state.asset_list[2]
+    initial_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    # add LP shares to the pool
+    init_contrib = 1000
+    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, init_contrib, i)
+    p_init = oamm.lrna_price(old_state, i)
+
+    trader_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    tkn2 = initial_state.asset_list[1]
+    trade_state, _ = oamm.swap(old_state, trader_agent, tkn_buy=tkn2, tkn_sell=i,
+                               sell_quantity=initial_state.liquidity[i] * trade_size_ratio)
+
+    delta_S = -old_agent.holdings[('omnipool', i)]
+
+    new_state, new_agent = oamm.remove_liquidity(trade_state, old_agent, delta_S, i)
+    for j in new_state.asset_list:
+        if oamm.price(trade_state, j) != pytest.approx(oamm.price(new_state, j)):
+            raise AssertionError(f'Price change in asset {j}')
+    if trade_state.liquidity[i] / trade_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
+        raise AssertionError('')
+    delta_r = new_agent.holdings[i] - old_agent.holdings[i]
+    delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise AssertionError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise AssertionError('Delta R < 0')
+
+    piq = oamm.lrna_price(trade_state, i)
+    val_withdrawn = piq * delta_r + delta_q
+    value_percent = 2 * piq / (piq + p_init) * math.sqrt(piq/p_init)
+    theoretical_val = value_percent * p_init * init_contrib
+    if theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail:
+        raise AssertionError('something is wrong')
+
+    if trade_state.lrna_imbalance / trade_state.lrna_total != \
             pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
