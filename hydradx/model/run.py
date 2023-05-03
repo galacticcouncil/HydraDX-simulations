@@ -3,21 +3,12 @@ import time
 from .amm.global_state import GlobalState
 
 
-from .cadCad import init_utils
-from .cadCad.run import config as config_cadcad, run as run_cadcad
-
-
-def run(initial_state: GlobalState, time_steps: int, silent: bool = False, use_cadcad: bool = False) -> list:
+def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> list:
     """
     Definition:
     Run simulation
     """
-
-    if use_cadcad:
-        config_dict = init_utils.get_configuration(time_steps)
-        config_cadcad(config_dict, {'state': initial_state})
-        return run_cadcad()[1:]
-
+    
     start_time = time.time()
     events = [None] * time_steps
     new_global_state = initial_state.copy()
