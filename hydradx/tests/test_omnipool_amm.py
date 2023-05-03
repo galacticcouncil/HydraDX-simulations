@@ -11,7 +11,7 @@ from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee, lrna_price
+from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config
 from hydradx.tests.test_stableswap import stableswap_config, stable_swap_equation, StableSwapPoolState
@@ -363,9 +363,9 @@ def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
 
     x = -2 * piq / (piq + p_init)
     share_ratio = delta_S / old_state.shares[i]
-    feeless_val =  x * share_ratio * piq * old_state.liquidity[i]
+    feeless_val = x * share_ratio * piq * old_state.liquidity[i]
     theoretical_val = feeless_val * (1 - price_diff)
-    if (theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail):
+    if theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail:
         raise AssertionError('something is wrong')
 
     if old_state.lrna_imbalance / old_state.lrna_total != \
