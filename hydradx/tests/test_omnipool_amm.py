@@ -298,7 +298,7 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
-        raise AssertionError('')
+        raise AssertionError('Ratio of liquidity to shares decreased')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
     if delta_q <= 0 and delta_q != pytest.approx(0):
