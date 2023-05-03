@@ -1,7 +1,7 @@
 import copy
+import math
 import random
 
-import math
 import pytest
 from hypothesis import given, strategies as st, assume, settings
 from mpmath import mp, mpf
@@ -109,7 +109,9 @@ def omnipool_config(
             } for tkn in sub_pool_instance.asset_list})
             sub_pool_instances[name] = sub_pool_instance
 
-    spot_prices = {tkn: (asset_dict[tkn]['LRNA'] / asset_dict[tkn]['liquidity']) if 'LRNA' in asset_dict[tkn] else asset_dict[tkn]['LRNA_price'] for tkn in asset_dict.keys()}
+    spot_prices = {
+        tkn: (asset_dict[tkn]['LRNA'] / asset_dict[tkn]['liquidity']) if 'LRNA' in asset_dict[tkn] else asset_dict[tkn][
+            'LRNA_price'] for tkn in asset_dict.keys()}
     last_oracle_values = {'price': spot_prices,
                           'liquidity': {tkn: asset_dict[tkn]['liquidity'] for tkn in asset_dict.keys()},
                           'volume_in': {tkn: 0 for tkn in asset_dict.keys()},
@@ -309,7 +311,7 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
     piq = oamm.lrna_price(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
     if (-2 * piq / (piq + p_init) * delta_S / old_state.shares[i] * piq
-            * old_state.liquidity[i] * (1-min_fee) != pytest.approx(val_withdrawn)
+            * old_state.liquidity[i] * (1 - min_fee) != pytest.approx(val_withdrawn)
             and not new_state.fail):
         raise AssertionError('something is wrong')
 
@@ -409,7 +411,7 @@ def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolSta
 
     piq = oamm.lrna_price(trade_state, i)
     val_withdrawn = piq * delta_r + delta_q
-    value_percent = 2 * piq / (piq + p_init) * math.sqrt(piq/p_init)
+    value_percent = 2 * piq / (piq + p_init) * math.sqrt(piq / p_init)
     theoretical_val = value_percent * p_init * init_contrib
     if theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail:
         raise AssertionError('something is wrong')
