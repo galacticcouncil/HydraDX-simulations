@@ -137,15 +137,29 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 @given(omnipool_reasonable_config(token_count=3))
 def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
-    strat = invest_all('omnipool')
+    initial_agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
-    new_state = strat.execute(state, 'agent')
-    for asset in omnipool.asset_list:
-        if new_state.agents['agent'].holdings[asset] != 0:
+    new_state = invest_all('omnipool').execute(initial_state, 'agent')
+    for tkn in omnipool.asset_list:
+        if new_state.agents['agent'].holdings[tkn] != 0:
+            raise AssertionError(f'Failed to LP {tkn}')
+        if new_state.agents['agent'].holdings[('omnipool', tkn)] == 0:
+            raise AssertionError(f'Did not receive shares for {tkn}')
+
+    hdx_state = invest_all('omnipool', 'HDX').execute(initial_state.copy(), 'agent')
+
+    if hdx_state.agents['agent'].holdings['HDX'] != 0:
+        raise AssertionError('HDX not reinvested')
+    if hdx_state.agents['agent'].holdings[('omnipool', 'HDX')] == 0:
+        raise AssertionError('HDX not reinvested')
+
+    for tkn in omnipool.asset_list:
+        if tkn == 'HDX':
+            continue
+        if hdx_state.agents['agent'].holdings[tkn] == 0:
             raise
-        if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
+        if hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
             raise
 
 
@@ -419,6 +433,7 @@ def test_withdraw_manipulation_scenario():
         tkn_buy='DAI',
         sell_quantity=final_agent.holdings['LRNA']
     )
+
 
     profit = (
             oamm.cash_out_omnipool(final_state, final_agent, {tkn: 1 for tkn in initial_state.asset_list})
