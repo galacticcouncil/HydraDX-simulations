@@ -325,31 +325,14 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
 def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
     i = list(asset_dict.keys())[2]
 
-    spot_prices = {}
-    for tkn in asset_dict:
-        if 'LRNA_price' in asset_dict[tkn]:
-            spot_prices[tkn] = asset_dict[tkn]['LRNA_price']
-        elif 'LRNA' in asset_dict[tkn]:
-            spot_prices[tkn] = asset_dict[tkn]['LRNA'] / asset_dict[tkn]['liquidity']
-        else:
-            raise
-
-    last_oracle_prices = copy.deepcopy(spot_prices)
-    last_oracle_prices[i] = spot_prices[i] / (1 + price_diff)
-    last_oracle_values = {
-        'price': last_oracle_prices,
-        'liquidity': {tkn: asset_dict[tkn]['liquidity'] for tkn in asset_dict},
-        'volume_in': {tkn: 0 for tkn in asset_dict},
-        'volume_out': {tkn: 0 for tkn in asset_dict},
-    }
-
     test_state = oamm.OmnipoolState(
         tokens=asset_dict,
         asset_fee=0.0025,
         lrna_fee=0.0005,
         withdrawal_fee=True,
-        last_oracle_values={'price': last_oracle_values}
     )
+
+    test_state.oracles['price'].price[i] /= (1 + price_diff)
 
     min_fee = 0.0001
 
