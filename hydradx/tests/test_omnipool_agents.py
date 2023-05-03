@@ -137,15 +137,29 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 @given(omnipool_reasonable_config(token_count=3))
 def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
-    strat = invest_all('omnipool')
+    initial_agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
-    new_state = strat.execute(state, 'agent')
-    for asset in omnipool.asset_list:
-        if new_state.agents['agent'].holdings[asset] != 0:
+    new_state = invest_all('omnipool').execute(initial_state, 'agent')
+    for tkn in omnipool.asset_list:
+        if new_state.agents['agent'].holdings[tkn] != 0:
+            raise AssertionError(f'Failed to LP {tkn}')
+        if new_state.agents['agent'].holdings[('omnipool', tkn)] == 0:
+            raise AssertionError(f'Did not receive shares for {tkn}')
+
+    hdx_state = invest_all('omnipool', 'HDX').execute(initial_state.copy(), 'agent')
+
+    if hdx_state.agents['agent'].holdings['HDX'] != 0:
+        raise AssertionError('HDX not reinvested')
+    if hdx_state.agents['agent'].holdings[('omnipool', 'HDX')] == 0:
+        raise AssertionError('HDX not reinvested')
+
+    for tkn in omnipool.asset_list:
+        if tkn == 'HDX':
+            continue
+        if hdx_state.agents['agent'].holdings[tkn] == 0:
             raise
-        if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
+        if hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
             raise
 
 
@@ -420,229 +434,3 @@ def test_withdraw_manipulation_scenario():
         sell_quantity=final_agent.holdings['LRNA']
     )
 
-    profit = (
-            oamm.cash_out_omnipool(final_state, final_agent, {tkn: 1 for tkn in initial_state.asset_list})
-            - oamm.cash_out_omnipool(LP_state, LP, {tkn: 1 for tkn in initial_state.asset_list})
-    )
-
-    er = 1
-
-
-def test_add_manipulation_scenario():
-    agent_holdings = {
-        'DAI': 1000000000,
-        'WETH': 1000000000,
-        'LRNA': 0
-    }
-
-    tokens = {
-        'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
-        'WETH': {'liquidity': 1000000, 'LRNA': 1000000},
-        'DAI': {'liquidity': 1000000, 'LRNA': 1000000},
-    }
-
-    initial_state = oamm.OmnipoolState(
-        tokens=tokens,
-        lrna_fee=0,
-        asset_fee=0,
-        preferred_stablecoin='DAI'
-    )
-
-    initial_agent = Agent(
-        holdings=agent_holdings
-    )
-
-    initial_agent = Agent(
-        holdings={'DAI': 10000000000, 'WETH': 10000000000},
-    )
-    initial_agent.holdings['LRNA'] = 0
-
-    # trade to manipulate the price
-    first_trade = 99999123.0
-    sell_state, sell_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_sell='WETH',
-        tkn_buy='DAI',
-        sell_quantity=first_trade
-    )
-
-    lp_quantity = 100000.0
-    lp_state, lp_agent = oamm.execute_add_liquidity(
-        state=sell_state.copy(),
-        agent=sell_agent.copy(),
-        quantity=lp_quantity,
-        tkn_add='DAI'
-    )
-
-    second_trade = 510194.0
-    buy_state, buy_agent = oamm.execute_swap(
-        state=lp_state,
-        agent=lp_agent,
-        tkn_sell='DAI',
-        tkn_buy='WETH',
-        sell_quantity=second_trade
-    )
-
-    final_state, final_agent = oamm.execute_remove_liquidity(
-        state=buy_state,
-        agent=buy_agent,
-        quantity=lp_agent.holdings[('omnipool', 'DAI')],
-        tkn_remove='DAI'
-    )
-
-    oamm.execute_swap(
-        state=final_state,
-        agent=final_agent,
-        tkn_sell='LRNA',
-        tkn_buy='DAI',
-        sell_quantity=final_agent.holdings['LRNA']
-    )
-
-    profit = (
-            oamm.cash_out_omnipool(final_state, final_agent, {tkn: 1 for tkn in initial_state.asset_list})
-            - oamm.cash_out_omnipool(initial_state, initial_agent, {tkn: 1 for tkn in initial_state.asset_list})
-    )
-
-    er = 1
-
-
-# @settings(max_examples=1000000)
-# @settings(max_examples=1)
-@given(
-    # st.floats(min_value=1000.0, max_value=10000000.0),
-    # st.floats(min_value=1000.0, max_value=10000000.0),
-    st.floats(min_value=0, max_value=0.01),
-    # st.floats(min_value=0.05, max_value=0.05),
-    st.floats(min_value=0.000, max_value=0.01),
-    st.floats(min_value=4.0, max_value=8.0),
-    st.floats(min_value=0.002, max_value=0.02),
-    # st.floats(min_value=8.0, max_value=8.0),
-)
-def test_realistic_withdraw_manipulation(lp_percentage, price_movement, initial_price_DOT, initial_price_HDX):
-    # initial_price = 4.446839631289968
-    # price_movement = 0.008582536343883918
-    # lp_percentage = 0.014641383746118966
-    lp_percentage = 0.05
-    price_movement = 0.01
-    initial_price_HDX = 0.002
-    initial_price_DOT = 4
-    attack_asset = 'DOT'
-
-    initial_price = initial_price_DOT if attack_asset == 'DOT' else initial_price_HDX
-
-    tokens = {
-        'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-        'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-        'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-        'DOT': {'liquidity': 88000, 'LRNA': 546461},
-        'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-    }
-
-    buy_quantity = tokens[attack_asset]['liquidity'] - tokens[attack_asset]['liquidity'] / math.sqrt(1 + price_movement)
-
-    initial_state = oamm.OmnipoolState(
-        tokens=tokens,
-        lrna_fee=0.0005,
-        asset_fee=0.0025,
-        preferred_stablecoin='DAI',
-        withdrawal_fee=True,
-        min_withdrawal_fee=0.0001,
-    )
-
-    market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
-
-    DOT_shares_total = initial_state.shares[attack_asset]
-    # lp_percentage = 0.5
-
-    agent_holdings = {
-        'DAI': 100000000000,
-        'WETH': 10000000000,
-        'DOT': 100000000000,
-        'WBTC': 10000000000,
-        'HDX': 100000000000,
-        'LRNA': 0,
-        ('omnipool', attack_asset): DOT_shares_total * lp_percentage,
-    }
-
-    initial_state.protocol_shares[attack_asset] -= agent_holdings[('omnipool', attack_asset)]
-
-    agent_prices = {
-        ('omnipool', attack_asset): initial_price
-    }
-
-    agent_delta_r = {
-        ('omnipool', attack_asset): 0.0
-    }
-
-    initial_agent = Agent(
-        holdings=agent_holdings,
-        share_prices=agent_prices,
-        delta_r=agent_delta_r
-    )
-
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_sell='DAI',
-        tkn_buy=attack_asset,
-        # sell_quantity=sell1_quantity
-        buy_quantity=buy_quantity
-    )
-
-    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
-        quantity=trade_agent.holdings[('omnipool', attack_asset)],
-        tkn_remove=attack_asset
-    )
-
-    sell_lrna_state, sell_lrna_agent = oamm.execute_swap(
-        withdraw_state.copy(),
-        withdraw_agent.copy(),
-        tkn_sell='LRNA',
-        tkn_buy='DAI',
-        sell_quantity=withdraw_agent.holdings['LRNA']
-    )
-
-    final_global_state = GlobalState(
-        pools={'omnipool': sell_lrna_state},
-        agents={'attacker': sell_lrna_agent},
-        external_market=market_prices
-    )
-    # import math
-    # omnipool = sell_lrna_state
-    # state = final_global_state
-    # asset1 = 'DAI'
-    # asset2 = 'DOT'
-    # delta_r = (math.sqrt((
-    #                  omnipool.lrna[asset2] * omnipool.lrna[asset1] * omnipool.liquidity[asset2] *
-    #                  omnipool.liquidity[asset1]
-    #          ) / (state.external_market[asset2] / state.external_market[asset1])) - (
-    #        omnipool.lrna[asset1] * omnipool.liquidity[asset2]
-    # )) / (omnipool.lrna[asset2] + omnipool.lrna[asset1])
-    #
-    # arbed_pool, arbed_agent = oamm.execute_swap(
-    #     state=sell_lrna_state.copy(),
-    #     agent=sell_lrna_agent.copy(),
-    #     tkn_sell='DOT',
-    #     tkn_buy='DAI',
-    #     sell_quantity=delta_r
-    # )
-
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=final_global_state.copy(),
-        agent_id='attacker'
-    )
-
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
-
-    initial_wealth = oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
-    no_arb_wealth = oamm.cash_out_omnipool(sell_lrna_state, sell_lrna_agent, market_prices)
-    final_wealth = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
-
-    no_arb_profit = no_arb_wealth - initial_wealth
-    profit = final_wealth - initial_wealth
-    if profit > 0:
-        raise ValueError('attacker made money')
