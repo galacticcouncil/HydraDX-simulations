@@ -142,7 +142,7 @@ def back_and_forth(
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
 
 
-def invest_all(pool_id: str, assets: list = None) -> TradeStrategy:
+def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
 
     if assets and not isinstance(assets, list):
         assets = [assets]
