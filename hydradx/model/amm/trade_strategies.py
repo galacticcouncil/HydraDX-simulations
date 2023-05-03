@@ -142,12 +142,16 @@ def back_and_forth(
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
 
 
-def invest_all(pool_id: str) -> TradeStrategy:
+def invest_all(pool_id: str, assets: list = None) -> TradeStrategy:
+
+    if assets and not isinstance(assets, list):
+        assets = [assets]
 
     def strategy(state: GlobalState, agent_id: str):
 
         agent: Agent = state.agents[agent_id]
-        for asset in agent.holdings:
+
+        for asset in assets or agent.holdings.keys():
 
             if asset in state.pools[pool_id].asset_list:
                 state = add_liquidity(
