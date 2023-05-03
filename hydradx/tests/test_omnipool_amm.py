@@ -121,8 +121,7 @@ def omnipool_config(
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
         imbalance=imbalance if imbalance is not None else draw(st.floats(min_value=-1, max_value=1)),
-        withdrawal_fee=withdrawal_fee,
-        last_oracle_values={'price': last_oracle_values} if set_oracle_values_to_spot else None
+        withdrawal_fee=withdrawal_fee
     )
 
     for name, pool in sub_pool_instances.items():
