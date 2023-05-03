@@ -260,7 +260,7 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
-        raise AssertionError('')
+        raise AssertionError('Ratio of liquidity to shares changed')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
     if delta_q <= 0 and delta_q != pytest.approx(0):
@@ -350,7 +350,7 @@ def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
-        raise AssertionError('')
+        raise AssertionError('Ratio of liquidity to shares decreased')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
     if delta_q <= 0 and delta_q != pytest.approx(0):
@@ -399,7 +399,7 @@ def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolSta
         if oamm.price(trade_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if trade_state.liquidity[i] / trade_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
-        raise AssertionError('')
+        raise AssertionError('Ratio of liquidity to shares changed')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
     if delta_q <= 0 and delta_q != pytest.approx(0):
