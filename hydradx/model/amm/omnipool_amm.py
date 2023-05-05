@@ -206,6 +206,7 @@ class OmnipoolState(AMM):
         self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
         self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
 
+        self.fail = ''
         if self.update_function:
             self.update_function(self)
 
