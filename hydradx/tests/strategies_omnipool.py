@@ -192,7 +192,7 @@ def stableswap_config(
         precision: float = 0.00001,
         unique_id: str = '',
         base_token: str = 'USD'
-) -> ssamm.StableSwapPoolState:
+):
     token_count = token_count or draw(asset_number_strategy)
     asset_dict = asset_dict or {
         f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
