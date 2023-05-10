@@ -877,7 +877,7 @@ def calculate_remove_liquidity(state: OmnipoolState, agent: Agent, quantity: flo
     else:
         delta_qa = 0
 
-    if state.withdrawal_fee:
+    if hasattr(state, 'withdrawal_fee') and state.withdrawal_fee > 0:
         # calculate withdraw fee
         diff = abs(state.oracles['price'].price[tkn_remove] - piq) / state.oracles['price'].price[tkn_remove]
         fee = max(min(diff, 1), state.min_withdrawal_fee)
@@ -1303,18 +1303,21 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
         for tkn, delta_qa in lrna_sells.items():
             if tkn not in agent_holdings:
                 agent_holdings[tkn] = 0
+            asset_fee = (
+                omnipool.asset_fee[tkn].compute(
+                    tkn=tkn,
+                    delta_tkn=(omnipool.liquidity[tkn] - liquidity_removed[tkn])
+                              * delta_qa / (delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
+                )
+                if hasattr(omnipool, 'asset_fee')
+                else omnipool.last_fee[tkn]
+            )
             lrna_profits[tkn] = (
                     -(omnipool.liquidity[tkn] - liquidity_removed[tkn]) * delta_qa
                     / (-delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
-                    * (1 - omnipool.asset_fee[tkn].compute(
-                tkn=tkn,
-                delta_tkn=(omnipool.liquidity[tkn] - liquidity_removed[tkn])
-                          * delta_qa / (delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
-            ))
+                    * (1 - asset_fee)
             )
             agent_holdings[tkn] += lrna_profits[tkn]
-
-        er = 1
 
     del agent_holdings['LRNA']
 
