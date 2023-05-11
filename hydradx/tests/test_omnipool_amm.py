@@ -2151,21 +2151,18 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
 @given(omnipool_reasonable_config(remove_liquidity_volatility_threshold=0.01))
 def test_volatility_limit(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
-    market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
     oamm.execute_add_liquidity(omnipool, agent, quantity=1000, tkn_add='HDX')
-    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 100)
+    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
     oamm.execute_remove_liquidity(omnipool, agent, quantity=1000, tkn_remove='HDX')
 
     if not omnipool.fail:
         raise ValueError("Volatility limit should be exceeded")
 
-    # reset
-    omnipool.fail = False
-    for i in range(10):
-        omnipool.update()
+    # go forward one block, which should be enough for the volatility to decay
+    updated_pool = omnipool.copy().update()
 
-    oamm.execute_remove_liquidity(omnipool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
-    if omnipool.fail:
+    oamm.execute_remove_liquidity(updated_pool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
+    if updated_pool.fail:
         raise ValueError("Volatility limit should not be exceeded")
 
 
