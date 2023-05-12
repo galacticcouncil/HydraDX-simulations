@@ -82,8 +82,7 @@ def omnipool_config(
         tvl_cap_usd=0,
         sub_pools: dict = None,
         imbalance: float = None,
-        withdrawal_fee: bool = True,
-        set_oracle_values_to_spot: bool = False
+        withdrawal_fee: bool = True
 ) -> oamm.OmnipoolState:
     asset_dict: dict = asset_dict or draw(assets_config(token_count))
 
@@ -282,7 +281,7 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
 
-@given(omnipool_config(token_count=3, set_oracle_values_to_spot=True))
+@given(omnipool_config(token_count=3))
 def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
     min_fee = 0.0001
     i = initial_state.asset_list[2]
