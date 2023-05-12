@@ -1,6 +1,7 @@
 import copy
-
 import math
+import random
+
 import pytest
 from hypothesis import given, strategies as st, assume, settings
 
@@ -143,7 +144,7 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
-        raise AssertionError('')
+        raise AssertionError('Ratio of liquidity to shares changed')
     delta_r = new_agent.holdings[i] - old_agent.holdings[i]
     delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
     if delta_q <= 0 and delta_q != pytest.approx(0):
@@ -159,6 +160,145 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         raise AssertionError('something is wrong')
 
     if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
+
+@given(omnipool_config(token_count=3))
+def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
+    min_fee = 0.0001
+    i = initial_state.asset_list[2]
+    initial_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    # add LP shares to the pool
+    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    p_init = oamm.lrna_price(old_state, i)
+
+    delta_S = -old_agent.holdings[('omnipool', i)]
+
+    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    for j in new_state.asset_list:
+        if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
+            raise AssertionError(f'Price change in asset {j}')
+    if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
+        raise AssertionError('Ratio of liquidity to shares decreased')
+    delta_r = new_agent.holdings[i] - old_agent.holdings[i]
+    delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise AssertionError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise AssertionError('Delta R < 0')
+
+    piq = oamm.lrna_price(old_state, i)
+    val_withdrawn = piq * delta_r + delta_q
+    if (-2 * piq / (piq + p_init) * delta_S / old_state.shares[i] * piq
+            * old_state.liquidity[i] * (1 - min_fee) != pytest.approx(val_withdrawn)
+            and not new_state.fail):
+        raise AssertionError('something is wrong')
+
+    if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
+
+@given(
+    st.floats(min_value=0.0002, max_value=0.05),
+    assets_config(token_count=3)
+)
+def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
+    i = list(asset_dict.keys())[2]
+
+    test_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
+        withdrawal_fee=True,
+    )
+
+    test_state.oracles['price'].price[i] /= (1 + price_diff)
+
+    min_fee = 0.0001
+
+    initial_agent = Agent(
+        holdings={token: 1000 for token in test_state.asset_list + ['LRNA']},
+    )
+    # add LP shares to the pool
+    old_state, old_agent = oamm.add_liquidity(test_state, initial_agent, 1000, i)
+    p_init = oamm.lrna_price(old_state, i)
+
+    delta_S = -old_agent.holdings[('omnipool', i)]
+
+    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    for j in new_state.asset_list:
+        if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
+            raise AssertionError(f'Price change in asset {j}')
+    if old_state.liquidity[i] / old_state.shares[i] >= new_state.liquidity[i] / new_state.shares[i]:
+        raise AssertionError('Ratio of liquidity to shares decreased')
+    delta_r = new_agent.holdings[i] - old_agent.holdings[i]
+    delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise AssertionError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise AssertionError('Delta R < 0')
+
+    piq = oamm.lrna_price(old_state, i)
+    val_withdrawn = piq * delta_r + delta_q
+
+    x = -2 * piq / (piq + p_init)
+    share_ratio = delta_S / old_state.shares[i]
+    feeless_val = x * share_ratio * piq * old_state.liquidity[i]
+    theoretical_val = feeless_val * (1 - price_diff)
+    if theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail:
+        raise AssertionError('something is wrong')
+
+    if old_state.lrna_imbalance / old_state.lrna_total != \
+            pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
+        raise AssertionError(f'LRNA imbalance did not remain constant.')
+
+
+@given(omnipool_config(token_count=3, withdrawal_fee=False),
+       st.floats(min_value=0.001, max_value=0.2))
+def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolState, trade_size_ratio: float):
+    i = initial_state.asset_list[2]
+    initial_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    # add LP shares to the pool
+    init_contrib = 1000
+    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, init_contrib, i)
+    p_init = oamm.lrna_price(old_state, i)
+
+    trader_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
+    )
+    tkn2 = initial_state.asset_list[1]
+    trade_state, _ = oamm.swap(old_state, trader_agent, tkn_buy=tkn2, tkn_sell=i,
+                               sell_quantity=initial_state.liquidity[i] * trade_size_ratio)
+
+    delta_S = -old_agent.holdings[('omnipool', i)]
+
+    new_state, new_agent = oamm.remove_liquidity(trade_state, old_agent, delta_S, i)
+    for j in new_state.asset_list:
+        if oamm.price(trade_state, j) != pytest.approx(oamm.price(new_state, j)):
+            raise AssertionError(f'Price change in asset {j}')
+    if trade_state.liquidity[i] / trade_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
+        raise AssertionError('Ratio of liquidity to shares changed')
+    delta_r = new_agent.holdings[i] - old_agent.holdings[i]
+    delta_q = new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']
+    if delta_q <= 0 and delta_q != pytest.approx(0):
+        raise AssertionError('Delta Q < 0')
+    if delta_r <= 0 and delta_r != pytest.approx(0):
+        raise AssertionError('Delta R < 0')
+
+    piq = oamm.lrna_price(trade_state, i)
+    val_withdrawn = piq * delta_r + delta_q
+    value_percent = 2 * piq / (piq + p_init) * math.sqrt(piq / p_init)
+    theoretical_val = value_percent * p_init * init_contrib
+    if theoretical_val != pytest.approx(val_withdrawn) and not new_state.fail:
+        raise AssertionError('something is wrong')
+
+    if trade_state.lrna_imbalance / trade_state.lrna_total != \
             pytest.approx(new_state.lrna_imbalance / new_state.lrna_total):
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
@@ -1092,21 +1232,18 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
 @given(omnipool_reasonable_config(remove_liquidity_volatility_threshold=0.01))
 def test_volatility_limit(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
-    market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
     oamm.execute_add_liquidity(omnipool, agent, quantity=1000, tkn_add='HDX')
-    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 100)
+    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
     oamm.execute_remove_liquidity(omnipool, agent, quantity=1000, tkn_remove='HDX')
 
     if not omnipool.fail:
         raise ValueError("Volatility limit should be exceeded")
 
-    # reset
-    omnipool.fail = False
-    for i in range(10):
-        omnipool.update()
+    # go forward one block, which should be enough for the volatility to decay
+    updated_pool = omnipool.copy().update()
 
-    oamm.execute_remove_liquidity(omnipool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
-    if omnipool.fail:
+    oamm.execute_remove_liquidity(updated_pool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
+    if updated_pool.fail:
         raise ValueError("Volatility limit should not be exceeded")
 
 
@@ -1723,9 +1860,9 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
 
 @given(
     omnipool_reasonable_config(),
-    st.floats(min_value=0, max_value=0.02, exclude_min=True),
+    st.floats(min_value=1e-8, max_value=0.02),
     st.booleans(),
-    st.floats(min_value=0.0, max_value=0.1, exclude_min=True),
+    st.floats(min_value=1e-8, max_value=0.1),
     st.floats(min_value=0.1, max_value=10.0),
 )
 def test_withdraw_manipulation(
