@@ -223,9 +223,6 @@ class OmnipoolState(AMM):
         # base this just on the LRNA/USD exchange rate in the pool
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
-    def asset_cap(self, tkn: str):
-        return self.weight_cap[tkn] * self.total_value_locked
-
     def copy(self):
         copy_state = copy.deepcopy(self)
         copy_state.fail = ''
