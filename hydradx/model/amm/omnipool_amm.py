@@ -99,9 +99,11 @@ class OmnipoolState(AMM):
         self.oracles = {}
 
         if oracles is None or 'price' not in oracles:
-            self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
-
-        if last_oracle_values is not None:
+            if last_oracle_values is None or 'price' not in last_oracle_values:
+                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
+            else:
+                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self), last_values=last_oracle_values['price'])
+        if last_oracle_values is not None and oracles is not None:
             self.oracles.update({
                 name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name]
                 if name in last_oracle_values else None)
@@ -206,6 +208,7 @@ class OmnipoolState(AMM):
         self.last_fee = {tkn: self.asset_fee[tkn].compute(tkn) for tkn in self.asset_list}
         self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute(tkn) for tkn in self.asset_list}
 
+        self.fail = ''
         if self.update_function:
             self.update_function(self)
 
@@ -219,9 +222,6 @@ class OmnipoolState(AMM):
     def total_value_locked(self):
         # base this just on the LRNA/USD exchange rate in the pool
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
-
-    def asset_cap(self, tkn: str):
-        return self.weight_cap[tkn] * self.total_value_locked
 
     def copy(self):
         copy_state = copy.deepcopy(self)
