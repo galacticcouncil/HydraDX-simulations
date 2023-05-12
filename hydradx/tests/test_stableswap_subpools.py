@@ -413,7 +413,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
             round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
             < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
     ):
-        raise AssertionError('Pool_buy rice moved in the wrong direction.')
+        raise AssertionError('Pool_buy price moved in the wrong direction.')
     if (
             round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
             < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)

@@ -158,10 +158,10 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
         if tkn == 'HDX':
             continue
         if hdx_state.agents['agent'].holdings[tkn] == 0:
-            raise
+            raise AssertionError(f'{tkn} missing from holdings.')
         if ('omnipool', tkn) in hdx_state.agents['agent'].holdings \
                 and hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
-            raise
+            raise AssertionError(f'Agent has shares of {tkn}, but should not.')
 
 
 # @given(
