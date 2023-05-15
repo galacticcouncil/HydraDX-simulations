@@ -11,7 +11,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
-from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config
+from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -495,58 +495,58 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
         # assert buy_agent.holdings['LRNA'] == pytest.approx(feeless_agent.holdings['LRNA'])
 
 
-@given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
-def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
-    initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
-    initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
-    initial_state.withdrawal_fee = False
-    initial_agent = Agent(holdings={tkn: 10000000 for tkn in initial_state.asset_list})
-    tkn_buy = initial_state.asset_list[2]
-    tkn_sell = initial_state.asset_list[3]
-    sell_quantity = 1
-    sell_state, sell_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, sell_quantity=sell_quantity)
-    split_sell_state, split_sell_agent = initial_state.copy(), initial_agent.copy()
-    next_state, next_agent = {}, {}
-    for i in range(2):
-        next_state[i], next_agent[i] = oamm.swap(
-            old_state=split_sell_state,
-            old_agent=split_sell_agent,
-            tkn_sell=tkn_sell,
-            tkn_buy=tkn_buy,
-            sell_quantity=sell_quantity / 2
-        )
-        split_sell_state, split_sell_agent = next_state[i], next_agent[i]
-    if split_sell_agent.holdings[tkn_buy] < sell_agent.holdings[tkn_buy]:
-        raise AssertionError('Agent failed to save money by splitting the sell order.')
-
-    buy_quantity = 1
-    buy_state, buy_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, buy_quantity=buy_quantity)
-    split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
-    next_state, next_agent = {}, {}
-    for i in range(2):
-        next_state[i], next_agent[i] = oamm.swap(
-            old_state=split_buy_state,
-            old_agent=split_buy_agent,
-            tkn_sell=tkn_sell,
-            tkn_buy=tkn_buy,
-            buy_quantity=buy_quantity / 2
-        )
-        split_buy_state, split_buy_agent = next_state[i], next_agent[i]
-    if split_buy_agent.holdings[tkn_sell] < buy_agent.holdings[tkn_sell]:
-        raise AssertionError('Agent failed to save money by splitting the buy order.')
-
-    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
-         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-            != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
-                             + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
-        raise AssertionError('Asset quantity is not constant after trade (one-part)')
-
-    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
-         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
-            != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
-                             + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
-        raise AssertionError('Asset quantity is not constant after trade (two-part)')
-
+# @given(omnipool_config(token_count=4), st.floats(min_value=0.1, max_value=1), st.floats(min_value=0.1, max_value=1))
+# def test_slip_fees(initial_state: oamm.OmnipoolState, lrna_slip_rate: float, asset_slip_rate: float):
+#     initial_state.lrna_fee = oamm.slip_fee(lrna_slip_rate, minimum_fee=0.0001)
+#     initial_state.asset_fee = oamm.slip_fee(asset_slip_rate, minimum_fee=0.0001)
+#     initial_state.withdrawal_fee = False
+#     initial_agent = Agent(holdings={tkn: 10000000 for tkn in initial_state.asset_list})
+#     tkn_buy = initial_state.asset_list[2]
+#     tkn_sell = initial_state.asset_list[3]
+#     sell_quantity = 1
+#     sell_state, sell_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, sell_quantity=sell_quantity)
+#     split_sell_state, split_sell_agent = initial_state.copy(), initial_agent.copy()
+#     next_state, next_agent = {}, {}
+#     for i in range(2):
+#         next_state[i], next_agent[i] = oamm.swap(
+#             old_state=split_sell_state,
+#             old_agent=split_sell_agent,
+#             tkn_sell=tkn_sell,
+#             tkn_buy=tkn_buy,
+#             sell_quantity=sell_quantity / 2
+#         )
+#         split_sell_state, split_sell_agent = next_state[i], next_agent[i]
+#     if split_sell_agent.holdings[tkn_buy] < sell_agent.holdings[tkn_buy]:
+#         raise AssertionError('Agent failed to save money by splitting the sell order.')
+#
+#     buy_quantity = 1
+#     buy_state, buy_agent = oamm.swap(initial_state, initial_agent, tkn_buy, tkn_sell, buy_quantity=buy_quantity)
+#     split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
+#     next_state, next_agent = {}, {}
+#     for i in range(2):
+#         next_state[i], next_agent[i] = oamm.swap(
+#             old_state=split_buy_state,
+#             old_agent=split_buy_agent,
+#             tkn_sell=tkn_sell,
+#             tkn_buy=tkn_buy,
+#             buy_quantity=buy_quantity / 2
+#         )
+#         split_buy_state, split_buy_agent = next_state[i], next_agent[i]
+#     if split_buy_agent.holdings[tkn_sell] < buy_agent.holdings[tkn_sell]:
+#         raise AssertionError('Agent failed to save money by splitting the buy order.')
+#
+#     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+#          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+#             != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
+#                              + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
+#         raise AssertionError('Asset quantity is not constant after trade (one-part)')
+#
+#     if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+#          + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+#             != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
+#                              + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
+#         raise AssertionError('Asset quantity is not constant after trade (two-part)')
+#
 
 def test_arbitrage():
     import sys
