@@ -142,12 +142,16 @@ def back_and_forth(
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
 
 
-def invest_all(pool_id: str) -> TradeStrategy:
+def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
+
+    if assets and not isinstance(assets, list):
+        assets = [assets]
 
     def strategy(state: GlobalState, agent_id: str):
 
         agent: Agent = state.agents[agent_id]
-        for asset in agent.holdings:
+
+        for asset in assets or agent.holdings.keys():
 
             if asset in state.pools[pool_id].asset_list:
                 state = add_liquidity(
@@ -215,7 +219,7 @@ def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sel
                                 state=omnipool,
                                 agent=agent,
                                 tkn_sell='LRNA',
-                                tkn_buy='USD',
+                                tkn_buy=omnipool.stablecoin,
                                 sell_quantity=agent.holdings['LRNA']
                             )
                 else:
@@ -611,3 +615,286 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
         return state
 
     return TradeStrategy(strategy, name=f'toxic asset attack (asset={asset_name}, trade_size={trade_size})')
+
+
+def price_manipulation(
+        pool_id: str, asset1: str, asset2: str, max_fraction: float = float('inf'), interval: int = 1
+):
+    def price_manipulation_strategy(state: GlobalState, agent_id: str):
+        if state.time_step % interval != 0:
+            return state
+        omnipool: OmnipoolState = state.pools[pool_id]
+        agent: Agent = state.agents[agent_id]
+        agent_holdings = copy.copy(agent.holdings)
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset1, tkn_buy=asset2,
+            sell_quantity=min(agent.holdings[asset1], omnipool.liquidity[asset1] * max_fraction)
+        )
+        oamm.execute_add_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=min(agent.holdings[asset2] / 2, omnipool.liquidity[asset2] * max_fraction),
+            # quantity=agent.holdings[asset2] / 2,
+            tkn_add=asset2
+        )
+        # here we want to bring the prices back in line with the market
+        delta_r = (math.sqrt((
+            omnipool.lrna[asset2] * omnipool.lrna[asset1] * omnipool.liquidity[asset2] * omnipool.liquidity[asset1]
+        ) / (state.external_market[asset2] / state.external_market[asset1])) - (
+            omnipool.lrna[asset1] * omnipool.liquidity[asset2]
+        )) / (omnipool.lrna[asset2] + omnipool.lrna[asset1])
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset2, tkn_buy=asset1,
+            sell_quantity=min(delta_r, agent.holdings[asset2], omnipool.liquidity[asset2] * max_fraction)
+        )
+        oamm.execute_remove_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[(omnipool.unique_id, asset2)],
+            tkn_remove=asset2
+        )
+        # back the other way
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset2, tkn_buy=asset1,
+            sell_quantity=min(agent.holdings[asset2], omnipool.liquidity[asset2] * max_fraction)
+        )
+        oamm.execute_add_liquidity(
+            state=omnipool,
+            agent=agent,
+            # quantity=min(agent.holdings[asset1] / 2, omnipool.liquidity[asset1] / 3),
+            quantity=min(agent.holdings[asset1] / 2, omnipool.liquidity[asset1] * max_fraction),
+            tkn_add=asset1
+        )
+        delta_r = (math.sqrt((
+            omnipool.lrna[asset1] * omnipool.lrna[asset2] * omnipool.liquidity[asset1] * omnipool.liquidity[asset2]
+        ) / (state.external_market[asset1] / state.external_market[asset2])) - (
+            omnipool.lrna[asset2] * omnipool.liquidity[asset1]
+        )) / (omnipool.lrna[asset1] + omnipool.lrna[asset2])
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell=asset1, tkn_buy=asset2,
+            sell_quantity=min(delta_r, agent.holdings[asset1], omnipool.liquidity[asset1] * max_fraction)
+        )
+        oamm.execute_remove_liquidity(
+            state=omnipool,
+            agent=agent,
+            quantity=agent.holdings[(omnipool.unique_id, asset1)],
+            tkn_remove=asset1
+        )
+        oamm.execute_swap(
+            state=omnipool,
+            agent=agent,
+            tkn_sell='LRNA', tkn_buy=asset2,
+            sell_quantity=agent.holdings['LRNA']
+        )
+        profit = sum(agent.holdings.values()) - sum(agent_holdings.values())
+        return state
+
+    return TradeStrategy(
+        strategy_function=price_manipulation_strategy,
+        name='price_manipulation',
+    )
+
+
+def price_manipulation_multiple_blocks(
+        pool_id: str):
+    class PriceManipulationStrategy:
+        def __init__(self):
+            # self.trade_asset = asset2
+            # self.attack_asset = asset1
+            self.asset_sell_target = 0
+            self.asset_sold = 0
+            self.add_liquidity_target = 0
+            self.liquidity_added = 0
+            self.arb_trade_target = 0
+            self.remove_liquidity_target = 0
+            self.liquidity_removed = 0
+            self.attack_asset = ''
+            self.trade_asset = ''
+            self.asset_pairs = []
+
+        def execute(self, state: GlobalState, agent_id: str):
+            omnipool: OmnipoolState = state.pools[pool_id]
+            agent: Agent = state.agents[agent_id]
+
+            if self.attack_asset == '':
+                self.attack_asset = omnipool.asset_list[0]
+                self.trade_asset = omnipool.asset_list[1]
+
+            if (omnipool.unique_id, self.attack_asset) not in agent.holdings:
+                agent.holdings[(omnipool.unique_id, self.attack_asset)] = 0
+
+            if (
+                    self.asset_sell_target == 0
+                    and agent.holdings[(omnipool.unique_id, self.attack_asset)] == 0
+            ):
+                # the cycle begins
+                self.remove_liquidity_target = 0
+
+                # cycle between all assets
+                trade_asset_index = omnipool.asset_list.index(self.trade_asset)
+                attack_asset_index = omnipool.asset_list.index(self.attack_asset)
+                self.trade_asset = omnipool.asset_list[(trade_asset_index + 1) % len(omnipool.asset_list)]
+                if self.trade_asset == self.attack_asset:
+                    self.attack_asset = (omnipool.asset_list[
+                        (attack_asset_index + len(omnipool.asset_list) - 1)
+                        % len(omnipool.asset_list)
+                    ])
+                self.asset_pairs.append({
+                    'attack asset': self.attack_asset,
+                    'trade asset': self.trade_asset,
+                    'time step': state.time_step
+                })
+                if self.asset_pairs[-1]['attack asset'] == 'HDX' and self.asset_pairs[-1]['trade asset'] == 'DOT':
+                    er = 1
+
+                # target the maximum liquidity that will be allowed by the weight cap
+                max_liquidity = (
+                        (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
+                         - omnipool.lrna[self.attack_asset])
+                        / (1 - omnipool.weight_cap[self.attack_asset])
+                        / oamm.lrna_price(omnipool, self.trade_asset)
+                ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
+
+                # choose the largest trade size that will be allowed by the per block trade limit
+                self.asset_sell_target = min(
+                    agent.holdings[self.trade_asset],
+                    omnipool.liquidity[self.trade_asset] / 2,
+                    max_liquidity / 2
+                )
+                self.asset_pairs[-1]['sell target'] = self.asset_sell_target
+                self.asset_sold = 0
+
+            if self.asset_sell_target > 0:
+                # make sure we don't go over any limits and get rejected
+                sell_quantity = min(
+                    omnipool.liquidity[self.trade_asset] * omnipool.trade_limit_per_block * .9999,
+                    oamm.calculate_sell_from_buy(
+                        state=omnipool,
+                        tkn_sell=self.trade_asset, tkn_buy=self.attack_asset,
+                        buy_quantity=omnipool.liquidity[self.attack_asset] * omnipool.trade_limit_per_block
+                    ) * .9999,
+                    self.asset_sell_target - self.asset_sold
+                )
+                oamm.execute_swap(
+                    state=omnipool,
+                    agent=agent,
+                    tkn_sell=self.trade_asset, tkn_buy=self.attack_asset,
+                    sell_quantity=sell_quantity
+                )
+                self.asset_sold += sell_quantity
+                if self.asset_sold >= self.asset_sell_target:
+                    # we've sold enough - stop trying to sell
+                    # switch gears and start adding liquidity
+                    self.asset_sell_target = 0
+                    # find the maximum liquidity we can actually add
+                    max_liquidity = (
+                            (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
+                             - omnipool.lrna[self.attack_asset])
+                            / (1 - omnipool.weight_cap[self.attack_asset])
+                            / oamm.lrna_price(omnipool, self.attack_asset)
+                    ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
+                    self.add_liquidity_target = min(
+                        agent.holdings[self.attack_asset] / 2,
+                        omnipool.liquidity[self.attack_asset] * 100,
+                        max_liquidity * .9999
+                    )
+                    self.asset_pairs[-1]['add target'] = self.add_liquidity_target
+                    self.liquidity_added = 0
+                else:
+                    # if we haven't sold enough, try again next block
+                    return state
+
+            if self.add_liquidity_target > 0:
+                add_quantity = min(
+                    self.add_liquidity_target,
+                    omnipool.liquidity[self.attack_asset] * omnipool.trade_limit_per_block,
+                    self.add_liquidity_target - self.liquidity_added
+                )
+
+                oamm.execute_add_liquidity(
+                    state=omnipool,
+                    agent=agent,
+                    quantity=add_quantity,
+                    tkn_add=self.attack_asset
+                )
+
+                self.liquidity_added += add_quantity
+                if self.liquidity_added >= self.add_liquidity_target:
+                    # we've added enough liquidity - stop trying to add liquidity
+                    # switch gears and start arbitraging
+                    self.add_liquidity_target = 0
+                    self.arb_trade_target = 1
+                    self.asset_pairs[-1]['arb target'] = self.arb_trade_target
+
+            if self.arb_trade_target > 0:
+                # here we want to bring the prices back in line with the market
+                tkn_buy = self.trade_asset
+                tkn_sell = self.attack_asset
+                delta_r = (math.sqrt((
+                    omnipool.lrna[tkn_sell] * omnipool.lrna[tkn_buy]
+                    * omnipool.liquidity[tkn_sell] * omnipool.liquidity[tkn_buy]
+                ) / (state.external_market[tkn_sell] / state.external_market[tkn_buy])) - (
+                    omnipool.lrna[tkn_buy] * omnipool.liquidity[tkn_sell]
+                )) / (omnipool.lrna[tkn_sell] + omnipool.lrna[tkn_buy])
+
+                # find the max that we can (or want to) actually sell
+                sell_quantity = min(
+                    omnipool.liquidity[self.attack_asset] * omnipool.trade_limit_per_block,
+                    oamm.calculate_sell_from_buy(
+                        state=omnipool,
+                        tkn_sell=tkn_sell, tkn_buy=tkn_buy,
+                        buy_quantity=omnipool.liquidity[self.trade_asset] * omnipool.trade_limit_per_block
+                    ) * .9999,
+                    delta_r,
+                    agent.holdings[self.attack_asset]
+                )
+
+                oamm.execute_swap(
+                    state=omnipool,
+                    agent=agent,
+                    tkn_sell=self.attack_asset, tkn_buy=self.trade_asset,
+                    sell_quantity=sell_quantity
+                )
+                if state.time_step > 85:
+                    er = 1
+                if (
+                        oamm.usd_price(omnipool, self.attack_asset) / oamm.usd_price(omnipool, self.trade_asset)
+                        <= state.external_market[self.attack_asset] / state.external_market[self.trade_asset] * 1.00001
+                        or agent.holdings[self.attack_asset] == 0
+                ):
+                    # we're good, stop trying to arbitrage
+                    self.arb_trade_target = 0
+                    # now we want to remove all the liquidity we added
+                    self.remove_liquidity_target = agent.holdings[(omnipool.unique_id, self.attack_asset)]
+                    self.asset_pairs[-1]['remove target'] = self.remove_liquidity_target
+                    self.liquidity_removed = 0
+
+            if self.remove_liquidity_target > 0:
+                # try and get it all, although it might take multiple blocks
+                remove_quantity = min(
+                    omnipool.max_withdrawal_per_block * omnipool.shares[self.attack_asset],
+                    agent.holdings[(omnipool.unique_id, self.attack_asset)]
+                )
+                oamm.execute_remove_liquidity(
+                    state=omnipool,
+                    agent=agent,
+                    quantity=remove_quantity,
+                    tkn_remove=self.attack_asset
+                )
+                self.liquidity_removed += remove_quantity
+
+            agent.attack_history = self.asset_pairs
+            return state
+
+    return TradeStrategy(
+        strategy_function=PriceManipulationStrategy().execute,
+        name='price manipulation',
+    )

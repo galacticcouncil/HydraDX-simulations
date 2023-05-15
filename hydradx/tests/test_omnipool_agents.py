@@ -1,13 +1,15 @@
 import copy
-import random
+import math
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st  # , settings
 
+# from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
+from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -17,59 +19,6 @@ asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
-
-
-@st.composite
-def reasonable_market(draw, token_count: int = 0) -> list:
-    token_count = token_count or draw(asset_number_strategy)
-    return [draw(asset_price_bounded_strategy) for _ in range(token_count)]
-
-
-@st.composite
-def assets_reasonable_config(draw, token_count: int = 0) -> dict:
-    token_count = token_count or draw(asset_number_strategy)
-    usd_price_lrna = draw(asset_price_bounded_strategy)
-    return_dict = {
-        'HDX': {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA': draw(asset_quantity_bounded_strategy)
-        },
-        'USD': {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA_price': usd_price_lrna
-        }
-    }
-    return_dict.update({
-        ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
-            'liquidity': draw(asset_quantity_bounded_strategy),
-            'LRNA': draw(asset_quantity_bounded_strategy)
-        } for _ in range(token_count - 2)
-    })
-    return return_dict
-
-
-@st.composite
-def omnipool_reasonable_config(
-        draw,
-        asset_dict=None,
-        token_count=0,
-        lrna_fee=None,
-        asset_fee=None,
-        tvl_cap_usd=0,
-        imbalance=None,
-) -> oamm.OmnipoolState:
-    asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
-
-    test_state = oamm.OmnipoolState(
-        tokens=asset_dict,
-        tvl_cap=tvl_cap_usd or float('inf'),
-        asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
-        lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-    )
-
-    test_state.lrna_imbalance = -draw(asset_quantity_strategy) if imbalance is None else imbalance
-    test_state.update()
-    return test_state
 
 
 @given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), percentage_of_liquidity_strategy)
@@ -150,6 +99,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
 
 @given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
 def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
+    omnipool.trade_limit_per_block = float('inf')
     holdings = {'LRNA': 1000000000}
     for asset in omnipool.asset_list:
         holdings[asset] = 1000000000
@@ -187,13 +137,28 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 @given(omnipool_reasonable_config(token_count=3))
 def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent})
-    strat = invest_all('omnipool')
+    initial_agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
-    new_state = strat.execute(state, 'agent')
-    for asset in omnipool.asset_list:
-        if new_state.agents['agent'].holdings[asset] != 0:
-            raise
-        if new_state.agents['agent'].holdings[('omnipool', asset)] == 0:
-            raise
+    new_state = invest_all('omnipool').execute(initial_state, 'agent')
+    for tkn in omnipool.asset_list:
+        if new_state.agents['agent'].holdings[tkn] != 0:
+            raise AssertionError(f'Failed to LP {tkn}')
+        if new_state.agents['agent'].holdings[('omnipool', tkn)] == 0:
+            raise AssertionError(f'Did not receive shares for {tkn}')
+
+    hdx_state = invest_all('omnipool', 'HDX').execute(initial_state.copy(), 'agent')
+
+    if hdx_state.agents['agent'].holdings['HDX'] != 0:
+        raise AssertionError('HDX not reinvested.')
+    if hdx_state.agents['agent'].holdings[('omnipool', 'HDX')] == 0:
+        raise AssertionError('HDX shares not received.')
+
+    for tkn in omnipool.asset_list:
+        if tkn == 'HDX':
+            continue
+        if hdx_state.agents['agent'].holdings[tkn] == 0:
+            raise AssertionError(f'{tkn} missing from holdings.')
+        if ('omnipool', tkn) in hdx_state.agents['agent'].holdings \
+                and hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
+            raise AssertionError(f'Agent has shares of {tkn}, but should not.')
