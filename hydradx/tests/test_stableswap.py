@@ -8,13 +8,13 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
 from hypothesis import given, strategies as st
 from mpmath import mp, mpf
+from hydradx.tests.strategies_omnipool import stableswap_config
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_quantity_strategy = st.floats(min_value=1000, max_value=1000000)
 fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
 trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
-amplification_strategy = st.floats(min_value=1, max_value=10000)
 asset_number_strategy = st.integers(min_value=2, max_value=5)
 
 
@@ -25,38 +25,6 @@ def stable_swap_equation(d: float, a: float, n: int, reserves: list):
     side1 = a * n ** n * sum(reserves) + d
     side2 = a * n ** n * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, reserves))
     return side1 == pytest.approx(side2)
-
-
-@st.composite
-def assets_config(draw, token_count: int, base_token: str = 'USD') -> dict:
-    return_dict = {
-        f"{base_token}-{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
-        for i in range(token_count)
-    }
-    return return_dict
-
-
-@st.composite
-def stableswap_config(
-        draw,
-        asset_dict=None,
-        token_count: int = None,
-        trade_fee: float = None,
-        amplification: float = None,
-        precision: float = 0.00001,
-        unique_id: str = '',
-        base_token: str = 'USD'
-) -> stableswap.StableSwapPoolState:
-    token_count = token_count or draw(asset_number_strategy)
-    asset_dict = asset_dict or draw(assets_config(token_count, base_token=base_token))
-    test_state = StableSwapPoolState(
-        tokens=asset_dict,
-        amplification=draw(amplification_strategy) if amplification is None else amplification,
-        precision=precision,
-        trade_fee=draw(st.floats(min_value=0, max_value=0.1)) if trade_fee is None else trade_fee,
-        unique_id=unique_id or '/'.join(asset_dict.keys())
-    )
-    return test_state
 
 
 @given(stableswap_config(trade_fee=0))

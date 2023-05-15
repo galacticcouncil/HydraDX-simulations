@@ -150,14 +150,15 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     hdx_state = invest_all('omnipool', 'HDX').execute(initial_state.copy(), 'agent')
 
     if hdx_state.agents['agent'].holdings['HDX'] != 0:
-        raise AssertionError('HDX not reinvested')
+        raise AssertionError('HDX not reinvested.')
     if hdx_state.agents['agent'].holdings[('omnipool', 'HDX')] == 0:
-        raise AssertionError('HDX not reinvested')
+        raise AssertionError('HDX shares not received.')
 
     for tkn in omnipool.asset_list:
         if tkn == 'HDX':
             continue
         if hdx_state.agents['agent'].holdings[tkn] == 0:
-            raise
-        if hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
-            raise
+            raise AssertionError(f'{tkn} missing from holdings.')
+        if ('omnipool', tkn) in hdx_state.agents['agent'].holdings \
+                and hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
+            raise AssertionError(f'Agent has shares of {tkn}, but should not.')
