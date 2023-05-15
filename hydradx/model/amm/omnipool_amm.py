@@ -286,7 +286,8 @@ class OmnipoolArchiveState:
         # self.sub_pools = copy.deepcopy(state.sub_pools)
         self.oracles = {k: OracleArchiveState(v) for (k, v) in state.oracles.items()}
         self.unique_id = state.unique_id
-
+        self.volume_in = state.current_block.volume_in
+        self.volume_out = state.current_block.volume_out
         # record these for analysis later
         self.last_fee = {k: v for (k, v) in state.last_fee.items()}
         self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
