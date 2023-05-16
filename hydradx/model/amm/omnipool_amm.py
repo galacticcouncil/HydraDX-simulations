@@ -67,7 +67,7 @@ class OmnipoolState(AMM):
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
         self.fail = ''
-        self.sub_pools = {}  # require sub_pools to be added through create_sub_pool
+        self.sub_pools = dict()  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
@@ -901,10 +901,6 @@ def execute_add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
-    # enforce upper limit on liquidity addition
-    if quantity > state.max_lp_per_block * state.liquidity[tkn_add] - state.current_block.lps[tkn_add]:
-        return state.fail_transaction('Transaction rejected because it would exceed the max LP per block.', agent)
-
     delta_Q = lrna_price(state, tkn_add) * quantity
     if not (state.unique_id, tkn_add) in agent.holdings:
         agent.holdings[(state.unique_id, tkn_add)] = 0
@@ -942,6 +938,10 @@ def execute_add_liquidity(
                     tkn_add=sub_pool.unique_id
                 )
         raise AssertionError(f"invalid value for i: {tkn_add}")
+    else:
+        # enforce upper limit on liquidity addition
+        if quantity > state.max_lp_per_block * state.liquidity[tkn_add] - state.current_block.lps[tkn_add]:
+            return state.fail_transaction('Transaction rejected because it would exceed the max LP per block.', agent)
 
     # Share update
     if state.shares[tkn_add]:
