@@ -238,7 +238,7 @@ class OmnipoolState(AMM):
         lrna_total = round(self.lrna_total, precision)
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
-        prices = {tkn: round(usd_price(self, tkn), precision) for tkn in self.asset_list}
+        prices = {tkn: round(usd_price(self, tkn), precision) if price(self, self.stablecoin) != 0 else 0 for tkn in self.asset_list}
         newline = '\n'
         return (
             f'Omnipool: {self.unique_id}\n'
@@ -348,6 +348,7 @@ def get_sub_pool(state: OmnipoolState, tkn: str):
         for pool in state.sub_pools.values():
             if tkn in pool.asset_list:
                 return pool.unique_id
+        raise ValueError(f'asset {tkn} not found in any sub-pool')
 
 
 def execute_swap(
@@ -361,6 +362,8 @@ def execute_swap(
         # note that we still apply the imbalance modification due to LRNA fee
         # collection, we just don't apply the imbalance modification from
         # the sale of LRNA back to the pool.
+        buy_pool_id: str = None,
+        sell_pool_id: str = None,
 ):
     """
     execute swap in place (modify and return self and agent)
@@ -369,13 +372,24 @@ def execute_swap(
     old_buy_liquidity = state.liquidity[tkn_buy] if tkn_buy in state.liquidity else 0
     old_sell_liquidity = state.liquidity[tkn_sell] if tkn_sell in state.liquidity else 0
 
-    if tkn_buy not in state.asset_list + ['LRNA'] or tkn_sell not in state.asset_list + ['LRNA']:
-        # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
+    if buy_pool_id is None:  # trader has not indicated which pool to buy from
+        if tkn_buy in state.asset_list + ['LRNA']:
+            buy_pool_id = ''
+        else:
+            buy_pool_id = get_sub_pool(state, tkn_buy)
+
+    if sell_pool_id is None:  # trader has not indicated which pool to sell to
+        if tkn_sell in state.asset_list + ['LRNA']:
+            sell_pool_id = ''
+        else:
+            sell_pool_id = get_sub_pool(state, tkn_sell)
+
+    if sell_pool_id != '' or buy_pool_id != '':
         return_val = execute_stable_swap(
             state=state,
             agent=agent,
-            sub_pool_buy_id=get_sub_pool(state=state, tkn=tkn_buy),
-            sub_pool_sell_id=get_sub_pool(state=state, tkn=tkn_sell),
+            sub_pool_buy_id=buy_pool_id,
+            sub_pool_sell_id=sell_pool_id,
             tkn_sell=tkn_sell, tkn_buy=tkn_buy,
             buy_quantity=buy_quantity,
             sell_quantity=sell_quantity

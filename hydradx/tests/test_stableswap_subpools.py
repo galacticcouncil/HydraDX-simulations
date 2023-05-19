@@ -7,7 +7,7 @@ import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
 
-@given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
+@given(omnipool_config(token_count=3, sub_pools={'stableswap': {'asset_dict': {'USD': 1000000, 'DAI': 1000000}}}))
 def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     # deposit stable pool shares into omnipool
