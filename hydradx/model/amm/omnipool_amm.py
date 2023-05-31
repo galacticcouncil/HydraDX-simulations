@@ -742,7 +742,7 @@ def execute_stable_swap(
         raise ValueError('buy_quantity or sell_quantity must be specified.')
 
 
-def execute_create_sub_pool(
+def execute_create_sub_pool_migrate(
         state: OmnipoolState,
         tkns_migrate: list[str],
         sub_pool_id: str,
@@ -781,6 +781,30 @@ def execute_create_sub_pool(
         state.lrna[tkn] = 0
         state.asset_list.remove(tkn)
     return state
+
+
+# def execute_create_sub_pool(
+#         state: OmnipoolState,
+#         pool: StableSwapPoolState,
+#         sub_pool_id: str,
+# ):
+#     state.sub_pools[sub_pool_id] = pool
+#     state.add_token(
+#         sub_pool_id,
+#         liquidity=sum([state.lrna[tkn] for tkn in tkns_migrate]),
+#         shares=sum([state.lrna[tkn] for tkn in tkns_migrate]),
+#         lrna=sum([state.lrna[tkn] for tkn in tkns_migrate]),
+#         protocol_shares=sum([
+#             state.lrna[tkn] * state.protocol_shares[tkn] / state.shares[tkn] for tkn in tkns_migrate
+#         ])
+#     )
+#
+#     # remove assets from Omnipool
+#     for tkn in tkns_migrate:
+#         state.liquidity[tkn] = 0
+#         state.lrna[tkn] = 0
+#         state.asset_list.remove(tkn)
+#     return state
 
 
 def execute_migrate_asset(state: OmnipoolState, tkn_migrate: str, sub_pool_id: str):

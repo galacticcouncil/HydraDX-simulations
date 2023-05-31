@@ -647,7 +647,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     r1 = s1_lp.holdings[asset1]
 
     # scenario 2: migrate assets to subpool, then withdraw an equal percentage of each
-    migrate_state = oamm.execute_create_sub_pool(
+    migrate_state = oamm.execute_create_sub_pool_migrate(
         state=initial_state.copy(),
         tkns_migrate=[asset1, asset2, asset3],
         sub_pool_id='stableswap',

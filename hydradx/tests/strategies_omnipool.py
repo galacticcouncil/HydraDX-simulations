@@ -169,13 +169,24 @@ def omnipool_config(
     )
 
     for name, pool in sub_pool_instances.items():
-        oamm.execute_create_sub_pool(
-            state=test_state,
-            tkns_migrate=pool.asset_list,
-            sub_pool_id=name,
-            amplification=pool.amplification,
-            trade_fee=pool.trade_fee
+        # add LP tokens to Omnipool
+        # TODO calculate price of share token, in LRNA
+        share_price = 1
+        test_state.sub_pools[name] = pool
+        test_state.add_token(
+            name,
+            liquidity=pool.shares,
+            shares=pool.shares * share_price,
+            lrna=pool.shares * share_price,
+            protocol_shares=pool.shares * share_price
         )
+
+
+        # oamm.execute_create_sub_pool(
+        #     state=test_state,
+        #     pool=pool,
+        #     sub_pool_id=name,
+        # )
 
     test_state.lrna_imbalance = -draw(asset_quantity_strategy)
     test_state.update()

@@ -494,7 +494,7 @@ def create_sub_pool(
 ):
     new_state = old_state.copy()
     new_pool = new_state.pools[pool_id]
-    new_pool.execute_create_sub_pool(
+    new_pool.execute_create_sub_pool_migrate(
         tkns_migrate=tkns_migrate,
         sub_pool_id=sub_pool_id,
         amplification=amplification,
