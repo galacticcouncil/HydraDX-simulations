@@ -468,11 +468,11 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
             high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
 
-            if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
-                skip_ct += 1
-                if i < usd_index:
-                    usd_index -= 1
-                continue
+            # if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+            #     skip_ct += 1
+            #     if i < usd_index:
+            #         usd_index -= 1
+            #     continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
@@ -511,6 +511,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                         else:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
                                               buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
+                        if omnipool.fail:
+                            er = 1
                 break
             elif j == arb_precision - 1:
                 for i in range(len(asset_list)):
@@ -520,6 +522,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                     else:
                         oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
                                           buy_quantity=-dq[i], modify_imbalance=False)
+                    if omnipool.fail:
+                        er=1
                 break  # technically unnecessary
 
         return state
