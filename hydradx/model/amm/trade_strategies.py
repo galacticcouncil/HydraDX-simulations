@@ -898,3 +898,45 @@ def price_manipulation_multiple_blocks(
         strategy_function=PriceManipulationStrategy().execute,
         name='price manipulation',
     )
+
+
+def price_sensitive_trading(
+        pool_id: str,
+        max_volume_usd: float,
+        price_sensitivity: float,
+        tkn_sell: str = None,
+        tkn_buy: str = None,
+        trade_frequency: float = 0.1
+) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if random.random() > trade_frequency:
+            return state
+        agent: Agent = state.agents[agent_id]
+        pool: OmnipoolState = state.pools[pool_id]
+        options = list(set(agent.asset_list) & set(pool.asset_list))
+        sell = tkn_sell
+        buy = tkn_buy
+        if tkn_sell is None:
+            sell = random.choice(options)
+            options.remove(sell)
+        if tkn_buy is None:
+            buy = random.choice(options)
+        slip_rate = (
+            oamm.calculate_sell_from_buy(pool, buy, sell, max_volume_usd / state.external_market[buy])
+            / (state.external_market[buy] / state.external_market[sell])
+            / (max_volume_usd / state.external_market[buy])
+        ) - 1  # find the price of buying from the pool vs. buying from the market
+        trade_volume = max(
+            max_volume_usd / state.external_market[sell] * max(min(1 - price_sensitivity * slip_rate, 1), 0) ** 10,
+            0
+        ) / trade_frequency
+        oamm.execute_swap(
+            state=pool,
+            agent=agent,
+            tkn_sell=sell,
+            tkn_buy=buy,
+            sell_quantity=trade_volume,
+        )
+        return state
+
+    return TradeStrategy(strategy, name=f'price sensitive trading (sensitivity ={price_sensitivity})')
