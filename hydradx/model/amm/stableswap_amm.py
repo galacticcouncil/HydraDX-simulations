@@ -259,7 +259,7 @@ def execute_withdraw_asset(
     state.shares -= shares_removed
     state.liquidity[tkn_remove] -= quantity
     agent.holdings[tkn_remove] += quantity
-    # return state, agent
+    return state, agent
 
 
 def execute_remove_shares_curve_style(
