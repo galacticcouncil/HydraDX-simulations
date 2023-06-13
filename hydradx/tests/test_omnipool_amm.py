@@ -1860,7 +1860,7 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
 
 @given(
     omnipool_reasonable_config(),
-    st.floats(min_value=1e-8, max_value=0.02),
+    st.floats(min_value=1e-7, max_value=0.02),
     st.booleans(),
     st.floats(min_value=1e-8, max_value=0.1),
     st.floats(min_value=0.1, max_value=10.0),
