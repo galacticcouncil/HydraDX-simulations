@@ -267,13 +267,12 @@ def execute_remove_shares_curve_style(
         agent: Agent,
         shares_removed: float,
         tkn_remove: str,
-        fail_on_overdraw: bool = True
 ):
     # First, need to calculate
     # * Get current D
     # * Solve Eqn against y_i for D - _token_amount
 
-    _fee = state.trade_fee  # / 1.5
+    _fee = state.trade_fee
 
     initial_d = state.calculate_d()
     reduced_d = initial_d - shares_removed * initial_d / state.shares
@@ -293,8 +292,6 @@ def execute_remove_shares_curve_style(
             xp_reduced[tkn] -= _fee * dx_expected
 
     dy = asset_reserve - state.calculate_y(list(xp_reduced.values()), reduced_d)
-    dy0 = state.liquidity[tkn_remove] - reduced_y
-    # fee = dy0 - dy
 
     agent.holdings[state.unique_id] -= shares_removed
     state.shares -= shares_removed
@@ -302,7 +299,7 @@ def execute_remove_shares_curve_style(
     if tkn_remove not in agent.holdings:
         agent.holdings[tkn_remove] = 0
     agent.holdings[tkn_remove] += dy
-    return state, agent  # dy, dy_0 - dy
+    return state, agent
 
 
 def execute_add_liquidity(
