@@ -511,8 +511,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                         else:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
                                               buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
-                        if omnipool.fail:
-                            er = 1
                 break
             elif j == arb_precision - 1:
                 for i in range(len(asset_list)):
@@ -522,8 +520,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                     else:
                         oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
                                           buy_quantity=-dq[i], modify_imbalance=False)
-                    if omnipool.fail:
-                        er=1
                 break  # technically unnecessary
 
         return state
