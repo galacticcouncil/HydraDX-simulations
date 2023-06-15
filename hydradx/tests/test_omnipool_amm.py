@@ -368,6 +368,86 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent holdings are wrong.')
 
 
+@given(omnipool_config(token_count=3, asset_fee=0.25, lrna_fee=0))
+def test_buy_with_lrna_fee(initial_state: oamm.OmnipoolState):
+    # old_state = initial_state
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = initial_state.asset_list[2]
+
+    delta_ra = 1000
+    delta_ra_feeless = delta_ra / (1 - 0.0025)
+    # delta_qa = -1000
+
+    feeless_state = initial_state.copy()
+    feeless_state.lrna_fee = 0
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_lrna_fee[asset] = 0
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
+    spot_price = swap_state.price(swap_state, i)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != spot_price:
+            raise AssertionError('Spot price is wrong.')
+
+
+        test1 = oamm.asset_invariant(swap_state, i)
+        test2 = oamm.asset_invariant(initial_state, i)
+
+        if oamm.asset_invariant(swap_state, i) < oamm.asset_invariant(initial_state, i):
+            raise
+
+    # # Test with trader selling LRNA
+    # new_state, new_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i)
+    # feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
+    # if oamm.asset_invariant(feeless_swap_state, i) != pytest.approx(oamm.asset_invariant(initial_state, i)):
+    #     raise
+    # for j in initial_state.asset_list:
+    #     if min(new_state.liquidity[j] - feeless_swap_state.liquidity[j], 0) != pytest.approx(0):
+    #         raise
+    # if min(oamm.asset_invariant(new_state, i) / oamm.asset_invariant(initial_state, i), 1) != pytest.approx(1):
+    #     raise
+    #
+    # delta_qi = new_state.lrna[i] - initial_state.lrna[i]
+    # qi_arb = initial_state.lrna[i] + delta_qi * initial_state.lrna[i] / initial_state.lrna_total
+    # ri_arb = initial_state.liquidity[i] * initial_state.lrna_total / new_state.lrna_total
+    #
+    # if ((initial_state.lrna[i] + initial_state.lrna_imbalance * (initial_state.lrna[i] / initial_state.lrna_total)) * ri_arb
+    # ) != pytest.approx(
+    #     (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * initial_state.liquidity[i]
+    # ):
+    #     raise AssertionError(f'LRNA imbalance is wrong.')
+    #
+    # if (new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(initial_state.liquidity[i] + old_agent.holdings[i])
+    #         or new_state.lrna[i] + new_agent.holdings['LRNA']
+    #         != pytest.approx(initial_state.lrna[i] + old_agent.holdings['LRNA'])):
+    #     raise AssertionError('System-wide asset total is wrong.')
+    #
+    # # try swapping into LRNA and back to see if that's equivalent
+    # reverse_state, reverse_agent = oamm.swap_lrna(
+    #     old_state=feeless_swap_state,
+    #     old_agent=feeless_swap_agent,
+    #     delta_qa=-delta_qa,
+    #     tkn=i
+    # )
+    #
+    # # We do not currently expect imbalance to be symmetric
+    # # if reverse_state.lrna_imbalance != pytest.approx(old_state.lrna_imbalance):
+    # #     raise AssertionError('LRNA imbalance is wrong.')
+    #
+    # if reverse_agent.holdings[i] != pytest.approx(old_agent.holdings[i]):
+    #     print(reverse_agent.holdings[i])
+    #     print(old_agent.holdings[i])
+    #     raise AssertionError('Agent holdings are wrong.')
+
+
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025, imbalance=-1000))
 def test_lrna_buy_nonzero_fee_nonzero_imbalance(initial_state: oamm.OmnipoolState):
     old_state = initial_state
