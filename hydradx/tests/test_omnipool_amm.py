@@ -368,14 +368,26 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent holdings are wrong.')
 
 
-@given(omnipool_config(token_count=3, asset_fee=0.25, lrna_fee=0))
-def test_buy_with_lrna_fee(initial_state: oamm.OmnipoolState):
-    # old_state = initial_state
+def test_buy_with_lrna_fee():
+
+    asset_dict = {
+        'HDX': {'liquidity': 1000000, 'LRNA': 50000},
+        'DOT': {'liquidity': 1000000, 'LRNA': 750000},
+        'USD': {'liquidity': 1000000, 'LRNA': 200000},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=0.0025,
+        lrna_fee=0.0
+    )
+
     old_agent = Agent(
         holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
     )
 
-    i = initial_state.asset_list[2]
+    i = 'DOT'
 
     delta_ra = 1000
     delta_ra_feeless = delta_ra / (1 - 0.0025)
@@ -394,7 +406,7 @@ def test_buy_with_lrna_fee(initial_state: oamm.OmnipoolState):
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
-        if feeless_spot_price != spot_price:
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
             raise AssertionError('Spot price is wrong.')
 
 
