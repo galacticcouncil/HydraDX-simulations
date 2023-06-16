@@ -368,18 +368,33 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent holdings are wrong.')
 
 
-def test_buy_with_lrna_fee():
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),)
+def test_buy_with_lrna_fee(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float
+):
 
     asset_dict = {
-        'HDX': {'liquidity': 1000000, 'LRNA': 50000},
-        'DOT': {'liquidity': 1000000, 'LRNA': 750000},
-        'USD': {'liquidity': 1000000, 'LRNA': 200000},
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
     }
 
     initial_state = oamm.OmnipoolState(
         tokens=asset_dict,
         tvl_cap=float('inf'),
-        asset_fee=0.0025,
+        asset_fee=asset_fee,
         lrna_fee=0.0
     )
 
@@ -390,7 +405,7 @@ def test_buy_with_lrna_fee():
     i = 'DOT'
 
     delta_ra = 1000
-    delta_ra_feeless = delta_ra / (1 - 0.0025)
+    delta_ra_feeless = delta_ra / (1 - asset_fee)
     # delta_qa = -1000
 
     feeless_state = initial_state.copy()
