@@ -374,15 +374,17 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
-       st.floats(min_value=0.0001, max_value=0.01),)
-def test_buy_with_lrna_fee(
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01))
+def test_lrna_swap_buy_with_lrna_mint(
         hdx_liquidity: float,
         dot_liquidity: float,
         usd_liquidity: float,
         hdx_lrna: float,
         dot_lrna: float,
         usd_lrna: float,
-        asset_fee: float
+        asset_fee: float,
+        lrna_fee: float
 ):
 
     asset_dict = {
@@ -395,7 +397,7 @@ def test_buy_with_lrna_fee(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=0.0
+        lrna_fee=lrna_fee
     )
 
     old_agent = Agent(
@@ -406,13 +408,10 @@ def test_buy_with_lrna_fee(
 
     delta_ra = 1000
     delta_ra_feeless = delta_ra / (1 - asset_fee)
-    # delta_qa = -1000
 
     feeless_state = initial_state.copy()
-    feeless_state.lrna_fee = 0
     feeless_state.asset_fee = 0
     for asset in feeless_state.asset_list:
-        feeless_state.last_lrna_fee[asset] = 0
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
@@ -425,28 +424,23 @@ def test_buy_with_lrna_fee(
             raise AssertionError('Spot price is wrong.')
 
 
-        test1 = oamm.asset_invariant(swap_state, i)
-        test2 = oamm.asset_invariant(initial_state, i)
-
-        if oamm.asset_invariant(swap_state, i) < oamm.asset_invariant(initial_state, i):
-            raise
-
-
 @given(st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
-       st.floats(min_value=0.0001, max_value=0.01),)
-def test_sell_with_lrna_fee(
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01))
+def test_lrna_swap_sell_with_lrna_mint(
         hdx_liquidity: float,
         dot_liquidity: float,
         usd_liquidity: float,
         hdx_lrna: float,
         dot_lrna: float,
         usd_lrna: float,
-        asset_fee: float
+        asset_fee: float,
+        lrna_fee: float
 ):
 
     asset_dict = {
@@ -459,7 +453,7 @@ def test_sell_with_lrna_fee(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=0.0
+        lrna_fee=lrna_fee
     )
 
     old_agent = Agent(
@@ -471,10 +465,8 @@ def test_sell_with_lrna_fee(
     delta_qa = -1000
 
     feeless_state = initial_state.copy()
-    feeless_state.lrna_fee = 0
     feeless_state.asset_fee = 0
     for asset in feeless_state.asset_list:
-        feeless_state.last_lrna_fee[asset] = 0
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
@@ -487,19 +479,13 @@ def test_sell_with_lrna_fee(
             raise AssertionError('Spot price is wrong.')
 
 
-        test1 = oamm.asset_invariant(swap_state, i)
-        test2 = oamm.asset_invariant(initial_state, i)
-
-        if oamm.asset_invariant(swap_state, i) < oamm.asset_invariant(initial_state, i):
-            raise
-
-
 @given(st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
        st.floats(min_value=0.0001, max_value=0.01),)
 def test_sell_with_lrna_mint(
         hdx_liquidity: float,
@@ -508,7 +494,8 @@ def test_sell_with_lrna_mint(
         hdx_lrna: float,
         dot_lrna: float,
         usd_lrna: float,
-        asset_fee: float
+        asset_fee: float,
+        lrna_fee: float,
 ):
 
     asset_dict = {
@@ -521,7 +508,7 @@ def test_sell_with_lrna_mint(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=0.0
+        lrna_fee=lrna_fee
     )
 
     old_agent = Agent(

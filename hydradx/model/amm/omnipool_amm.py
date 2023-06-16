@@ -493,7 +493,6 @@ def execute_lrna_swap(
         delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
 
         delta_qm = asset_fee * (-delta_qa)/state.lrna[tkn] * (state.lrna[tkn] - delta_qa)
-        # delta_qm = 0
         delta_q = delta_qm - delta_qa
 
         if modify_imbalance:
@@ -512,7 +511,6 @@ def execute_lrna_swap(
         denom = (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
         delta_qa = -state.lrna[tkn] * delta_ra / denom
         delta_qm = - asset_fee * (1 - asset_fee) * (state.liquidity[tkn] / denom) * delta_qa
-        # delta_qm = 0
         delta_q = -delta_qa + delta_qm
 
         if modify_imbalance:
