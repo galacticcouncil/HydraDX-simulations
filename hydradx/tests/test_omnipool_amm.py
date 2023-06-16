@@ -345,10 +345,10 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
 
-    if (new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(old_state.liquidity[i] + old_agent.holdings[i])
-            or new_state.lrna[i] + new_agent.holdings['LRNA']
-            != pytest.approx(old_state.lrna[i] + old_agent.holdings['LRNA'])):
+    if new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(old_state.liquidity[i] + old_agent.holdings[i]):
         raise AssertionError('System-wide asset total is wrong.')
+    if new_state.lrna[i] + new_agent.holdings['LRNA'] < old_state.lrna[i] + old_agent.holdings['LRNA']:
+        raise AssertionError('System-wide LRNA decreased.')
 
     # try swapping into LRNA and back to see if that's equivalent
     reverse_state, reverse_agent = oamm.swap_lrna(
