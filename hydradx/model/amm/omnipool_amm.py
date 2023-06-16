@@ -421,8 +421,10 @@ def execute_swap(
         )
         # lrna_fee = state.last_lrna_fee[tkn_buy]
 
-        delta_Qj = -delta_Qi * (1 - lrna_fee)
-        delta_Rj = state.liquidity[tkn_buy] * -delta_Qj / (state.lrna[tkn_buy] + delta_Qj) * (1 - asset_fee)
+        delta_Qt = -delta_Qi * (1 - lrna_fee)
+        delta_Qm = (state.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / state.lrna[tkn_buy]
+        delta_Qj = delta_Qt + delta_Qm
+        delta_Rj = state.liquidity[tkn_buy] * -delta_Qt / (state.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         delta_L = min(-delta_Qi * lrna_fee, -state.lrna_imbalance)
         delta_QH = -lrna_fee * delta_Qi - delta_L
 

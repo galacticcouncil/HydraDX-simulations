@@ -494,6 +494,115 @@ def test_sell_with_lrna_fee(
             raise
 
 
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),)
+def test_sell_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float
+):
+
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=0.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_ri = 1000
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
+    spot_price = swap_state.price(swap_state, j)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),)
+def test_buy_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float
+):
+
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=0.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_rj = 1000
+    delta_rj_feeless = delta_rj / (1 - asset_fee)
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
+    spot_price = swap_state.price(swap_state, j)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025, imbalance=-1000))
 def test_lrna_buy_nonzero_fee_nonzero_imbalance(initial_state: oamm.OmnipoolState):
     old_state = initial_state
