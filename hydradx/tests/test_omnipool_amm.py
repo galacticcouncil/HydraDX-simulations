@@ -586,6 +586,62 @@ def test_buy_with_lrna_mint(
             raise AssertionError('Spot price is wrong.')
 
 
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01), )
+def test_sell_with_partial_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float,
+        lrna_fee: float,
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_ri = 1000
+
+    # Test with trader buying asset i
+    swap_state_10, swap_agent_10 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
+    swap_state_5, swap_agent_5 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=0.5)
+    swap_state_0, swap_agent_0 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=0.0)
+
+    spot_price_10 = swap_state_10.price(swap_state_10, j)
+    spot_price_5 = swap_state_5.price(swap_state_5, j)
+    spot_price_0 = swap_state_0.price(swap_state_0, j)
+
+    if swap_state_10.fail == '' and swap_state_5.fail == '' and swap_state_0.fail == '':
+        if spot_price_10 <= spot_price_5:
+            raise AssertionError('Spot price is wrong.')
+        if spot_price_5 <= spot_price_0:
+            raise AssertionError('Spot price is wrong.')
+
+
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025, imbalance=-1000))
 def test_lrna_buy_nonzero_fee_nonzero_imbalance(initial_state: oamm.OmnipoolState):
     old_state = initial_state
