@@ -394,8 +394,10 @@ def test_lrna_swap_buy_with_lrna_mint(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=lrna_fee
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
     )
+
 
     old_agent = Agent(
         holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
@@ -412,9 +414,8 @@ def test_lrna_swap_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i, lrna_mint_pct=1.0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i,
-                                                            lrna_mint_pct=1.0)
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -450,7 +451,8 @@ def test_lrna_swap_sell_with_lrna_mint(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=lrna_fee
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
     )
 
     old_agent = Agent(
@@ -467,8 +469,8 @@ def test_lrna_swap_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i, lrna_mint_pct=1.0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i, lrna_mint_pct=1.0)
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -504,7 +506,8 @@ def test_sell_with_lrna_mint(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=lrna_fee
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
     )
 
     old_agent = Agent(
@@ -522,8 +525,8 @@ def test_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -557,7 +560,8 @@ def test_buy_with_lrna_mint(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=0.0
+        lrna_fee=0.0,
+        lrna_mint_pct=1.0
     )
 
     old_agent = Agent(
@@ -576,9 +580,8 @@ def test_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0, lrna_mint_pct=1.0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0,
-                                                       lrna_mint_pct=1.0)
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -610,15 +613,32 @@ def test_sell_with_partial_lrna_mint(
         'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
     }
 
-    initial_state = oamm.OmnipoolState(
+    initial_state_0 = oamm.OmnipoolState(
         tokens=asset_dict,
         tvl_cap=float('inf'),
         asset_fee=asset_fee,
-        lrna_fee=lrna_fee
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=0.0
+    )
+
+    initial_state_50 = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=0.5
+    )
+
+    initial_state_100 = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
     )
 
     old_agent = Agent(
-        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+        holdings={token: 10000 for token in initial_state_0.asset_list + ['LRNA']}
     )
 
     i = 'DOT'
@@ -627,18 +647,18 @@ def test_sell_with_partial_lrna_mint(
     delta_ri = 1000
 
     # Test with trader buying asset i
-    swap_state_10, swap_agent_10 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
-    swap_state_5, swap_agent_5 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=0.5)
-    swap_state_0, swap_agent_0 = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=0.0)
+    swap_state_100, swap_agent_100 = oamm.swap(initial_state_100, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+    swap_state_50, swap_agent_50 = oamm.swap(initial_state_50, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+    swap_state_0, swap_agent_0 = oamm.swap(initial_state_0, copy.deepcopy(old_agent), j, i, 0, delta_ri)
 
-    spot_price_10 = swap_state_10.price(swap_state_10, j)
-    spot_price_5 = swap_state_5.price(swap_state_5, j)
+    spot_price_100 = swap_state_100.price(swap_state_100, j)
+    spot_price_50 = swap_state_50.price(swap_state_50, j)
     spot_price_0 = swap_state_0.price(swap_state_0, j)
 
-    if swap_state_10.fail == '' and swap_state_5.fail == '' and swap_state_0.fail == '':
-        if spot_price_10 <= spot_price_5:
+    if swap_state_100.fail == '' and swap_state_50.fail == '' and swap_state_0.fail == '':
+        if spot_price_100 <= spot_price_50:
             raise AssertionError('Spot price is wrong.')
-        if spot_price_5 <= spot_price_0:
+        if spot_price_50 <= spot_price_0:
             raise AssertionError('Spot price is wrong.')
 
 
