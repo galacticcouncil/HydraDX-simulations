@@ -75,7 +75,6 @@ class OmnipoolState(AMM):
         self.remove_liquidity_volatility_threshold = remove_liquidity_volatility_threshold
         self.lrna_mint_pct = lrna_mint_pct
         self.withdrawal_fee = withdrawal_fee
-
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
 
@@ -482,7 +481,7 @@ def execute_lrna_swap(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True,
+        modify_imbalance: bool = True
 ):
     """
     Execute LRNA swap in place (modify and return)
@@ -1074,7 +1073,7 @@ def swap_lrna(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True,
+        modify_imbalance: bool = True
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
@@ -1090,7 +1089,7 @@ def swap(
         tkn_buy: str,
         tkn_sell: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0,
+        sell_quantity: float = 0
 ) -> tuple[OmnipoolState, Agent]:
     """
     execute swap on a copy of old_state and old_agent, and return the copies
@@ -1104,7 +1103,7 @@ def swap(
         sell_quantity=sell_quantity,
         buy_quantity=buy_quantity,
         tkn_buy=tkn_buy,
-        tkn_sell=tkn_sell
+        tkn_sell=tkn_sell,
     )
 
     return new_state, new_agent
