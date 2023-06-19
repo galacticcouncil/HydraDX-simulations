@@ -138,7 +138,7 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 @given(omnipool_reasonable_config(token_count=3))
 def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
-    initial_agent = Agent(holdings=holdings, trade_strategy=invest_all('omnipool', when=3))
+    initial_agent = Agent(holdings=holdings, trade_strategy=invest_all('omnipool', when=4))
     initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
     new_state = invest_all('omnipool').execute(initial_state, 'agent')
@@ -166,5 +166,5 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
 
     events = run(initial_state, time_steps=4)
     final_state = events[-1]
-    if final_state.agents['agent'].holdings['HDX'] != 0:
+    if final_state.agents['agent'].holdings['HDX'] != 0 or events[-2].agents['agent'].holdings['HDX'] == 0:
         raise AssertionError('HDX not invested at the right time.')
