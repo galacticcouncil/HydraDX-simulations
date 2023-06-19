@@ -102,7 +102,8 @@ class OmnipoolState(AMM):
             if last_oracle_values is None or 'price' not in last_oracle_values:
                 self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
             else:
-                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self), last_values=last_oracle_values['price'])
+                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self),
+                                               last_values=last_oracle_values['price'])
         if last_oracle_values is not None and oracles is not None:
             self.oracles.update({
                 name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name]
@@ -362,6 +363,7 @@ def execute_swap(
         # note that we still apply the imbalance modification due to LRNA fee
         # collection, we just don't apply the imbalance modification from
         # the sale of LRNA back to the pool.
+        lrna_mint_pct: float = 0.0,
 ):
     """
     execute swap in place (modify and return self and agent)
@@ -383,9 +385,11 @@ def execute_swap(
         )
 
     elif tkn_sell == 'LRNA':
-        return_val = execute_lrna_swap(state, agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
+        return_val = execute_lrna_swap(state, agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance,
+                                       lrna_mint_pct)
     elif tkn_buy == 'LRNA':
-        return_val = execute_lrna_swap(state, agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
+        return_val = execute_lrna_swap(state, agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance,
+                                       lrna_mint_pct)
 
     elif buy_quantity and not sell_quantity:
         # back into correct delta_Ri, then execute sell
@@ -399,7 +403,8 @@ def execute_swap(
             tkn_buy=tkn_buy,
             tkn_sell=tkn_sell,
             buy_quantity=buy_quantity,
-            sell_quantity=delta_Ri
+            sell_quantity=delta_Ri,
+            lrna_mint_pct=lrna_mint_pct
         )
     else:
         # basic Omnipool swap
@@ -422,7 +427,7 @@ def execute_swap(
         # lrna_fee = state.last_lrna_fee[tkn_buy]
 
         delta_Qt = -delta_Qi * (1 - lrna_fee)
-        delta_Qm = (state.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / state.lrna[tkn_buy]
+        delta_Qm = (state.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / state.lrna[tkn_buy] * lrna_mint_pct
         delta_Qj = delta_Qt + delta_Qm
         delta_Rj = state.liquidity[tkn_buy] * -delta_Qt / (state.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         delta_L = min(-delta_Qi * lrna_fee, -state.lrna_imbalance)
@@ -478,7 +483,8 @@ def execute_lrna_swap(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True
+        modify_imbalance: bool = True,
+        lrna_mint_pct: float = 0.0,
 ):
     """
     Execute LRNA swap in place (modify and return)
@@ -492,7 +498,7 @@ def execute_lrna_swap(
             return state.fail_transaction('insufficient lrna in pool', agent)
         delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
 
-        delta_qm = asset_fee * (-delta_qa)/state.lrna[tkn] * (state.lrna[tkn] - delta_qa)
+        delta_qm = asset_fee * (-delta_qa) / state.lrna[tkn] * (state.lrna[tkn] - delta_qa) * lrna_mint_pct
         delta_q = delta_qm - delta_qa
 
         if modify_imbalance:
@@ -510,7 +516,7 @@ def execute_lrna_swap(
             return state.fail_transaction('agent has insufficient assets', agent)
         denom = (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
         delta_qa = -state.lrna[tkn] * delta_ra / denom
-        delta_qm = - asset_fee * (1 - asset_fee) * (state.liquidity[tkn] / denom) * delta_qa
+        delta_qm = - asset_fee * (1 - asset_fee) * (state.liquidity[tkn] / denom) * delta_qa * lrna_mint_pct
         delta_q = -delta_qa + delta_qm
 
         if modify_imbalance:
@@ -1070,14 +1076,15 @@ def swap_lrna(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True
+        modify_imbalance: bool = True,
+        lrna_mint_pct: float = 0.0,
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
+    return execute_lrna_swap(new_state, new_agent, delta_ra, delta_qa, tkn, modify_imbalance, lrna_mint_pct)
 
 
 def swap(
@@ -1086,7 +1093,8 @@ def swap(
         tkn_buy: str,
         tkn_sell: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0
+        sell_quantity: float = 0,
+        lrna_mint_pct: float = 0.0,
 ) -> tuple[OmnipoolState, Agent]:
     """
     execute swap on a copy of old_state and old_agent, and return the copies
@@ -1101,6 +1109,7 @@ def swap(
         buy_quantity=buy_quantity,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
+        lrna_mint_pct=lrna_mint_pct,
     )
 
     return new_state, new_agent

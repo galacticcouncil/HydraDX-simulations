@@ -1,6 +1,5 @@
 import copy
 import math
-import random
 
 import pytest
 from hypothesis import given, strategies as st, assume, settings
@@ -12,7 +11,6 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
-
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -386,7 +384,6 @@ def test_lrna_swap_buy_with_lrna_mint(
         asset_fee: float,
         lrna_fee: float
 ):
-
     asset_dict = {
         'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
         'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
@@ -415,8 +412,9 @@ def test_lrna_swap_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i, lrna_mint_pct=1.0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i,
+                                                            lrna_mint_pct=1.0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -442,7 +440,6 @@ def test_lrna_swap_sell_with_lrna_mint(
         asset_fee: float,
         lrna_fee: float
 ):
-
     asset_dict = {
         'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
         'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
@@ -470,8 +467,8 @@ def test_lrna_swap_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i, lrna_mint_pct=1.0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i, lrna_mint_pct=1.0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -486,7 +483,7 @@ def test_lrna_swap_sell_with_lrna_mint(
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=0.0001, max_value=0.01),
-       st.floats(min_value=0.0001, max_value=0.01),)
+       st.floats(min_value=0.0001, max_value=0.01), )
 def test_sell_with_lrna_mint(
         hdx_liquidity: float,
         dot_liquidity: float,
@@ -497,7 +494,6 @@ def test_sell_with_lrna_mint(
         asset_fee: float,
         lrna_fee: float,
 ):
-
     asset_dict = {
         'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
         'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
@@ -526,8 +522,8 @@ def test_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri)
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri, lrna_mint_pct=1.0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -541,7 +537,7 @@ def test_sell_with_lrna_mint(
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
        st.floats(min_value=10000, max_value=10000000),
-       st.floats(min_value=0.0001, max_value=0.01),)
+       st.floats(min_value=0.0001, max_value=0.01), )
 def test_buy_with_lrna_mint(
         hdx_liquidity: float,
         dot_liquidity: float,
@@ -551,7 +547,6 @@ def test_buy_with_lrna_mint(
         usd_lrna: float,
         asset_fee: float
 ):
-
     asset_dict = {
         'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
         'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
@@ -581,8 +576,9 @@ def test_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0, lrna_mint_pct=1.0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0,
+                                                       lrna_mint_pct=1.0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
