@@ -1,3 +1,4 @@
+import pickle
 from csv import DictReader, writer, reader
 from dataclasses import dataclass
 import requests
@@ -142,6 +143,7 @@ def import_binance_prices(
                 csvreader = reader(input_file)
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
 
+    data_length = min([len(price_data[tkn]) for tkn in assets])
     if not return_as_dict:
         data_length = min([len(price_data[tkn]) for tkn in assets])
         price_data = [
@@ -151,7 +153,8 @@ def import_binance_prices(
 
 
 def import_monthly_binance_prices(
-        assets: list[str], start_month: str, months: int, interval: int = 12, return_as_dict: bool = False
+        assets: list[str], start_month: str, months: int, interval: int = 12,
+        stablecoin: str = 'USDT', return_as_dict: bool = False
 ) -> dict[str: list[float]]:
     start_mth, start_year = start_month.split(' ')
 
@@ -165,12 +168,12 @@ def import_monthly_binance_prices(
     # check that the files are all there, and if not, download them
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"{stablecoin}{tkn}-1s-{date}"
             if os.path.exists(f'./data/{file}.csv'):
                 continue
             else:
                 print(f'Downloading {file}')
-                url = f"https://data.binance.vision/data/spot/monthly/klines/{tkn}BUSD/1s/{file}.zip"
+                url = f"https://data.binance.vision/data/spot/monthly/klines/{tkn}{stablecoin}/1s/{file}.zip"
                 response = requests.get(url)
                 with open(f'./data/{file}.zip', 'wb') as f:
                     f.write(response.content)
@@ -187,7 +190,7 @@ def import_monthly_binance_prices(
     price_data = {tkn: [] for tkn in assets}
     for tkn in assets:
         for date in dates:
-            file = f"{tkn}BUSD-1s-{date}"
+            file = f"{tkn}{stablecoin}-1s-{date}"
             with open(f'./data/{file}.csv', 'r') as input_file:
                 csvreader = reader(input_file)
                 price_data[tkn] += [float(row[0]) for row in csvreader][::interval]
@@ -200,14 +203,30 @@ def import_monthly_binance_prices(
     return price_data
 
 
-# def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
-#     price_data = []
-#     with open(input_path + input_filename, newline='') as input_file:
-#         fieldnames = ['timestamp', 'price']
-#         reader = DictReader(input_file, fieldnames=fieldnames)
-#         next(reader)  # skip header
-#         for row in reader:
-#             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-#
-#     price_data.sort(key=lambda x: x.timestamp)
-#     return price_data
+def save_output(data: object, filename: str, folder: str = 'output') -> None:
+    """Save the output data to a file.
+
+    Args:
+        data (object): The data to be saved.
+        filename (str): The name of the file to be saved.
+        folder (str, optional): The name of the folder to save the file in. Defaults to 'output'.
+    """
+    if not os.path.exists(f'./{folder}'):
+        os.mkdir(f'./{folder}')
+    with open(f'./{folder}/{filename}.pickle', 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_output(filename: str, folder: str = 'output') -> object:
+    """Load the output data from a file.
+
+    Args:
+        filename (str): The name of the file to be loaded.
+        folder (str, optional): The name of the folder to load the file from. Defaults to 'output'.
+
+    Returns:
+        object: The data that was saved in the file.
+    """
+    with open(f'./{folder}/{filename}.pickle', 'rb') as f:
+        data = pickle.load(f)
+    return data
