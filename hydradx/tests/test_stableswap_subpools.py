@@ -224,12 +224,15 @@ def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
             new_stable_pool.calculate_d() * stable_pool.shares
     ):
         raise AssertionError("Shares/invariant ratio incorrect.")
-    if (
-            (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d()
-            * (1 - stable_pool.trade_fee) !=
-            pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
-    ):
-        raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
+    # commented out because withdrawal fees and trade fees are no longer (close to) equivalent
+    # since the new execute_remove_liquidity function does not use the trade fee in the same way
+    #
+    # if (
+    #         (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d()
+    #         * (1 - stable_pool.trade_fee) !=
+    #         pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
+    # ):
+    #     raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
     if (
             new_state.liquidity[stable_shares] + stable_pool.shares !=
             pytest.approx(new_stable_pool.shares + initial_state.liquidity[stable_shares])
@@ -357,12 +360,15 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
             pytest.approx(stable_pool.shares * new_stable_pool.calculate_d())
     ):
         raise AssertionError("New_shares * D did not yield expected result.")
-    if (
-            (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d()
-            * (1 - stable_pool.trade_fee) !=
-            pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
-    ):
-        raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
+    # commented out because withdrawal fees and trade fees are no longer (close to) equivalent
+    # since the new execute_remove_liquidity function does not use the trade fee in the same way
+    #
+    # if (
+    #         (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d()
+    #         * (1 - stable_pool.trade_fee) !=
+    #         pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
+    # ):
+    #     raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
     if (
             new_state.liquidity[stable_pool.unique_id] + stable_pool.shares
             != pytest.approx(new_stable_pool.shares + initial_state.liquidity[stable_pool.unique_id])
