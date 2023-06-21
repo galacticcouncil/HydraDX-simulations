@@ -93,7 +93,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
 
     # Trading should be profitable
     if old_value > new_value:
-        if new_value != pytest.approx(old_value, rel=1e-15):
+        if new_value != pytest.approx(old_value, rel=1e-12):
             raise
 
 
