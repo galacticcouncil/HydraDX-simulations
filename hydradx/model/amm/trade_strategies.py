@@ -3,7 +3,7 @@ import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState, usd_price
+from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
@@ -34,7 +34,7 @@ class TradeStrategy:
             new_state = self.execute(state, agent_id)
             return other.execute(new_state, agent_id)
 
-        return TradeStrategy(combo_function, name='\n + '.join([self.name, other.name]))
+        return TradeStrategy(combo_function, name='\n'.join([self.name, other.name]))
 
 
 def random_swaps(

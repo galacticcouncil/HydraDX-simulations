@@ -12,10 +12,9 @@ class FeeMechanism:
         self.tkn = None
 
     def assign(self, exchange, tkn=''):
-        copy_self = copy.deepcopy(self)
-        copy_self.exchange = exchange
-        copy_self.tkn = tkn
-        return copy_self
+        self.exchange = exchange
+        self.tkn = tkn
+        return self
 
     def compute(self, tkn: str = '', delta_tkn: float = 0) -> float:
         return self.fee_function(
