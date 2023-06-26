@@ -18,6 +18,7 @@ stablecoin = 'USDT'
 date = '2023-05'
 file = f"{tkn}{stablecoin}-1s-{date}"
 url = f"https://data.binance.vision/?prefix=data/spot/monthly/klines/{tkn}{stablecoin}/1s/{file}.zip"
+url = f"https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1s/DOTUSDT-1s-2023-05.zip"
 response = requests.get(url)
 full_path = f"./data/{file}.zip"
 full_path = cwd + f"/data/{file}.zip"
