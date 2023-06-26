@@ -23,8 +23,7 @@ full_path = f"./data/{file}.zip"
 full_path = cwd + f"/data/{file}.zip"
 test = response.headers.get('Content-Type')
 is_file = os.path.isfile(full_path)
-# with open(full_path, 'wb') as f:
-with open("/home/colin/test.zip", 'wb') as f:
+with open(full_path, 'wb') as f:
     f.write(response.content)
 is_file = os.path.isfile(full_path)
 with ZipFile(f"./data/{file}.zip", 'r') as zipObj:
