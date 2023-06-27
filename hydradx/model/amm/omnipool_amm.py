@@ -901,8 +901,14 @@ def execute_add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
+    if quantity <= 0:
+        return state.fail_transaction('Quantity must be non-negative.', agent)
+
     delta_Q = lrna_price(state, tkn_add) * quantity
-    if not (state.unique_id, tkn_add) in agent.holdings:
+    if (state.unique_id, tkn_add) in agent.holdings:
+        if agent.holdings[(state.unique_id, tkn_add)] != 0:
+            return state.fail_transaction(f'Agent already has liquidity in pool {tkn_add}.', agent)
+    else:
         agent.holdings[(state.unique_id, tkn_add)] = 0
 
     if agent.holdings[tkn_add] < quantity:
