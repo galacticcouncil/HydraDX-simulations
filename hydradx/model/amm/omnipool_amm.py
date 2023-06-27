@@ -102,7 +102,8 @@ class OmnipoolState(AMM):
             if last_oracle_values is None or 'price' not in last_oracle_values:
                 self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
             else:
-                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self), last_values=last_oracle_values['price'])
+                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self),
+                                               last_values=last_oracle_values['price'])
         if last_oracle_values is not None and oracles is not None:
             self.oracles.update({
                 name: Oracle(sma_equivalent_length=period, last_values=last_oracle_values[name]
@@ -901,8 +902,14 @@ def execute_add_liquidity(
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity addition"""
 
+    if quantity <= 0:
+        return state.fail_transaction('Quantity must be non-negative.', agent)
+
     delta_Q = lrna_price(state, tkn_add) * quantity
-    if not (state.unique_id, tkn_add) in agent.holdings:
+    if (state.unique_id, tkn_add) in agent.holdings:
+        if agent.holdings[(state.unique_id, tkn_add)] != 0:
+            return state.fail_transaction(f'Agent already has liquidity in pool {tkn_add}.', agent)
+    else:
         agent.holdings[(state.unique_id, tkn_add)] = 0
 
     if agent.holdings[tkn_add] < quantity:
