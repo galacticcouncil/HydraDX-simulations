@@ -3,7 +3,7 @@ import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState
+from .omnipool_amm import OmnipoolState, execute_swap, execute_add_liquidity
 from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
@@ -14,25 +14,24 @@ import numpy as np
 
 
 class TradeStrategy:
-    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
+    def __init__(self, strategy_function: Callable[[GlobalState, str], None], name: str, run_once: bool = False):
         self.function = strategy_function
         self.run_once = run_once
         self.done = False
         self.name = name
 
-    def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
-        if self.done:
-            return state
-        elif self.run_once:
-            self.done = True
-        return self.function(state, agent_id)
+    def execute(self, state: GlobalState, agent_id: str) -> None:
+        if not self.done:
+            if self.run_once:
+                self.done = True
+            self.function(state, agent_id)
 
     def __add__(self, other):
         assert isinstance(other, TradeStrategy)
 
-        def combo_function(state, agent_id) -> GlobalState:
-            new_state = self.execute(state, agent_id)
-            return other.execute(new_state, agent_id)
+        def combo_function(state, agent_id) -> None:
+            self.execute(state, agent_id)
+            other.execute(state, agent_id)
 
         return TradeStrategy(combo_function, name='\n'.join([self.name, other.name]))
 
@@ -49,22 +48,20 @@ def random_swaps(
     }
     """
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
 
         buy_asset = random.choice(list(amount.keys()))
         sell_asset = random.choice(list(amount.keys()))
         sell_quantity = (
             amount[sell_asset] / (state.price(sell_asset) or 1) * (random.random() if randomize_amount else 1)
         ) or 1
-        if buy_asset == sell_asset:
-            return state
-        else:
-            return swap(
-                old_state=state,
-                pool_id=pool_id,
-                agent_id=agent_id,
-                tkn_sell=sell_asset,
+
+        if buy_asset != sell_asset:
+            execute_swap(
+                state=state.pools['omnipool'],
+                agent=state.agents[agent_id],
                 tkn_buy=buy_asset,
+                tkn_sell=sell_asset,
                 sell_quantity=sell_quantity
             )
 
@@ -77,7 +74,7 @@ def steady_swaps(
     asset_list: list = ()
 ) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
 
         strategy.buy_index = getattr(strategy, 'buy_index', -1)
         strategy.buy_index += 1
@@ -90,7 +87,7 @@ def steady_swaps(
         sell_asset = assets[sell_index]
         sell_quantity = usd_amount / state.price(sell_asset)
 
-        return state.execute_swap(
+        state.execute_swap(
             pool_id=pool_id,
             agent_id=agent_id,
             tkn_sell=sell_asset,
@@ -108,9 +105,9 @@ def constant_swaps(
     buy_asset: str
 ) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
 
-        return state.execute_swap(
+        state.execute_swap(
             pool_id=pool_id,
             agent_id=agent_id,
             tkn_sell=sell_asset,
@@ -126,7 +123,7 @@ def back_and_forth(
     percentage: float  # percentage of TVL to trade each block
 ) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         for i in range(len(omnipool.asset_list)):
@@ -137,8 +134,6 @@ def back_and_forth(
             dq = state.agents[agent_id].holdings['LRNA'] - lrna_init
             oamm.execute_swap(omnipool, agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq, modify_imbalance=False)
 
-        return state
-
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
 
 
@@ -147,31 +142,28 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
     if assets and not isinstance(assets, list):
         assets = [assets]
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
 
         agent: Agent = state.agents[agent_id]
 
         for asset in assets or agent.holdings.keys():
 
             if asset in state.pools[pool_id].asset_list:
-                state = add_liquidity(
-                    old_state=state,
-                    pool_id=pool_id,
-                    agent_id=agent_id,
+                state = execute_add_liquidity(
+                    state=state.pools['omnipool'],
+                    agent=agent,
                     quantity=state.agents[agent_id].holdings[asset],
                     tkn_add=asset
                 )
 
         agent.initial_holdings = agent.holdings
 
-        return state
-
     return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
 
 
 def withdraw_all(when: int) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str):
+    def strategy(state: GlobalState, agent_id: str) -> None:
         if state.time_step == when:
             return withdraw_all_liquidity(state, agent_id)
         else:
@@ -182,11 +174,10 @@ def withdraw_all(when: int) -> TradeStrategy:
 
 def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> None:
         agent = state.agents[agent_id]
-        if not agent.holdings[sell_asset]:
-            return state
-        return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
+        if agent.holdings[sell_asset] != 0:
+            state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
 
     return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
 
@@ -197,7 +188,7 @@ def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sel
             self.last_move = 0
             self.invested = False
 
-        def __call__(self, state: GlobalState, agent_id: str) -> GlobalState:
+        def __call__(self, state: GlobalState, agent_id: str) -> None:
 
             if (state.time_step - self.last_move) * frequency > random.random():
                 omnipool: OmnipoolState = state.pools[pool_id]
@@ -235,8 +226,6 @@ def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sel
 
                 self.last_move = state.time_step
                 self.invested = not self.invested
-
-            return state
 
     return TradeStrategy(Strategy(), name=f'invest and withdraw every {frequency} time steps')
 
@@ -431,7 +420,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         dq = [-lrna[i] * dr[i] / (reserves[i] + dr[i]) for i in range(len(reserves))]
         return dq
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> None:
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -522,14 +511,12 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                                           buy_quantity=-dq[i], modify_imbalance=False)
                 break  # technically unnecessary
 
-        return state
-
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> None:
 
         stable_pool: StableSwapPoolState = state.pools[pool_id]
         if not isinstance(stable_pool, StableSwapPoolState):
@@ -562,40 +549,36 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             + delta_x * state.price(sell_asset)
         )
 
-        if projected_profit <= minimum_profit:
-            # don't do it
-            # agent.trade_rejected += 1
-            return state
-
-        new_state = state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, buy_quantity=delta_y)
-        return new_state
+        if projected_profit > minimum_profit:
+            state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, buy_quantity=delta_y)
 
     return TradeStrategy(strategy, name='stableswap arbitrage')
 
 
 def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_timestep: int = 0) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> None:
         if state.time_step < start_timestep:
-            return state
+            return
 
         state.external_market[asset_name] = 0
 
         omnipool: OmnipoolState = state.pools[pool_id]
         current_price = oamm.lrna_price(omnipool, asset_name)
         if current_price <= 0:
-            return state
+            return
         usd_price = oamm.lrna_price(omnipool, omnipool.stablecoin) / current_price
         if usd_price <= 0:
-            return state
+            return
         quantity = (
             (omnipool.lrna_total - omnipool.lrna[asset_name])
             * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
             - omnipool.lrna[asset_name]
         ) / current_price - 0.001  # because rounding errors
 
-        state = add_liquidity(
-            state, pool_id, agent_id,
+        execute_add_liquidity(
+            state=state.pools['omnipool'],
+            agent=state.agents[agent_id],
             quantity=quantity,
             tkn_add=asset_name
         )
@@ -605,14 +588,14 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
             sell_quantity = max(10 ** 12 - state.pools[pool_id].liquidity[asset_name] - 0.0000001, 0)
             if sell_quantity == 0:
                 # pool is maxed
-                return state
-        state = swap(
-            state, pool_id, agent_id,
-            tkn_sell=asset_name,
+                return
+        execute_swap(
+            state=state.pools['omnipool'],
+            agent=state.agents[agent_id],
             tkn_buy='USD',
+            tkn_sell=asset_name,
             sell_quantity=sell_quantity
         )
-        return state
 
     return TradeStrategy(strategy, name=f'toxic asset attack (asset={asset_name}, trade_size={trade_size})')
 
@@ -620,9 +603,9 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
 def price_manipulation(
         pool_id: str, asset1: str, asset2: str, max_fraction: float = float('inf'), interval: int = 1
 ):
-    def price_manipulation_strategy(state: GlobalState, agent_id: str):
+    def price_manipulation_strategy(state: GlobalState, agent_id: str) -> None:
         if state.time_step % interval != 0:
-            return state
+            return
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         agent_holdings = copy.copy(agent.holdings)
@@ -695,7 +678,6 @@ def price_manipulation(
             sell_quantity=agent.holdings['LRNA']
         )
         profit = sum(agent.holdings.values()) - sum(agent_holdings.values())
-        return state
 
     return TradeStrategy(
         strategy_function=price_manipulation_strategy,
@@ -720,7 +702,7 @@ def price_manipulation_multiple_blocks(
             self.trade_asset = ''
             self.asset_pairs = []
 
-        def execute(self, state: GlobalState, agent_id: str):
+        def execute(self, state: GlobalState, agent_id: str) -> None:
             omnipool: OmnipoolState = state.pools[pool_id]
             agent: Agent = state.agents[agent_id]
 
@@ -810,7 +792,7 @@ def price_manipulation_multiple_blocks(
                     self.liquidity_added = 0
                 else:
                     # if we haven't sold enough, try again next block
-                    return state
+                    return
 
             if self.add_liquidity_target > 0:
                 add_quantity = min(
@@ -892,7 +874,6 @@ def price_manipulation_multiple_blocks(
                 self.liquidity_removed += remove_quantity
 
             agent.attack_history = self.asset_pairs
-            return state
 
     return TradeStrategy(
         strategy_function=PriceManipulationStrategy().execute,
@@ -908,9 +889,9 @@ def price_sensitive_trading(
         tkn_buy: str = None,
         trade_frequency: float = 0.1
 ) -> TradeStrategy:
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+    def strategy(state: GlobalState, agent_id: str) -> None:
         if random.random() > trade_frequency:
-            return state
+            return
         agent: Agent = state.agents[agent_id]
         pool: OmnipoolState = state.pools[pool_id]
         options = list(set(agent.asset_list) & set(pool.asset_list))
@@ -937,6 +918,5 @@ def price_sensitive_trading(
             tkn_buy=buy,
             sell_quantity=trade_volume,
         )
-        return state
 
     return TradeStrategy(strategy, name=f'price sensitive trading (sensitivity ={price_sensitivity})')
