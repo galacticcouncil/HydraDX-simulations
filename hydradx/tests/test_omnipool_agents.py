@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from hypothesis import given, strategies as st  # , settings
+from hypothesis import given, strategies as st, settings  # , settings
 
 # from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
@@ -96,6 +96,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
             raise
 
 
+@settings(max_examples=10000)
 @given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
 def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
     omnipool.trade_limit_per_block = float('inf')
@@ -130,7 +131,7 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
     # Trading should be profitable
     if old_value > new_value:
         if new_value != pytest.approx(old_value, rel=1e-15):
-            raise
+            raise ValueError(f'Failed to make profit: {old_value} -> {new_value}')
 
 
 @given(omnipool_reasonable_config(token_count=3))
