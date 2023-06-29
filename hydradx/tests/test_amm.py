@@ -236,8 +236,6 @@ def test_arbitrage_pool_balance(initial_state):
     events = run.run(initial_state, time_steps=50, silent=True)
     final_state = events[-1]
     final_pool_state = final_state.pools['HDX/BSX']
-    test1 = final_pool_state.liquidity['HDX'] / final_pool_state.liquidity['BSX']
-    test2 = final_state.price('BSX') / final_state.price('HDX')
     if (pytest.approx(final_pool_state.liquidity['HDX'] / final_pool_state.liquidity['BSX'])
             != final_state.price('BSX') / final_state.price('HDX')):
         raise AssertionError('Price ratio does not match ratio in the pool!')
