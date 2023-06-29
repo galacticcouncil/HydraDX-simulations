@@ -1,5 +1,4 @@
 import time
-from copy import deepcopy
 
 from .amm.global_state import GlobalState
 
@@ -22,7 +21,7 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> li
         # market evolutions
         new_global_state.evolve()
 
-        agent_ids = deepcopy(list(new_global_state.agents.keys()))
+        agent_ids = [k for k in new_global_state.agents.keys()]
         for agent_id in agent_ids:
             agent = new_global_state.agents[agent_id]
             if agent.trade_strategy:
