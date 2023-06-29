@@ -10,7 +10,7 @@ from .agents import Agent
 from .basilisk_amm import ConstantProductPoolState
 from .global_state import GlobalState, withdraw_all_liquidity, \
     execute_external_market_trade
-from .omnipool_amm import OmnipoolState, execute_swap, execute_add_liquidity
+from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
 
 
@@ -571,7 +571,7 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
                            - omnipool.lrna[asset_name]
                    ) / current_price - 0.001  # because rounding errors
 
-        execute_add_liquidity(
+        oamm.execute_add_liquidity(
             state=state.pools[pool_id],
             agent=state.agents[agent_id],
             quantity=quantity,
@@ -584,7 +584,7 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
             if sell_quantity == 0:
                 # pool is maxed
                 return
-        execute_swap(
+        oamm.execute_swap(
             state=state.pools[pool_id],
             agent=state.agents[agent_id],
             tkn_buy='USD',
