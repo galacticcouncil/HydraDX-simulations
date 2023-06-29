@@ -1,5 +1,4 @@
 import copy
-import math
 
 import pytest
 from hypothesis import given, strategies as st  # , settings
@@ -139,15 +138,17 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
     initial_agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
     initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
+    new_state = initial_state.copy()
 
-    new_state = invest_all('omnipool').execute(initial_state, 'agent')
+    invest_all('omnipool').execute(new_state, 'agent')
     for tkn in omnipool.asset_list:
         if new_state.agents['agent'].holdings[tkn] != 0:
             raise AssertionError(f'Failed to LP {tkn}')
         if new_state.agents['agent'].holdings[('omnipool', tkn)] == 0:
             raise AssertionError(f'Did not receive shares for {tkn}')
 
-    hdx_state = invest_all('omnipool', 'HDX').execute(initial_state.copy(), 'agent')
+    hdx_state = initial_state.copy()
+    invest_all('omnipool', 'HDX').execute(hdx_state, 'agent')
 
     if hdx_state.agents['agent'].holdings['HDX'] != 0:
         raise AssertionError('HDX not reinvested.')

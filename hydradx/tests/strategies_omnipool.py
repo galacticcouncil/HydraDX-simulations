@@ -1,10 +1,11 @@
 import random
 
 from hypothesis import strategies as st
+from mpmath import mp, mpf
 
 import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
-from mpmath import mp, mpf
+
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -81,7 +82,8 @@ def omnipool_reasonable_config(
         asset_fee=None,
         tvl_cap_usd=0,
         imbalance=None,
-        remove_liquidity_volatility_threshold: float = 0
+        remove_liquidity_volatility_threshold: float = 0,
+        withdrawal_fee: bool = True,
 ):
     asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
 

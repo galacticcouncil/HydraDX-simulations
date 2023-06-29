@@ -1,11 +1,10 @@
 import copy
 import random
 from typing import Callable
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 from .agents import Agent, AgentArchiveState
 from .amm import AMM, FeeMechanism
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity, OmnipoolArchiveState
+from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 
 class GlobalState:
@@ -424,14 +423,28 @@ def external_market_trade(
     # do a trade at spot price on the external market
     # this should maybe only work in USD, because we're probably talking about coinbase or something
     new_state = old_state.copy()
-    agent = new_state.agents[agent_id]
+    execute_external_market_trade(new_state, agent_id, tkn_buy, tkn_sell, buy_quantity, sell_quantity)
+    return new_state
+
+
+def execute_external_market_trade(
+        state: GlobalState,
+        agent_id: str,
+        tkn_buy: str,
+        tkn_sell: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
+) -> None:
+    # do a trade at spot price on the external market
+    # this should maybe only work in USD, because we're probably talking about coinbase or something
+    agent = state.agents[agent_id]
     if buy_quantity:
-        sell_quantity = buy_quantity * new_state.price(tkn_buy) / new_state.price(tkn_sell)
+        sell_quantity = buy_quantity * state.price(tkn_buy) / state.price(tkn_sell)
     elif sell_quantity:
-        buy_quantity = sell_quantity * new_state.price(tkn_sell) / new_state.price(tkn_buy)
+        buy_quantity = sell_quantity * state.price(tkn_sell) / state.price(tkn_buy)
     else:
         # raise TypeError('Must include either buy_quantity or sell_quantity.')
-        return old_state
+        return
 
     if tkn_buy not in agent.holdings:
         agent.holdings[tkn_buy] = 0
@@ -446,8 +459,6 @@ def external_market_trade(
     # there could probably be a fee or something here, but for now you can sell infinite quantities for free
     agent.holdings[tkn_buy] += buy_quantity
     agent.holdings[tkn_sell] -= sell_quantity
-
-    return new_state
 
 
 def migrate(

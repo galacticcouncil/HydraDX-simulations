@@ -1,17 +1,18 @@
-import random
 import copy
+import random
+
 import pytest
 from hypothesis import given, strategies as st, settings
-from hydradx.tests.test_omnipool_amm import omnipool_config
-from hydradx.tests.test_basilisk_amm import constant_product_pool_config
+
+from hydradx.model import processing
+from hydradx.model import run
+from hydradx.model.amm.agents import Agent
+from hydradx.model.amm.amm import AMM
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
 from hydradx.model.amm.global_state import GlobalState, fluctuate_prices, swap
-from hydradx.model.amm.agents import Agent
-
-from hydradx.model import run
-from hydradx.model import processing
 from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage, invest_and_withdraw
-from hydradx.model.amm.amm import AMM
+from hydradx.tests.test_basilisk_amm import constant_product_pool_config
+from hydradx.tests.test_omnipool_amm import omnipool_config
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -35,10 +36,10 @@ def assets_config(draw, token_count: int = 0) -> dict:
 
 @st.composite
 def agent_config(
-    draw,
-    holdings: dict = None,
-    asset_list: list = None,
-    trade_strategy: any = None
+        draw,
+        holdings: dict = None,
+        asset_list: list = None,
+        trade_strategy: any = None
 ):
     return Agent(
         holdings=holdings or {
@@ -56,7 +57,8 @@ def global_state_config(
         pools=None,
         agents=None,
         evolve_function=None,
-        skip_omnipool=False
+        skip_omnipool=False,
+        omnipool_withdrawal_fee=True,
 ) -> GlobalState:
     # if asset_dict was not provided, generate one
     market_prices = external_market or draw(assets_config())
@@ -75,13 +77,13 @@ def global_state_config(
                 x_quantity = draw(asset_quantity_strategy)
                 pools.update({
                     f'{asset_list[x]}/{asset_list[y]}':
-                    draw(constant_product_pool_config(
-                        asset_dict={
-                            asset_list[x]: x_quantity,
-                            asset_list[y]: x_quantity * market_prices[asset_list[x]] / market_prices[asset_list[y]]
-                        },
-                        trade_fee=draw(fee_strategy)
-                    ))
+                        draw(constant_product_pool_config(
+                            asset_dict={
+                                asset_list[x]: x_quantity,
+                                asset_list[y]: x_quantity * market_prices[asset_list[x]] / market_prices[asset_list[y]]
+                            },
+                            trade_fee=draw(fee_strategy)
+                        ))
                 })
 
         if not skip_omnipool:
@@ -99,7 +101,8 @@ def global_state_config(
                         for tkn in asset_list
                     },
                     lrna_fee=draw(fee_strategy),
-                    asset_fee=draw(fee_strategy)
+                    asset_fee=draw(fee_strategy),
+                    withdrawal_fee=omnipool_withdrawal_fee
                 ))
             })
     else:
@@ -182,7 +185,8 @@ def test_simulation(initial_state: GlobalState):
             },
             trade_strategy=steady_swaps('HDX/USD', 100, asset_list=['HDX', 'USD'])
         )
-    }
+    },
+    omnipool_withdrawal_fee=False
 ))
 def test_LP(initial_state: GlobalState):
     initial_state.agents['LP'].holdings = {
@@ -220,7 +224,8 @@ def test_LP(initial_state: GlobalState):
     },
     external_market={'HDX': 0, 'BSX': 0},  # config function will fill these in with random values
     evolve_function=fluctuate_prices(volatility={'HDX': 1, 'BSX': 1}),
-    skip_omnipool=True
+    skip_omnipool=True,
+    omnipool_withdrawal_fee=False
 ))
 def test_arbitrage_pool_balance(initial_state):
     # there are actually two things we would like to test:
@@ -231,6 +236,8 @@ def test_arbitrage_pool_balance(initial_state):
     events = run.run(initial_state, time_steps=50, silent=True)
     final_state = events[-1]
     final_pool_state = final_state.pools['HDX/BSX']
+    test1 = final_pool_state.liquidity['HDX'] / final_pool_state.liquidity['BSX']
+    test2 = final_state.price('BSX') / final_state.price('HDX')
     if (pytest.approx(final_pool_state.liquidity['HDX'] / final_pool_state.liquidity['BSX'])
             != final_state.price('BSX') / final_state.price('HDX')):
         raise AssertionError('Price ratio does not match ratio in the pool!')
@@ -301,8 +308,12 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
                 / (1 - state.pools['X/Y'].trade_fee.compute('', 0))
         )
 
-    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
-    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_state = initial_state.copy()
+    algebraic_function.execute(algebraic_state, 'arbitrager')
+
+    recursive_state = initial_state.copy()
+    recursive_function.execute(recursive_state, 'arbitrager')
+
     algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
                         / algebraic_state.pools['X/Y'].liquidity['Y'])
     recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
@@ -341,9 +352,9 @@ def test_buy_fee_derivation(initial_state: GlobalState):
     feeless_buy_amount = 1
     next_feeless_state = [feeless_state.copy()]
     next_state = [initial_state.copy()]
-    for i in range(len(asset_path)-1):
+    for i in range(len(asset_path) - 1):
         tkn_buy = asset_path[i]
-        tkn_sell = asset_path[i+1]
+        tkn_sell = asset_path[i + 1]
         pool_id = f'{tkn_buy}/{tkn_sell}' if f'{tkn_buy}/{tkn_sell}' in initial_state.pools else f'{tkn_sell}/{tkn_buy}'
         pool_path.append(pool_id)
         next_feeless_state.append(swap(
@@ -355,8 +366,8 @@ def test_buy_fee_derivation(initial_state: GlobalState):
             buy_quantity=feeless_buy_amount
         ))
         feeless_buy_amount = (
-            next_feeless_state[-2].agents['trader'].holdings[tkn_sell]
-            - next_feeless_state[-1].agents['trader'].holdings[tkn_sell]
+                next_feeless_state[-2].agents['trader'].holdings[tkn_sell]
+                - next_feeless_state[-1].agents['trader'].holdings[tkn_sell]
         )
         next_state.append(swap(
             next_state[-1],
@@ -367,8 +378,8 @@ def test_buy_fee_derivation(initial_state: GlobalState):
             buy_quantity=buy_amount
         ))
         buy_amount = (
-            next_state[-2].agents['trader'].holdings[tkn_sell]
-            - next_state[-1].agents['trader'].holdings[tkn_sell]
+                next_state[-2].agents['trader'].holdings[tkn_sell]
+                - next_state[-1].agents['trader'].holdings[tkn_sell]
         )
         if buy_amount == 0:
             return
@@ -378,7 +389,7 @@ def test_buy_fee_derivation(initial_state: GlobalState):
         expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
     expected_fee_amount -= 1
     if fee_amount != pytest.approx(expected_fee_amount):
-        raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
+        raise ValueError(f'off by {abs(1 - expected_fee_amount / fee_amount)}')
     # if fee_amount < expected_fee_amount:
     #     raise ValueError(f'fee is lower than expected')
 
@@ -402,9 +413,9 @@ def test_sell_fee_derivation(initial_state: GlobalState):
     feeless_sell_amount = 1
     next_feeless_state = [feeless_state.copy()]
     next_state = [initial_state.copy()]
-    for i in range(len(asset_path)-1):
+    for i in range(len(asset_path) - 1):
         tkn_buy = asset_path[i]
-        tkn_sell = asset_path[i+1]
+        tkn_sell = asset_path[i + 1]
         pool_id = f'{tkn_buy}/{tkn_sell}' if f'{tkn_buy}/{tkn_sell}' in initial_state.pools else f'{tkn_sell}/{tkn_buy}'
         pool_path.append(pool_id)
         next_feeless_state.append(swap(
@@ -416,8 +427,8 @@ def test_sell_fee_derivation(initial_state: GlobalState):
             sell_quantity=feeless_sell_amount
         ))
         feeless_sell_amount = (
-            next_feeless_state[-1].agents['trader'].holdings[tkn_buy]
-            - next_feeless_state[-2].agents['trader'].holdings[tkn_buy]
+                next_feeless_state[-1].agents['trader'].holdings[tkn_buy]
+                - next_feeless_state[-2].agents['trader'].holdings[tkn_buy]
         )
         next_state.append(swap(
             next_state[-1],
@@ -428,8 +439,8 @@ def test_sell_fee_derivation(initial_state: GlobalState):
             sell_quantity=sell_amount
         ))
         sell_amount = (
-            next_state[-1].agents['trader'].holdings[tkn_buy]
-            - next_state[-2].agents['trader'].holdings[tkn_buy]
+                next_state[-1].agents['trader'].holdings[tkn_buy]
+                - next_state[-2].agents['trader'].holdings[tkn_buy]
         )
         if sell_amount == 0:
             return
@@ -440,7 +451,7 @@ def test_sell_fee_derivation(initial_state: GlobalState):
         expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
     expected_fee_amount = 1 - expected_fee_amount
     if fee_amount != pytest.approx(expected_fee_amount):
-        raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
+        raise ValueError(f'off by {abs(1 - expected_fee_amount / fee_amount)}')
     # if fee_amount > expected_fee_amount:
     #     raise ValueError('fee is higher than expected')
 
@@ -535,8 +546,8 @@ def test_omnipool_arbitrage():
         {tkn: arb_holdings[tkn][i] for tkn in arb_holdings} for i in range(len(arb_holdings['LRNA']))
     ]
     profit = (
-        GlobalState.value_assets(arb_holdings[-1], initial_state.external_market)
-        - GlobalState.value_assets(arb_holdings[0], initial_state.external_market)
+            GlobalState.value_assets(arb_holdings[-1], initial_state.external_market)
+            - GlobalState.value_assets(arb_holdings[0], initial_state.external_market)
     )
     if profit < 0:
         raise ValueError(f'Arbitrageur lost {profit} USD')

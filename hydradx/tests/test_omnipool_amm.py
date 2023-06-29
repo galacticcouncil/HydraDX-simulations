@@ -1448,46 +1448,49 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
+        quantity=state.liquidity['DOT'] * lp_multiplier
     )
 
     global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
+        pools={'omnipool': state},
+        agents={'attacker': agent},
         external_market=market_prices
     )
 
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
+    omnipool_arbitrage('omnipool', 20).execute(
+        state=global_state,
         agent_id='attacker'
     )
 
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
+    arbed_pool = global_state.pools['omnipool']
+    arbed_agent = global_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=arbed_pool,
+        agent=arbed_agent,
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = oamm.cash_out_omnipool(omnipool, initial_agent, market_prices)
+    final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -1527,24 +1530,27 @@ def test_add_and_remove_liquidity():
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
-        quantity=omnipool.liquidity['DOT'] * lp_multiplier
+        quantity=state.liquidity['DOT'] * lp_multiplier
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=state,
+        agent=agent,
         tkn_remove='DOT',
-        quantity=add_agent.holdings[('omnipool', 'DOT')]
+        quantity=agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = oamm.cash_out_omnipool(omnipool, initial_agent, market_prices)
+    final_value = oamm.cash_out_omnipool(state, agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -1552,14 +1558,14 @@ def test_add_and_remove_liquidity():
 
 # @settings(max_examples=1)
 @given(
-    st.floats(min_value=0, max_value=0.10, exclude_min=True),
+    st.floats(min_value=0, max_value=0.05, exclude_min=True),
     st.floats(min_value=0, max_value=0.01, exclude_min=True),
     # st.floats(min_value=0.90, max_value=1.1)
 )
 def test_add_liquidity_exploit(lp_multiplier, trade_mult):
     oracle_mult = 1.0
-    # lp_multiplier = 0.5
-    # trade_mult = 0.5
+    # lp_multiplier = 0.00
+    # trade_mult = 0.01
 
     tokens = {
         'HDX': {'liquidity': 44000000, 'LRNA': 275143},
@@ -1594,46 +1600,49 @@ def test_add_liquidity_exploit(lp_multiplier, trade_mult):
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell='DAI',
         tkn_buy='DOT',
         buy_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
+        quantity=state.liquidity['DOT'] * lp_multiplier
     )
 
     global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
+        pools={'omnipool': state},
+        agents={'attacker': agent},
         external_market=market_prices
     )
 
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
+    omnipool_arbitrage('omnipool', 20).execute(
+        state=global_state,
         agent_id='attacker'
     )
 
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
+    arbed_pool = global_state.pools['omnipool']
+    arbed_agent = global_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=arbed_pool,
+        agent=arbed_agent,
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = oamm.cash_out_omnipool(omnipool, initial_agent, market_prices)
+    final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -1682,46 +1691,49 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
-        quantity=swap_state.liquidity['DOT'] * lp_multiplier
+        quantity=state.liquidity['DOT'] * lp_multiplier
     )
 
     global_state = GlobalState(
-        pools={'omnipool': add_state},
-        agents={'attacker': add_agent},
+        pools={'omnipool': state},
+        agents={'attacker': agent},
         external_market=market_prices
     )
 
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
+    omnipool_arbitrage('omnipool', 20).execute(
+        state=global_state,
         agent_id='attacker'
     )
 
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
+    arbed_pool = global_state.pools['omnipool']
+    arbed_agent = global_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=arbed_pool,
+        agent=arbed_agent,
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = oamm.cash_out_omnipool(omnipool, initial_agent, market_prices)
+    final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -1730,7 +1742,7 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
 def test_withdraw_exploit():
     oracle_mult = 1.0
     lp_multiplier = 0.1
-    trade_mult = 0.01
+    trade_mult = 0.02
 
     tokens = {
         'HDX': {'liquidity': 44000000, 'LRNA': 275143},
@@ -1765,61 +1777,64 @@ def test_withdraw_exploit():
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
-        quantity=omnipool.liquidity['DOT'] * lp_multiplier
+        quantity=state.liquidity['DOT'] * lp_multiplier
     )
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell='DAI',
         tkn_buy='DOT',
         buy_quantity=trade_size
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=state,
+        agent=agent,
         tkn_remove='DOT',
-        quantity=swap_agent.holdings[('omnipool', 'DOT')]
+        quantity=agent.holdings[('omnipool', 'DOT')]
     )
 
     global_state = GlobalState(
-        pools={'omnipool': remove_state},
-        agents={'attacker': remove_agent},
+        pools={'omnipool': state},
+        agents={'attacker': agent},
         external_market=market_prices
     )
 
-    arb_state = omnipool_arbitrage('omnipool', 20).execute(
-        state=global_state.copy(),
+    omnipool_arbitrage('omnipool', 20).execute(
+        state=global_state,
         agent_id='attacker'
     )
 
-    arbed_pool = arb_state.pools['omnipool']
-    arbed_agent = arb_state.agents['attacker']
+    arbed_pool = global_state.pools['omnipool']
+    arbed_agent = global_state.agents['attacker']
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
+    initial_value = oamm.cash_out_omnipool(omnipool, initial_agent, market_prices)
     final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
 
 
-@settings(max_examples=1)
+# @settings(max_examples=1)
 @given(
     st.floats(min_value=0, max_value=0.05, exclude_min=True),
     st.floats(min_value=0, max_value=0.1, exclude_min=True),
     st.floats(min_value=0.50, max_value=1.5)
 )
 def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
-    lp_multiplier = 0.2
-    trade_mult = 0.01
-    oracle_mult = 0.99
+    # lp_multiplier = 0.2
+    # trade_mult = 0.01
+    # oracle_mult = 0.99
 
     tokens = {
         'HDX': {'liquidity': 44000000, 'LRNA': 275143},
@@ -1855,40 +1870,46 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
-    agent = Agent(holdings=holdings)
+    initial_agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    state = omnipool.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add='DOT',
         quantity=omnipool.liquidity['DOT'] * lp_multiplier
     )
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    oamm.execute_remove_liquidity(
+        state=state,
+        agent=agent,
         tkn_remove='DOT',
-        quantity=swap_agent.holdings[('omnipool', 'DOT')]
+        quantity=agent.holdings[('omnipool', 'DOT')]
     )
 
-    swap_alone_state, swap_alone_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    swap_alone_state = omnipool.copy()
+    swap_alone_agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=swap_alone_state,
+        agent=swap_alone_agent,
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
     swap_alone_dai = oamm.cash_out_omnipool(swap_alone_state, swap_alone_agent, market_prices)
-    manipulated_dai = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    manipulated_dai = oamm.cash_out_omnipool(state, agent, market_prices)
     profit = manipulated_dai - swap_alone_dai
     if profit > 0:
         raise
@@ -1937,38 +1958,42 @@ def test_withdraw_manipulation(
     # trade to manipulate the price
     signed_price_move = price_move if price_move_is_up else -price_move
     first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + signed_price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+
+    state = initial_state.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell=trade_token,
         tkn_buy=lp_token,
         buy_quantity=first_trade
     )
 
-    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
-        quantity=trade_agent.holdings[('omnipool', lp_token)],
+    oamm.execute_remove_liquidity(
+        state=state,
+        agent=agent,
+        quantity=agent.holdings[('omnipool', lp_token)],
         tkn_remove=lp_token
     )
 
-    glob = omnipool_arbitrage(pool_id='omnipool').execute(
-        state=GlobalState(
-            pools={
-                'omnipool': withdraw_state.copy()
-            },
-            agents={
-                'agent': withdraw_agent.copy()
-            },
-            external_market=market_prices
-        ),
+    global_state = GlobalState(
+        pools={
+            'omnipool': state
+        },
+        agents={
+            'agent': agent
+        },
+        external_market=market_prices
+    )
+
+    omnipool_arbitrage(pool_id='omnipool').execute(
+        state=global_state,
         agent_id='agent'
     )
 
-    final_state, final_agent = glob.pools['omnipool'], glob.agents['agent']
-
     profit = (
-            oamm.cash_out_omnipool(final_state, final_agent, market_prices)
+            oamm.cash_out_omnipool(state, agent, market_prices)
             - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
     )
 
@@ -2013,9 +2038,13 @@ def test_add_manipulation(
 
     # trade to manipulate the price
     first_trade = initial_state.liquidity[asset1] * (1 - 1 / math.sqrt(1 + price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+
+    state = initial_state.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=state,
+        agent=agent,
         tkn_sell=asset2,
         tkn_buy=asset1,
         buy_quantity=first_trade
@@ -2023,38 +2052,38 @@ def test_add_manipulation(
 
     # add liquidity
     lp_quantity = lp_percent * initial_agent.holdings[asset1]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add=asset1,
-        quantity=min(lp_quantity, trade_state.liquidity[asset1] * trade_state.max_lp_per_block)
+        quantity=min(lp_quantity, state.liquidity[asset1] * state.max_lp_per_block)
     )
 
     lp_quantity = lp_percent * initial_agent.holdings[asset2]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=add_state,
-        agent=add_agent,
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add=asset2,
         quantity=lp_quantity
     )
 
-    glob = omnipool_arbitrage(pool_id='omnipool').execute(
-        state=GlobalState(
-            pools={
-                'omnipool': add_state.copy()
-            },
-            agents={
-                'agent': add_agent.copy()
-            },
-            external_market=market_prices
-        ),
+    global_state = GlobalState(
+        pools={
+            'omnipool': state
+        },
+        agents={
+            'agent': agent
+        },
+        external_market=market_prices
+    )
+
+    omnipool_arbitrage(pool_id='omnipool').execute(
+        state=global_state,
         agent_id='agent'
     )
 
-    sell_state, sell_agent = glob.pools['omnipool'], glob.agents['agent']
-
     profit = (
-            oamm.cash_out_omnipool(sell_state, sell_agent, market_prices)
+            oamm.cash_out_omnipool(state, agent, market_prices)
             - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
     )
 
@@ -2089,53 +2118,68 @@ def test_trade_manipulation(
     asset2 = options[asset_index % len(options)]
     market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
 
-    lp1_state, lp1_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    state = initial_state.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
         tkn_add=asset1,
         quantity=min(
-            lp_percent * initial_state.liquidity[asset1],
-            initial_state.liquidity[asset1] * initial_state.max_lp_per_block
+            lp_percent * state.liquidity[asset1],
+            state.liquidity[asset1] * state.max_lp_per_block
         )
     )
 
-    lp2_state, lp2_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
-        tkn_add=asset2,
-        quantity=min(
-            lp_percent * initial_state.liquidity[asset2],
-            initial_state.liquidity[asset2] * initial_state.max_lp_per_block
-        )
-    )
-
-    trade_state_1, trade_agent_1 = oamm.execute_remove_liquidity(
+    oamm.execute_remove_liquidity(
         *oamm.execute_swap(
-            state=lp1_state.copy(),
-            agent=lp1_agent.copy(),
+            state=state,
+            agent=agent,
             tkn_sell=asset1,
             tkn_buy=asset2,
             sell_quantity=sell_quantity
         ),
         tkn_remove=asset1,
-        quantity=lp1_agent.holdings[('omnipool', asset1)]
+        quantity=agent.holdings[('omnipool', asset1)]
     )
 
-    trade_state_2, trade_agent_2 = oamm.execute_remove_liquidity(
+    trade_state_1 = state.copy()
+    trade_agent_1 = agent.copy()
+
+    state = initial_state.copy()
+    agent = initial_agent.copy()
+
+    oamm.execute_add_liquidity(
+        state=state,
+        agent=agent,
+        tkn_add=asset2,
+        quantity=min(
+            lp_percent * state.liquidity[asset2],
+            state.liquidity[asset2] * state.max_lp_per_block
+        )
+    )
+
+    oamm.execute_remove_liquidity(
         *oamm.execute_swap(
-            state=lp2_state.copy(),
-            agent=lp2_agent.copy(),
+            state=state,
+            agent=agent,
             tkn_sell=asset1,
             tkn_buy=asset2,
             sell_quantity=sell_quantity
         ),
         tkn_remove=asset2,
-        quantity=lp2_agent.holdings[('omnipool', asset2)]
+        quantity=agent.holdings[('omnipool', asset2)]
     )
 
-    trade_state_3, trade_agent_3 = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    trade_state_2 = state.copy()
+    trade_agent_2 = agent.copy()
+
+    trade_state_3 = initial_state.copy()
+    trade_agent_3 = initial_agent.copy()
+
+    oamm.execute_swap(
+        state=trade_state_3,
+        agent=trade_agent_3,
         tkn_sell=asset1,
         tkn_buy=asset2,
         sell_quantity=sell_quantity

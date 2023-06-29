@@ -1,16 +1,20 @@
-import math
 import copy
-from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
-from .agents import Agent
-from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState, execute_swap, execute_add_liquidity
-from . import omnipool_amm as oamm
-from .stableswap_amm import StableSwapPoolState
-from typing import Callable
+import math
 import random
-# from numbers import Number
+from typing import Callable
 
 import numpy as np
+
+from . import omnipool_amm as oamm
+from .agents import Agent
+from .basilisk_amm import ConstantProductPoolState
+from .global_state import GlobalState, withdraw_all_liquidity, \
+    execute_external_market_trade
+from .omnipool_amm import OmnipoolState, execute_swap, execute_add_liquidity
+from .stableswap_amm import StableSwapPoolState
+
+
+# from numbers import Number
 
 
 class TradeStrategy:
@@ -37,9 +41,9 @@ class TradeStrategy:
 
 
 def random_swaps(
-    pool_id: str,
-    amount: dict[str: float] or float,
-    randomize_amount: bool = True,
+        pool_id: str,
+        amount: dict[str: float] or float,
+        randomize_amount: bool = True,
 ) -> TradeStrategy:
     """
     amount should be a dict in the form of:
@@ -49,16 +53,16 @@ def random_swaps(
     """
 
     def strategy(state: GlobalState, agent_id: str) -> None:
-
         buy_asset = random.choice(list(amount.keys()))
         sell_asset = random.choice(list(amount.keys()))
         sell_quantity = (
-            amount[sell_asset] / (state.price(sell_asset) or 1) * (random.random() if randomize_amount else 1)
-        ) or 1
+                                amount[sell_asset] / (state.price(sell_asset) or 1) * (
+                            random.random() if randomize_amount else 1)
+                        ) or 1
 
         if buy_asset != sell_asset:
-            execute_swap(
-                state=state.pools['omnipool'],
+            state.pools[pool_id].execute_swap(
+                state=state.pools[pool_id],
                 agent=state.agents[agent_id],
                 tkn_buy=buy_asset,
                 tkn_sell=sell_asset,
@@ -69,13 +73,11 @@ def random_swaps(
 
 
 def steady_swaps(
-    pool_id: str,
-    usd_amount: float,
-    asset_list: list = ()
+        pool_id: str,
+        usd_amount: float,
+        asset_list: list = ()
 ) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str) -> None:
-
         strategy.buy_index = getattr(strategy, 'buy_index', -1)
         strategy.buy_index += 1
         agent = state.agents[agent_id]
@@ -99,14 +101,12 @@ def steady_swaps(
 
 
 def constant_swaps(
-    pool_id: str,
-    sell_quantity: float,
-    sell_asset: str,
-    buy_asset: str
+        pool_id: str,
+        sell_quantity: float,
+        sell_asset: str,
+        buy_asset: str
 ) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str) -> None:
-
         state.execute_swap(
             pool_id=pool_id,
             agent_id=agent_id,
@@ -119,10 +119,9 @@ def constant_swaps(
 
 
 def back_and_forth(
-    pool_id: str,
-    percentage: float  # percentage of TVL to trade each block
+        pool_id: str,
+        percentage: float  # percentage of TVL to trade each block
 ) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str) -> None:
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
@@ -138,19 +137,19 @@ def back_and_forth(
 
 
 def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
-
     if assets and not isinstance(assets, list):
         assets = [assets]
 
     def strategy(state: GlobalState, agent_id: str) -> None:
 
         agent: Agent = state.agents[agent_id]
+        agent_assets = [k for k in agent.holdings]
 
-        for asset in assets or agent.holdings.keys():
+        for asset in assets or agent_assets:
 
             if asset in state.pools[pool_id].asset_list:
-                state = execute_add_liquidity(
-                    state=state.pools['omnipool'],
+                state.pools[pool_id].execute_add_liquidity(
+                    state=state.pools[pool_id],
                     agent=agent,
                     quantity=state.agents[agent_id].holdings[asset],
                     tkn_add=asset
@@ -162,7 +161,6 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
 
 
 def withdraw_all(when: int) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str) -> None:
         if state.time_step == when:
             return withdraw_all_liquidity(state, agent_id)
@@ -173,7 +171,6 @@ def withdraw_all(when: int) -> TradeStrategy:
 
 
 def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
-
     def strategy(state: GlobalState, agent_id: str) -> None:
         agent = state.agents[agent_id]
         if agent.holdings[sell_asset] != 0:
@@ -182,7 +179,7 @@ def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
     return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
 
 
-def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
+def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'Omnipool', sell_lrna: bool = False) -> TradeStrategy:
     class Strategy:
         def __init__(self):
             self.last_move = 0
@@ -232,11 +229,11 @@ def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sel
 
 # iterative arbitrage method
 def find_agent_delta_y(
-    target_price: float,
-    price_after_trade: Callable,
-    starting_bid: float = 1,
-    precision: float = 0.000000001,
-    max_iterations: int = 50
+        target_price: float,
+        price_after_trade: Callable,
+        starting_bid: float = 1,
+        precision: float = 0.000000001,
+        max_iterations: int = 50
 ):
     b = starting_bid
     previous_change = 1
@@ -258,11 +255,10 @@ def find_agent_delta_y(
 
 
 def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = True) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str):
 
         pool: ConstantProductPoolState = state.pools[pool_id]
-        if not(isinstance(pool, ConstantProductPoolState)):
+        if not (isinstance(pool, ConstantProductPoolState)):
             raise TypeError(f'{pool_id} is not compatible with constant product arbitrage.')
 
         x = pool.asset_list[0]
@@ -280,8 +276,8 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             agent_delta_x *= 1 - pool.trade_fee.compute(y, abs(agent_delta_y))
 
         projected_profit = (
-            agent_delta_y * state.price(y)
-            + agent_delta_x * state.price(x)
+                agent_delta_y * state.price(y)
+                + agent_delta_x * state.price(x)
         )
 
         # in case we want to graph this later
@@ -291,12 +287,12 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         if projected_profit <= minimum_profit:
             # don't do it
             # agent.trade_rejected += 1
-            return state
+            return
 
         # buy just enough of non-USD asset
         if agent_delta_y > 0 and x != 'USD' or agent_delta_y < 0 and y != 'USD':
-            state = external_market_trade(
-                old_state=state,
+            execute_external_market_trade(
+                state=state,
                 agent_id=agent_id,
                 tkn_buy=x if agent_delta_y > 0 else 'USD',
                 tkn_sell=y if agent_delta_y < 0 else 'USD',
@@ -305,17 +301,17 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             )
 
         # swap
-        new_state = state.execute_swap(pool_id, agent_id, tkn_sell=x, tkn_buy=y, buy_quantity=agent_delta_y)
+        state.pools[pool_id].execute_swap(state.pools[pool_id], state.agents[agent_id], tkn_sell=x, tkn_buy=y,
+                                          buy_quantity=agent_delta_y)
 
         # immediately cash out everything for USD
-        new_agent = state.agents[agent_id]
-        for tkn, quantity in new_agent.holdings.items():
-            if new_agent.holdings[tkn] > 0 and tkn != 'USD':
-                new_state = external_market_trade(
+        tkns = [tkn for tkn in state.agents[agent_id].holdings if tkn != 'USD']
+        for tkn in tkns:
+            quantity = state.agents[agent_id].holdings[tkn]
+            if state.agents[agent_id].holdings[tkn] > 0:
+                execute_external_market_trade(
                     state, agent_id, tkn_buy='USD', tkn_sell=tkn, sell_quantity=quantity
                 )
-
-        return new_state
 
     def direct_calculation(state: GlobalState, tkn_sell: str, tkn_buy: str):
 
@@ -324,7 +320,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         x = pool.liquidity[tkn_sell]
         y = pool.liquidity[tkn_buy]
         f = pool.trade_fee.compute('', 0)
-        if p < x/y * (1 - f):
+        if p < x / y * (1 - f):
             # agent can profit by selling y to AMM
             b = 2 * y - (f / p) * x * (1 - f)
             c = y ** 2 - x * y / p * (1 - f)
@@ -334,7 +330,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             else:
                 dY = (-b - t) / 2
             return -dY
-        elif p > x/y * (1 + f):
+        elif p > x / y * (1 + f):
             # agent can profit by selling x to AMM
             b = 2 * y + (f / p) * x / (1 - f)
             c = y ** 2 - x * y / p / (1 - f)
@@ -482,10 +478,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         q = omnipool.lrna
 
         for j in range(arb_precision):
-            dr = [0]*len(dq)
+            dr = [0] * len(dq)
             for i in range(len(prices)):
                 asset = asset_list[i]
-                delta_Qi = dq[i] * (j+1) / arb_precision
+                delta_Qi = dq[i] * (j + 1) / arb_precision
                 if delta_Qi > 0:
                     dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) * (1 - asset_fees[i])
                 else:
@@ -496,10 +492,10 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                     for i in range(len(asset_list)):
                         if dq[i] > 0:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
-                                              sell_quantity=dq[i] * j/arb_precision, modify_imbalance=False)
+                                              sell_quantity=dq[i] * j / arb_precision, modify_imbalance=False)
                         else:
                             oamm.execute_swap(state=omnipool, agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
-                                              buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
+                                              buy_quantity=-dq[i] * j / arb_precision, modify_imbalance=False)
                 break
             elif j == arb_precision - 1:
                 for i in range(len(asset_list)):
@@ -515,7 +511,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
-
     def strategy(state: GlobalState, agent_id: str) -> None:
 
         stable_pool: StableSwapPoolState = state.pools[pool_id]
@@ -540,13 +535,14 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
 
         delta_y = find_agent_delta_y(target_price, price_after_trade, precision=precision)
         delta_x = (
-            stable_pool.liquidity[sell_asset]
-            - stable_pool.calculate_y(stable_pool.modified_balances(delta={buy_asset: -delta_y}, omit=[sell_asset]), d)
-        ) * (1 + stable_pool.trade_fee)
+                          stable_pool.liquidity[sell_asset]
+                          - stable_pool.calculate_y(
+                      stable_pool.modified_balances(delta={buy_asset: -delta_y}, omit=[sell_asset]), d)
+                  ) * (1 + stable_pool.trade_fee)
 
         projected_profit = (
-            delta_y * state.price(buy_asset)
-            + delta_x * state.price(sell_asset)
+                delta_y * state.price(buy_asset)
+                + delta_x * state.price(sell_asset)
         )
 
         if projected_profit > minimum_profit:
@@ -556,7 +552,6 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
 
 
 def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_timestep: int = 0) -> TradeStrategy:
-
     def strategy(state: GlobalState, agent_id: str) -> None:
         if state.time_step < start_timestep:
             return
@@ -571,13 +566,13 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
         if usd_price <= 0:
             return
         quantity = (
-            (omnipool.lrna_total - omnipool.lrna[asset_name])
-            * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
-            - omnipool.lrna[asset_name]
-        ) / current_price - 0.001  # because rounding errors
+                           (omnipool.lrna_total - omnipool.lrna[asset_name])
+                           * omnipool.weight_cap[asset_name] / (1 - omnipool.weight_cap[asset_name])
+                           - omnipool.lrna[asset_name]
+                   ) / current_price - 0.001  # because rounding errors
 
         execute_add_liquidity(
-            state=state.pools['omnipool'],
+            state=state.pools[pool_id],
             agent=state.agents[agent_id],
             quantity=quantity,
             tkn_add=asset_name
@@ -590,7 +585,7 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
                 # pool is maxed
                 return
         execute_swap(
-            state=state.pools['omnipool'],
+            state=state.pools[pool_id],
             agent=state.agents[agent_id],
             tkn_buy='USD',
             tkn_sell=asset_name,
@@ -624,10 +619,11 @@ def price_manipulation(
         )
         # here we want to bring the prices back in line with the market
         delta_r = (math.sqrt((
-            omnipool.lrna[asset2] * omnipool.lrna[asset1] * omnipool.liquidity[asset2] * omnipool.liquidity[asset1]
-        ) / (state.external_market[asset2] / state.external_market[asset1])) - (
-            omnipool.lrna[asset1] * omnipool.liquidity[asset2]
-        )) / (omnipool.lrna[asset2] + omnipool.lrna[asset1])
+                                     omnipool.lrna[asset2] * omnipool.lrna[asset1] * omnipool.liquidity[asset2] *
+                                     omnipool.liquidity[asset1]
+                             ) / (state.external_market[asset2] / state.external_market[asset1])) - (
+                           omnipool.lrna[asset1] * omnipool.liquidity[asset2]
+                   )) / (omnipool.lrna[asset2] + omnipool.lrna[asset1])
         oamm.execute_swap(
             state=omnipool,
             agent=agent,
@@ -655,10 +651,11 @@ def price_manipulation(
             tkn_add=asset1
         )
         delta_r = (math.sqrt((
-            omnipool.lrna[asset1] * omnipool.lrna[asset2] * omnipool.liquidity[asset1] * omnipool.liquidity[asset2]
-        ) / (state.external_market[asset1] / state.external_market[asset2])) - (
-            omnipool.lrna[asset2] * omnipool.liquidity[asset1]
-        )) / (omnipool.lrna[asset1] + omnipool.lrna[asset2])
+                                     omnipool.lrna[asset1] * omnipool.lrna[asset2] * omnipool.liquidity[asset1] *
+                                     omnipool.liquidity[asset2]
+                             ) / (state.external_market[asset1] / state.external_market[asset2])) - (
+                           omnipool.lrna[asset2] * omnipool.liquidity[asset1]
+                   )) / (omnipool.lrna[asset1] + omnipool.lrna[asset2])
         oamm.execute_swap(
             state=omnipool,
             agent=agent,
@@ -728,7 +725,7 @@ def price_manipulation_multiple_blocks(
                     self.attack_asset = (omnipool.asset_list[
                         (attack_asset_index + len(omnipool.asset_list) - 1)
                         % len(omnipool.asset_list)
-                    ])
+                        ])
                 self.asset_pairs.append({
                     'attack asset': self.attack_asset,
                     'trade asset': self.trade_asset,
@@ -821,11 +818,11 @@ def price_manipulation_multiple_blocks(
                 tkn_buy = self.trade_asset
                 tkn_sell = self.attack_asset
                 delta_r = (math.sqrt((
-                    omnipool.lrna[tkn_sell] * omnipool.lrna[tkn_buy]
-                    * omnipool.liquidity[tkn_sell] * omnipool.liquidity[tkn_buy]
-                ) / (state.external_market[tkn_sell] / state.external_market[tkn_buy])) - (
-                    omnipool.lrna[tkn_buy] * omnipool.liquidity[tkn_sell]
-                )) / (omnipool.lrna[tkn_sell] + omnipool.lrna[tkn_buy])
+                                             omnipool.lrna[tkn_sell] * omnipool.lrna[tkn_buy]
+                                             * omnipool.liquidity[tkn_sell] * omnipool.liquidity[tkn_buy]
+                                     ) / (state.external_market[tkn_sell] / state.external_market[tkn_buy])) - (
+                                   omnipool.lrna[tkn_buy] * omnipool.liquidity[tkn_sell]
+                           )) / (omnipool.lrna[tkn_sell] + omnipool.lrna[tkn_buy])
 
                 # find the max that we can (or want to) actually sell
                 sell_quantity = min(
@@ -903,10 +900,10 @@ def price_sensitive_trading(
         if tkn_buy is None:
             buy = random.choice(options)
         slip_rate = (
-            oamm.calculate_sell_from_buy(pool, buy, sell, max_volume_usd / state.external_market[buy])
-            / (state.external_market[buy] / state.external_market[sell])
-            / (max_volume_usd / state.external_market[buy])
-        ) - 1  # find the price of buying from the pool vs. buying from the market
+                            oamm.calculate_sell_from_buy(pool, buy, sell, max_volume_usd / state.external_market[buy])
+                            / (state.external_market[buy] / state.external_market[sell])
+                            / (max_volume_usd / state.external_market[buy])
+                    ) - 1  # find the price of buying from the pool vs. buying from the market
         trade_volume = max(
             max_volume_usd / state.external_market[sell] * max(min(1 - price_sensitivity * slip_rate, 1), 0) ** 10,
             0
