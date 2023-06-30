@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from hypothesis import given, strategies as st, settings  # , settings
+from hypothesis import given, strategies as st, settings, reproduce_failure  # , settings
 
 # from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
@@ -96,7 +96,8 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
             raise
 
 
-@settings(max_examples=10000)
+# @settings(max_examples=10000)
+@reproduce_failure('6.39.6', b'AXicY5q21t2625ph/UwWCZE8Vv/zu857bGF9lFS/rtaG/z+Dy4QUK6ggg7+h29ZbMvwLE88vu1kH5THdftezVEKVwXrTK3cnJ6ggIwDM+iJ/')
 @given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
 def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
     omnipool.trade_limit_per_block = float('inf')
