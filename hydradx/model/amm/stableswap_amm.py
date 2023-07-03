@@ -275,6 +275,11 @@ def execute_remove_liquidity(
     # * Get current D
     # * Solve Eqn against y_i for D - _token_amount
 
+    if shares_removed > agent.holdings[state.unique_id]:
+        return state.fail_transaction('Agent has insufficient funds.', agent)
+    elif shares_removed <= 0:
+        return state.fail_transaction('Withdraw quantity must be > 0.', agent)
+
     _fee = state.trade_fee
 
     initial_d = state.calculate_d()
@@ -311,6 +316,11 @@ def execute_add_liquidity(
         quantity: float,
         tkn_add: str
 ):
+    if quantity <= 0:
+        return state.fail_transaction('Add quantity must be > 0.', agent)
+    elif state.unique_id in agent.holdings:
+        return state.fail_transaction('Agent already has shares.', agent)
+
     initial_d = state.d
 
     updated_d = state.calculate_d(state.modified_balances(delta={tkn_add: quantity}))
@@ -408,6 +418,8 @@ def remove_liquidity(
 
 
 StableSwapPoolState.add_liquidity = staticmethod(add_liquidity)
+StableSwapPoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
 StableSwapPoolState.remove_liquidity = staticmethod(remove_liquidity)
+StableSwapPoolState.execute_remove_liquidity = staticmethod(execute_remove_liquidity)
 StableSwapPoolState.swap = staticmethod(swap)
 StableSwapPoolState.execute_swap = staticmethod(execute_swap)
