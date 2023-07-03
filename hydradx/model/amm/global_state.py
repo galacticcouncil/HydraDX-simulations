@@ -354,7 +354,7 @@ def swap(
 
 
 def add_liquidity(
-        old_state: GlobalState,
+        state: GlobalState,
         pool_id: str,
         agent_id: str,
         quantity: float,
@@ -363,20 +363,19 @@ def add_liquidity(
     """
     copy state, execute add liquidity
     """
-    new_state = old_state.copy()
     # add liquidity to sub_pools through main pool
-    if pool_id not in new_state.pools:
-        for pool in new_state.pools.values():
+    if pool_id not in state.pools:
+        for pool in state.pools.values():
             if hasattr(pool, 'sub_pools') and pool_id in pool.sub_pools:
                 pool_id = pool.unique_id
 
-    new_state.pools[pool_id].execute_add_liquidity(
-        state=new_state.pools[pool_id],
-        agent=new_state.agents[agent_id],
+    state.pools[pool_id].execute_add_liquidity(
+        state=state.pools[pool_id],
+        agent=state.agents[agent_id],
         quantity=quantity,
         tkn_add=tkn_add
     )
-    return new_state
+    return state
 
 
 def remove_liquidity(
