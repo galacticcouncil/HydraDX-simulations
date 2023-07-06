@@ -115,7 +115,9 @@ class StableSwapPoolState(AMM):
 
     def price_at_balance(self, balances: list, d: float):
         x, y = balances
-        return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
+        # return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
+        c = self.amplification * self.n_coins ** (2 * self.n_coins)
+        return (x / y) * (c * x * y ** 2 + d ** 3) / (c * x ** 2 * y + d ** 3)
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
@@ -225,6 +227,36 @@ def execute_remove_liquidity(
     agent.holdings[state.unique_id] -= shares_removed
     state.liquidity[tkn_remove] += delta_tkn
     agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
+    return state, agent
+
+
+def execute_remove_uniform(
+        state: StableSwapPoolState,
+        agent: Agent,
+        shares_removed: float
+):
+    if shares_removed > agent.holdings[state.unique_id]:
+        raise ValueError('Agent tried to remove more shares than it owns.')
+    elif shares_removed <= 0:
+        raise ValueError('Withdraw quantity must be > 0.')
+
+    share_fraction = shares_removed / state.shares
+
+    for tkn in state.asset_list:
+        delta_tkn = share_fraction * state.liquidity[tkn]  # delta_tkn is positive
+
+        if delta_tkn >= state.liquidity[tkn]:
+            return state.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
+
+        if tkn not in agent.holdings:
+            agent.holdings[tkn] = 0
+
+    state.shares -= shares_removed
+    agent.holdings[state.unique_id] -= shares_removed
+
+    for tkn in state.asset_list:
+        state.liquidity[tkn] -= delta_tkn
+        agent.holdings[tkn] += delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
     return state, agent
 
 
@@ -420,3 +452,4 @@ StableSwapPoolState.remove_liquidity = staticmethod(remove_liquidity)
 StableSwapPoolState.execute_remove_liquidity = staticmethod(execute_remove_liquidity)
 StableSwapPoolState.swap = staticmethod(swap)
 StableSwapPoolState.execute_swap = staticmethod(execute_swap)
+StableSwapPoolState.execute_remove_uniform = staticmethod(execute_remove_uniform)
