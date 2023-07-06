@@ -242,10 +242,11 @@ def execute_remove_uniform(
 
     share_fraction = shares_removed / state.shares
 
+    delta_tkns = {}
     for tkn in state.asset_list:
-        delta_tkn = share_fraction * state.liquidity[tkn]  # delta_tkn is positive
+        delta_tkns[tkn] = share_fraction * state.liquidity[tkn]  # delta_tkn is positive
 
-        if delta_tkn >= state.liquidity[tkn]:
+        if delta_tkns[tkn] >= state.liquidity[tkn]:
             return state.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
 
         if tkn not in agent.holdings:
@@ -255,8 +256,8 @@ def execute_remove_uniform(
     agent.holdings[state.unique_id] -= shares_removed
 
     for tkn in state.asset_list:
-        state.liquidity[tkn] -= delta_tkn
-        agent.holdings[tkn] += delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
+        state.liquidity[tkn] -= delta_tkns[tkn]
+        agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
     return state, agent
 
 
@@ -347,8 +348,8 @@ def execute_add_liquidity(
 ):
     if quantity <= 0:
         return state.fail_transaction('Add quantity must be > 0.', agent)
-    elif state.unique_id in agent.holdings:
-        return state.fail_transaction('Agent already has shares.', agent)
+    # elif state.unique_id in agent.holdings:
+    #     return state.fail_transaction('Agent already has shares.', agent)
 
     initial_d = state.d
 
