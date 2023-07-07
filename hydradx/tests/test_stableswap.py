@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 import functools
 from hydradx.model.amm import stableswap_amm as stableswap
@@ -6,7 +8,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 from hydradx.tests.strategies_omnipool import stableswap_config
 mp.dps = 50
@@ -242,3 +244,61 @@ def test_curve_style_withdraw_fees():
     if effective_fee_withdraw <= effective_fee_swap:
         raise AssertionError('Withdraw fee is not higher than swap fee.')
 
+
+@settings(max_examples=10000)
+@given(
+    st.integers(min_value=1, max_value=1000000),
+    st.integers(min_value=10000, max_value=10000000),
+    st.floats(min_value=1, max_value=2),
+)
+def test_exploitability(initial_lp: int, trade_size: int, arb_fraction: float):
+    assets = ['USDA', 'USDB']
+    initial_tvl = 1000000
+
+    initial_state = StableSwapPoolState(
+        tokens={tkn: initial_tvl / len(assets) for tkn in assets},
+        amplification=1000,
+        trade_fee=0
+    )
+    initial_agent = Agent(
+        holdings={tkn: initial_lp / len(assets) for tkn in assets},
+    )
+
+    lp_state, lp_agent = initial_state.copy(), initial_agent.copy()
+    for tkn in initial_state.asset_list:
+        stableswap.execute_add_liquidity(
+            state=lp_state,
+            agent=lp_agent,
+            quantity=lp_agent.holdings[tkn],
+            tkn_add=tkn
+        )
+
+    trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
+    trade_agent.holdings['USDA'] = trade_size
+    stableswap.execute_swap(
+        state=trade_state,
+        agent=trade_agent,
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        sell_quantity=1000000
+    )
+
+    withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
+    stableswap.execute_remove_liquidity(
+        state=withdraw_state,
+        agent=withdraw_agent,
+        shares_removed=trade_agent.holdings['stableswap'],
+        tkn_remove='USDA'
+    )
+
+    final_state, final_agent = withdraw_state.copy(), withdraw_agent.copy()
+    stableswap.execute_swap(
+        state=final_state,
+        agent=final_agent,
+        tkn_sell='USDB',
+        tkn_buy='USDA',
+        buy_quantity=(withdraw_state.liquidity['USDA'] - withdraw_state.liquidity['USDB']) / arb_fraction
+    )
+
+    if sum(final_agent.holdings.values()) > trade_size + initial_lp:
+        raise AssertionError('Agent profited by expoit.')
