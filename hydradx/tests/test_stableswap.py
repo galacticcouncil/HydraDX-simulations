@@ -60,6 +60,36 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
+@given(st.integers(min_value=1000,max_value=1000000),
+       st.integers(min_value=1000,max_value=1000000),
+       st.integers(min_value=10,max_value=1000)
+       )
+def test_spot_price(token_a: int, token_b: int, amp: int):
+    tokens = {"A": token_a, "B": token_b}
+    initial_pool = StableSwapPoolState(
+        tokens=tokens,
+        amplification=amp,
+        trade_fee=0.0,
+        unique_id='stableswap'
+    )
+
+    spot_price_initial = initial_pool.spot_price
+
+    trade_size=1
+    agent = Agent(holdings={"A": 100000, "B": 100000})
+    initial_pool.execute_swap(initial_pool, agent, tkn_sell="A", tkn_buy="B", sell_quantity=trade_size)
+    delta_a = initial_pool.liquidity["A"] - tokens["A"]
+    delta_b = tokens["B"] - initial_pool.liquidity["B"]
+    exec_price = delta_a / delta_b
+
+    spot_price_final = initial_pool.spot_price
+
+    if spot_price_initial > exec_price:
+        raise AssertionError('Initial spot price should be lower than execution price.')
+    if exec_price > spot_price_final:
+        raise AssertionError('Execution price should be lower than final spot price.')
+
+
 @given(stableswap_config(trade_fee=0))
 def test_round_trip_dy(initial_pool: StableSwapPoolState):
     d = initial_pool.calculate_d()
