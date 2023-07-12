@@ -485,7 +485,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                 if delta_Qi > 0:
                     dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) * (1 - asset_fees[i])
                 else:
-                    dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) / (1 - lrna_fees[i])
+                    delta_Qi_fee_adj = delta_Qi / (1 - lrna_fees[i])
+                    dr[i] = r[asset] * delta_Qi_fee_adj / (q[asset] + delta_Qi_fee_adj)
             profit = sum([dr[i] * prices[i] for i in range(len(prices))])
             if profit < 0:
                 if j > 0:
