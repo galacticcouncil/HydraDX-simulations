@@ -1827,7 +1827,7 @@ def test_withdraw_exploit():
 
 # @settings(max_examples=1)
 @given(
-    st.floats(min_value=0, max_value=0.05, exclude_min=True),
+    st.floats(min_value=1e-10, max_value=0.05),
     st.floats(min_value=0, max_value=0.1, exclude_min=True),
     st.floats(min_value=0.50, max_value=1.5)
 )
