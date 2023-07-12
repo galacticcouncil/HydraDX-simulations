@@ -129,7 +129,7 @@ def back_and_forth(
     def strategy(state: GlobalState, agent_id: str):
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
-        for i in range(len(omnipool.asset_list)):
+        for i in range(len(agent.asset_list)):
             asset = omnipool.asset_list[i]
             dr = percentage / 2 * omnipool.liquidity[asset]
             lrna_init = state.agents[agent_id].holdings['LRNA']
