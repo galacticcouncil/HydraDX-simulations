@@ -30,6 +30,7 @@ class OmnipoolState(AMM):
                  remove_liquidity_volatility_threshold: float = 0,
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
+                 lrna_mint_pct: float = 0.0,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -72,6 +73,7 @@ class OmnipoolState(AMM):
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
         self.remove_liquidity_volatility_threshold = remove_liquidity_volatility_threshold
+        self.lrna_mint_pct = lrna_mint_pct
         self.withdrawal_fee = withdrawal_fee
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
@@ -422,8 +424,10 @@ def execute_swap(
         )
         # lrna_fee = state.last_lrna_fee[tkn_buy]
 
-        delta_Qj = -delta_Qi * (1 - lrna_fee)
-        delta_Rj = state.liquidity[tkn_buy] * -delta_Qj / (state.lrna[tkn_buy] + delta_Qj) * (1 - asset_fee)
+        delta_Qt = -delta_Qi * (1 - lrna_fee)
+        delta_Qm = (state.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / state.lrna[tkn_buy] * state.lrna_mint_pct
+        delta_Qj = delta_Qt + delta_Qm
+        delta_Rj = state.liquidity[tkn_buy] * -delta_Qt / (state.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         delta_L = min(-delta_Qi * lrna_fee, -state.lrna_imbalance)
         delta_QH = -lrna_fee * delta_Qi - delta_L
 
@@ -491,11 +495,14 @@ def execute_lrna_swap(
             return state.fail_transaction('insufficient lrna in pool', agent)
         delta_ra = -state.liquidity[tkn] * delta_qa / (-delta_qa + state.lrna[tkn]) * (1 - asset_fee)
 
+        delta_qm = asset_fee * (-delta_qa) / state.lrna[tkn] * (state.lrna[tkn] - delta_qa) * state.lrna_mint_pct
+        delta_q = delta_qm - delta_qa
+
         if modify_imbalance:
             q = state.lrna_total
-            state.lrna_imbalance += delta_qa * (q + state.lrna_imbalance) / (q - delta_qa) + delta_qa
+            state.lrna_imbalance += -delta_q * (q + state.lrna_imbalance) / (q + delta_q) - delta_q
 
-        state.lrna[tkn] += -delta_qa
+        state.lrna[tkn] += delta_q
         state.liquidity[tkn] += -delta_ra
 
     elif delta_ra > 0:
@@ -504,13 +511,16 @@ def execute_lrna_swap(
             return state.fail_transaction('insufficient assets in pool', agent)
         elif delta_ra > agent.holdings[tkn]:
             return state.fail_transaction('agent has insufficient assets', agent)
-        delta_qa = -state.lrna[tkn] * delta_ra / (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
+        denom = (state.liquidity[tkn] * (1 - asset_fee) - delta_ra)
+        delta_qa = -state.lrna[tkn] * delta_ra / denom
+        delta_qm = - asset_fee * (1 - asset_fee) * (state.liquidity[tkn] / denom) * delta_qa * state.lrna_mint_pct
+        delta_q = -delta_qa + delta_qm
 
         if modify_imbalance:
             q = state.lrna_total
-            state.lrna_imbalance += delta_qa * (q + state.lrna_imbalance) / (q - delta_qa) + delta_qa
+            state.lrna_imbalance -= delta_q * (q + state.lrna_imbalance) / (q + delta_q) + delta_q
 
-        state.lrna[tkn] += -delta_qa
+        state.lrna[tkn] += delta_q
         state.liquidity[tkn] += -delta_ra
 
     # buying LRNA
