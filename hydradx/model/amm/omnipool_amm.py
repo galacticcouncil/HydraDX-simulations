@@ -923,10 +923,6 @@ def execute_add_liquidity(
     if (state.total_value_locked + quantity * usd_price(state, tkn_add)) > state.tvl_cap:
         return state.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
 
-    if (state.liquidity[tkn_add] + quantity) > 10 ** 12:
-        # TODO: this may not actually exist as part of the protocol
-        return state.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
-
     # assert quantity > 0, f"delta_R must be positive: {quantity}"
     if tkn_add not in state.asset_list:
         for sub_pool in state.sub_pools.values():
