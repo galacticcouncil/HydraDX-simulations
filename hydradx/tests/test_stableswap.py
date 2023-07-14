@@ -249,9 +249,8 @@ def test_curve_style_withdraw_fees():
 @given(
     st.integers(min_value=1, max_value=1000000),
     st.integers(min_value=10000, max_value=10000000),
-    st.floats(min_value=1, max_value=2),
 )
-def test_exploitability(initial_lp: int, trade_size: int, arb_fraction: float):
+def test_exploitability(initial_lp: int, trade_size: int):
     assets = ['USDA', 'USDB']
     initial_tvl = 1000000
 
@@ -280,7 +279,7 @@ def test_exploitability(initial_lp: int, trade_size: int, arb_fraction: float):
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
-        sell_quantity=1000000
+        sell_quantity=trade_size
     )
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
@@ -291,14 +290,27 @@ def test_exploitability(initial_lp: int, trade_size: int, arb_fraction: float):
         tkn_remove='USDA'
     )
 
-    final_state, final_agent = withdraw_state.copy(), withdraw_agent.copy()
-    stableswap.execute_swap(
-        state=final_state,
-        agent=final_agent,
-        tkn_sell='USDB',
-        tkn_buy='USDA',
-        buy_quantity=(withdraw_state.liquidity['USDA'] - withdraw_state.liquidity['USDB']) / arb_fraction
-    )
+    max_arb_size = trade_size
+    min_arb_size = 0
 
-    if sum(final_agent.holdings.values()) > trade_size + initial_lp:
-        raise AssertionError('Agent profited by expoit.')
+    for i in range(10):
+        final_state, final_agent = withdraw_state.copy(), withdraw_agent.copy()
+        arb_size = (max_arb_size - min_arb_size) / 2 + min_arb_size
+        stableswap.execute_swap(
+            state=final_state,
+            agent=final_agent,
+            tkn_sell='USDB',
+            tkn_buy='USDA',
+            buy_quantity=arb_size
+        )
+
+        profit = sum(final_agent.holdings.values()) - trade_size - initial_lp
+        if profit > 0:
+            raise AssertionError('Agent profited by expoit.')
+
+        if initial_state.spot_price < final_state.spot_price:
+            min_arb_size = arb_size
+        elif initial_state.spot_price > final_state.spot_price:
+            max_arb_size = arb_size
+        else:
+            break
