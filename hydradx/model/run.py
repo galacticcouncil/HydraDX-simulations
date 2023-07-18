@@ -1,7 +1,6 @@
 import time
 
 from .amm.global_state import GlobalState
-from copy import deepcopy
 
 
 def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> list:
