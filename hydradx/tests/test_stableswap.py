@@ -336,7 +336,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
         profit = sum(final_agent.holdings.values()) - trade_size - initial_lp
         if profit > 0:
-            raise AssertionError('Agent profited by expoit.')
+            raise AssertionError(f'Agent profited by exploit ({profit}).')
 
         if initial_state.spot_price < final_state.spot_price:
             min_arb_size = arb_size
