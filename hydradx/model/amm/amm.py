@@ -64,6 +64,15 @@ class AMM:
     ):
         return self.copy(), old_agent.copy()
 
+    @staticmethod
+    def execute_add_liquidity(
+        state,
+        agent,
+        quantity: float,
+        tkn_add: str
+    ):
+        return state, agent
+
     def remove_liquidity(
         self,
         old_agent: Agent,
@@ -71,6 +80,15 @@ class AMM:
         tkn_remove: str
     ):
         return self.copy(), old_agent.copy()
+
+    @staticmethod
+    def execute_remove_liquidity(
+        state,
+        agent,
+        quantity: float,
+        tkn_add: str
+    ):
+        return state, agent
 
     def fail_transaction(self, error: str, agent: Agent):
         self.fail = error
