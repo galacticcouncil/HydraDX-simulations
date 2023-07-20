@@ -108,14 +108,15 @@ class StableSwapPoolState(AMM):
 
         return y
 
+    # price is denominated in the first asset
     @property
     def spot_price(self):
         x, y = self.liquidity.values()
         return self.price_at_balance([x, y], self.d)
 
+    # price is denominated in the first asset
     def price_at_balance(self, balances: list, d: float):
         x, y = balances
-        # return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
         c = self.amplification * self.n_coins ** (2 * self.n_coins)
         return (x / y) * (c * x * y ** 2 + d ** 3) / (c * x ** 2 * y + d ** 3)
 
