@@ -1,6 +1,7 @@
 import time
 
 from .amm.global_state import GlobalState
+from copy import deepcopy
 
 
 def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> list:
@@ -22,8 +23,9 @@ def run(initial_state: GlobalState, time_steps: int, silent: bool = False) -> li
         new_global_state.evolve()
 
         # agent actions
-        agents = new_global_state.agents
-        for agent_id, agent in agents.items():
+        agent_ids = deepcopy(list(new_global_state.agents.keys()))
+        for agent_id in agent_ids:
+            agent = new_global_state.agents[agent_id]
             if agent.trade_strategy:
                 new_global_state = agent.trade_strategy.execute(new_global_state, agent.unique_id)
 
