@@ -2,7 +2,6 @@ import math
 import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
-from .amm import AMM
 from .basilisk_amm import ConstantProductPoolState
 from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
@@ -27,8 +26,8 @@ class TradeStrategy:
         elif self.run_once:
             self.done = True
         return_val = self.function(state, agent_id)
-        if state != return_val:
-            raise AssertionError('TradeStrategy function should return the identical state object.')
+        if return_val != state:
+            raise AssertionError('TradeStrategy function returned a different state object.')
         return return_val
 
     def __add__(self, other):
@@ -155,14 +154,15 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str):
 
         agent: Agent = state.agents[agent_id]
-        pool: AMM = state.pools[pool_id]
+        pool = state.pools[pool_id]
+
         for asset in assets or list(agent.holdings.keys()):
 
-            if asset in pool.asset_list:
+            if asset in state.pools[pool_id].asset_list:
                 pool.execute_add_liquidity(
                     state=pool,
                     agent=agent,
-                    quantity=state.agents[agent_id].holdings[asset],
+                    quantity=agent.holdings[asset],
                     tkn_add=asset
                 )
 
@@ -504,7 +504,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                 if delta_Qi > 0:
                     dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) * (1 - asset_fees[i])
                 else:
-                    dr[i] = r[asset] * delta_Qi / (q[asset] + delta_Qi) / (1 - lrna_fees[i])
+                    delta_Qi_fee_adj = delta_Qi / (1 - lrna_fees[i])
+                    dr[i] = r[asset] * delta_Qi_fee_adj / (q[asset] + delta_Qi_fee_adj)
             profit = sum([dr[i] * prices[i] for i in range(len(prices))])
             if profit < 0:
                 if j > 0:
