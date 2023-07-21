@@ -26,8 +26,8 @@ class TradeStrategy:
         elif self.run_once:
             self.done = True
         return_val = self.function(state, agent_id)
-        if state != return_val:
-            raise AssertionError('TradeStrategy function should return the identical state object.')
+        if return_val != state:
+            raise AssertionError('TradeStrategy function returned a different state object.')
         return return_val
 
     def __add__(self, other):
@@ -154,12 +154,15 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str):
 
         agent: Agent = state.agents[agent_id]
+        pool = state.pools[pool_id]
 
-            if asset in pool.asset_list:
+        for asset in assets or list(agent.holdings.keys()):
+
+            if asset in state.pools[pool_id].asset_list:
                 pool.execute_add_liquidity(
                     state=pool,
                     agent=agent,
-                    quantity=state.agents[agent_id].holdings[asset],
+                    quantity=agent.holdings[asset],
                     tkn_add=asset
                 )
 
