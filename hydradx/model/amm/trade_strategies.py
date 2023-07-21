@@ -2,7 +2,6 @@ import math
 import copy
 from .global_state import GlobalState, swap, add_liquidity, external_market_trade, withdraw_all_liquidity
 from .agents import Agent
-from .amm import AMM
 from .basilisk_amm import ConstantProductPoolState
 from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
@@ -155,8 +154,6 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str):
 
         agent: Agent = state.agents[agent_id]
-        pool: AMM = state.pools[pool_id]
-        for asset in assets or list(agent.holdings.keys()):
 
             if asset in pool.asset_list:
                 pool.execute_add_liquidity(
