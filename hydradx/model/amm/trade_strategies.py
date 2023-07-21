@@ -129,8 +129,9 @@ def back_and_forth(
     def strategy(state: GlobalState, agent_id: str):
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
-        for i in range(len(omnipool.asset_list)):
-            asset = omnipool.asset_list[i]
+        assets = list(set(agent.asset_list) & set(omnipool.asset_list))
+        for asset in assets:
+            # asset = agent.asset_list[i]
             dr = percentage / 2 * omnipool.liquidity[asset]
             lrna_init = state.agents[agent_id].holdings['LRNA']
             oamm.execute_swap(omnipool, agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
