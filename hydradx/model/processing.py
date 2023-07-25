@@ -5,7 +5,7 @@ from zipfile import ZipFile
 import datetime
 import os
 
-from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM, value_assets
+from .amm.global_state import GlobalState, AMM, value_assets
 # from .amm.agents import Agent
 
 cash_out = GlobalState.cash_out
@@ -52,13 +52,13 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
     if unrecognized_params:
         raise ValueError(f'Unrecognized parameter {unrecognized_params}')
 
-    # a little pre-processing
-    if 'deposit_val' in optional_params:
-        # move the agents' liquidity deposits back into holdings, as something to compare against later
-        for agent_id in initial_state.agents:
-            # do it this convoluted way because we're pretending each agent withdrew their assets alone,
-            # isolated from any effects of the other agents withdrawing *their* assets
-            withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
+    # # a little pre-processing
+    # if 'deposit_val' in optional_params:
+    #     # move the agents' liquidity deposits back into holdings, as something to compare against later
+    #     for agent_id in initial_state.agents:
+    #         # do it this convoluted way because we're pretending each agent withdrew their assets alone,
+    #         # isolated from any effects of the other agents withdrawing *their* assets
+    #         withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
 
     for step in events:
         state: GlobalState = step
