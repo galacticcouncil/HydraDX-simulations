@@ -377,10 +377,10 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     ):
         raise AssertionError(f'LRNA imbalance is wrong.')
 
-    if (new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(old_state.liquidity[i] + old_agent.holdings[i])
-            or new_state.lrna[i] + new_agent.holdings['LRNA']
-            != pytest.approx(old_state.lrna[i] + old_agent.holdings['LRNA'])):
+    if new_state.liquidity[i] + new_agent.holdings[i] != pytest.approx(old_state.liquidity[i] + old_agent.holdings[i]):
         raise AssertionError('System-wide asset total is wrong.')
+    if new_state.lrna[i] + new_agent.holdings['LRNA'] < old_state.lrna[i] + old_agent.holdings['LRNA']:
+        raise AssertionError('System-wide LRNA decreased.')
 
     # try swapping into LRNA and back to see if that's equivalent
     reverse_state, reverse_agent = oamm.swap_lrna(
@@ -398,6 +398,302 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         print(reverse_agent.holdings[i])
         print(old_agent.holdings[i])
         raise AssertionError('Agent holdings are wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01))
+def test_lrna_swap_buy_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float,
+        lrna_fee: float
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
+    )
+
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+
+    delta_ra = 1000
+    delta_ra_feeless = delta_ra / (1 - asset_fee)
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
+    spot_price = swap_state.price(swap_state, i)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01))
+def test_lrna_swap_sell_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float,
+        lrna_fee: float
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+
+    delta_qa = -1000
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i)
+    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
+    spot_price = swap_state.price(swap_state, i)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01), )
+def test_sell_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float,
+        lrna_fee: float,
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_ri = 1000
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
+    spot_price = swap_state.price(swap_state, j)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01), )
+def test_buy_with_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=0.0,
+        lrna_mint_pct=1.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_rj = 1000
+    delta_rj_feeless = delta_rj / (1 - asset_fee)
+
+    feeless_state = initial_state.copy()
+    feeless_state.asset_fee = 0
+    for asset in feeless_state.asset_list:
+        feeless_state.last_fee[asset] = 0
+
+    # Test with trader buying asset i
+    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0)
+    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
+    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
+    spot_price = swap_state.price(swap_state, j)
+    if feeless_swap_state.fail == '' and swap_state.fail == '':
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+            raise AssertionError('Spot price is wrong.')
+
+
+@given(st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=10000, max_value=10000000),
+       st.floats(min_value=0.0001, max_value=0.01),
+       st.floats(min_value=0.0001, max_value=0.01), )
+def test_sell_with_partial_lrna_mint(
+        hdx_liquidity: float,
+        dot_liquidity: float,
+        usd_liquidity: float,
+        hdx_lrna: float,
+        dot_lrna: float,
+        usd_lrna: float,
+        asset_fee: float,
+        lrna_fee: float,
+):
+    asset_dict = {
+        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
+        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
+        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+    }
+
+    initial_state_0 = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=0.0
+    )
+
+    initial_state_50 = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=0.5
+    )
+
+    initial_state_100 = oamm.OmnipoolState(
+        tokens=asset_dict,
+        tvl_cap=float('inf'),
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        lrna_mint_pct=1.0
+    )
+
+    old_agent = Agent(
+        holdings={token: 10000 for token in initial_state_0.asset_list + ['LRNA']}
+    )
+
+    i = 'DOT'
+    j = 'USD'
+
+    delta_ri = 1000
+
+    # Test with trader buying asset i
+    swap_state_100, swap_agent_100 = oamm.swap(initial_state_100, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+    swap_state_50, swap_agent_50 = oamm.swap(initial_state_50, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+    swap_state_0, swap_agent_0 = oamm.swap(initial_state_0, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+
+    spot_price_100 = swap_state_100.price(swap_state_100, j)
+    spot_price_50 = swap_state_50.price(swap_state_50, j)
+    spot_price_0 = swap_state_0.price(swap_state_0, j)
+
+    if swap_state_100.fail == '' and swap_state_50.fail == '' and swap_state_0.fail == '':
+        if spot_price_100 <= spot_price_50:
+            raise AssertionError('Spot price is wrong.')
+        if spot_price_50 <= spot_price_0:
+            raise AssertionError('Spot price is wrong.')
 
 
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025, imbalance=-1000))
