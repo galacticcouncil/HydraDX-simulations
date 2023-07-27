@@ -285,12 +285,12 @@ def test_exploitability(initial_lp: int, trade_size: int):
     initial_tvl = 1000000
 
     initial_state = StableSwapPoolState(
-        tokens={tkn: initial_tvl / len(assets) for tkn in assets},
+        tokens={tkn: mpf(initial_tvl / len(assets)) for tkn in assets},
         amplification=1000,
         trade_fee=0
     )
     initial_agent = Agent(
-        holdings={tkn: initial_lp / len(assets) for tkn in assets},
+        holdings={tkn: mpf(initial_lp / len(assets)) for tkn in assets},
     )
 
     lp_state, lp_agent = initial_state.copy(), initial_agent.copy()
