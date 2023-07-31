@@ -160,7 +160,7 @@ def invest_all(pool_id: str, assets: list or str = None, when: int = 0) -> Trade
             agent: Agent = state.agents[agent_id]
             pool = state.pools[pool_id]
 
-            for asset in assets or agent.holdings.keys():
+            for asset in assets or list(agent.holdings.keys()):
 
                 if asset in state.pools[pool_id].asset_list:
                     pool.execute_add_liquidity(
