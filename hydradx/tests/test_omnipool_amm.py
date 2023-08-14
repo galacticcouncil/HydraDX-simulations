@@ -741,7 +741,7 @@ def test_dynamic_fees(hdx_price: float):
     if not intermediate_hdx_lrna_fee == initial_hdx_lrna_fee:
         raise AssertionError('LRNA fee should not change.')
 
-    test_state.execute_swap(
+    test_state.swap(
         agent=test_agent,
         tkn_sell='HDX',
         tkn_buy='USD',
