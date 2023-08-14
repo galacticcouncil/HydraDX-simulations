@@ -174,7 +174,7 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
     )
     new_state, new_agent = bamm.simulate_remove_liquidity(
         old_state, old_agent,
-        quantity=delta_token,
+        quantity=old_agent.holdings[old_state.unique_id],
         tkn_remove=tkn_remove
     )
     other_tkn = initial_state.asset_list[1]
