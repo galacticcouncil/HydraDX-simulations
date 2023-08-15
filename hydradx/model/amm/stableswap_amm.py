@@ -402,3 +402,20 @@ def simulate_remove_liquidity(
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     return new_state.remove_liquidity(new_agent, quantity, tkn_remove)
+
+
+def simulate_buy_shares(
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,
+        tkn_add: str,
+        fail_overdraft: bool = True
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+    return new_state.buy_shares(
+        agent=new_agent,
+        quantity=quantity,
+        tkn_add=tkn_add,
+        fail_overdraft=fail_overdraft
+    )
