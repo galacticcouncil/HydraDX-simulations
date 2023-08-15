@@ -366,22 +366,23 @@ class OmnipoolState(AMM):
                 return self.fail_transaction('sell amount must be greater than zero', agent)
             if delta_Ri > agent.holdings[i]:
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
-    
+
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
             asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-            # asset_fee = self.last_fee[tkn_sell]
             lrna_fee = self.lrna_fee[tkn_buy].compute(
                 tkn=tkn_buy,
                 delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
                            / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
             )
-            # lrna_fee = self.last_lrna_fee[tkn_buy]
-    
-            delta_Qj = -delta_Qi * (1 - lrna_fee)
-            delta_Rj = self.liquidity[tkn_buy] * -delta_Qj / (self.lrna[tkn_buy] + delta_Qj) * (1 - asset_fee)
+
+            delta_Qt = -delta_Qi * (1 - lrna_fee)
+            delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
+                tkn_buy] * self.lrna_mint_pct
+            delta_Qj = delta_Qt + delta_Qm
+            delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
             delta_L = min(-delta_Qi * lrna_fee, -self.lrna_imbalance)
             delta_QH = -lrna_fee * delta_Qi - delta_L
-    
+
             if self.liquidity[i] + sell_quantity > 10 ** 12:
                 return self.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
     
@@ -444,12 +445,15 @@ class OmnipoolState(AMM):
             if -delta_qa + self.lrna[tkn] <= 0:
                 return self.fail_transaction('insufficient lrna in pool', agent)
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
-    
+
+            delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct
+            delta_q = delta_qm - delta_qa
+
             if modify_imbalance:
                 q = self.lrna_total
-                self.lrna_imbalance += delta_qa * (q + self.lrna_imbalance) / (q - delta_qa) + delta_qa
-    
-            self.lrna[tkn] += -delta_qa
+                self.lrna_imbalance += -delta_q * (q + self.lrna_imbalance) / (q + delta_q) - delta_q
+
+            self.lrna[tkn] += delta_q
             self.liquidity[tkn] += -delta_ra
     
         elif delta_ra > 0:
@@ -458,13 +462,16 @@ class OmnipoolState(AMM):
                 return self.fail_transaction('insufficient assets in pool', agent)
             elif delta_ra > agent.holdings[tkn]:
                 return self.fail_transaction('agent has insufficient assets', agent)
-            delta_qa = -self.lrna[tkn] * delta_ra / (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
-    
+            denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
+            delta_qa = -self.lrna[tkn] * delta_ra / denom
+            delta_qm = - asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
+            delta_q = -delta_qa + delta_qm
+
             if modify_imbalance:
                 q = self.lrna_total
-                self.lrna_imbalance += delta_qa * (q + self.lrna_imbalance) / (q - delta_qa) + delta_qa
-    
-            self.lrna[tkn] += -delta_qa
+                self.lrna_imbalance -= delta_q * (q + self.lrna_imbalance) / (q + delta_q) + delta_q
+
+            self.lrna[tkn] += delta_q
             self.liquidity[tkn] += -delta_ra
     
         # buying LRNA
@@ -1140,6 +1147,7 @@ OmnipoolArchiveState.price = staticmethod(price)
 OmnipoolState.usd_price = staticmethod(usd_price)
 OmnipoolState.lrna_price = staticmethod(lrna_price)
 OmnipoolState.price = staticmethod(price)
+
 
 # ===============================================================================
 # fee mechanisms
