@@ -54,7 +54,7 @@ class AMM:
         buy_quantity: float = 0,
         sell_quantity: float = 0
     ):
-        return self, agent
+        return self
 
     def add_liquidity(
         self,
@@ -62,7 +62,7 @@ class AMM:
         quantity: float,
         tkn_add: str
     ):
-        return self, agent
+        return self
 
     def remove_liquidity(
         self,
@@ -70,11 +70,11 @@ class AMM:
         quantity: float,
         tkn_remove: str
     ):
-        return self, agent
+        return self
 
     def fail_transaction(self, error: str, agent: Agent):
         self.fail = error
-        return self, agent
+        return self
 
     def __setattr__(self, key, value):
         if hasattr(self, key):
