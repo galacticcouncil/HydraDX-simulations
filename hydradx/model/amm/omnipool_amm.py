@@ -29,6 +29,7 @@ class OmnipoolState(AMM):
                  remove_liquidity_volatility_threshold: float = 0,
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
+                 lrna_mint_pct: float = 0.0,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -71,6 +72,7 @@ class OmnipoolState(AMM):
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
         self.remove_liquidity_volatility_threshold = remove_liquidity_volatility_threshold
+        self.lrna_mint_pct = lrna_mint_pct
         self.withdrawal_fee = withdrawal_fee
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
