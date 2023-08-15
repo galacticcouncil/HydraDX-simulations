@@ -593,12 +593,14 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
         old_agent=initial_agent,
         quantity=100, tkn_add='DAI'
     )
-    temp_state = oamm.execute_migrate_asset(lp_state.copy(), 'DAI', 'stableswap')
-    migrated_state, migrated_lp = oamm.execute_migrate_lp(
-        state=temp_state,
-        agent=lp.copy(),
-        sub_pool_id='stableswap',
-        tkn_migrate='DAI'
+    migrated_lp = lp.copy()
+    migrated_state = (lp_state.copy()
+        .migrate_asset('DAI', 'stableswap')
+        .migrate_lp(
+            agent=migrated_lp,
+            sub_pool_id='stableswap',
+            tkn_migrate='DAI'
+        )
     )
     migrated_sub_pool: ssamm.StableSwapPoolState = migrated_state.sub_pools[s]
     pui = migrated_sub_pool.conversion_metrics['DAI']['price']
@@ -653,15 +655,15 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     r1 = s1_lp.holdings[asset1]
 
     # scenario 2: migrate assets to subpool, then withdraw an equal percentage of each
-    migrate_state = oamm.execute_create_sub_pool(
-        state=initial_state.copy(),
+    migrate_lp = initial_lp.copy()
+    migrate_state = initial_state.copy(
+    ).create_sub_pool(
         tkns_migrate=[asset1, asset2, asset3],
         sub_pool_id='stableswap',
         amplification=10
-    ).update()
-    migrate_state, migrate_lp = oamm.execute_migrate_lp(
-        state=migrate_state,
-        agent=initial_lp.copy(),
+    ).update(
+    ).migrate_lp(
+        agent=migrate_lp,
         sub_pool_id='stableswap',
         tkn_migrate=asset1
     )
@@ -685,8 +687,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset2, asset3]:
-        ssamm.swap(
-            state=s3_sub_pool,
+        s3_sub_pool.swap(
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset1,
@@ -719,8 +720,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
         lrna=initial_state.lrna['stableswap'] / 3,
         shares=initial_state.lrna['stableswap'] / 3,
         protocol_shares=initial_state.lrna['stableswap'] / 3
-    )
-    initial_state.update()
+    ).update()
 
     initial_lp = Agent(
         holdings={
@@ -745,14 +745,14 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     q1 = s1_lp.holdings['LRNA']
     r1 = s1_lp.holdings[asset4]
 
-    migrate_state = oamm.execute_migrate_asset(
-        state=lp_state.copy(),
+    migrate_lp = invested_lp.copy()
+    migrate_state = lp_state.copy(
+    ).migrate_asset(
         tkn_migrate=asset4,
         sub_pool_id='stableswap'
-    ).update()
-    migrate_state, migrate_lp = oamm.execute_migrate_lp(
-        state=migrate_state,
-        agent=invested_lp.copy(),
+    ).update(
+    ).migrate_lp(
+        agent=migrate_lp,
         sub_pool_id='stableswap',
         tkn_migrate=asset4
     )
@@ -775,8 +775,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset1, asset2, asset3]:
-        ssamm.swap(
-            state=s3_sub_pool,
+        s3_sub_pool.swap(
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset4,
