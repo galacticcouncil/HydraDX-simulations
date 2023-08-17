@@ -25,10 +25,7 @@ class TradeStrategy:
             return state
         elif self.run_once:
             self.done = True
-        return_val = self.function(state, agent_id)
-        if return_val != state:
-            raise AssertionError('TradeStrategy function returned a different state object.')
-        return return_val
+        return self.function(state, agent_id)
 
     def __add__(self, other):
         assert isinstance(other, TradeStrategy)
