@@ -197,38 +197,38 @@ def execute_swap(
     state.liquidity[tkn_sell] += sell_quantity
 
     return state, new_agent
-
-
-def execute_remove_liquidity(
-        state: StableSwapPoolState,
-        agent: Agent,
-        shares_removed: float,
-        tkn_remove: str
-):
-    if shares_removed > agent.holdings[state.unique_id]:
-        raise ValueError('Agent tried to remove more shares than it owns.')
-    elif shares_removed <= 0:
-        raise ValueError('Withdraw quantity must be > 0.')
-
-    share_fraction = shares_removed / state.shares
-
-    updated_d = state.d * (1 - share_fraction * (1 - state.trade_fee))
-    delta_tkn = state.calculate_y(
-        state.modified_balances(delta={}, omit=[tkn_remove]),
-        updated_d
-    ) - state.liquidity[tkn_remove]
-
-    if delta_tkn >= state.liquidity[tkn_remove]:
-        return state.fail_transaction(f'Not enough liquidity in {tkn_remove}.', agent)
-
-    if tkn_remove not in agent.holdings:
-        agent.holdings[tkn_remove] = 0
-
-    state.shares -= shares_removed
-    agent.holdings[state.unique_id] -= shares_removed
-    state.liquidity[tkn_remove] += delta_tkn
-    agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
-    return state, agent
+#
+#
+# def execute_remove_liquidity(
+#         state: StableSwapPoolState,
+#         agent: Agent,
+#         shares_removed: float,
+#         tkn_remove: str
+# ):
+#     if shares_removed > agent.holdings[state.unique_id]:
+#         raise ValueError('Agent tried to remove more shares than it owns.')
+#     elif shares_removed <= 0:
+#         raise ValueError('Withdraw quantity must be > 0.')
+#
+#     share_fraction = shares_removed / state.shares
+#
+#     updated_d = state.d * (1 - share_fraction * (1 - state.trade_fee))
+#     delta_tkn = state.calculate_y(
+#         state.modified_balances(delta={}, omit=[tkn_remove]),
+#         updated_d
+#     ) - state.liquidity[tkn_remove]
+#
+#     if delta_tkn >= state.liquidity[tkn_remove]:
+#         return state.fail_transaction(f'Not enough liquidity in {tkn_remove}.', agent)
+#
+#     if tkn_remove not in agent.holdings:
+#         agent.holdings[tkn_remove] = 0
+#
+#     state.shares -= shares_removed
+#     agent.holdings[state.unique_id] -= shares_removed
+#     state.liquidity[tkn_remove] += delta_tkn
+#     agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
+#     return state, agent
 
 
 def execute_remove_uniform(
@@ -295,50 +295,50 @@ def execute_withdraw_asset(
     agent.holdings[tkn_remove] += quantity
     return state, agent
 
-#
-# def execute_remove_liquidity(
-#         state: StableSwapPoolState,
-#         agent: Agent,
-#         shares_removed: float,
-#         tkn_remove: str,
-# ):
-#     # First, need to calculate
-#     # * Get current D
-#     # * Solve Eqn against y_i for D - _token_amount
-#
-#     if shares_removed > agent.holdings[state.unique_id]:
-#         return state.fail_transaction('Agent has insufficient funds.', agent)
-#     elif shares_removed <= 0:
-#         return state.fail_transaction('Withdraw quantity must be > 0.', agent)
-#
-#     _fee = state.trade_fee
-#
-#     initial_d = state.calculate_d()
-#     reduced_d = initial_d - shares_removed * initial_d / state.shares
-#
-#     xp_reduced = copy.copy(state.liquidity)
-#     xp_reduced.pop(tkn_remove)
-#
-#     reduced_y = state.calculate_y(state.modified_balances(omit=[tkn_remove]), reduced_d)
-#     asset_reserve = state.liquidity[tkn_remove]
-#
-#     for tkn in state.asset_list:
-#         if tkn == tkn_remove:
-#             dx_expected = state.liquidity[tkn] * reduced_d / initial_d - reduced_y
-#             asset_reserve -= _fee * dx_expected
-#         else:
-#             dx_expected = state.liquidity[tkn] - state.liquidity[tkn] * reduced_d / initial_d
-#             xp_reduced[tkn] -= _fee * dx_expected
-#
-#     dy = asset_reserve - state.calculate_y(list(xp_reduced.values()), reduced_d)
-#
-#     agent.holdings[state.unique_id] -= shares_removed
-#     state.shares -= shares_removed
-#     state.liquidity[tkn_remove] -= dy
-#     if tkn_remove not in agent.holdings:
-#         agent.holdings[tkn_remove] = 0
-#     agent.holdings[tkn_remove] += dy
-#     return state, agent
+
+def execute_remove_liquidity(
+        state: StableSwapPoolState,
+        agent: Agent,
+        shares_removed: float,
+        tkn_remove: str,
+):
+    # First, need to calculate
+    # * Get current D
+    # * Solve Eqn against y_i for D - _token_amount
+
+    if shares_removed > agent.holdings[state.unique_id]:
+        return state.fail_transaction('Agent has insufficient funds.', agent)
+    elif shares_removed <= 0:
+        return state.fail_transaction('Withdraw quantity must be > 0.', agent)
+
+    _fee = state.trade_fee
+
+    initial_d = state.calculate_d()
+    reduced_d = initial_d - shares_removed * initial_d / state.shares
+
+    xp_reduced = copy.copy(state.liquidity)
+    xp_reduced.pop(tkn_remove)
+
+    reduced_y = state.calculate_y(state.modified_balances(omit=[tkn_remove]), reduced_d)
+    asset_reserve = state.liquidity[tkn_remove]
+
+    for tkn in state.asset_list:
+        if tkn == tkn_remove:
+            dx_expected = state.liquidity[tkn] * reduced_d / initial_d - reduced_y
+            asset_reserve -= _fee * dx_expected
+        else:
+            dx_expected = state.liquidity[tkn] - state.liquidity[tkn] * reduced_d / initial_d
+            xp_reduced[tkn] -= _fee * dx_expected
+
+    dy = asset_reserve - state.calculate_y(list(xp_reduced.values()), reduced_d)
+
+    agent.holdings[state.unique_id] -= shares_removed
+    state.shares -= shares_removed
+    state.liquidity[tkn_remove] -= dy
+    if tkn_remove not in agent.holdings:
+        agent.holdings[tkn_remove] = 0
+    agent.holdings[tkn_remove] += dy
+    return state, agent
 
 
 def execute_add_liquidity(
