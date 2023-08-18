@@ -141,7 +141,7 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     initial_agent = Agent(holdings=holdings, trade_strategy=invest_all('omnipool', when=4))
     initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
-    new_state = invest_all('omnipool').execute(initial_state, 'agent')
+    new_state = invest_all('omnipool').execute(initial_state.copy(), 'agent')
     for tkn in omnipool.asset_list:
         if new_state.agents['agent'].holdings[tkn] != 0:
             raise AssertionError(f'Failed to LP {tkn}')
