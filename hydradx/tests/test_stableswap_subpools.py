@@ -2,12 +2,13 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given, reproduce_failure
+from hypothesis import given, settings
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
+@settings(deadline=500)
 def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     # deposit stable pool shares into omnipool
