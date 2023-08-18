@@ -2,7 +2,7 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given
+from hypothesis import given, reproduce_failure
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
@@ -30,21 +30,23 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
+    new_d = new_stable_pool.calculate_d()
+    d = stable_pool.calculate_d()
     if not (stable_swap_equation(
-            new_stable_pool.calculate_d(),
+            new_d,
             new_stable_pool.amplification,
             new_stable_pool.n_coins,
             new_stable_pool.liquidity.values()
     )):
         raise AssertionError("Stableswap equation didn't hold.")
     if not (
-            stable_pool.calculate_d() * new_stable_pool.shares <=
-            new_stable_pool.calculate_d() * stable_pool.shares
+            d * new_stable_pool.shares <=
+            new_d * stable_pool.shares
     ):
         raise AssertionError("Shares/invariant ratio changed in the wrong direction.")
     if (
-            (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d() * (1 - stable_pool.trade_fee) !=
-            pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
+            (new_stable_pool.shares - stable_pool.shares) * d * (1 - stable_pool.trade_fee) !=
+            pytest.approx(stable_pool.shares * (new_d - d))
     ):
         raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
     if (
