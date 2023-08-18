@@ -119,7 +119,7 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 
     # Trading should result in net zero LRNA trades
     if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-        raise
+        raise AssertionError(f'Arbbtrageur traded LRNA. old: {old_holdings["LRNA"]}, new: {new_holdings["LRNA"]}')
 
     for asset in omnipool.asset_list:
         old_value += old_holdings[asset] * external_market[asset]
@@ -132,7 +132,7 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
     # Trading should be profitable
     if old_value > new_value:
         if new_value != pytest.approx(old_value, rel=1e-15):
-            raise
+            raise AssertionError(f'Arbitrageur lost money. old_value: {old_value}, new_value: {new_value}')
 
 
 @given(omnipool_reasonable_config(token_count=3))
