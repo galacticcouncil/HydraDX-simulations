@@ -2,7 +2,6 @@ import copy
 
 from .amm import AMM
 from .agents import Agent
-from mpmath import mp, mpf
 
 
 class StableSwapPoolState(AMM):
