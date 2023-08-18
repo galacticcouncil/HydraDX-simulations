@@ -802,6 +802,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
 
 
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, sub_pools={'stableswap': {}}))
+@settings(deadline=500)
 def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
     stable_pool: ssamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     agent = Agent(
@@ -811,9 +812,7 @@ def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
         initial_state, agent,
         quantity=1000, tkn_add=stable_pool.asset_list[0]
     )
-    if new_state.fail:
-        # this could be due to liquidity overload or whatever
-        return
+
     if (initial_state.unique_id, stable_pool.unique_id) not in new_agent.holdings:
         raise ValueError("Agent did not receive shares.")
     if not (new_agent.holdings[(initial_state.unique_id, stable_pool.unique_id)] > 0):
