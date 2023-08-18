@@ -231,6 +231,37 @@ def execute_swap(
 #     return state, agent
 
 
+def execute_remove_uniform(
+        state: StableSwapPoolState,
+        agent: Agent,
+        shares_removed: float
+):
+    if shares_removed > agent.holdings[state.unique_id]:
+        raise ValueError('Agent tried to remove more shares than it owns.')
+    elif shares_removed <= 0:
+        raise ValueError('Withdraw quantity must be > 0.')
+
+    share_fraction = shares_removed / state.shares
+
+    delta_tkns = {}
+    for tkn in state.asset_list:
+        delta_tkns[tkn] = share_fraction * state.liquidity[tkn]  # delta_tkn is positive
+
+        if delta_tkns[tkn] >= state.liquidity[tkn]:
+            return state.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
+
+        if tkn not in agent.holdings:
+            agent.holdings[tkn] = 0
+
+    state.shares -= shares_removed
+    agent.holdings[state.unique_id] -= shares_removed
+
+    for tkn in state.asset_list:
+        state.liquidity[tkn] -= delta_tkns[tkn]
+        agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
+    return state, agent
+
+
 def execute_withdraw_asset(
         state: StableSwapPoolState,
         agent: Agent,
@@ -318,8 +349,8 @@ def execute_add_liquidity(
 ):
     if quantity <= 0:
         return state.fail_transaction('Add quantity must be > 0.', agent)
-    elif state.unique_id in agent.holdings:
-        return state.fail_transaction('Agent already has shares.', agent)
+    # elif state.unique_id in agent.holdings:
+    #     return state.fail_transaction('Agent already has shares.', agent)
 
     initial_d = state.d
 
@@ -423,3 +454,4 @@ StableSwapPoolState.remove_liquidity = staticmethod(remove_liquidity)
 StableSwapPoolState.execute_remove_liquidity = staticmethod(execute_remove_liquidity)
 StableSwapPoolState.swap = staticmethod(swap)
 StableSwapPoolState.execute_swap = staticmethod(execute_swap)
+StableSwapPoolState.execute_remove_uniform = staticmethod(execute_remove_uniform)
