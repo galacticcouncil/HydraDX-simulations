@@ -188,15 +188,24 @@ def withdraw_all(when: int) -> TradeStrategy:
     return TradeStrategy(strategy, name=f'withdraw all at time step {when}')
 
 
-def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
+def sell_all(pool_id: str, tkn_sell: str, tkn_buy: str, when: int = -1) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
-        agent = state.agents[agent_id]
-        if not agent.holdings[sell_asset]:
-            return state
-        return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
+    class Strategy:
+        def __init__(self):
+            self.when = when
+            self.done = False
 
-    return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
+        def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
+            agent = state.agents[agent_id]
+            if self.done or not agent.holdings[tkn_sell] or state.time_step < self.when:
+                return state
+            if self.when > 0:
+                self.done = True
+            return state.execute_swap(
+                pool_id, agent_id, tkn_sell, tkn_buy, sell_quantity=agent.holdings[tkn_sell]
+            )
+
+    return TradeStrategy(Strategy().execute, name=f'sell all {tkn_sell} for {tkn_buy}')
 
 
 def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
@@ -473,14 +482,14 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             # asset_fee = omnipool.last_fee[asset]
             asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-
-            if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
-                skip_ct += 1
-                if i < usd_index:
-                    usd_index -= 1
-                continue
+            # low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+            # high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+            #
+            # if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+            #     skip_ct += 1
+            #     if i < usd_index:
+            #         usd_index -= 1
+            #     continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
