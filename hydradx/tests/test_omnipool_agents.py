@@ -164,7 +164,7 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
                 and hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
             raise AssertionError(f'Agent has shares of {tkn}, but should not.')
 
-    events = run(initial_state, time_steps=4)
+    events = run(initial_state, time_steps=4, silent=True)
     final_state = events[-1]
     if final_state.agents['agent'].holdings['HDX'] != 0 or events[-2].agents['agent'].holdings['HDX'] == 0:
         raise AssertionError('HDX not invested at the right time.')
