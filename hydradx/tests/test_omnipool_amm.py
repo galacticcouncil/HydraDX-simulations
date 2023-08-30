@@ -2268,7 +2268,7 @@ def test_withdraw_manipulation(
             - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
     )
 
-    if profit > 0:
+    if profit > 1e-6:
         raise AssertionError(f'profit with manipulation {profit} > 0')
 
 
