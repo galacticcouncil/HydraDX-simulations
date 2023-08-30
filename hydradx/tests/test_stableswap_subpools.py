@@ -2,7 +2,7 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given, settings
+from hypothesis import given, settings, strategies as st
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
@@ -622,17 +622,31 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     asset1 = initial_state.asset_list[2]
     asset2 = 'DAI'
     asset3 = 'USDC'
-    initial_state.asset_list.append(asset2)
-    initial_state.liquidity[asset2] = initial_state.liquidity[asset1] * 1.1
-    initial_state.lrna[asset2] = initial_state.lrna[asset1] * 1.1
-    initial_state.shares[asset2] = initial_state.shares[asset1] * 1.1
-    initial_state.protocol_shares[asset2] = initial_state.protocol_shares[asset1] * 1.1
-    initial_state.asset_list.append(asset3)
-    initial_state.liquidity[asset3] = initial_state.liquidity[asset1] * 1.1
-    initial_state.lrna[asset3] = initial_state.lrna[asset1] * 1.1
-    initial_state.shares[asset3] = initial_state.shares[asset1] * 1.1
-    initial_state.protocol_shares[asset3] = initial_state.protocol_shares[asset1] * 1.1
-    initial_state.weight_cap[asset3] = 1
+    initial_state.add_token(
+        tkn=asset2,
+        liquidity=initial_state.liquidity[asset1] * 1.1,
+        lrna=initial_state.lrna[asset1] * 1.1,
+        shares=initial_state.shares[asset1] * 1.1,
+        protocol_shares=initial_state.protocol_shares[asset1] * 1.1
+    )
+    initial_state.add_token(
+        tkn=asset3,
+        liquidity=initial_state.liquidity[asset1] * 1.1,
+        lrna=initial_state.lrna[asset1] * 1.1,
+        shares=initial_state.shares[asset1] * 1.1,
+        protocol_shares=initial_state.protocol_shares[asset1] * 1.1,
+        weight_cap=1
+    )
+    # initial_state.liquidity[asset2] = initial_state.liquidity[asset1] * 1.1
+    # initial_state.lrna[asset2] = initial_state.lrna[asset1] * 1.1
+    # initial_state.shares[asset2] = initial_state.shares[asset1] * 1.1
+    # initial_state.protocol_shares[asset2] = initial_state.protocol_shares[asset1] * 1.1
+    # initial_state.asset_list.append(asset3)
+    # initial_state.liquidity[asset3] = initial_state.liquidity[asset1] * 1.1
+    # initial_state.lrna[asset3] = initial_state.lrna[asset1] * 1.1
+    # initial_state.shares[asset3] = initial_state.shares[asset1] * 1.1
+    # initial_state.protocol_shares[asset3] = initial_state.protocol_shares[asset1] * 1.1
+    # initial_state.weight_cap[asset3] = 1
     initial_lp = Agent(
         holdings={
             asset1: initial_state.liquidity[asset2] - initial_state.liquidity[asset1],
@@ -699,9 +713,11 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     r3 = s3_lp.holdings[asset1]
 
     # scenario 4: withdraw only asset1
-    s4_state, s4_lp = oamm.remove_liquidity(
-        migrate_state, migrate_lp,
-        quantity=migrate_lp.holdings['stableswap'],
+    s4_state, s4_lp = migrate_state.copy(), migrate_lp.copy()
+    ssamm.execute_remove_liquidity(
+        state=s4_state.sub_pools['stableswap'],
+        agent=s4_lp,
+        shares_removed=s4_lp.holdings['stableswap'],
         tkn_remove=asset1
     )
 
@@ -805,12 +821,19 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
 @settings(deadline=500)
 def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
     stable_pool: ssamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
-    agent = Agent(
+    initial_agent = Agent(
         holdings={stable_pool.asset_list[0]: 1000}
     )
-    new_state, new_agent = oamm.add_liquidity(
-        initial_state, agent,
+    new_state, new_agent = initial_state.copy(), initial_agent.copy()
+    ssamm.execute_add_liquidity(
+        state=new_state.sub_pools['stableswap'],
+        agent=new_agent,
         quantity=1000, tkn_add=stable_pool.asset_list[0]
+    )
+    oamm.execute_add_liquidity(
+        state=new_state,
+        agent=new_agent,
+        quantity=new_agent.holdings[stable_pool.unique_id], tkn_add=stable_pool.unique_id
     )
 
     if (initial_state.unique_id, stable_pool.unique_id) not in new_agent.holdings:
