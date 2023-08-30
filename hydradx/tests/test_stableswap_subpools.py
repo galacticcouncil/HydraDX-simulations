@@ -840,3 +840,31 @@ def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
         raise ValueError("Agent did not receive shares.")
     if not (new_agent.holdings[(initial_state.unique_id, stable_pool.unique_id)] > 0):
         raise AssertionError("Sanity check failed.")
+
+
+@given(st.floats(min_value=0.01, max_value=0.99), st.floats(min_value=0.01, max_value=0.99))
+def test_partial_migration(percentage1: float, percentage2: float):
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'DAI': {'liquidity': 1000, 'LRNA': 1000},
+            'USDT': {'liquidity': 1000, 'LRNA': 1000},
+            'HDX': {'liquidity': 1000, 'LRNA': 1000}
+        },
+        preferred_stablecoin='DAI',
+    )
+    subpool_state = oamm.execute_create_sub_pool(
+        state=initial_state.copy(),
+        tkns_migrate={
+            'DAI': initial_state.liquidity['DAI'] * percentage1,
+            'USDT': initial_state.liquidity['USDT'] * percentage2
+        },
+        sub_pool_id='stableswap',
+        amplification=10
+    )
+    if sum(initial_state.lrna.values()) != pytest.approx(sum(subpool_state.lrna.values())):
+        raise AssertionError("LRNA not conserved.")
+    if sum(initial_state.liquidity.values()) != pytest.approx(
+        sum(subpool_state.liquidity.values()) - subpool_state.liquidity['stableswap']
+        + sum(subpool_state.sub_pools['stableswap'].liquidity.values())
+    ):
+        raise AssertionError("Liquidity not conserved.")
