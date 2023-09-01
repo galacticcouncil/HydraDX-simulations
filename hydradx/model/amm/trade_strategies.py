@@ -163,7 +163,7 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
                     tkn_add=asset
                 )
 
-        agent.initial_holdings = agent.holdings
+        # agent.initial_holdings = agent.holdings
 
         return state
 
@@ -466,14 +466,15 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             # asset_fee = omnipool.last_fee[asset]
             asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+            if arb_precision < 2:
+                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
 
-            if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
-                skip_ct += 1
-                if i < usd_index:
-                    usd_index -= 1
-                continue
+                if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+                    skip_ct += 1
+                    if i < usd_index:
+                        usd_index -= 1
+                    continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
