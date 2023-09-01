@@ -868,3 +868,7 @@ def test_partial_migration(percentage1: float, percentage2: float):
         + sum(subpool_state.sub_pools['stableswap'].liquidity.values())
     ):
         raise AssertionError("Liquidity not conserved.")
+    if initial_state.liquidity['DAI'] * percentage1 != pytest.approx(
+        subpool_state.sub_pools['stableswap'].liquidity['DAI']
+    ):
+        raise AssertionError("DAI liquidity not conserved.")
