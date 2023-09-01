@@ -309,6 +309,8 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
 
 
 def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
+    if tkn == 'LRNA':
+        return 1 / lrna_price(state, state.stablecoin)
     return price(state, tkn) / price(state, state.stablecoin)
 
 
@@ -789,7 +791,8 @@ def execute_create_sub_pool(
     for tkn in tkns_migrate:
         state.lrna[tkn] -= tkns_migrate[tkn] * state.lrna[tkn] / state.liquidity[tkn]
         state.liquidity[tkn] -= tkns_migrate[tkn]
-        # state.asset_list.remove(tkn)
+        if state.liquidity[tkn] == 0:
+            state.asset_list.remove(tkn)
     return state
 
 
