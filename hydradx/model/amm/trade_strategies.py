@@ -154,7 +154,8 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
         pool = state.pools[pool_id]
 
         for asset in assets or list(agent.holdings.keys()):
-
+            if agent.holdings[asset] == 0:
+                continue
             if asset in state.pools[pool_id].asset_list:
                 pool.execute_add_liquidity(
                     state=pool,
@@ -167,7 +168,7 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
 
         return state
 
-    return TradeStrategy(strategy, name=f'invest all ({pool_id})', run_once=True)
+    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
 
 
 def withdraw_all(when: int) -> TradeStrategy:
