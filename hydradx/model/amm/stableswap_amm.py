@@ -196,38 +196,6 @@ class StableSwapPoolState(AMM):
         self.liquidity[tkn_sell] += sell_quantity
     
         return self, new_agent
-    
-    #
-    # def execute_remove_liquidity_old(
-    #         self: StableSwapPoolState,
-    #         agent: Agent,
-    #         shares_removed: float,
-    #         tkn_remove: str
-    # ):
-    #     if shares_removed > agent.holdings[self.unique_id]:
-    #         raise ValueError('Agent tried to remove more shares than it owns.')
-    #     elif shares_removed <= 0:
-    #         raise ValueError('Withdraw quantity must be > 0.')
-    #
-    #     share_fraction = shares_removed / self.shares
-    #
-    #     updated_d = self.d * (1 - share_fraction * (1 - self.trade_fee))
-    #     delta_tkn = self.calculate_y(
-    #         self.modified_balances(delta={}, omit=[tkn_remove]),
-    #         updated_d
-    #     ) - self.liquidity[tkn_remove]
-    #
-    #     if delta_tkn >= self.liquidity[tkn_remove]:
-    #         return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.', agent)
-    #
-    #     if tkn_remove not in agent.holdings:
-    #         agent.holdings[tkn_remove] = 0
-    #
-    #     self.shares -= shares_removed
-    #     agent.holdings[self.unique_id] -= shares_removed
-    #     self.liquidity[tkn_remove] += delta_tkn
-    #     agent.holdings[tkn_remove] -= delta_tkn  # agent is receiving funds, because delta_tkn is a negative number
-    #     return self, agent
 
     def withdraw_asset(
             self,
