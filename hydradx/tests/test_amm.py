@@ -141,12 +141,6 @@ def test_simulation(initial_state: GlobalState):
 
     initial_wealth = initial_state.total_wealth()
     events = run.run(initial_state, time_steps=5, silent=True)
-    events = processing.postprocessing(events, optional_params=[
-        'pool_val', 'holdings_val', 'impermanent_loss', 'trade_volume'
-    ])
-
-    # pu.plot(events, asset='all')
-    # pu.plot(events, agent='Agent1', prop=['holdings', 'holdings_val'])
 
     # property test: is there still the same total wealth held by all pools + agents?
     final_state = events[-1]
