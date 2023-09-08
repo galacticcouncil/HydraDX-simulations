@@ -272,7 +272,6 @@ def test_curve_style_withdraw_fees():
         raise AssertionError('Withdraw fee is not higher than swap fee.')
 
 
-@settings(max_examples=10000)
 @given(
     st.integers(min_value=1, max_value=1000000),
     st.integers(min_value=10000, max_value=10000000),
