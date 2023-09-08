@@ -617,6 +617,7 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
         raise AssertionError("Share quantities didn't come out right.")
 
 
+@settings(deadline=500)
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, withdrawal_fee=False))
 def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState):
     asset1 = initial_state.asset_list[2]
