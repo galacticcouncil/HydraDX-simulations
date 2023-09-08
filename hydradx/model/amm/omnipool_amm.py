@@ -846,7 +846,7 @@ class OmnipoolState(AMM):
             quantity: float = 0,
             tkn_add: str = ''
     ):
-        """Compute new self after liquidity addition"""
+        """Compute new state after liquidity addition"""
     
         if quantity <= 0:
             return self.fail_transaction('Quantity must be non-negative.', agent)
@@ -1064,7 +1064,7 @@ def simulate_swap_lrna(
         tkn: str = '',
         modify_imbalance: bool = True
 ) -> tuple[OmnipoolState, Agent]:
-    """Compute new self after LRNA swap"""
+    """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
@@ -1112,7 +1112,7 @@ def simulate_add_liquidity(
         quantity: float = 0,
         tkn_add: str = ''
 ) -> tuple[OmnipoolState, Agent]:
-    """Copy self, then added liquidity and return new self"""
+    """Copy state, then add liquidity and return new state"""
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
@@ -1126,19 +1126,13 @@ def simulate_remove_liquidity(
         quantity: float,
         tkn_remove: str
 ) -> tuple[OmnipoolState, Agent]:
-    """Compute new self after liquidity removal"""
+    """Compute new state after liquidity removal"""
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
     new_state.remove_liquidity(new_agent, quantity, tkn_remove)
     return new_state, new_agent
 
-
-# OmnipoolState.swap = staticmethod(simulate_swap)
-# OmnipoolState.execute_swap = staticmethod(execute_swap)
-# OmnipoolState.add_liquidity = staticmethod(simulate_add_liquidity)
-# OmnipoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
-# OmnipoolState.remove_liquidity = staticmethod(simulate_remove_liquidity)
 
 OmnipoolArchiveState.usd_price = staticmethod(usd_price)
 OmnipoolArchiveState.lrna_price = staticmethod(lrna_price)
