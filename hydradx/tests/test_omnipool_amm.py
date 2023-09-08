@@ -250,8 +250,6 @@ def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
 
     test_state.oracles['price'].price[i] /= (1 + price_diff)
 
-    min_fee = 0.0001
-
     initial_agent = Agent(
         holdings={token: 1000 for token in test_state.asset_list + ['LRNA']},
     )
@@ -449,8 +447,6 @@ def test_lrna_swap_buy_with_lrna_mint(
     # Test with trader buying asset i
     swap_state = initial_state.copy().lrna_swap(old_agent.copy(), delta_ra, 0, i)
     feeless_swap_state = feeless_state.copy().lrna_swap(old_agent.copy(), delta_ra_feeless, 0, i)
-    # swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
-    # feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
     feeless_spot_price = oamm.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
