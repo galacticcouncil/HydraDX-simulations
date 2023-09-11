@@ -272,3 +272,62 @@ def test_curve_style_withdraw_fees():
     if effective_fee_withdraw <= effective_fee_swap:
         raise AssertionError('Withdraw fee is not higher than swap fee.')
 
+
+def test_amplification_attack():
+    initial_state = stableswap.StableSwapPoolState(
+        tokens={
+            'USDA': 1000000,
+            'USDB': 1000000,
+            'USDC': 1000000,
+        },
+        amplification=100,
+        trade_fee=0.003,
+    )
+    initial_agent = Agent(
+        holdings={'USDA': 100000000, 'USDB': 100000000}
+    )
+
+    test_state = initial_state.copy()
+    test_agent = initial_agent.copy()
+    for i in range(90):
+
+        stableswap.execute_swap(
+            state=test_state,
+            agent=test_agent,
+            tkn_sell='USDB',
+            tkn_buy='USDA',
+            sell_quantity=10000000
+        )
+        test_state.amplification -= 1
+        stableswap.execute_swap(
+            state=test_state,
+            agent=test_agent,
+            tkn_sell='USDA',
+            tkn_buy='USDB',
+            buy_quantity=10000000
+        )
+    print('test 1')
+    print(f"final agent profit: {sum(test_agent.holdings.values()) - sum(initial_agent.holdings.values())}")
+
+    # demonstrate that the profit is the same if the amplification is reduced all at once
+    test_state_2 = initial_state.copy()
+    test_agent_2 = initial_agent.copy()
+    # for i in range(90):
+
+    stableswap.execute_swap(
+        state=test_state_2,
+        agent=test_agent_2,
+        tkn_sell='USDB',
+        tkn_buy='USDA',
+        sell_quantity=10000000
+    )
+    test_state_2.amplification -= 90
+    stableswap.execute_swap(
+        state=test_state_2,
+        agent=test_agent_2,
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        buy_quantity=10000000
+    )
+    print('test 2')
+    print(f"final agent profit: {sum(test_agent_2.holdings.values()) - sum(initial_agent.holdings.values())}")
