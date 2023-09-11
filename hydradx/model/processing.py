@@ -1,11 +1,11 @@
-from csv import DictReader, writer, reader
-from dataclasses import dataclass
+from csv import reader
 import requests
 from zipfile import ZipFile
 import datetime
 import os
 
-from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM, value_assets
+
+from .amm.global_state import GlobalState, AMM, value_assets
 # from .amm.agents import Agent
 
 cash_out = GlobalState.cash_out
@@ -52,14 +52,6 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
     if unrecognized_params:
         raise ValueError(f'Unrecognized parameter {unrecognized_params}')
 
-    # a little pre-processing
-    if 'deposit_val' in optional_params:
-        # move the agents' liquidity deposits back into holdings, as something to compare against later
-        for agent_id in initial_state.agents:
-            # do it this convoluted way because we're pretending each agent withdrew their assets alone,
-            # isolated from any effects of the other agents withdrawing *their* assets
-            withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
-
     for step in events:
         state: GlobalState = step
 
@@ -103,7 +95,7 @@ def import_binance_prices(
 ) -> dict[str: list[float]]:
 
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
 
     # find the data folder
     while not os.path.exists("./data"):
@@ -156,7 +148,7 @@ def import_monthly_binance_prices(
     start_mth, start_year = start_month.split(' ')
 
     start_date = datetime.datetime.strptime(start_mth + ' 15 ' + start_year, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), ("%Y-%m")) for i in range(months)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), "%Y-%m") for i in range(months)]
 
     # find the data folder
     while not os.path.exists("./data"):

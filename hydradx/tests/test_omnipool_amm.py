@@ -87,7 +87,7 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
     i = old_state.asset_list[-1]
     delta_R = 1000
 
-    new_state, new_agents = oamm.add_liquidity(old_state, old_agent, delta_R, i)
+    new_state, new_agents = oamm.simulate_add_liquidity(old_state, old_agent, delta_R, i)
     for j in initial_state.asset_list:
         assert oamm.lrna_price(old_state, j) == pytest.approx(oamm.lrna_price(new_state, j))
     if old_state.liquidity[i] / old_state.shares[i] != pytest.approx(new_state.liquidity[i] / new_state.shares[i]):
@@ -119,10 +119,10 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
     old_state.tvl_cap = float('inf')
 
     # try one just above and just below the maximum allowable amount
-    illegal_state, illegal_agents = oamm.add_liquidity(old_state, old_agent, max_amount * 1.0000001, i)
+    illegal_state, illegal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 1.0000001, i)
     if not illegal_state.fail:
         raise AssertionError(f'illegal transaction passed against weight limit in {i}')
-    legal_state, legal_agents = oamm.add_liquidity(old_state, old_agent, max_amount * 0.9999999, i)
+    legal_state, legal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 0.9999999, i)
     if legal_state.fail:
         raise AssertionError(f'legal transaction failed against weight limit in {i} ({new_state.fail})')
 
@@ -138,7 +138,7 @@ def test_add_liquidity_with_existing_position_fails(initial_state: oamm.Omnipool
 
     delta_R = old_agent.holdings[tkn]
 
-    new_state, new_agents = oamm.add_liquidity(old_state, old_agent, delta_R, tkn)
+    new_state, new_agents = oamm.simulate_add_liquidity(old_state, old_agent, delta_R, tkn)
 
     if not new_state.fail:
         raise AssertionError(f'Adding liquidity to an existing position should fail.')
@@ -155,7 +155,7 @@ def test_add_liquidity_with_quantity_zero_should_fail(initial_state: oamm.Omnipo
 
     delta_R = 0
 
-    new_state, new_agents = oamm.add_liquidity(old_state, old_agent, delta_R, tkn)
+    new_state, new_agents = oamm.simulate_add_liquidity(old_state, old_agent, delta_R, tkn)
 
     if not new_state.fail:
         raise AssertionError(f'Adding liquidity with quantity zero should fail.')
@@ -168,12 +168,12 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
     # add LP shares to the pool
-    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    old_state, old_agent = oamm.simulate_add_liquidity(initial_state, initial_agent, 1000, i)
     p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
 
-    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    new_state, new_agent = oamm.simulate_remove_liquidity(old_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
@@ -206,12 +206,12 @@ def test_remove_liquidity_min_fee(initial_state: oamm.OmnipoolState):
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
     # add LP shares to the pool
-    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, 1000, i)
+    old_state, old_agent = oamm.simulate_add_liquidity(initial_state, initial_agent, 1000, i)
     p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
 
-    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    new_state, new_agent = oamm.simulate_remove_liquidity(old_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
@@ -252,18 +252,16 @@ def test_remove_liquidity_dynamic_fee(price_diff: float, asset_dict: dict):
 
     test_state.oracles['price'].price[i] /= (1 + price_diff)
 
-    min_fee = 0.0001
-
     initial_agent = Agent(
         holdings={token: 1000 for token in test_state.asset_list + ['LRNA']},
     )
     # add LP shares to the pool
-    old_state, old_agent = oamm.add_liquidity(test_state, initial_agent, 1000, i)
+    old_state, old_agent = oamm.simulate_add_liquidity(test_state, initial_agent, 1000, i)
     p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
 
-    new_state, new_agent = oamm.remove_liquidity(old_state, old_agent, delta_S, i)
+    new_state, new_agent = oamm.simulate_remove_liquidity(old_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
         if oamm.price(old_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
@@ -300,19 +298,19 @@ def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolSta
     )
     # add LP shares to the pool
     init_contrib = 1000
-    old_state, old_agent = oamm.add_liquidity(initial_state, initial_agent, init_contrib, i)
+    old_state, old_agent = oamm.simulate_add_liquidity(initial_state, initial_agent, init_contrib, i)
     p_init = oamm.lrna_price(old_state, i)
 
     trader_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
     tkn2 = initial_state.asset_list[1]
-    trade_state, _ = oamm.swap(old_state, trader_agent, tkn_buy=tkn2, tkn_sell=i,
-                               sell_quantity=initial_state.liquidity[i] * trade_size_ratio)
+    trade_state, _ = oamm.simulate_swap(old_state, trader_agent, tkn_buy=tkn2, tkn_sell=i,
+                                        sell_quantity=initial_state.liquidity[i] * trade_size_ratio)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
 
-    new_state, new_agent = oamm.remove_liquidity(trade_state, old_agent, delta_S, i)
+    new_state, new_agent = oamm.simulate_remove_liquidity(trade_state, old_agent, delta_S, i)
     for j in new_state.asset_list:
         if oamm.price(trade_state, j) != pytest.approx(oamm.price(new_state, j)):
             raise AssertionError(f'Price change in asset {j}')
@@ -354,13 +352,13 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     for asset in feeless_state.asset_list:
         feeless_state.last_lrna_fee[asset] = 0
         feeless_state.last_fee[asset] = 0
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra, 0, i)
+    feeless_swap_state, feeless_swap_agent = oamm.simulate_swap_lrna(feeless_state, old_agent, delta_ra, 0, i)
     if oamm.asset_invariant(feeless_swap_state, i) != pytest.approx(oamm.asset_invariant(old_state, i)):
         raise
 
     # Test with trader selling LRNA
-    new_state, new_agent = oamm.swap_lrna(old_state, old_agent, 0, delta_qa, i)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
+    new_state, new_agent = oamm.simulate_swap_lrna(old_state, old_agent, 0, delta_qa, i)
+    feeless_swap_state, feeless_swap_agent = oamm.simulate_swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
     if oamm.asset_invariant(feeless_swap_state, i) != pytest.approx(oamm.asset_invariant(old_state, i)):
         raise
     for j in old_state.asset_list:
@@ -385,7 +383,7 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
         raise AssertionError('System-wide LRNA decreased.')
 
     # try swapping into LRNA and back to see if that's equivalent
-    reverse_state, reverse_agent = oamm.swap_lrna(
+    reverse_state, reverse_agent = oamm.simulate_swap_lrna(
         old_state=feeless_swap_state,
         old_agent=feeless_swap_agent,
         delta_qa=-delta_qa,
@@ -434,7 +432,6 @@ def test_lrna_swap_buy_with_lrna_mint(
         lrna_mint_pct=1.0
     )
 
-
     old_agent = Agent(
         holdings={token: 10000 for token in initial_state.asset_list + ['LRNA']}
     )
@@ -450,9 +447,9 @@ def test_lrna_swap_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, delta_ra, 0, i)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, delta_ra_feeless, 0, i)
-    feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
+    swap_state = initial_state.copy().lrna_swap(old_agent.copy(), delta_ra, 0, i)
+    feeless_swap_state = feeless_state.copy().lrna_swap(old_agent.copy(), delta_ra_feeless, 0, i)
+    feeless_spot_price = oamm.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
         if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
@@ -505,8 +502,8 @@ def test_lrna_swap_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap_lrna(initial_state, old_agent, 0, delta_qa, i)
-    feeless_swap_state, feeless_swap_agent = oamm.swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
+    swap_state, swap_agent = oamm.simulate_swap_lrna(initial_state, old_agent, 0, delta_qa, i)
+    feeless_swap_state, feeless_swap_agent = oamm.simulate_swap_lrna(feeless_state, old_agent, 0, delta_qa, i)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, i)
     spot_price = swap_state.price(swap_state, i)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -561,8 +558,8 @@ def test_sell_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, 0, delta_ri)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, 0, delta_ri)
+    swap_state, swap_agent = oamm.simulate_swap(initial_state, old_agent, j, i, 0, delta_ri)
+    feeless_swap_state, feeless_swap_agent = oamm.simulate_swap(feeless_state, old_agent, j, i, 0, delta_ri)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -616,8 +613,8 @@ def test_buy_with_lrna_mint(
         feeless_state.last_fee[asset] = 0
 
     # Test with trader buying asset i
-    swap_state, swap_agent = oamm.swap(initial_state, old_agent, j, i, delta_rj, 0)
-    feeless_swap_state, feeless_swap_agent = oamm.swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
+    swap_state, swap_agent = oamm.simulate_swap(initial_state, old_agent, j, i, delta_rj, 0)
+    feeless_swap_state, feeless_swap_agent = oamm.simulate_swap(feeless_state, old_agent, j, i, delta_rj_feeless, 0)
     feeless_spot_price = feeless_swap_state.price(feeless_swap_state, j)
     spot_price = swap_state.price(swap_state, j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
@@ -683,9 +680,15 @@ def test_sell_with_partial_lrna_mint(
     delta_ri = 1000
 
     # Test with trader buying asset i
-    swap_state_100, swap_agent_100 = oamm.swap(initial_state_100, copy.deepcopy(old_agent), j, i, 0, delta_ri)
-    swap_state_50, swap_agent_50 = oamm.swap(initial_state_50, copy.deepcopy(old_agent), j, i, 0, delta_ri)
-    swap_state_0, swap_agent_0 = oamm.swap(initial_state_0, copy.deepcopy(old_agent), j, i, 0, delta_ri)
+    swap_state_100, swap_agent_100 = oamm.simulate_swap(
+        initial_state_100, copy.deepcopy(old_agent), j, i, 0, delta_ri
+    )
+    swap_state_50, swap_agent_50 = oamm.simulate_swap(
+        initial_state_50, copy.deepcopy(old_agent), j, i, 0, delta_ri
+    )
+    swap_state_0, swap_agent_0 = oamm.simulate_swap(
+        initial_state_0, copy.deepcopy(old_agent), j, i, 0, delta_ri
+    )
 
     spot_price_100 = swap_state_100.price(swap_state_100, j)
     spot_price_50 = swap_state_50.price(swap_state_50, j)
@@ -708,7 +711,7 @@ def test_lrna_buy_nonzero_fee_nonzero_imbalance(initial_state: oamm.OmnipoolStat
     i = old_state.asset_list[2]
 
     # Test with trader selling asset i
-    new_state, new_agent = oamm.swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
+    new_state, new_agent = oamm.simulate_swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
 
     expected_delta_qi = -delta_qa / (1 - 0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
@@ -728,7 +731,7 @@ def test_lrna_buy_nonzero_fee_zero_imbalance(initial_state: oamm.OmnipoolState):
     i = old_state.asset_list[2]
 
     # Test with trader selling asset i
-    new_state, new_agent = oamm.swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
+    new_state, new_agent = oamm.simulate_swap_lrna(old_state, old_agent, 0, delta_qa, i, modify_imbalance=False)
 
     expected_delta_qi = -delta_qa / (1 - 0.0005)
     expected_fee = -(delta_qa + expected_delta_qi)
@@ -759,7 +762,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
 
     # Test with trader selling asset i, no LRNA fee... price should match feeless
     new_state, new_agent = \
-        oamm.swap(old_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
+        oamm.simulate_swap(old_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
 
     # create copies of the old state with fees removed
     asset_fee_only_state = old_state.copy()
@@ -771,9 +774,9 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
         feeless_state.last_fee[asset] = 0
 
     asset_fee_only_state, asset_fee_only_agent = \
-        oamm.swap(asset_fee_only_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
+        oamm.simulate_swap(asset_fee_only_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
     feeless_state, feeless_agent = \
-        oamm.swap(feeless_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
+        oamm.simulate_swap(feeless_state, old_agent, i_buy, i_sell, sell_quantity=delta_R)
 
     for j in old_state.asset_list:
         # assets in pools only go up compared to asset_fee_only_state
@@ -807,7 +810,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     for asset in buy_state.asset_list:
         buy_state.last_lrna_fee[asset] = 0
         buy_state.last_fee[asset] = 0
-    buy_state, buy_agent = oamm.swap(
+    buy_state, buy_agent = oamm.simulate_swap(
         buy_state, old_agent, i_buy, i_sell, buy_quantity=delta_out_new
     )
 
@@ -953,7 +956,7 @@ def test_trade_limit():
     new_state = initial_state.copy()
     trades_allowed = 0
     while not new_state.fail:
-        new_state, new_agent = oamm.swap(
+        new_state, new_agent = oamm.simulate_swap(
             new_state, agent, 'USD', 'R1', sell_quantity=100000
         )
         if new_state.fail:
@@ -966,10 +969,10 @@ def test_trade_limit():
     for i in range(26):
         if new_state.fail:
             raise AssertionError('Not enough trades allowed')
-        new_state, new_agent = oamm.swap(
+        new_state, new_agent = oamm.simulate_swap(
             new_state, agent, 'R1', 'USD', buy_quantity=1000
         )
-        new_state, new_agent = oamm.swap(
+        new_state, new_agent = oamm.simulate_swap(
             new_state, agent, 'USD', 'R1', sell_quantity=11000
         )
 
@@ -1015,8 +1018,7 @@ def test_dynamic_fees(hdx_price: float):
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
     test_state = initial_state.copy()
-    oamm.execute_swap(
-        state=test_state,
+    test_state.swap(
         agent=test_agent,
         tkn_sell='USD',
         tkn_buy='HDX',
@@ -1040,8 +1042,7 @@ def test_dynamic_fees(hdx_price: float):
     if not intermediate_hdx_lrna_fee == initial_hdx_lrna_fee:
         raise AssertionError('LRNA fee should not change.')
 
-    oamm.execute_swap(
-        state=test_state,
+    test_state.swap(
         agent=test_agent,
         tkn_sell='HDX',
         tkn_buy='USD',
@@ -1549,8 +1550,7 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
         }
     )
     initial_asset_holdings = copy.deepcopy(agent.holdings)
-    oamm.execute_add_liquidity(
-        state=omnipool,
+    omnipool.add_liquidity(
         agent=agent,
         quantity=lp_amount,
         tkn_add='HDX'
@@ -1562,9 +1562,9 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
 @given(omnipool_reasonable_config(remove_liquidity_volatility_threshold=0.01))
 def test_volatility_limit(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
-    oamm.execute_add_liquidity(omnipool, agent, quantity=1000, tkn_add='HDX')
-    oamm.execute_swap(omnipool, agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
-    oamm.execute_remove_liquidity(omnipool, agent, quantity=1000, tkn_remove='HDX')
+    omnipool.add_liquidity(agent, quantity=1000, tkn_add='HDX')
+    omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
+    omnipool.remove_liquidity(agent, quantity=1000, tkn_remove='HDX')
 
     if not omnipool.fail:
         raise ValueError("Volatility limit should be exceeded")
@@ -1572,7 +1572,7 @@ def test_volatility_limit(omnipool: oamm.OmnipoolState):
     # go forward one block, which should be enough for the volatility to decay
     updated_pool = omnipool.copy().update()
 
-    oamm.execute_remove_liquidity(updated_pool, agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
+    updated_pool.remove_liquidity(agent, agent.holdings[('omnipool', 'HDX')], tkn_remove='HDX')
     if updated_pool.fail:
         raise ValueError("Volatility limit should not be exceeded")
 
@@ -1584,8 +1584,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
     state = omnipool.copy()
     initial_agent = Agent(holdings={'HDX': 10000000000})
     agent = initial_agent.copy()
-    oamm.execute_add_liquidity(
-        state=state,
+    state.add_liquidity(
         agent=agent,
         tkn_add='HDX',
         quantity=state.liquidity['HDX'] * max_lp_per_block
@@ -1594,8 +1593,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
         raise AssertionError('Valid LP operation failed.')
     state = omnipool.copy()
     agent = initial_agent.copy()
-    oamm.execute_add_liquidity(
-        state=state,
+    state.add_liquidity(
         agent=agent,
         tkn_add='HDX',
         quantity=state.liquidity['HDX'] * max_lp_per_block + 1
@@ -1605,8 +1603,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
     state = omnipool.copy()
     agent = initial_agent.copy()
     # add liquidity again to test remove liquidity
-    oamm.execute_add_liquidity(
-        state=state,
+    state.add_liquidity(
         agent=agent,
         tkn_add='HDX',
         quantity=state.liquidity['HDX'] * max_lp_per_block
@@ -1615,8 +1612,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
         raise AssertionError('Second LP operation failed.')
     withdraw_quantity = agent.holdings[('omnipool', 'HDX')]
     total_shares = state.shares['HDX']
-    oamm.execute_remove_liquidity(
-        state=state,
+    state.remove_liquidity(
         agent=agent,
         tkn_remove='HDX',
         quantity=withdraw_quantity  # agent.holdings[('omnipool', 'HDX')]
@@ -1624,8 +1620,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
     if withdraw_quantity / total_shares > max_withdrawal_per_block and not state.fail:
         raise AssertionError('Agent was able to remove too much liquidity.')
     state.update()
-    oamm.execute_remove_liquidity(
-        state=state,
+    state.remove_liquidity(
         agent=agent,
         tkn_remove='HDX',
         quantity=state.shares['HDX'] * max_withdrawal_per_block
@@ -1672,16 +1667,16 @@ def test_liquidity_operations_and_spot_prices(oracle_mult):
     )
 
     agent = Agent(holdings={'DOT': 10000})
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_add='DOT',
         quantity=agent.holdings['DOT']
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=add_state.copy(),
+        old_agent=add_agent.copy(),
         tkn_remove='DOT',
         quantity=add_agent.holdings[('omnipool', 'DOT')]
     )
@@ -1748,17 +1743,17 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    swap_state, swap_agent = oamm.simulate_swap(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=swap_state.copy(),
+        old_agent=swap_agent.copy(),
         tkn_add='DOT',
         quantity=swap_state.liquidity['DOT'] * lp_multiplier
     )
@@ -1777,9 +1772,9 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
     arbed_pool = arb_state.pools['omnipool']
     arbed_agent = arb_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=arbed_pool.copy(),
+        old_agent=arbed_agent.copy(),
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
@@ -1827,16 +1822,16 @@ def test_add_and_remove_liquidity():
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_add='DOT',
         quantity=omnipool.liquidity['DOT'] * lp_multiplier
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=add_state.copy(),
+        old_agent=add_agent.copy(),
         tkn_remove='DOT',
         quantity=add_agent.holdings[('omnipool', 'DOT')]
     )
@@ -1894,17 +1889,17 @@ def test_add_liquidity_exploit(lp_multiplier, trade_mult):
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    swap_state, swap_agent = oamm.simulate_swap(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_sell='DAI',
         tkn_buy='DOT',
         buy_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=swap_state.copy(),
+        old_agent=swap_agent.copy(),
         tkn_add='DOT',
         quantity=swap_state.liquidity['DOT'] * lp_multiplier
     )
@@ -1923,9 +1918,9 @@ def test_add_liquidity_exploit(lp_multiplier, trade_mult):
     arbed_pool = arb_state.pools['omnipool']
     arbed_agent = arb_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=arbed_pool.copy(),
+        old_agent=arbed_agent.copy(),
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
@@ -1982,17 +1977,17 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    swap_state, swap_agent = oamm.simulate_swap(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=swap_state.copy(),
+        old_agent=swap_agent.copy(),
         tkn_add='DOT',
         quantity=swap_state.liquidity['DOT'] * lp_multiplier
     )
@@ -2011,9 +2006,9 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
     arbed_pool = arb_state.pools['omnipool']
     arbed_agent = arb_state.agents['attacker']
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=arbed_pool.copy(),
-        agent=arbed_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=arbed_pool.copy(),
+        old_agent=arbed_agent.copy(),
         tkn_remove='DOT',
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
@@ -2065,24 +2060,24 @@ def test_withdraw_exploit():
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_add='DOT',
         quantity=omnipool.liquidity['DOT'] * lp_multiplier
     )
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    swap_state, swap_agent = oamm.simulate_swap(
+        old_state=add_state.copy(),
+        old_agent=add_agent.copy(),
         tkn_sell='DAI',
         tkn_buy='DOT',
         buy_quantity=trade_size
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=swap_state.copy(),
+        old_agent=swap_agent.copy(),
         tkn_remove='DOT',
         quantity=swap_agent.holdings[('omnipool', 'DOT')]
     )
@@ -2155,31 +2150,31 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
     holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
     agent = Agent(holdings=holdings)
 
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_add='DOT',
         quantity=omnipool.liquidity['DOT'] * lp_multiplier
     )
 
-    swap_state, swap_agent = oamm.execute_swap(
-        state=add_state.copy(),
-        agent=add_agent.copy(),
+    swap_state, swap_agent = oamm.simulate_swap(
+        old_state=add_state.copy(),
+        old_agent=add_agent.copy(),
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
     )
 
-    remove_state, remove_agent = oamm.execute_remove_liquidity(
-        state=swap_state.copy(),
-        agent=swap_agent.copy(),
+    remove_state, remove_agent = oamm.simulate_remove_liquidity(
+        old_state=swap_state.copy(),
+        old_agent=swap_agent.copy(),
         tkn_remove='DOT',
         quantity=swap_agent.holdings[('omnipool', 'DOT')]
     )
 
-    swap_alone_state, swap_alone_agent = oamm.execute_swap(
-        state=omnipool.copy(),
-        agent=agent.copy(),
+    swap_alone_state, swap_alone_agent = oamm.simulate_swap(
+        old_state=omnipool.copy(),
+        old_agent=agent.copy(),
         tkn_sell='DOT',
         tkn_buy='DAI',
         sell_quantity=trade_size
@@ -2245,11 +2240,17 @@ def test_withdraw_manipulation(
         tkn_buy=lp_token if first_trade > 0 else trade_token,
         buy_quantity=first_trade if first_trade > 0 else 0,
         sell_quantity=-first_trade if first_trade < 0 else 0
+    trade_state, trade_agent = oamm.simulate_swap(
+        old_state=initial_state.copy(),
+        old_agent=initial_agent.copy(),
+        tkn_sell=trade_token,
+        tkn_buy=lp_token,
+        buy_quantity=first_trade
     )
 
-    withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
+    withdraw_state, withdraw_agent = oamm.simulate_remove_liquidity(
+        old_state=trade_state.copy(),
+        old_agent=trade_agent.copy(),
         quantity=trade_agent.holdings[('omnipool', lp_token)],
         tkn_remove=lp_token
     )
@@ -2317,9 +2318,9 @@ def test_add_manipulation(
 
     # trade to manipulate the price
     first_trade = initial_state.liquidity[asset1] * (1 - 1 / math.sqrt(1 + price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    trade_state, trade_agent = oamm.simulate_swap(
+        old_state=initial_state.copy(),
+        old_agent=initial_agent.copy(),
         tkn_sell=asset2,
         tkn_buy=asset1,
         buy_quantity=first_trade
@@ -2327,17 +2328,17 @@ def test_add_manipulation(
 
     # add liquidity
     lp_quantity = lp_percent * initial_agent.holdings[asset1]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=trade_state.copy(),
-        agent=trade_agent.copy(),
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=trade_state.copy(),
+        old_agent=trade_agent.copy(),
         tkn_add=asset1,
         quantity=min(lp_quantity, trade_state.liquidity[asset1] * trade_state.max_lp_per_block)
     )
 
     lp_quantity = lp_percent * initial_agent.holdings[asset2]
-    add_state, add_agent = oamm.execute_add_liquidity(
-        state=add_state,
-        agent=add_agent,
+    add_state, add_agent = oamm.simulate_add_liquidity(
+        old_state=add_state,
+        old_agent=add_agent,
         tkn_add=asset2,
         quantity=lp_quantity
     )
@@ -2393,9 +2394,9 @@ def test_trade_manipulation(
     asset2 = options[asset_index % len(options)]
     market_prices = {tkn: oamm.usd_price(initial_state, tkn) for tkn in initial_state.asset_list}
 
-    lp1_state, lp1_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    lp1_state, lp1_agent = oamm.simulate_add_liquidity(
+        old_state=initial_state.copy(),
+        old_agent=initial_agent.copy(),
         tkn_add=asset1,
         quantity=min(
             lp_percent * initial_state.liquidity[asset1],
@@ -2403,9 +2404,9 @@ def test_trade_manipulation(
         )
     )
 
-    lp2_state, lp2_agent = oamm.execute_add_liquidity(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    lp2_state, lp2_agent = oamm.simulate_add_liquidity(
+        old_state=initial_state.copy(),
+        old_agent=initial_agent.copy(),
         tkn_add=asset2,
         quantity=min(
             lp_percent * initial_state.liquidity[asset2],
@@ -2413,10 +2414,10 @@ def test_trade_manipulation(
         )
     )
 
-    trade_state_1, trade_agent_1 = oamm.execute_remove_liquidity(
-        *oamm.execute_swap(
-            state=lp1_state.copy(),
-            agent=lp1_agent.copy(),
+    trade_state_1, trade_agent_1 = oamm.simulate_remove_liquidity(
+        *oamm.simulate_swap(
+            old_state=lp1_state.copy(),
+            old_agent=lp1_agent.copy(),
             tkn_sell=asset1,
             tkn_buy=asset2,
             sell_quantity=sell_quantity
@@ -2425,10 +2426,10 @@ def test_trade_manipulation(
         quantity=lp1_agent.holdings[('omnipool', asset1)]
     )
 
-    trade_state_2, trade_agent_2 = oamm.execute_remove_liquidity(
-        *oamm.execute_swap(
-            state=lp2_state.copy(),
-            agent=lp2_agent.copy(),
+    trade_state_2, trade_agent_2 = oamm.simulate_remove_liquidity(
+        *oamm.simulate_swap(
+            old_state=lp2_state.copy(),
+            old_agent=lp2_agent.copy(),
             tkn_sell=asset1,
             tkn_buy=asset2,
             sell_quantity=sell_quantity
@@ -2437,9 +2438,9 @@ def test_trade_manipulation(
         quantity=lp2_agent.holdings[('omnipool', asset2)]
     )
 
-    trade_state_3, trade_agent_3 = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    trade_state_3, trade_agent_3 = oamm.simulate_swap(
+        old_state=initial_state.copy(),
+        old_agent=initial_agent.copy(),
         tkn_sell=asset1,
         tkn_buy=asset2,
         sell_quantity=sell_quantity
