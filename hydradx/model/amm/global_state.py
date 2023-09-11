@@ -213,7 +213,6 @@ class GlobalState:
             sell_quantity: float = 0
     ):
         # do a trade at spot price on the external market
-        # this should maybe only work in USD, because we're probably talking about coinbase or something
         agent = self.agents[agent_id]
         if buy_quantity:
             sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
