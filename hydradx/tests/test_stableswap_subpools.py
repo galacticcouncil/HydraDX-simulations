@@ -19,7 +19,7 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     tkn_buy = stable_pool.asset_list[0]
     tkn_sell = initial_state.asset_list[2]
     buy_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -58,7 +58,7 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.swap(
+    _, lesser_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -85,7 +85,7 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = stable_pool.asset_list[0]
     sell_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -122,7 +122,7 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.swap(
+    _, lesser_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -150,7 +150,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
     tkn_buy = initial_state.asset_list[2]
     tkn_sell = stable_pool.asset_list[0]
     buy_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -180,7 +180,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.swap(
+    _, lesser_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -208,7 +208,7 @@ def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
     tkn_buy = stable_pool.asset_list[0]
     tkn_sell = initial_state.asset_list[2]
     sell_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -242,7 +242,7 @@ def test_sell_omnipool_for_stable_swap(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.swap(
+    _, lesser_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -269,7 +269,7 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
     agent.holdings.update({tkn_buy: 0})
     tkn_sell = 'LRNA'
     buy_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -314,7 +314,7 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.swap(
+    _, lesser_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -339,7 +339,7 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
     tkn_buy = stable_pool.asset_list[0]
     tkn_sell = 'LRNA'
     sell_quantity = 10
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=agent,
         tkn_buy=tkn_buy,
@@ -400,7 +400,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     tkn_sell = pool_sell.asset_list[1]
     initial_agent = Agent(holdings={tkn_sell: 1000000, tkn_buy: 1000000})
     buy_quantity = 1
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_buy=tkn_buy,
@@ -442,7 +442,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
     sell_quantity = initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]
-    before_trade_state, before_trade_agent = oamm.swap(
+    before_trade_state, before_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_buy=tkn_buy,
@@ -450,7 +450,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         buy_quantity=buy_quantity / 1000
     )
     # print(f'sell quantity {sell_quantity}')
-    after_trade_state, after_trade_agent = oamm.swap(
+    after_trade_state, after_trade_agent = oamm.simulate_swap(
         old_state=new_state,
         old_agent=new_agent,
         tkn_buy=tkn_sell,
@@ -488,7 +488,7 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     tkn_sell = pool_sell.asset_list[1]
     initial_agent = Agent(holdings={tkn_sell: 1000000, tkn_buy: 1000000})
     sell_quantity = 1
-    new_state, new_agent = oamm.swap(
+    new_state, new_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_buy=tkn_buy,
@@ -529,7 +529,7 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
     buy_quantity = initial_agent.holdings[tkn_buy] - new_agent.holdings[tkn_buy]
-    before_trade_state, before_trade_agent = oamm.swap(
+    before_trade_state, before_trade_agent = oamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_buy=tkn_buy,
@@ -537,7 +537,7 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         buy_quantity=sell_quantity / 1000
     )
     # print(f'sell quantity {sell_quantity}')
-    after_trade_state, after_trade_agent = oamm.swap(
+    after_trade_state, after_trade_agent = oamm.simulate_swap(
         old_state=new_state,
         old_agent=new_agent,
         tkn_buy=tkn_sell,
@@ -577,7 +577,7 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
     initial_agent = Agent(
         holdings={'DAI': 100}
     )
-    new_state = oamm.migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
+    new_state = oamm.simulate_migrate(initial_state, tkn_migrate='DAI', sub_pool_id='stableswap')
     if (
             pytest.approx(new_state.lrna[s] * new_state.protocol_shares[s] / new_state.shares[s])
             != initial_state.lrna[i] * initial_state.protocol_shares[i] / initial_state.shares[i]
@@ -588,17 +588,19 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
     if new_state.shares[s] != new_sub_pool.shares:
         raise AssertionError("Subpool and Omnipool shares aren't equal.")
 
-    lp_state, lp = oamm.add_liquidity(
+    lp_state, lp = oamm.simulate_add_liquidity(
         old_state=initial_state,
         old_agent=initial_agent,
         quantity=100, tkn_add='DAI'
     )
-    temp_state = oamm.execute_migrate_asset(lp_state.copy(), 'DAI', 'stableswap')
-    migrated_state, migrated_lp = oamm.execute_migrate_lp(
-        state=temp_state,
-        agent=lp.copy(),
-        sub_pool_id='stableswap',
-        tkn_migrate='DAI'
+    migrated_lp = lp.copy()
+    migrated_state = (lp_state.copy()
+        .migrate_asset('DAI', 'stableswap')
+        .migrate_lp(
+            agent=migrated_lp,
+            sub_pool_id='stableswap',
+            tkn_migrate='DAI'
+        )
     )
     migrated_sub_pool: ssamm.StableSwapPoolState = migrated_state.sub_pools[s]
     pui = migrated_sub_pool.conversion_metrics['DAI']['price']
@@ -638,12 +640,12 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
             'LRNA': 0
         }
     )
-    initial_state, initial_lp = oamm.add_liquidity(
+    initial_state, initial_lp = oamm.simulate_add_liquidity(
         initial_state, initial_lp,
         quantity=initial_lp.holdings[asset1], tkn_add=asset1
     )
     # scenario 1: immediately remove liquidity
-    s1_state, s1_lp = oamm.remove_liquidity(
+    s1_state, s1_lp = oamm.simulate_remove_liquidity(
         initial_state, initial_lp,
         quantity=initial_lp.holdings[(initial_state.unique_id, asset1)],
         tkn_remove=asset1
@@ -653,15 +655,15 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     r1 = s1_lp.holdings[asset1]
 
     # scenario 2: migrate assets to subpool, then withdraw an equal percentage of each
-    migrate_state = oamm.execute_create_sub_pool(
-        state=initial_state.copy(),
+    migrate_lp = initial_lp.copy()
+    migrate_state = initial_state.copy(
+    ).create_sub_pool(
         tkns_migrate=[asset1, asset2, asset3],
         sub_pool_id='stableswap',
         amplification=10
-    ).update()
-    migrate_state, migrate_lp = oamm.execute_migrate_lp(
-        state=migrate_state,
-        agent=initial_lp.copy(),
+    ).update(
+    ).migrate_lp(
+        agent=migrate_lp,
         sub_pool_id='stableswap',
         tkn_migrate=asset1
     )
@@ -685,8 +687,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset2, asset3]:
-        ssamm.execute_swap(
-            state=s3_sub_pool,
+        s3_sub_pool.swap(
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset1,
@@ -696,7 +697,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     r3 = s3_lp.holdings[asset1]
 
     # scenario 4: withdraw only asset1
-    s4_state, s4_lp = oamm.remove_liquidity(
+    s4_state, s4_lp = oamm.simulate_remove_liquidity(
         migrate_state, migrate_lp,
         quantity=migrate_lp.holdings['stableswap'],
         tkn_remove=asset1
@@ -719,8 +720,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
         lrna=initial_state.lrna['stableswap'] / 3,
         shares=initial_state.lrna['stableswap'] / 3,
         protocol_shares=initial_state.lrna['stableswap'] / 3
-    )
-    initial_state.update()
+    ).update()
 
     initial_lp = Agent(
         holdings={
@@ -732,11 +732,11 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
         }
     )
 
-    lp_state, invested_lp = oamm.add_liquidity(
+    lp_state, invested_lp = oamm.simulate_add_liquidity(
         initial_state, initial_lp,
         quantity=initial_lp.holdings[asset4], tkn_add=asset4
     )
-    s1_state, s1_lp = oamm.remove_liquidity(
+    s1_state, s1_lp = oamm.simulate_remove_liquidity(
         lp_state, invested_lp,
         quantity=invested_lp.holdings[(initial_state.unique_id, asset4)],
         tkn_remove=asset4
@@ -745,14 +745,14 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     q1 = s1_lp.holdings['LRNA']
     r1 = s1_lp.holdings[asset4]
 
-    migrate_state = oamm.execute_migrate_asset(
-        state=lp_state.copy(),
+    migrate_lp = invested_lp.copy()
+    migrate_state = lp_state.copy(
+    ).migrate_asset(
         tkn_migrate=asset4,
         sub_pool_id='stableswap'
-    ).update()
-    migrate_state, migrate_lp = oamm.execute_migrate_lp(
-        state=migrate_state,
-        agent=invested_lp.copy(),
+    ).update(
+    ).migrate_lp(
+        agent=migrate_lp,
         sub_pool_id='stableswap',
         tkn_migrate=asset4
     )
@@ -775,8 +775,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     s3_lp = s2_lp.copy()
     s3_sub_pool = s3_state.sub_pools['stableswap']
     for tkn in [asset1, asset2, asset3]:
-        ssamm.execute_swap(
-            state=s3_sub_pool,
+        s3_sub_pool.swap(
             agent=s3_lp,
             tkn_sell=tkn,
             tkn_buy=asset4,
@@ -785,7 +784,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
 
     r3 = s3_lp.holdings[asset4]
 
-    s3_state, s3_lp = oamm.remove_liquidity(
+    s3_state, s3_lp = oamm.simulate_remove_liquidity(
         migrate_state, migrate_lp,
         quantity=migrate_lp.holdings['stableswap'],
         tkn_remove=asset4
@@ -804,7 +803,7 @@ def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
     agent = Agent(
         holdings={stable_pool.asset_list[0]: 1000}
     )
-    new_state, new_agent = oamm.add_liquidity(
+    new_state, new_agent = oamm.simulate_add_liquidity(
         initial_state, agent,
         quantity=1000, tkn_add=stable_pool.asset_list[0]
     )
