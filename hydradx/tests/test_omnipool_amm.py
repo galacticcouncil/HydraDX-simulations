@@ -2233,13 +2233,14 @@ def test_withdraw_manipulation(
     # trade to manipulate the price
     signed_price_move = price_move if price_move_is_up else -price_move
     first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + signed_price_move))
-    trade_state, trade_agent = oamm.execute_swap(
-        state=initial_state.copy(),
-        agent=initial_agent.copy(),
+    trade_agent = initial_agent.copy()
+    trade_state = initial_state.copy().swap(
+        agent=trade_agent,
         tkn_sell=trade_token if first_trade > 0 else lp_token,
         tkn_buy=lp_token if first_trade > 0 else trade_token,
         buy_quantity=first_trade if first_trade > 0 else 0,
         sell_quantity=-first_trade if first_trade < 0 else 0
+    )
     trade_state, trade_agent = oamm.simulate_swap(
         old_state=initial_state.copy(),
         old_agent=initial_agent.copy(),
