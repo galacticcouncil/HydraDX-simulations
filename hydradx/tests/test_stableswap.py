@@ -275,7 +275,6 @@ def test_curve_style_withdraw_fees():
         raise AssertionError('Withdraw fee is not higher than swap fee.')
 
 
-@settings(max_examples=10000)
 @given(
     st.integers(min_value=1, max_value=1000000),
     st.integers(min_value=10000, max_value=10000000),
@@ -295,8 +294,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
     lp_state, lp_agent = initial_state.copy(), initial_agent.copy()
     for tkn in initial_state.asset_list:
-        stableswap.execute_add_liquidity(
-            state=lp_state,
+        lp_state.add_liquidity(
             agent=lp_agent,
             quantity=lp_agent.holdings[tkn],
             tkn_add=tkn
@@ -304,8 +302,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
     trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
     trade_agent.holdings['USDA'] = trade_size
-    stableswap.execute_swap(
-        state=trade_state,
+    trade_state.swap(
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
@@ -313,8 +310,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
     )
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
-    stableswap.execute_remove_liquidity(
-        state=withdraw_state,
+    withdraw_state.remove_liquidity(
         agent=withdraw_agent,
         shares_removed=trade_agent.holdings['stableswap'],
         tkn_remove='USDA'
@@ -326,8 +322,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
     for i in range(10):
         final_state, final_agent = withdraw_state.copy(), withdraw_agent.copy()
         arb_size = (max_arb_size - min_arb_size) / 2 + min_arb_size
-        stableswap.execute_swap(
-            state=final_state,
+        final_state.swap(
             agent=final_agent,
             tkn_sell='USDB',
             tkn_buy='USDA',
