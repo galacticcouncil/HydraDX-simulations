@@ -31,6 +31,7 @@ def constant_product_pool_config(
     return bamm.ConstantProductPoolState(
         tokens=asset_dict,
         trade_fee=draw(fee_strategy) if trade_fee is None else trade_fee,
+        unique_id="/".join(sorted(asset_dict.keys()))
     )
 
 
@@ -47,7 +48,7 @@ def test_swap(initial_state: bamm.ConstantProductPoolState, delta_r):
     )
     tkn_sell = initial_state.asset_list[0]
     tkn_buy = initial_state.asset_list[1]
-    swap_state, swap_agent = bamm.swap(
+    swap_state, swap_agent = bamm.simulate_swap(
         old_state=old_state,
         old_agent=old_agent,
         sell_quantity=delta_r,
@@ -62,7 +63,7 @@ def test_swap(initial_state: bamm.ConstantProductPoolState, delta_r):
 
     # swap back, specifying buy_quantity this time
     delta_r = swap_state.liquidity[tkn_sell] - old_state.liquidity[tkn_sell]
-    revert_state, revert_agent = bamm.swap(
+    revert_state, revert_agent = bamm.simulate_swap(
         old_state=swap_state,
         old_agent=swap_agent,
         buy_quantity=delta_r,
@@ -86,7 +87,7 @@ def test_swap_pool_invariant(initial_state: bamm.ConstantProductPoolState, delta
 
     tkn_sell = initial_state.asset_list[0]
     tkn_buy = initial_state.asset_list[1]
-    swap_state, swap_agent = bamm.swap(
+    swap_state, swap_agent = bamm.simulate_swap(
         old_state=old_state,
         old_agent=old_agent,
         sell_quantity=delta_r,
@@ -99,7 +100,7 @@ def test_swap_pool_invariant(initial_state: bamm.ConstantProductPoolState, delta
 
     # swap back, specifying buy_quantity this time
     delta_r = swap_state.liquidity[tkn_sell] - old_state.liquidity[tkn_sell]
-    revert_state, revert_agent = bamm.swap(
+    revert_state, revert_agent = bamm.simulate_swap(
         old_state=swap_state,
         old_agent=swap_agent,
         buy_quantity=delta_r,
@@ -124,7 +125,7 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
 
     tkn_add = initial_state.asset_list[0]
     other_tkn = initial_state.asset_list[1]
-    new_state, new_agent = bamm.add_liquidity(
+    new_state, new_agent = bamm.simulate_add_liquidity(
         old_state, old_agent,
         quantity=delta_token,
         tkn_add=tkn_add
@@ -141,7 +142,7 @@ def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delt
 
     # if that transaction was successful, see if we can reverse it using remove_liquidity
     if not new_state.fail:
-        revert_state, revert_agent = bamm.remove_liquidity(
+        revert_state, revert_agent = bamm.simulate_remove_liquidity(
             new_state, new_agent,
             quantity=new_agent.holdings[new_state.unique_id],
             tkn_remove=tkn_add
@@ -166,14 +167,14 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
     )
     tkn_remove = initial_state.asset_list[0]
     # gotta add liquidity before we can remove it
-    old_state, old_agent = bamm.add_liquidity(
+    old_state, old_agent = bamm.simulate_add_liquidity(
         initial_state, initial_agent,
         quantity=delta_token,
         tkn_add=tkn_remove
     )
-    new_state, new_agent = bamm.remove_liquidity(
+    new_state, new_agent = bamm.simulate_remove_liquidity(
         old_state, old_agent,
-        quantity=delta_token,
+        quantity=old_agent.holdings[old_state.unique_id],
         tkn_remove=tkn_remove
     )
     other_tkn = initial_state.asset_list[1]
@@ -190,7 +191,7 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
     if new_agent.holdings[tkn_remove] != pytest.approx(initial_agent.holdings[tkn_remove]):
         raise AssertionError('Agent did not get back what it put in.')
 
-    cheat_state, cheat_agent = bamm.remove_liquidity(
+    cheat_state, cheat_agent = bamm.simulate_remove_liquidity(
         old_state, old_agent,
         quantity=delta_token + 1,
         tkn_remove=tkn_remove
@@ -213,7 +214,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
     tkn_sell = initial_state.asset_list[0]
     # buy half of the available asset with slip based fees
     buy_quantity = initial_state.liquidity[tkn_buy] / 2
-    buy_state, buy_agent = bamm.swap(
+    buy_state, buy_agent = bamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_sell=tkn_sell,
@@ -225,7 +226,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
     split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
     next_state, next_agent = {}, {}
     for i in range(2):
-        next_state[i], next_agent[i] = bamm.swap(
+        next_state[i], next_agent[i] = bamm.simulate_swap(
             old_state=split_buy_state,
             old_agent=split_buy_agent,
             tkn_sell=tkn_sell,
@@ -260,7 +261,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         raise AssertionError('Asset quantity is not constant after trade (two-part)')
 
     sell_quantity = buy_state.liquidity[tkn_sell] - initial_state.liquidity[tkn_sell]
-    sell_state, sell_agent = bamm.swap(
+    sell_state, sell_agent = bamm.simulate_swap(
         old_state=initial_state,
         old_agent=initial_agent,
         tkn_sell=tkn_sell,
@@ -282,7 +283,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
     split_sell_state, split_sell_agent = initial_state, initial_agent
     next_state, next_agent = {}, {}
     for i in range(2):
-        next_state[i], next_agent[i] = bamm.swap(
+        next_state[i], next_agent[i] = bamm.simulate_swap(
             old_state=split_sell_state,
             old_agent=split_sell_agent,
             tkn_sell=tkn_sell,
