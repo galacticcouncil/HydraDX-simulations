@@ -239,10 +239,10 @@ class StableSwapPoolState(AMM):
         # * Get current D
         # * Solve Eqn against y_i for D - _token_amount
 
-        if shares_removed > agent.holdings[state.unique_id]:
-            return state.fail_transaction('Agent has insufficient funds.', agent)
+        if shares_removed > agent.holdings[self.unique_id]:
+            return self.fail_transaction('Agent has insufficient funds.', agent)
         elif shares_removed <= 0:
-            return state.fail_transaction('Withdraw quantity must be > 0.', agent)
+            return self.fail_transaction('Withdraw quantity must be > 0.', agent)
 
         _fee = self.trade_fee
 
