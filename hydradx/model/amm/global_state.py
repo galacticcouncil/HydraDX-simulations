@@ -1,11 +1,10 @@
 import copy
 import random
 from typing import Callable
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity
 
 from .agents import Agent, AgentArchiveState
 from .amm import AMM, FeeMechanism
-from .omnipool_amm import OmnipoolState, calculate_remove_liquidity, OmnipoolArchiveState
+from .omnipool_amm import OmnipoolState, OmnipoolArchiveState
 
 
 class GlobalState:
@@ -117,8 +116,7 @@ class GlobalState:
             sell_quantity: float = 0,
             **kwargs
     ):
-        self.pools[pool_id].execute_swap(
-            state=self.pools[pool_id],
+        self.pools[pool_id].swap(
             agent=self.agents[agent_id],
             tkn_sell=tkn_sell,
             tkn_buy=tkn_buy,
@@ -165,19 +163,20 @@ class GlobalState:
                 if isinstance(self.pools[pool_id], OmnipoolState):
                     # optimized for omnipool, no copy operations
                     delta_qa, delta_r, delta_q, \
-                        delta_s, delta_b, delta_l = calculate_remove_liquidity(
-                        self.pools[pool_id],
-                        agent,
-                        agent.holdings[key],
-                        tkn_remove=tkn
-                    )
+                        delta_s, delta_b, delta_l = self.pools[pool_id].calculate_remove_liquidity(
+                            agent,
+                            agent.holdings[key],
+                            tkn_remove=tkn
+                        )
                     withdraw_holdings[key] = 0
                     withdraw_holdings['LRNA'] += delta_qa
                     withdraw_holdings[tkn] -= delta_r
                 else:
                     # much less efficient, but works for any pool
-                    new_state = remove_liquidity(self, pool_id, agent.unique_id, agent.holdings[key], tkn_remove=tkn)
+                    new_state = self.copy()
+                    new_pool: AMM = new_state.pools[pool_id]
                     new_agent = new_state.agents[agent.unique_id]
+                    new_pool.remove_liquidity(agent=new_agent, quantity=agent.holdings[key], tkn_remove=tkn)
                     withdraw_holdings = {
                         tkn: withdraw_holdings[tkn] + new_agent.holdings[tkn] - agent.holdings[tkn]
                         for tkn in agent.holdings
@@ -204,6 +203,40 @@ class GlobalState:
 
     def withdraw_val(self, agent: Agent) -> float:
         return self.cash_out(agent)
+
+    def external_market_trade(
+            self,
+            agent_id: str,
+            tkn_buy: str,
+            tkn_sell: str,
+            buy_quantity: float = 0,
+            sell_quantity: float = 0
+    ):
+        # do a trade at spot price on the external market
+        agent = self.agents[agent_id]
+        if buy_quantity:
+            sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
+        elif sell_quantity:
+            buy_quantity = sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
+        else:
+            # raise TypeError('Must include either buy_quantity or sell_quantity.')
+            return self
+
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+
+        if agent.holdings[tkn_sell] - sell_quantity < 0:
+            # insufficient funds, reduce quantity to match
+            sell_quantity = agent.holdings[tkn_sell]
+        elif agent.holdings[tkn_buy] + buy_quantity < 0:
+            # also insufficient funds
+            buy_quantity = -agent.holdings[tkn_buy]
+
+        # there could probably be a fee or something here, but for now you can sell infinite quantities for free
+        agent.holdings[tkn_buy] += buy_quantity
+        agent.holdings[tkn_sell] -= sell_quantity
+
+        return self
 
     def __repr__(self):
         newline = "\n"
@@ -327,183 +360,3 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
         return state
 
     return transform
-
-
-def swap(
-        old_state: GlobalState,
-        pool_id: str,
-        agent_id: str,
-        tkn_sell: str,
-        tkn_buy: str,
-        buy_quantity: float = 0,
-        sell_quantity: float = 0,
-        **kwargs
-) -> GlobalState:
-    """
-    copy state, execute swap, return swapped state
-    """
-    return old_state.copy().execute_swap(
-        pool_id=pool_id,
-        agent_id=agent_id,
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        buy_quantity=buy_quantity,
-        sell_quantity=sell_quantity,
-        **kwargs  # pass through any extra arguments
-    )
-
-
-def add_liquidity(
-        state: GlobalState,
-        pool_id: str,
-        agent_id: str,
-        quantity: float,
-        tkn_add: str
-) -> GlobalState:
-    """
-    copy state, execute add liquidity
-    """
-    # add liquidity to sub_pools through main pool
-    if pool_id not in state.pools:
-        for pool in state.pools.values():
-            if hasattr(pool, 'sub_pools') and pool_id in pool.sub_pools:
-                pool_id = pool.unique_id
-
-    state.pools[pool_id].execute_add_liquidity(
-        state=state.pools[pool_id],
-        agent=state.agents[agent_id],
-        quantity=quantity,
-        tkn_add=tkn_add
-    )
-    return state
-
-
-def remove_liquidity(
-        old_state: GlobalState,
-        pool_id: str,
-        agent_id: str,
-        quantity: float,
-        tkn_remove: str
-) -> GlobalState:
-    new_state = old_state.copy()
-    new_state.pools[pool_id], new_state.agents[agent_id] = new_state.pools[pool_id].remove_liquidity(
-        old_state=new_state.pools[pool_id],
-        old_agent=new_state.agents[agent_id],
-        quantity=quantity,
-        tkn_remove=tkn_remove
-    )
-    return new_state
-
-
-def withdraw_all_liquidity(state: GlobalState, agent_id: str) -> GlobalState:
-    agent = state.agents[agent_id]
-    new_state = state
-    for key in agent.holdings.keys():
-        # shares.keys might just be the pool name, or it might be a tuple (pool, token)
-        if isinstance(key, tuple):
-            pool_id = key[0]
-            tkn = key[1]
-        else:
-            pool_id = key
-            tkn = key
-        if pool_id in state.pools:
-            new_state = remove_liquidity(new_state, pool_id, agent.unique_id, agent.holdings[key], tkn_remove=tkn)
-
-    return new_state
-
-
-def external_market_trade(
-        old_state: GlobalState,
-        agent_id: str,
-        tkn_buy: str,
-        tkn_sell: str,
-        buy_quantity: float = 0,
-        sell_quantity: float = 0
-) -> GlobalState:
-    # do a trade at spot price on the external market
-    # this should maybe only work in USD, because we're probably talking about coinbase or something
-    new_state = old_state.copy()
-    agent = new_state.agents[agent_id]
-    if buy_quantity:
-        sell_quantity = buy_quantity * new_state.price(tkn_buy) / new_state.price(tkn_sell)
-    elif sell_quantity:
-        buy_quantity = sell_quantity * new_state.price(tkn_sell) / new_state.price(tkn_buy)
-    else:
-        # raise TypeError('Must include either buy_quantity or sell_quantity.')
-        return old_state
-
-    if tkn_buy not in agent.holdings:
-        agent.holdings[tkn_buy] = 0
-
-    if agent.holdings[tkn_sell] - sell_quantity < 0:
-        # insufficient funds, reduce quantity to match
-        sell_quantity = agent.holdings[tkn_sell]
-    elif agent.holdings[tkn_buy] + buy_quantity < 0:
-        # also insufficient funds
-        buy_quantity = -agent.holdings[tkn_buy]
-
-    # there could probably be a fee or something here, but for now you can sell infinite quantities for free
-    agent.holdings[tkn_buy] += buy_quantity
-    agent.holdings[tkn_sell] -= sell_quantity
-
-    return new_state
-
-
-def migrate(
-        old_state: GlobalState,
-        pool_id: str,
-        sub_pool_id: str,
-        tkn_migrate: str
-) -> GlobalState:
-    if not hasattr(old_state.pools[pool_id], 'execute_migrate_asset'):
-        raise AttributeError(f"Pool {pool_id} does not implement migrations.")
-    new_state = old_state.copy()
-    new_state.pools[pool_id] = new_state.pools[pool_id].execute_migrate_asset(
-        tkn_migrate=tkn_migrate,
-        sub_pool_id=sub_pool_id
-    )
-    return new_state
-
-
-def migrate_lp(
-        old_state: GlobalState,
-        pool_id: str,
-        agent_id: str,
-        sub_pool_id: str,
-        tkn_migrate: str
-) -> GlobalState:
-    if not hasattr(old_state.pools[pool_id], 'execute_migrate_lp'):
-        raise AttributeError(f"Pool {pool_id} does not implement migrations.")
-    new_state = old_state.copy()
-    new_state.pools[pool_id], agent = new_state.pools[pool_id].execute_migrate_lp(
-        agent=new_state.agents[agent_id],
-        tkn_migrate=tkn_migrate,
-        sub_pool_id=sub_pool_id
-    )
-    return new_state
-
-
-def create_sub_pool(
-        old_state: GlobalState,
-        pool_id: str,
-        sub_pool_id: str,
-        tkns_migrate: list[str],
-        amplification: float,
-        trade_fee: FeeMechanism or float
-):
-    new_state = old_state.copy()
-    new_pool = new_state.pools[pool_id]
-    new_pool.execute_create_sub_pool(
-        tkns_migrate=tkns_migrate,
-        sub_pool_id=sub_pool_id,
-        amplification=amplification,
-        trade_fee=trade_fee
-    )
-    return new_state
-
-
-GlobalState.create_sub_pool = create_sub_pool
-GlobalState.migrate_lp = migrate_lp
-GlobalState.swap = swap
-GlobalState.add_liquidity = add_liquidity
-GlobalState.remove_liquidity = remove_liquidity

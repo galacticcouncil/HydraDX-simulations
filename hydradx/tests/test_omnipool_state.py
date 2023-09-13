@@ -210,8 +210,8 @@ def test_cash_out_one_asset_only_liquidity(omnipool: OmnipoolState, pct_list: li
     lp_agent = Agent(holdings=lp_holdings)
     usdlp_agent = Agent(holdings=usdlp_holdings)
 
-    oamm.execute_add_liquidity(omnipool, lp_agent, lp_agent.holdings[held_asset], held_asset)
-    oamm.execute_swap(omnipool, trader, "HDX", held_asset, sell_quantity=trade_size)
+    omnipool.add_liquidity(lp_agent, lp_agent.holdings[held_asset], held_asset)
+    omnipool.swap(trader, "HDX", held_asset, sell_quantity=trade_size)
 
     market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in asset_list}
     cash = cash_out_omnipool(omnipool, lp_agent, market)
@@ -286,8 +286,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
     withdraw_state, withdraw_agent = omnipool.copy(), agent.copy()
     for tkn in omnipool.asset_list:
-        withdraw_state, withdraw_agent = oamm.execute_remove_liquidity(
-            state=withdraw_state,
+        withdraw_state.remove_liquidity(
             agent=withdraw_agent,
             tkn_remove=tkn,
             quantity=withdraw_agent.holdings[('omnipool', tkn)]
@@ -302,8 +301,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
         lrna_profits = dict()
         for tkn, delta_q in lrna_sells.items():
             agent_holdings = withdraw_agent.holdings[tkn]
-            oamm.execute_swap(
-                state=withdraw_state,
+            withdraw_state.swap(
                 agent=withdraw_agent,
                 tkn_sell='LRNA',
                 tkn_buy=tkn,
