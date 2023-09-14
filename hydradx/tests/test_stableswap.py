@@ -1,5 +1,3 @@
-import copy
-
 import pytest
 import functools
 from hydradx.model.amm import stableswap_amm as stableswap
@@ -112,12 +110,13 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
     pool_name = initial_pool.unique_id
     delta_shares = min(initial_pool.shares / 2, 100)
     initial_agent.holdings.update({initial_pool.unique_id: delta_shares + 1})
-    withdraw_shares_pool, withdraw_shares_agent = stableswap.remove_liquidity(
+    withdraw_shares_pool, withdraw_shares_agent = stableswap.simulate_remove_liquidity(
         initial_pool, initial_agent, delta_shares, tkn_remove
     )
     delta_tkn = withdraw_shares_agent.holdings[tkn_remove] - initial_agent.holdings[tkn_remove]
-    withdraw_asset_pool, withdraw_asset_agent = stableswap.execute_withdraw_asset(
-        initial_pool.copy(), initial_agent.copy(), delta_tkn, tkn_remove
+    withdraw_asset_pool, withdraw_asset_agent = initial_pool.copy(), initial_agent.copy()
+    withdraw_asset_pool.withdraw_asset(
+        withdraw_asset_agent, delta_tkn, tkn_remove
     )
     if (
         withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
@@ -291,8 +290,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
     lp_state, lp_agent = initial_state.copy(), initial_agent.copy()
     for tkn in initial_state.asset_list:
-        stableswap.execute_add_liquidity(
-            state=lp_state,
+        lp_state.add_liquidity(
             agent=lp_agent,
             quantity=lp_agent.holdings[tkn],
             tkn_add=tkn
@@ -300,8 +298,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
     trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
     trade_agent.holdings['USDA'] = trade_size
-    stableswap.execute_swap(
-        state=trade_state,
+    trade_state.swap(
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
@@ -309,8 +306,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
     )
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
-    stableswap.execute_remove_liquidity(
-        state=withdraw_state,
+    withdraw_state.remove_liquidity(
         agent=withdraw_agent,
         shares_removed=trade_agent.holdings['stableswap'],
         tkn_remove='USDA'
@@ -322,8 +318,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
     for i in range(10):
         final_state, final_agent = withdraw_state.copy(), withdraw_agent.copy()
         arb_size = (max_arb_size - min_arb_size) / 2 + min_arb_size
-        stableswap.execute_swap(
-            state=final_state,
+        final_state.swap(
             agent=final_agent,
             tkn_sell='USDB',
             tkn_buy='USDA',
