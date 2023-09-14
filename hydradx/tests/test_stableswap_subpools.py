@@ -814,7 +814,7 @@ def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
         holdings={stable_pool.asset_list[0]: 1000}
     )
     new_state, new_agent = oamm.simulate_add_liquidity(
-        initial_state, agent,
+        initial_state, initial_agent,
         quantity=1000, tkn_add=stable_pool.asset_list[0]
     )
 
@@ -834,8 +834,7 @@ def test_partial_migration(percentage1: float, percentage2: float):
         },
         preferred_stablecoin='DAI',
     )
-    subpool_state = oamm.execute_create_sub_pool(
-        state=initial_state.copy(),
+    subpool_state = initial_state.copy().create_sub_pool(
         tkns_migrate={
             'DAI': initial_state.liquidity['DAI'] * percentage1,
             'USDT': initial_state.liquidity['USDT'] * percentage2
