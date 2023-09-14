@@ -1033,7 +1033,10 @@ def price(self: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: st
 
 
 def usd_price(self: OmnipoolState or OmnipoolArchiveState, tkn):
-    return price(self, tkn) / price(self, self.stablecoin)
+    if tkn == 'LRNA':
+        return 1 / self.lrna_price(self, self.stablecoin)
+    else:
+        return price(self, tkn) / price(self, self.stablecoin)
 
 
 def lrna_price(self: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
