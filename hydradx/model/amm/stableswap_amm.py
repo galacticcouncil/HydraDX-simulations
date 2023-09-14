@@ -245,6 +245,7 @@ class StableSwapPoolState(AMM):
             return self.fail_transaction('Withdraw quantity must be > 0.', agent)
 
         _fee = self.trade_fee
+        _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
         initial_d = self.calculate_d()
         reduced_d = initial_d - shares_removed * initial_d / self.shares
