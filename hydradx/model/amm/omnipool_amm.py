@@ -682,13 +682,16 @@ class OmnipoolState(AMM):
 
     def create_sub_pool(
             self,
-            tkns_migrate: list[str],
+            tkns_migrate: dict[str: float] or list[str],
             sub_pool_id: str,
             amplification: float,
             trade_fee: FeeMechanism or float = 0
     ):
+        if isinstance(tkns_migrate, list):
+            tkns_migrate = {tkn: self.liquidity[tkn] for tkn in tkns_migrate}
+
         new_sub_pool = StableSwapPoolState(
-            tokens={tkn: self.liquidity[tkn] for tkn in tkns_migrate},
+            tokens=tkns_migrate,
             amplification=amplification,
             unique_id=sub_pool_id,
             trade_fee=trade_fee
@@ -696,28 +699,30 @@ class OmnipoolState(AMM):
         new_sub_pool.conversion_metrics = {
             tkn: {
                 'price': self.lrna[tkn] / self.liquidity[tkn],
-                'old_shares': self.shares[tkn],
-                'omnipool_shares': self.lrna[tkn],
-                'subpool_shares': self.lrna[tkn]
+                'old_shares': self.shares[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
+                'omnipool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
+                'subpool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
             } for tkn in tkns_migrate
         }
-        new_sub_pool.shares = sum([self.lrna[tkn] for tkn in tkns_migrate])
+        new_sub_pool.shares = sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate])
         self.sub_pools[sub_pool_id] = new_sub_pool
         self.add_token(
             sub_pool_id,
-            liquidity=sum([self.lrna[tkn] for tkn in tkns_migrate]),
-            shares=sum([self.lrna[tkn] for tkn in tkns_migrate]),
-            lrna=sum([self.lrna[tkn] for tkn in tkns_migrate]),
+            liquidity=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
+            shares=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
+            lrna=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
             protocol_shares=sum([
-                self.lrna[tkn] * self.protocol_shares[tkn] / self.shares[tkn] for tkn in tkns_migrate
+                self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] * self.protocol_shares[tkn] / self.shares[tkn]
+                for tkn in tkns_migrate
             ])
         )
     
         # remove assets from Omnipool
         for tkn in tkns_migrate:
-            self.liquidity[tkn] = 0
-            self.lrna[tkn] = 0
-            self.asset_list.remove(tkn)
+            self.lrna[tkn] -= self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
+            self.liquidity[tkn] -= tkns_migrate[tkn]
+            if self.liquidity[tkn] == 0:
+                self.asset_list.remove(tkn)
         return self
     
     def migrate_asset(self, tkn_migrate: str, sub_pool_id: str):
