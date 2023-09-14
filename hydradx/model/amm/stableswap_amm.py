@@ -194,7 +194,7 @@ class StableSwapPoolState(AMM):
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
-        return self, new_agent
+        return self
 
     def withdraw_asset(
             self,
@@ -227,7 +227,7 @@ class StableSwapPoolState(AMM):
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= quantity
         agent.holdings[tkn_remove] += quantity
-        return self, agent
+        return self
 
     def remove_liquidity(
             self,
@@ -271,7 +271,7 @@ class StableSwapPoolState(AMM):
         if tkn_remove not in agent.holdings:
             agent.holdings[tkn_remove] = 0
         agent.holdings[tkn_remove] += dy
-        return self, agent
+        return self
 
     def add_liquidity(
             self,
@@ -308,7 +308,7 @@ class StableSwapPoolState(AMM):
             agent.holdings[self.unique_id] += share_amount
             agent.share_prices[self.unique_id] = quantity / share_amount
 
-        return self, agent
+        return self
 
     def buy_shares(
             self,
@@ -338,7 +338,7 @@ class StableSwapPoolState(AMM):
         if self.unique_id not in agent.holdings:
             agent.holdings[self.unique_id] = 0
         agent.holdings[self.unique_id] += quantity
-        return self, agent
+        return self
 
 
 def simulate_swap(
