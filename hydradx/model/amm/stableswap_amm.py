@@ -340,6 +340,36 @@ class StableSwapPoolState(AMM):
         agent.holdings[self.unique_id] += quantity
         return self
 
+    def remove_uniform(
+            self,
+            agent: Agent,
+            shares_removed: float
+    ):
+        if shares_removed > agent.holdings[self.unique_id]:
+            raise ValueError('Agent tried to remove more shares than it owns.')
+        elif shares_removed <= 0:
+            raise ValueError('Withdraw quantity must be > 0.')
+
+        share_fraction = shares_removed / self.shares
+
+        delta_tkns = {}
+        for tkn in self.asset_list:
+            delta_tkns[tkn] = share_fraction * self.liquidity[tkn]  # delta_tkn is positive
+
+            if delta_tkns[tkn] >= self.liquidity[tkn]:
+                return self.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
+
+            if tkn not in agent.holdings:
+                agent.holdings[tkn] = 0
+
+        self.shares -= shares_removed
+        agent.holdings[self.unique_id] -= shares_removed
+
+        for tkn in self.asset_list:
+            self.liquidity[tkn] -= delta_tkns[tkn]
+            agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
+        return self
+
 
 def simulate_swap(
         old_state: StableSwapPoolState,
@@ -374,37 +404,6 @@ def simulate_remove_liquidity(
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     return new_state.remove_liquidity(new_agent, quantity, tkn_remove)
-
-
-def execute_remove_uniform(
-        state: StableSwapPoolState,
-        agent: Agent,
-        shares_removed: float
-):
-    if shares_removed > agent.holdings[state.unique_id]:
-        raise ValueError('Agent tried to remove more shares than it owns.')
-    elif shares_removed <= 0:
-        raise ValueError('Withdraw quantity must be > 0.')
-
-    share_fraction = shares_removed / state.shares
-
-    delta_tkns = {}
-    for tkn in state.asset_list:
-        delta_tkns[tkn] = share_fraction * state.liquidity[tkn]  # delta_tkn is positive
-
-        if delta_tkns[tkn] >= state.liquidity[tkn]:
-            return state.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
-
-        if tkn not in agent.holdings:
-            agent.holdings[tkn] = 0
-
-    state.shares -= shares_removed
-    agent.holdings[state.unique_id] -= shares_removed
-
-    for tkn in state.asset_list:
-        state.liquidity[tkn] -= delta_tkns[tkn]
-        agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
-    return state, agent
 
 
 def simulate_buy_shares(
