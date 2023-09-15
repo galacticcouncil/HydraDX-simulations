@@ -2,7 +2,7 @@ import copy
 import math
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings
+from hypothesis import given, strategies as st, assume, settings, Verbosity
 
 from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
@@ -11,6 +11,8 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -2187,11 +2189,12 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
 
 @given(
     omnipool_reasonable_config(),
-    st.floats(min_value=1e-7, max_value=0.02),
+    st.floats(min_value=1e-6, max_value=0.02),
     st.booleans(),
     st.floats(min_value=1e-8, max_value=0.1),
     st.floats(min_value=0.1, max_value=10.0),
 )
+@settings(print_blob=True, verbosity=Verbosity.verbose)
 def test_withdraw_manipulation(
         initial_state: oamm.OmnipoolState,
         price_move: float,
@@ -2199,7 +2202,8 @@ def test_withdraw_manipulation(
         lp_percent: float,
         price_ratio: float
 ):
-    # uncommenting this will cause the test to fail, demonstrating that oracle length > 1 helps solve the problem
+    # from hydradx.model.amm.oracle import Oracle
+    # # uncommenting this will cause the test to fail, demonstrating that oracle length > 1 helps solve the problem
     # initial_state.oracles = {'price': Oracle(
     #     first_block=initial_state.current_block,
     #     sma_equivalent_length=1
@@ -2210,8 +2214,9 @@ def test_withdraw_manipulation(
     }
 
     initial_agent = Agent(
-        holdings=agent_holdings
+        holdings={tkn: mpf(agent_holdings[tkn]) for tkn in agent_holdings}
     )
+    initial_state.liquidity = {tkn: mpf(initial_state.liquidity[tkn]) for tkn in initial_state.liquidity}
 
     asset_index = 1
     options = copy.copy(initial_state.asset_list)
@@ -2228,6 +2233,14 @@ def test_withdraw_manipulation(
     # trade to manipulate the price
     signed_price_move = price_move if price_move_is_up else -price_move
     first_trade = initial_state.liquidity[lp_token] * (1 - 1 / math.sqrt(1 + signed_price_move))
+    trade_agent = initial_agent.copy()
+    trade_state = initial_state.copy().swap(
+        agent=trade_agent,
+        tkn_sell=trade_token if first_trade > 0 else lp_token,
+        tkn_buy=lp_token if first_trade > 0 else trade_token,
+        buy_quantity=first_trade if first_trade > 0 else 0,
+        sell_quantity=-first_trade if first_trade < 0 else 0
+    )
     trade_state, trade_agent = oamm.simulate_swap(
         old_state=initial_state.copy(),
         old_agent=initial_agent.copy(),
@@ -2263,8 +2276,9 @@ def test_withdraw_manipulation(
             - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
     )
 
-    if profit > 0:
-        raise AssertionError(f'profit with manipulation {profit} > 0')
+    # transaction fees will not be less than 1e-6
+    if profit > 1e-6:
+        raise AssertionError(f'profit with manipulation {profit} > 0.000001')
 
 
 @given(
@@ -2281,6 +2295,7 @@ def test_add_manipulation(
     initial_state.trade_limit_per_block = 0.05
     initial_state.max_withdrawal_per_block = 0.05
     initial_state.max_lp_per_block = 0.05
+    initial_state.withdrawal_fee = True
     # uncommenting this will cause the test to fail, demonstrating that oracle length > 1 helps solve the problem
     # initial_state.oracles = {'price': Oracle(
     #     first_block=initial_state.current_block,

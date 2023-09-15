@@ -10,6 +10,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
+from hydradx.model.run import run
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -118,7 +119,7 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
 
     # Trading should result in net zero LRNA trades
     if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-        raise
+        raise AssertionError(f'Arbbtrageur traded LRNA. old: {old_holdings["LRNA"]}, new: {new_holdings["LRNA"]}')
 
     for asset in omnipool.asset_list:
         old_value += old_holdings[asset] * external_market[asset]
@@ -131,13 +132,13 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
     # Trading should be profitable
     if old_value > new_value:
         if new_value != pytest.approx(old_value, rel=1e-15):
-            raise
+            raise AssertionError(f'Arbitrageur lost money. old_value: {old_value}, new_value: {new_value}')
 
 
 @given(omnipool_reasonable_config(token_count=3))
 def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     holdings = {asset: 10000 for asset in omnipool.asset_list}
-    initial_agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    initial_agent = Agent(holdings=holdings, trade_strategy=invest_all('omnipool', when=4))
     initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': initial_agent})
 
     new_state = invest_all('omnipool').execute(initial_state.copy(), 'agent')
@@ -162,3 +163,8 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
         if ('omnipool', tkn) in hdx_state.agents['agent'].holdings \
                 and hdx_state.agents['agent'].holdings[('omnipool', tkn)] != 0:
             raise AssertionError(f'Agent has shares of {tkn}, but should not.')
+
+    events = run(initial_state, time_steps=4, silent=True)
+    final_state = events[-1]
+    if final_state.agents['agent'].holdings['HDX'] != 0 or events[-2].agents['agent'].holdings['HDX'] == 0:
+        raise AssertionError('HDX not invested at the right time.')
