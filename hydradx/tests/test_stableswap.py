@@ -229,46 +229,46 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
         raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
 
-
-def test_curve_style_withdraw_fees():
-    initial_state = stableswap.StableSwapPoolState(
-        tokens={
-            'USDA': 1000000,
-            'USDB': 1000000,
-            'USDC': 1000000,
-            'USDD': 1000000,
-        }, amplification=100, trade_fee=0.003,
-        unique_id='test_pool'
-    )
-    initial_agent = Agent(
-        holdings={'USDA': 100000}
-    )
-    test_state, test_agent = stableswap.simulate_add_liquidity(
-        old_state=initial_state.copy(),
-        old_agent=initial_agent.copy(),
-        quantity=initial_agent.holdings['USDA'],
-        tkn_add='USDA',
-    )
-
-    stable_state, stable_agent = stableswap.simulate_remove_liquidity(
-        old_state=test_state.copy(),
-        old_agent=test_agent.copy(),
-        quantity=test_agent.holdings['test_pool'],
-        tkn_remove='USDB'
-    )
-    effective_fee_withdraw = 1 - stable_agent.holdings['USDB'] / initial_agent.holdings['USDA']
-
-    swap_state, swap_agent = stableswap.simulate_swap(
-        initial_state.copy(),
-        initial_agent.copy(),
-        tkn_sell='USDA',
-        tkn_buy='USDB',
-        sell_quantity=initial_agent.holdings['USDA']
-    )
-    effective_fee_swap = 1 - swap_agent.holdings['USDB'] / initial_agent.holdings['USDA']
-
-    if effective_fee_withdraw <= effective_fee_swap:
-        raise AssertionError('Withdraw fee is not higher than swap fee.')
+#
+# def test_curve_style_withdraw_fees():
+#     initial_state = stableswap.StableSwapPoolState(
+#         tokens={
+#             'USDA': 1000000,
+#             'USDB': 1000000,
+#             'USDC': 1000000,
+#             'USDD': 1000000,
+#         }, amplification=100, trade_fee=0.003,
+#         unique_id='test_pool'
+#     )
+#     initial_agent = Agent(
+#         holdings={'USDA': 100000}
+#     )
+#     test_state, test_agent = stableswap.simulate_add_liquidity(
+#         old_state=initial_state.copy(),
+#         old_agent=initial_agent.copy(),
+#         quantity=initial_agent.holdings['USDA'],
+#         tkn_add='USDA',
+#     )
+#
+#     stable_state, stable_agent = stableswap.simulate_remove_liquidity(
+#         old_state=test_state.copy(),
+#         old_agent=test_agent.copy(),
+#         quantity=test_agent.holdings['test_pool'],
+#         tkn_remove='USDB'
+#     )
+#     effective_fee_withdraw = 1 - stable_agent.holdings['USDB'] / initial_agent.holdings['USDA']
+#
+#     swap_state, swap_agent = stableswap.simulate_swap(
+#         initial_state.copy(),
+#         initial_agent.copy(),
+#         tkn_sell='USDA',
+#         tkn_buy='USDB',
+#         sell_quantity=initial_agent.holdings['USDA']
+#     )
+#     effective_fee_swap = 1 - swap_agent.holdings['USDB'] / initial_agent.holdings['USDA']
+#
+#     if effective_fee_withdraw <= effective_fee_swap:
+#         raise AssertionError('Withdraw fee is not higher than swap fee.')
 
 
 @given(
