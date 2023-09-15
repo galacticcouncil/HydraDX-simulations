@@ -382,7 +382,7 @@ def simulate_swap(
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity)
+    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity), new_agent
 
 
 def simulate_add_liquidity(
@@ -393,7 +393,7 @@ def simulate_add_liquidity(
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.add_liquidity(new_agent, quantity, tkn_add)
+    return new_state.add_liquidity(new_agent, quantity, tkn_add), new_agent
 
 
 def simulate_remove_liquidity(
@@ -404,7 +404,7 @@ def simulate_remove_liquidity(
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.remove_liquidity(new_agent, quantity, tkn_remove)
+    return new_state.remove_liquidity(new_agent, quantity, tkn_remove), new_agent
 
 
 def simulate_buy_shares(
@@ -421,4 +421,4 @@ def simulate_buy_shares(
         quantity=quantity,
         tkn_add=tkn_add,
         fail_overdraft=fail_overdraft
-    )
+    ), new_agent
