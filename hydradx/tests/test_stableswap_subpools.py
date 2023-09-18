@@ -2,12 +2,13 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given
+from hypothesis import given, settings, strategies as st
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
+@settings(deadline=500)
 def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     # deposit stable pool shares into omnipool
@@ -30,21 +31,23 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
+    new_d = new_stable_pool.calculate_d()
+    d = stable_pool.calculate_d()
     if not (stable_swap_equation(
-            new_stable_pool.calculate_d(),
+            new_d,
             new_stable_pool.amplification,
             new_stable_pool.n_coins,
             new_stable_pool.liquidity.values()
     )):
         raise AssertionError("Stableswap equation didn't hold.")
     if not (
-            stable_pool.calculate_d() * new_stable_pool.shares <=
-            new_stable_pool.calculate_d() * stable_pool.shares
+            d * new_stable_pool.shares <=
+            new_d * stable_pool.shares
     ):
         raise AssertionError("Shares/invariant ratio changed in the wrong direction.")
     if (
-            (new_stable_pool.shares - stable_pool.shares) * stable_pool.calculate_d() * (1 - stable_pool.trade_fee) !=
-            pytest.approx(stable_pool.shares * (new_stable_pool.calculate_d() - stable_pool.calculate_d()))
+            (new_stable_pool.shares - stable_pool.shares) * d * (1 - stable_pool.trade_fee) !=
+            pytest.approx(stable_pool.shares * (new_d - d))
     ):
         raise AssertionError("Delta_shares * D * (1 - fee) did not yield expected result.")
     if (
@@ -616,22 +619,28 @@ def test_migrate_asset(initial_state: oamm.OmnipoolState):
         raise AssertionError("Share quantities didn't come out right.")
 
 
+@settings(deadline=500)
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, withdrawal_fee=False))
 def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState):
     asset1 = initial_state.asset_list[2]
     asset2 = 'DAI'
     asset3 = 'USDC'
-    initial_state.asset_list.append(asset2)
-    initial_state.liquidity[asset2] = initial_state.liquidity[asset1] * 1.1
-    initial_state.lrna[asset2] = initial_state.lrna[asset1] * 1.1
-    initial_state.shares[asset2] = initial_state.shares[asset1] * 1.1
-    initial_state.protocol_shares[asset2] = initial_state.protocol_shares[asset1] * 1.1
-    initial_state.asset_list.append(asset3)
-    initial_state.liquidity[asset3] = initial_state.liquidity[asset1] * 1.1
-    initial_state.lrna[asset3] = initial_state.lrna[asset1] * 1.1
-    initial_state.shares[asset3] = initial_state.shares[asset1] * 1.1
-    initial_state.protocol_shares[asset3] = initial_state.protocol_shares[asset1] * 1.1
-    initial_state.weight_cap[asset3] = 1
+    initial_state.add_token(
+        tkn=asset2,
+        liquidity=initial_state.liquidity[asset1] * 1.1,
+        lrna=initial_state.lrna[asset1] * 1.1,
+        shares=initial_state.shares[asset1] * 1.1,
+        protocol_shares=initial_state.protocol_shares[asset1] * 1.1
+    )
+    initial_state.add_token(
+        tkn=asset3,
+        liquidity=initial_state.liquidity[asset1] * 1.1,
+        lrna=initial_state.lrna[asset1] * 1.1,
+        shares=initial_state.shares[asset1] * 1.1,
+        protocol_shares=initial_state.protocol_shares[asset1] * 1.1,
+        weight_cap=1
+    )
+
     initial_lp = Agent(
         holdings={
             asset1: initial_state.liquidity[asset2] - initial_state.liquidity[asset1],
@@ -798,19 +807,49 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
 
 
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0, sub_pools={'stableswap': {}}))
+@settings(deadline=500)
 def test_add_stableswap_liquidity(initial_state: oamm.OmnipoolState):
     stable_pool: ssamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
-    agent = Agent(
+    initial_agent = Agent(
         holdings={stable_pool.asset_list[0]: 1000}
     )
     new_state, new_agent = oamm.simulate_add_liquidity(
-        initial_state, agent,
+        initial_state, initial_agent,
         quantity=1000, tkn_add=stable_pool.asset_list[0]
     )
-    if new_state.fail:
-        # this could be due to liquidity overload or whatever
-        return
+
     if (initial_state.unique_id, stable_pool.unique_id) not in new_agent.holdings:
         raise ValueError("Agent did not receive shares.")
     if not (new_agent.holdings[(initial_state.unique_id, stable_pool.unique_id)] > 0):
         raise AssertionError("Sanity check failed.")
+
+
+@given(st.floats(min_value=0.01, max_value=0.99), st.floats(min_value=0.01, max_value=0.99))
+def test_partial_migration(percentage1: float, percentage2: float):
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'DAI': {'liquidity': 1000, 'LRNA': 1000},
+            'USDT': {'liquidity': 1000, 'LRNA': 1000},
+            'HDX': {'liquidity': 1000, 'LRNA': 1000}
+        },
+        preferred_stablecoin='DAI',
+    )
+    subpool_state = initial_state.copy().create_sub_pool(
+        tkns_migrate={
+            'DAI': initial_state.liquidity['DAI'] * percentage1,
+            'USDT': initial_state.liquidity['USDT'] * percentage2
+        },
+        sub_pool_id='stableswap',
+        amplification=10
+    )
+    if sum(initial_state.lrna.values()) != pytest.approx(sum(subpool_state.lrna.values())):
+        raise AssertionError("LRNA not conserved.")
+    if sum(initial_state.liquidity.values()) != pytest.approx(
+        sum(subpool_state.liquidity.values()) - subpool_state.liquidity['stableswap']
+        + sum(subpool_state.sub_pools['stableswap'].liquidity.values())
+    ):
+        raise AssertionError("Liquidity not conserved.")
+    if initial_state.liquidity['DAI'] * percentage1 != pytest.approx(
+        subpool_state.sub_pools['stableswap'].liquidity['DAI']
+    ):
+        raise AssertionError("DAI liquidity not conserved.")

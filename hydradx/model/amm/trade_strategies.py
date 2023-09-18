@@ -167,15 +167,14 @@ def invest_all(pool_id: str, assets: list or str = None, when: int = 0) -> Trade
             pool = state.pools[pool_id]
 
             for asset in assets or list(agent.holdings.keys()):
-
+                if agent.holdings[asset] == 0:
+                    continue
                 if asset in state.pools[pool_id].asset_list:
                     pool.add_liquidity(
                         agent=agent,
-                        quantity=state.agents[agent_id].holdings[asset],
+                        quantity=agent.holdings[asset],
                         tkn_add=asset
                     )
-
-            agent.initial_holdings = agent.holdings
 
             return state
 
@@ -500,14 +499,15 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             # asset_fee = omnipool.last_fee[asset]
             asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-            high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+            if arb_precision < 2:
+                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
 
-            if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
-                skip_ct += 1
-                if i < usd_index:
-                    usd_index -= 1
-                continue
+                if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+                    skip_ct += 1
+                    if i < usd_index:
+                        usd_index -= 1
+                    continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
@@ -518,11 +518,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
 
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         dq = get_dq_list(dr, reserves, lrna)
-
-        # size_mult = 1
-        # for i in range(len(prices)):
-        #     if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
-        #         size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
         r = omnipool.liquidity
         q = omnipool.lrna
