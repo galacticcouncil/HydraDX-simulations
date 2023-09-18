@@ -502,10 +502,11 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         dq = get_dq_list(dr, reserves, lrna)
 
-        # size_mult = 1
-        # for i in range(len(prices)):
-        #     if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
-        #         size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
+        if arb_precision < 2:
+            size_mult = 1
+            for i in range(len(prices)):
+                if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
+                    size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
         r = omnipool.liquidity
         q = omnipool.lrna
