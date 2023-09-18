@@ -107,16 +107,22 @@ class StableSwapPoolState(AMM):
 
         return y
 
-    @property
-    def spot_price(self):
-        x, y = self.liquidity.values()
-        return self.price_at_balance([x, y], self.d)
 
-    def price_at_balance(self, balances: list, d: float):
-        x, y = balances
-        # return (x / y) * (self.ann * x * y ** 2 + d ** 3) / (self.ann * x ** 2 * y + d ** 3)
+    def spot_price(self, i: int = 1):
+        balances = list(self.liquidity.values())
+        if i == 0:  # price of the numeraire is always 1
+            return 1
+        return self.price_at_balance(balances, self.d, i)
+
+    def price_at_balance(self, balances: list, d: float, i: int = 1):
         c = self.amplification * self.n_coins ** (2 * self.n_coins)
-        return (x / y) * (c * x * y ** 2 + d ** 3) / (c * x ** 2 * y + d ** 3)
+        p = 1
+        for x in balances:
+            p *= x
+        x = balances[0]
+        y = balances[i]
+        n = len(balances)
+        return (x / y) * (c * y * p + d ** (n + 1)) / (c * x * p + d ** (n + 1))
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
