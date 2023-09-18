@@ -26,7 +26,10 @@ class TradeStrategy:
             return state
         elif self.run_once:
             self.done = True
-        return self.function(state, agent_id)
+        return_val = self.function(state, agent_id)
+        if return_val != state:
+            raise AssertionError('TradeStrategy function returned a different state object.')
+        return return_val
 
     def __add__(self, other):
         assert isinstance(other, TradeStrategy)
@@ -146,15 +149,22 @@ def back_and_forth(
     return TradeStrategy(strategy, name=f'back and forth (${percentage})')
 
 
-def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
+def invest_all(pool_id: str, assets: list or str = None, when: int = 0) -> TradeStrategy:
 
     if assets and not isinstance(assets, list):
         assets = [assets]
 
-    def strategy(state: GlobalState, agent_id: str):
+    class Strategy:
+        def __init__(self, _when):
+            self.when = _when
+            self.done = False
 
-        agent: Agent = state.agents[agent_id]
-        pool: AMM = state.pools[pool_id]
+        def execute(self, state: GlobalState, agent_id: str):
+            if self.done or state.time_step < self.when:
+                return state
+            self.done = True
+            agent: Agent = state.agents[agent_id]
+            pool = state.pools[pool_id]
 
         for asset in assets or list(agent.holdings.keys()):
             if agent.holdings[asset] == 0:
@@ -166,11 +176,11 @@ def invest_all(pool_id: str, assets: list or str = None) -> TradeStrategy:
                     tkn_add=asset
                 )
 
-        # agent.initial_holdings = agent.holdings
+            agent.initial_holdings = agent.holdings
 
-        return state
+            return state
 
-    return TradeStrategy(strategy, name=f'invest all ({pool_id})')
+    return TradeStrategy(Strategy(when).execute, name=f'invest all ({pool_id})')
 
 
 def withdraw_all(when: int) -> TradeStrategy:
@@ -201,15 +211,24 @@ def withdraw_all(when: int) -> TradeStrategy:
     return TradeStrategy(strategy, name=f'withdraw all at time step {when}')
 
 
-def sell_all(pool_id: str, sell_asset: str, buy_asset: str):
+def sell_all(pool_id: str, tkn_sell: str, tkn_buy: str, when: int = -1) -> TradeStrategy:
 
-    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
-        agent = state.agents[agent_id]
-        if not agent.holdings[sell_asset]:
-            return state
-        return state.execute_swap(pool_id, agent_id, sell_asset, buy_asset, sell_quantity=agent.holdings[sell_asset])
+    class Strategy:
+        def __init__(self):
+            self.when = when
+            self.done = False
 
-    return TradeStrategy(strategy, name=f'sell all {sell_asset} for {buy_asset}')
+        def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
+            agent = state.agents[agent_id]
+            if self.done or not agent.holdings[tkn_sell] or state.time_step < self.when:
+                return state
+            if self.when > 0:
+                self.done = True
+            return state.execute_swap(
+                pool_id, agent_id, tkn_sell, tkn_buy, sell_quantity=agent.holdings[tkn_sell]
+            )
+
+    return TradeStrategy(Strategy().execute, name=f'sell all {tkn_sell} for {tkn_buy}')
 
 
 def invest_and_withdraw(frequency: float = 0.001, pool_id: str = 'omnipool', sell_lrna: bool = False) -> TradeStrategy:
@@ -501,12 +520,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
 
         dr = get_dr_list(prices, reserves, lrna, usd_index)
         dq = get_dq_list(dr, reserves, lrna)
-
-        if arb_precision < 2:
-            size_mult = 1
-            for i in range(len(prices)):
-                if abs(dr[i])/reserves[i] > omnipool.trade_limit_per_block:
-                    size_mult = min(size_mult, omnipool.trade_limit_per_block * reserves[i] / abs(dr[i]))
 
         r = omnipool.liquidity
         q = omnipool.lrna
