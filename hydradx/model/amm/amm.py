@@ -48,33 +48,33 @@ class AMM:
 
     def swap(
         self,
-        old_agent: Agent,
+        agent: Agent,
         tkn_sell: str,
         tkn_buy: str,
         buy_quantity: float = 0,
         sell_quantity: float = 0
     ):
-        return self.copy(), old_agent.copy()
+        return self
 
     def add_liquidity(
         self,
-        old_agent: Agent,
+        agent: Agent,
         quantity: float,
         tkn_add: str
     ):
-        return self.copy(), old_agent.copy()
+        return self
 
     def remove_liquidity(
         self,
-        old_agent: Agent,
+        agent: Agent,
         quantity: float,
         tkn_remove: str
     ):
-        return self.copy(), old_agent.copy()
+        return self
 
     def fail_transaction(self, error: str, agent: Agent):
         self.fail = error
-        return self, agent
+        return self
 
     def __setattr__(self, key, value):
         if hasattr(self, key):
