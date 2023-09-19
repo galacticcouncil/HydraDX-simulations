@@ -169,8 +169,7 @@ def omnipool_config(
     )
 
     for name, pool in sub_pool_instances.items():
-        oamm.execute_create_sub_pool(
-            state=test_state,
+        test_state.create_sub_pool(
             tkns_migrate=pool.asset_list,
             sub_pool_id=name,
             amplification=pool.amplification,
