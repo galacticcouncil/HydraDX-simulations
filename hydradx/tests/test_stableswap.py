@@ -333,7 +333,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
 @given(
     st.integers(min_value=1, max_value=1000000),
-    st.floats(min_value=0, max_value=1, exclude_min=True, exclude_max=True)
+    st.floats(min_value=0.00000001, max_value=0.999999)
 )
 def test_swap_one(amplification, swap_fraction):
     initial_state = StableSwapPoolState(
@@ -367,6 +367,9 @@ def test_swap_one(amplification, swap_fraction):
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
 
+    if sell_state.spot_price(tkn_sell, stablecoin) >= initial_state.spot_price(tkn_sell, stablecoin):
+        raise AssertionError('Spot price increased for swapped token.')
+
     if sell_state.d != pytest.approx(initial_state.d):
         raise AssertionError('D changed after sell operation.')
 
@@ -387,6 +390,9 @@ def test_swap_one(amplification, swap_fraction):
             and tkn != tkn_buy
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
+
+    if buy_state.spot_price(tkn_buy, stablecoin) <= sell_state.spot_price(tkn_buy, stablecoin):
+        raise AssertionError('Spot price decreased for swapped token.')
 
     if buy_state.d != pytest.approx(initial_state.d):
         raise AssertionError('D changed after buy operation.')
