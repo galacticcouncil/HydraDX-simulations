@@ -54,6 +54,10 @@ class StableSwapPoolState(AMM):
     def d(self) -> float:
         return self.calculate_d()
 
+    def fail_transaction(self, error: str, **kwargs):
+        self.fail = error
+        return self
+
     def has_converged(self, v0, v1) -> bool:
         diff = abs(v0 - v1)
         if (v1 <= v0 and diff < self.precision) or (v1 > v0 and diff <= self.precision):
@@ -108,16 +112,19 @@ class StableSwapPoolState(AMM):
         return y
 
     # price is denominated in the first asset
-    @property
-    def spot_price(self):
-        x, y = self.liquidity.values()
-        return self.price_at_balance([x, y], self.d)
-
-    # price is denominated in the first asset
-    def price_at_balance(self, balances: list, d: float):
-        x, y = balances
+    def spot_price(self, tkn: str, numeraire: str):
+        """
+        return the price of TKN denominated in NUMÉRAIRE
+        """
         c = self.amplification * self.n_coins ** (2 * self.n_coins)
-        return (x / y) * (c * x * y ** 2 + d ** 3) / (c * x ** 2 * y + d ** 3)
+        p = 1
+        for x in self.liquidity.values():
+            p *= x
+        x = self.liquidity[numeraire]
+        y = self.liquidity[tkn]
+        n = self.n_coins
+        d = self.d
+        return (x / y) * (c * y * p + d ** (n + 1)) / (c * x * p + d ** (n + 1))
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
@@ -182,9 +189,9 @@ class StableSwapPoolState(AMM):
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
 
         if agent.holdings[tkn_sell] < sell_quantity:
-            return self.fail_transaction('Agent has insufficient funds.', agent)
+            return self.fail_transaction('Agent has insufficient funds.')
         elif self.liquidity[tkn_buy] <= buy_quantity:
-            return self.fail_transaction('Pool has insufficient liquidity.', agent)
+            return self.fail_transaction('Pool has insufficient liquidity.')
 
         new_agent = agent  # .copy()
         if tkn_buy not in new_agent.holdings:
@@ -207,7 +214,7 @@ class StableSwapPoolState(AMM):
         Calculate a withdrawal based on the asset quantity rather than the share quantity
         """
         if quantity >= self.liquidity[tkn_remove]:
-            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.', agent)
+            return self.fail_transaction(f'Not enough liquidity in {tkn_remove}.')
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
@@ -215,7 +222,7 @@ class StableSwapPoolState(AMM):
 
         if shares_removed > agent.holdings[self.unique_id]:
             if fail_on_overdraw:
-                return self.fail_transaction('Agent tried to remove more shares than it owns.', agent)
+                return self.fail_transaction('Agent tried to remove more shares than it owns.')
             else:
                 # just round down
                 shares_removed = agent.holdings[self.unique_id]
@@ -240,9 +247,9 @@ class StableSwapPoolState(AMM):
         # * Solve Eqn against y_i for D - _token_amount
 
         if shares_removed > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Agent has insufficient funds.', agent)
+            return self.fail_transaction('Agent has insufficient funds.')
         elif shares_removed <= 0:
-            return self.fail_transaction('Withdraw quantity must be > 0.', agent)
+            return self.fail_transaction('Withdraw quantity must be > 0.')
 
         _fee = self.trade_fee
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
@@ -285,9 +292,9 @@ class StableSwapPoolState(AMM):
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
 
         if updated_d < initial_d:
-            return self.fail_transaction('invariant decreased for some reason', agent)
+            return self.fail_transaction('invariant decreased for some reason')
         if agent.holdings[tkn_add] < quantity:
-            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.", agent)
+            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         self.liquidity[tkn_add] += quantity
         agent.holdings[tkn_add] -= quantity
@@ -297,7 +304,7 @@ class StableSwapPoolState(AMM):
             self.shares = updated_d
 
         elif self.shares < 0:
-            return self.fail_transaction('Shares cannot go below 0.', agent)
+            return self.fail_transaction('Shares cannot go below 0.')
             # why would this possibly happen?
 
         else:
@@ -327,7 +334,7 @@ class StableSwapPoolState(AMM):
 
         if delta_tkn > agent.holdings[tkn_add]:
             if fail_overdraft:
-                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.", agent)
+                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
             else:
                 # instead of failing, just round down
                 delta_tkn = agent.holdings[tkn_add]
@@ -358,7 +365,7 @@ class StableSwapPoolState(AMM):
             delta_tkns[tkn] = share_fraction * self.liquidity[tkn]  # delta_tkn is positive
 
             if delta_tkns[tkn] >= self.liquidity[tkn]:
-                return self.fail_transaction(f'Not enough liquidity in {tkn}.', agent)
+                return self.fail_transaction(f'Not enough liquidity in {tkn}.')
 
             if tkn not in agent.holdings:
                 agent.holdings[tkn] = 0
