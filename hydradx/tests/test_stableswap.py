@@ -159,7 +159,7 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
-@given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000}, trade_fee=0))
+@given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000}, trade_fee=0))
 def test_arbitrage(stable_pool):
     initial_state = GlobalState(
         pools={
@@ -167,36 +167,38 @@ def test_arbitrage(stable_pool):
         },
         agents={
             'Trader': Agent(
-                holdings={'R1': 1000000, 'R2': 1000000},
-                trade_strategy=random_swaps(pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000}, randomize_amount=True)
+                holdings={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000},
+                trade_strategy=random_swaps(
+                    pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000, 'R3': 10000, 'R4': 10000}, randomize_amount=True
+                )
             ),
             'Arbitrageur': Agent(
-                holdings={'R1': 1000000, 'R2': 1000000},
+                holdings={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000},
                 trade_strategy=stableswap_arbitrage(pool_id='R1/R2', minimum_profit=0, precision=0.000001)
             )
         },
         external_market={
             'R1': 1,
-            'R2': 1
+            'R2': 1,
+            'R3': 1,
+            'R4': 1
         },
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
-    events = run.run(initial_state, time_steps=10, silent=True)
+    events = run.run(initial_state, time_steps=50, silent=True)
     # print(events[0].pools['R1/R2'].spot_price, events[-1].pools['R1/R2'].spot_price)
     if (
-        events[0].pools['R1/R2'].spot_price
-        != pytest.approx(events[-1].pools['R1/R2'].spot_price)
+        events[0].pools['R1/R2'].spot_price('R1', 'R2')
+        != pytest.approx(events[-1].pools['R1/R2'].spot_price('R1', 'R2'), abs=0.000001)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
                              f"({events[0].pools['R1/R2'].spot_price})"
                              f"{events[-1].pools['R1/R2'].spot_price}")
     if (
-        events[0].agents['Arbitrageur'].holdings['R1']
-        + events[0].agents['Arbitrageur'].holdings['R2']
-        > events[-1].agents['Arbitrageur'].holdings['R1']
-        + events[-1].agents['Arbitrageur'].holdings['R2']
+        sum(events[0].agents['Arbitrageur'].holdings.values())
+        > sum(events[-1].agents['Arbitrageur'].holdings.values())
     ):
-        raise AssertionError("Arbitrageur didn't make money.")
+        raise AssertionError("Arbitrageur lost money.")
 
 
 @given(stableswap_config(trade_fee=0))
