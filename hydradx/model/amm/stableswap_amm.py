@@ -116,12 +116,15 @@ class StableSwapPoolState(AMM):
         """
         return the price of TKN denominated in NUMÉRAIRE
         """
+        return self.price_at_balance(self.liquidity, tkn, numeraire)
+
+    def price_at_balance(self, balances: dict, tkn: str, numeraire: str):
         c = self.amplification * self.n_coins ** (2 * self.n_coins)
         p = 1
-        for x in self.liquidity.values():
+        for x in balances.values():
             p *= x
-        x = self.liquidity[numeraire]
-        y = self.liquidity[tkn]
+        x = balances[numeraire]
+        y = balances[tkn]
         n = self.n_coins
         d = self.d
         return (x / y) * (c * y * p + d ** (n + 1)) / (c * x * p + d ** (n + 1))
