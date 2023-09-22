@@ -57,11 +57,46 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
+@given(st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=10, max_value=1000),
+       st.integers(min_value=1, max_value=3)
+       )
+def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int):
+    tokens = {"A": token_a, "B": token_b, "C": token_c, "D": token_d}
+    initial_pool = StableSwapPoolState(
+        tokens=tokens,
+        amplification=amp,
+        trade_fee=0.0,
+        unique_id='stableswap'
+    )
+
+    spot_price_initial = initial_pool.spot_price(i)
+
+    tkns = ["A", "B", "C", "D"]
+
+    trade_size=1
+    agent = Agent(holdings={"A": 100000, "B": 100000, "C": 100000, "D": 100000})
+    initial_pool.swap(agent, tkn_sell="A", tkn_buy=tkns[i], sell_quantity=trade_size)
+    delta_a = initial_pool.liquidity["A"] - tokens["A"]
+    delta_b = tokens[tkns[i]] - initial_pool.liquidity[tkns[i]]
+    exec_price = delta_a / delta_b
+
+    spot_price_final = initial_pool.spot_price(i)
+
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-7:
+        raise AssertionError('Initial spot price should be lower than execution price.')
+    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-7:
+        raise AssertionError('Execution price should be lower than final spot price.')
+
+
 @given(st.integers(min_value=1000,max_value=1000000),
        st.integers(min_value=1000,max_value=1000000),
        st.integers(min_value=10,max_value=1000)
        )
-def test_spot_price(token_a: int, token_b: int, amp: int):
+def test_share_price(token_a: int, token_b: int, amp: int):
     tokens = {"A": token_a, "B": token_b}
     initial_pool = StableSwapPoolState(
         tokens=tokens,
@@ -70,21 +105,33 @@ def test_spot_price(token_a: int, token_b: int, amp: int):
         unique_id='stableswap'
     )
 
-    spot_price_initial = initial_pool.spot_price()
+    share_price_initial = initial_pool.share_price()
 
-    trade_size=1
-    agent = Agent(holdings={"A": 100000, "B": 100000})
-    initial_pool.swap(agent, tkn_sell="A", tkn_buy="B", sell_quantity=trade_size)
+    agent = Agent(holdings={"A": 100000000, "B": 100000000})
+    delta_tkn = 1
+    shares_initial = initial_pool.shares
+    initial_pool.add_liquidity(agent, quantity=delta_tkn, tkn_add="A")
+    shares_final = initial_pool.shares
     delta_a = initial_pool.liquidity["A"] - tokens["A"]
-    delta_b = tokens["B"] - initial_pool.liquidity["B"]
-    exec_price = delta_a / delta_b
+    delta_s = shares_final - shares_initial
+    exec_price = delta_a / delta_s
 
-    spot_price_final = initial_pool.spot_price()
+    if share_price_initial > exec_price and (share_price_initial - exec_price)/share_price_initial > 10e-10:
+        raise AssertionError('Initial share price should be lower than execution price.')
 
-    if spot_price_initial > exec_price:
-        raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final:
-        raise AssertionError('Execution price should be lower than final spot price.')
+    # now we test withdraw
+
+    delta_s = agent.holdings['stableswap']
+    share_price_initial = initial_pool.share_price()
+    a_initial = initial_pool.liquidity['A']
+    initial_pool.remove_liquidity(agent, shares_removed=delta_s, tkn_remove='A')
+    a_final = initial_pool.liquidity['A']
+    exec_price = (a_initial - a_final) / delta_s
+
+    if share_price_initial < exec_price and (exec_price - share_price_initial)/share_price_initial > 10e-10:
+        raise AssertionError('Initial share price should be higher than execution price.')
+
+
 
 
 @given(stableswap_config(trade_fee=0))
