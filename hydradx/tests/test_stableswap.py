@@ -74,16 +74,16 @@ def test_spot_price(token_a: int, token_b: int, amp: int):
         unique_id='stableswap'
     )
 
-    spot_price_initial = initial_pool.spot_price()
+    spot_price_initial = initial_pool.spot_price('B', 'A')
 
-    trade_size=1
+    trade_size = 1
     agent = Agent(holdings={"A": 100000, "B": 100000})
     initial_pool.swap(agent, tkn_sell="A", tkn_buy="B", sell_quantity=trade_size)
     delta_a = initial_pool.liquidity["A"] - tokens["A"]
     delta_b = tokens["B"] - initial_pool.liquidity["B"]
     exec_price = delta_a / delta_b
 
-    spot_price_final = initial_pool.spot_price()
+    spot_price_final = initial_pool.spot_price('B', 'A')
 
     if spot_price_initial > exec_price:
         raise AssertionError('Initial spot price should be lower than execution price.')
@@ -209,7 +209,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     add_liquidity_state, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, old_agent=lp, quantity=10000, tkn_add=lp_tkn
     )
-    if not stable_swap_equation(add_liquidity_state.calculate_d()):
+    if not stable_swap_equation(add_liquidity_state):
         raise AssertionError('Stableswap equation does not hold after add liquidity operation.')
 
     remove_liquidity_state, remove_liquidity_agent = stableswap.simulate_remove_liquidity(
@@ -218,7 +218,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
         quantity=add_liquidity_agent.holdings[initial_pool.unique_id],
         tkn_remove=lp_tkn
     )
-    if not stable_swap_equation(remove_liquidity_state.calculate_d()):
+    if not stable_swap_equation(remove_liquidity_state):
         raise AssertionError('Stableswap equation does not hold after remove liquidity operation.')
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
         raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
@@ -323,9 +323,9 @@ def test_exploitability(initial_lp: int, trade_size: int):
         if profit > 0:
             raise AssertionError(f'Agent profited by exploit ({profit}).')
 
-        if initial_state.spot_price < final_state.spot_price:
+        if initial_state.spot_price('USDA', 'USDB') < final_state.spot_price('USDA', 'USDB'):
             min_arb_size = arb_size
-        elif initial_state.spot_price > final_state.spot_price:
+        elif initial_state.spot_price('USDA', 'USDB') > final_state.spot_price('USDA', 'USDB'):
             max_arb_size = arb_size
         else:
             break
