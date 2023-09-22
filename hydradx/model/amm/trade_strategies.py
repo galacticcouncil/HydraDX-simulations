@@ -584,7 +584,10 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             balance_in = stable_pool.calculate_y(
                 stable_pool.modified_balances(delta={buy_asset: -buy_amount}, omit=[sell_asset]), d
             )
-            return stable_pool.price_at_balance([balance_in, balance_out], d)
+            balances = {tkn: stable_pool.liquidity[tkn] for tkn in stable_pool.asset_list}
+            balances[buy_asset] = balance_out
+            balances[sell_asset] = balance_in
+            return stable_pool.price_at_balance(balances, buy_asset, sell_asset)
 
         delta_y = find_agent_delta_y(target_price, price_after_trade, precision=precision)
         delta_x = (
