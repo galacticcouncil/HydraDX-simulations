@@ -172,7 +172,7 @@ def test_arbitrage(stable_pool):
             'Trader': Agent(
                 holdings={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000},
                 trade_strategy=random_swaps(
-                    pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000, 'R3': 10000, 'R4': 10000}, randomize_amount=True
+                    pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000, 'R3': 10000, 'R4': 10000}, randomize_amount=False
                 )
             ),
             'Arbitrageur': Agent(
@@ -189,14 +189,13 @@ def test_arbitrage(stable_pool):
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
     events = run.run(initial_state, time_steps=50, silent=True)
-    # print(events[0].pools['R1/R2'].price, events[-1].pools['R1/R2'].price)
     if (
         events[0].pools['R1/R2'].price('R1', 'R2')
         != pytest.approx(events[-1].pools['R1/R2'].price('R1', 'R2'), abs=0.000001)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
-                             f"({events[0].pools['R1/R2'].price})"
-                             f"{events[-1].pools['R1/R2'].price}")
+                             f"({events[0].pools['R1/R2'].price('R1', 'R2')},"
+                             f"{events[-1].pools['R1/R2'].price('R1', 'R2')}")
     if (
         sum(events[0].agents['Arbitrageur'].holdings.values())
         > sum(events[-1].agents['Arbitrageur'].holdings.values())
