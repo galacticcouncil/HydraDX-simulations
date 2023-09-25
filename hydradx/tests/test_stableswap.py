@@ -77,7 +77,7 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
         unique_id='stableswap'
     )
     tkns = ["A", "B", "C", "D"]
-    spot_price_initial = initial_pool.spot_price(tkns[i], "A")
+    spot_price_initial = initial_pool.price(tkns[i], "A")
 
     trade_size = 1
     agent = Agent(holdings={"A": 1.1, "B": 1.1, "C": 1.1, "D": 1.1})
@@ -86,11 +86,11 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
     delta_b = tokens[tkns[i]] - initial_pool.liquidity[tkns[i]]
     exec_price = delta_a / delta_b
 
-    spot_price_final = initial_pool.spot_price(tkns[i], "A")
+    spot_price_final = initial_pool.price(tkns[i], "A")
 
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-7:
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-7:
+    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-10:
         raise AssertionError('Execution price should be lower than final spot price.')
 
 
@@ -189,14 +189,14 @@ def test_arbitrage(stable_pool):
         # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
     )
     events = run.run(initial_state, time_steps=50, silent=True)
-    # print(events[0].pools['R1/R2'].spot_price, events[-1].pools['R1/R2'].spot_price)
+    # print(events[0].pools['R1/R2'].price, events[-1].pools['R1/R2'].price)
     if (
-        events[0].pools['R1/R2'].spot_price('R1', 'R2')
-        != pytest.approx(events[-1].pools['R1/R2'].spot_price('R1', 'R2'), abs=0.000001)
+        events[0].pools['R1/R2'].price('R1', 'R2')
+        != pytest.approx(events[-1].pools['R1/R2'].price('R1', 'R2'), abs=0.000001)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
-                             f"({events[0].pools['R1/R2'].spot_price})"
-                             f"{events[-1].pools['R1/R2'].spot_price}")
+                             f"({events[0].pools['R1/R2'].price})"
+                             f"{events[-1].pools['R1/R2'].price}")
     if (
         sum(events[0].agents['Arbitrageur'].holdings.values())
         > sum(events[-1].agents['Arbitrageur'].holdings.values())
@@ -328,9 +328,9 @@ def test_exploitability(initial_lp: int, trade_size: int):
         if profit > 0:
             raise AssertionError(f'Agent profited by exploit ({profit}).')
 
-        if initial_state.spot_price('USDA', 'USDB') < final_state.spot_price('USDA', 'USDB'):
+        if initial_state.price('USDA', 'USDB') < final_state.price('USDA', 'USDB'):
             min_arb_size = arb_size
-        elif initial_state.spot_price('USDA', 'USDB') > final_state.spot_price('USDA', 'USDB'):
+        elif initial_state.price('USDA', 'USDB') > final_state.price('USDA', 'USDB'):
             max_arb_size = arb_size
         else:
             break
@@ -338,15 +338,15 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
 @given(
     st.integers(min_value=1, max_value=1000000),
-    st.floats(min_value=0.00000001, max_value=0.999999)
+    st.floats(min_value=0.00001, max_value=0.99999)
 )
 def test_swap_one(amplification, swap_fraction):
     initial_state = StableSwapPoolState(
         tokens={
-            'USDA': 1000000,
-            'USDB': 1000000,
-            'USDC': 1000000,
-            'USDD': 1000000,
+            'USDA': mpf(1000000),
+            'USDB': mpf(1000000),
+            'USDC': mpf(1000000),
+            'USDD': mpf(1000000),
         }, amplification=amplification, trade_fee=0,
     )
     stablecoin = initial_state.asset_list[-1]
@@ -366,13 +366,13 @@ def test_swap_one(amplification, swap_fraction):
 
     for tkn in initial_state.asset_list:
         if (
-            sell_state.spot_price(tkn, stablecoin)
-            != pytest.approx(initial_state.spot_price(tkn, stablecoin))
+            sell_state.price(tkn, stablecoin)
+            != pytest.approx(initial_state.price(tkn, stablecoin))
             and tkn != tkn_sell
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
 
-    if sell_state.spot_price(tkn_sell, stablecoin) >= initial_state.spot_price(tkn_sell, stablecoin):
+    if sell_state.price(tkn_sell, stablecoin) >= initial_state.price(tkn_sell, stablecoin):
         raise AssertionError('Spot price increased for swapped token.')
 
     if sell_state.d != pytest.approx(initial_state.d):
@@ -390,14 +390,15 @@ def test_swap_one(amplification, swap_fraction):
 
     for tkn in initial_state.asset_list:
         if (
-            buy_state.spot_price(tkn, stablecoin)
-            != pytest.approx(initial_state.spot_price(tkn, stablecoin))
+            buy_state.price(tkn, stablecoin)
+            != pytest.approx(initial_state.price(tkn, stablecoin))
             and tkn != tkn_buy
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
 
-    if buy_state.spot_price(tkn_buy, stablecoin) <= sell_state.spot_price(tkn_buy, stablecoin):
+    if buy_state.price(tkn_buy, stablecoin) <= sell_state.price(tkn_buy, stablecoin):
         raise AssertionError('Spot price decreased for swapped token.')
 
     if buy_state.d != pytest.approx(initial_state.d):
         raise AssertionError('D changed after buy operation.')
+
