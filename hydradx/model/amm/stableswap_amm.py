@@ -114,14 +114,21 @@ class StableSwapPoolState(AMM):
         return self.price_at_balance(balances, self.d, i)
 
     def price_at_balance(self, balances: list, d: float, i: int = 1):
-        c = self.amplification * self.n_coins ** (2 * self.n_coins)
-        p = 1
-        for x in balances:
-            p *= x
-        x = balances[0]
-        y = balances[i]
-        n = len(balances)
-        return (x / y) * (c * y * p + d ** (n + 1)) / (c * x * p + d ** (n + 1))
+        a = self.amplification
+        n = self.n_coins
+        ann = a * n ** n
+
+        c = d
+        sorted_bal = sorted(balances)
+        for x in sorted_bal:
+            c = c * d / (n * x)
+
+        x0 = balances[0]
+        xi = balances[i]
+
+        p = x0 * (ann * xi + c) / (ann * x0 + c) / xi
+
+        return p
 
     def share_price(self, numeraire: int = 0):
         i = numeraire
@@ -129,12 +136,10 @@ class StableSwapPoolState(AMM):
         s = self.shares
         a = self.amplification
         n = self.n_coins
-        # c = n**n
-        # for j in range(n):
-        #     c *= self.liquidity[self.asset_list[j]]
-        # p = (d/s) * (a * n**n * c + (n+1) * d**n - c) / (a * n**n * c + d**(n+1) / self.liquidity[self.asset_list[i]])
+
         c = d
-        for x in self.liquidity.values():
+        sorted_liq = sorted(self.liquidity.values())
+        for x in sorted_liq:
             c = c * d / (n * x)
         xi = self.liquidity[self.asset_list[i]]
         ann = a * n ** n
