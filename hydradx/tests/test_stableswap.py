@@ -86,9 +86,9 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
 
     spot_price_final = initial_pool.spot_price(i)
 
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-7:
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-7:
+    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-10:
         raise AssertionError('Execution price should be lower than final spot price.')
 
 
