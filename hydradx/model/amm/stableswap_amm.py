@@ -128,21 +128,29 @@ class StableSwapPoolState(AMM):
         if tkn == denomination:
             return 1
         i = list(self.liquidity.keys()).index(tkn)
-        n = list(self.liquidity.keys()).index(denomination)
+        j = list(self.liquidity.keys()).index(denomination)
         return self.price_at_balance(
             balances=list(self.liquidity.values()),
             d=self.d,
-            i=i, n=n
+            i=i, j=j
         )
 
-    def price_at_balance(self, balances: list, d: float, i: int = 1, n: int = 0):
-        c = self.amplification * self.n_coins ** (2 * self.n_coins)
-        p = 1
-        for x in balances:
-            p *= x
-        x = balances[n]
-        y = balances[i]
-        return (x / y) * (c * y * p + d ** (n + 1)) / (c * x * p + d ** (n + 1))
+    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
+        a = self.amplification
+        n = self.n_coins
+        ann = a * n ** n
+
+        c = d
+        sorted_bal = sorted(balances)
+        for x in sorted_bal:
+            c = c * d / (n * x)
+
+        xi = balances[i]
+        xj = balances[j]
+
+        p = xj * (ann * xi + c) / (ann * xj + c) / xi
+
+        return p
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
