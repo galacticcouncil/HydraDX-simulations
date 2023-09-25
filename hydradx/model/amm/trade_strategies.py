@@ -591,7 +591,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
                 balances,
                 d=stable_pool.d,
                 i=list(stable_pool.liquidity.keys()).index(buy_asset),
-                n=list(stable_pool.liquidity.keys()).index(sell_asset)
+                j=list(stable_pool.liquidity.keys()).index(sell_asset)
             )
 
         delta_y = find_agent_delta_y(target_price, price_after_trade, precision=precision)
@@ -610,9 +610,9 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             # agent.trade_rejected += 1
             return state
 
-        # agent = state.agents[agent_id]
+        agent = state.agents[agent_id]
         # old_wealth = sum([state.price(tkn) * agent.holdings[tkn] for tkn in agent.holdings.keys()])
-        # state.pools[pool_id].swap(agent, tkn_sell=sell_asset, tkn_buy=buy_asset, buy_quantity=delta_y)
+        state.pools[pool_id].swap(agent, tkn_sell=sell_asset, tkn_buy=buy_asset, buy_quantity=delta_y)
         #
         # actual_profit = sum([state.price(tkn) * agent.holdings[tkn] for tkn in agent.holdings.keys()]) - old_wealth
         return state
