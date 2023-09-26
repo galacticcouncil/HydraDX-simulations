@@ -281,7 +281,6 @@ class StableSwapPoolState(AMM):
             tkn_add: str
     ):
         initial_d = self.d
-
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
 
         if updated_d < initial_d:
@@ -289,8 +288,14 @@ class StableSwapPoolState(AMM):
         if agent.holdings[tkn_add] < quantity:
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.", agent)
 
+        ideal_balance = self.liquidity[tkn_add] * updated_d / initial_d
+        fee = self.trade_fee * self.n_coins / (4 * (self.n_coins - 1))
         self.liquidity[tkn_add] += quantity
         agent.holdings[tkn_add] -= quantity
+        diff = abs(self.liquidity[tkn_add] - ideal_balance)
+        fee_amount = fee * diff
+        adjusted_d = self.calculate_d(self.modified_balances(delta={tkn_add: -fee_amount}))
+        d_diff = adjusted_d - initial_d
 
         if self.shares == 0:
             agent.holdings[self.unique_id] = updated_d
@@ -301,7 +306,6 @@ class StableSwapPoolState(AMM):
             # why would this possibly happen?
 
         else:
-            d_diff = updated_d - initial_d
             share_amount = self.shares * d_diff / initial_d
             self.shares += share_amount
             if self.unique_id not in agent.holdings:
