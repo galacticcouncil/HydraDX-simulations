@@ -113,7 +113,7 @@ class StableSwapPoolState(AMM):
             return 1
         return self.price_at_balance(balances, self.d, i)
 
-    def price_at_balance(self, balances: list, d: float, i: int = 1):
+    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
         a = self.amplification
         n = self.n_coins
         ann = a * n ** n
@@ -123,12 +123,17 @@ class StableSwapPoolState(AMM):
         for x in sorted_bal:
             c = c * d / (n * x)
 
-        x0 = balances[0]
+        xj = balances[j]
         xi = balances[i]
 
-        p = x0 * (ann * xi + c) / (ann * x0 + c) / xi
+        p = xj * (ann * xi + c) / (ann * xj + c) / xi
 
         return p
+
+    def price(self, balances: dict, numeraire: str, tkn: str):
+        key_list = list(balances.keys())
+        bal_list = list(balances.values())
+        return self.price_at_balance(bal_list, self.d, key_list.index(tkn), key_list.index(numeraire))
 
     def share_price(self, numeraire: int = 0):
         i = numeraire
@@ -222,6 +227,69 @@ class StableSwapPoolState(AMM):
         self.liquidity[tkn_sell] += sell_quantity
 
         return self
+
+    def swap_one(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_sell: str = '',
+            tkn_buy: str = '',
+    ):
+        """
+        This can be used when you want to change the price of one asset without changing the price of the others.
+        Specify one asset to buy or sell, and the quantity of each of the *other* assets to sell or buy.
+        The quantity of the specified asset to trade will be determined.
+        Caution: this will only work correctly if the pool is balanced (spot prices equal on all assets).
+        """
+        if tkn_sell and tkn_buy:
+            raise ValueError('Cannot specify both buy and sell quantities.')
+
+        if tkn_buy:
+            tkns_sell = list(filter(lambda t: t != tkn_buy, self.asset_list))
+            for tkn in tkns_sell:
+                if tkn not in agent.holdings:
+                    self.fail_transaction(f'Agent does not have any {tkn}.')
+            if min([agent.holdings[tkn] for tkn in tkns_sell]) < quantity:
+                return self.fail_transaction('Agent has insufficient funds.')
+
+            sell_quantity = quantity
+            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(
+                self.modified_balances(delta={tkn: quantity for tkn in tkns_sell}, omit=[tkn_buy]),
+                self.d
+            )) * (1 - self.trade_fee)
+
+            if self.liquidity[tkn_buy] < buy_quantity:
+                return self.fail_transaction('Pool has insufficient liquidity.')
+
+            for tkn in tkns_sell:
+                self.liquidity[tkn] += sell_quantity
+                agent.holdings[tkn] -= sell_quantity
+            self.liquidity[tkn_buy] -= buy_quantity
+            agent.holdings[tkn_buy] += buy_quantity
+
+        elif tkn_sell:
+            tkns_buy = list(filter(lambda tkn: tkn != tkn_sell, self.asset_list))
+            buy_quantity = quantity
+
+            if min([self.liquidity[tkn] for tkn in tkns_buy]) < buy_quantity:
+                return self.fail_transaction('Pool has insufficient liquidity.')
+
+            sell_quantity = (self.calculate_y(
+                self.modified_balances(delta={tkn: -quantity for tkn in tkns_buy}, omit=[tkn_sell]),
+                self.d
+            ) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+            if agent.holdings[tkn_sell] < sell_quantity:
+                return self.fail_transaction(f'Agent has insufficient funds. {agent.holdings[tkn_sell]} < {quantity}')
+            for tkn in tkns_buy:
+                self.liquidity[tkn] -= buy_quantity
+                if tkn not in agent.holdings:
+                    agent.holdings[tkn] = 0
+                agent.holdings[tkn] += buy_quantity
+            self.liquidity[tkn_sell] += sell_quantity
+            agent.holdings[tkn_sell] -= sell_quantity
+
+        return self
+
 
     def withdraw_asset(
             self,
