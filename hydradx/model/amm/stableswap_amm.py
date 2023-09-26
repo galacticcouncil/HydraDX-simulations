@@ -28,6 +28,9 @@ class StableSwapPoolState(AMM):
             raise ValueError('Too many tokens (limit 5)')
 
         self.amplification = amplification
+        self.amp_change_step = 0
+        self.target_amp_block = 0
+        self.time_step = 0
         self.precision = precision
         self.liquidity = dict()
         self.asset_list: list[str] = []
@@ -53,6 +56,15 @@ class StableSwapPoolState(AMM):
     @property
     def d(self) -> float:
         return self.calculate_d()
+
+    def update(self):
+        self.time_step += 1
+        if self.target_amp_block > self.time_step:
+            self.amplification += self.amp_change_step
+
+    def set_amplification(self, amplification: float, duration: float):
+        self.target_amp_block = self.time_step + duration
+        self.amp_change_step = (amplification - self.amplification) / duration
 
     def has_converged(self, v0, v1) -> bool:
         diff = abs(v0 - v1)
