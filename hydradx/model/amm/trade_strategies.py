@@ -160,9 +160,8 @@ def invest_all(pool_id: str, assets: list or str = None, when: int = 0) -> Trade
             self.done = False
 
         def execute(self, state: GlobalState, agent_id: str):
-            if self.done or state.time_step < self.when:
+            if state.time_step < self.when:
                 return state
-            self.done = True
             agent: Agent = state.agents[agent_id]
             pool = state.pools[pool_id]
 
