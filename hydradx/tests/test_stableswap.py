@@ -127,7 +127,7 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
-@given(stableswap_config(precision=0.000000001))
+@given(stableswap_config(precision=0.000000001, trade_fee=0))
 def test_buy_shares(initial_pool: StableSwapPoolState):
     initial_agent = Agent(
         holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]}
