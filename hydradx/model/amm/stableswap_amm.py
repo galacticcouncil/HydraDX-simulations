@@ -240,7 +240,7 @@ class StableSwapPoolState(AMM):
         This can be used when you want to change the price of one asset without changing the price of the others.
         Specify one asset to buy or sell, and the quantity of each of the *other* assets to sell or buy.
         The quantity of the specified asset to trade will be determined.
-        Caution: this will only work correctly if the pool is balanced (spot prices equal on all assets).
+        Caution: this will only work correctly if the pool is initially balanced (spot prices equal on all assets).
         """
         if tkn_sell and tkn_buy:
             raise ValueError('Cannot specify both buy and sell quantities.')
@@ -269,7 +269,7 @@ class StableSwapPoolState(AMM):
             agent.holdings[tkn_buy] += buy_quantity
 
         elif tkn_sell:
-            tkns_buy = list(filter(lambda tkn: tkn != tkn_sell, self.asset_list))
+            tkns_buy = list(filter(lambda t: t != tkn_sell, self.asset_list))
             buy_quantity = quantity
 
             if min([self.liquidity[tkn] for tkn in tkns_buy]) < buy_quantity:
