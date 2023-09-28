@@ -112,7 +112,7 @@ class StableSwapPoolState(AMM):
         return y
 
     # price is denominated in the first asset
-    def spot_price(self, i: int):
+    def spot_price(self, i: int = 1):
         """
         return the price of TKN denominated in NUMÉRAIRE
         """
