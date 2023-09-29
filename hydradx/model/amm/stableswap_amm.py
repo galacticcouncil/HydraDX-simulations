@@ -47,7 +47,7 @@ class StableSwapPoolState(AMM):
 
     @property
     def ann(self) -> float:
-        return self.amplification * len(self.asset_list) ** len(self.asset_list)
+        return self.amplification * self.n_coins
 
     @property
     def n_coins(self) -> int:
@@ -148,9 +148,8 @@ class StableSwapPoolState(AMM):
         )
 
     def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
-        a = self.amplification
         n = self.n_coins
-        ann = a * n ** n
+        ann = self.ann
 
         c = d
         sorted_bal = sorted(balances)
