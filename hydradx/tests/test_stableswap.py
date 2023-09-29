@@ -6,7 +6,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model import run
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mp, mpf
 from hydradx.tests.strategies_omnipool import stableswap_config
 mp.dps = 50
@@ -68,10 +68,10 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
        st.integers(min_value=10, max_value=1000),
        st.integers(min_value=1, max_value=3)
        )
+@reproduce_failure('6.39.6', b'AAniqAxXWAxlag3jsgDeAA==')
 def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int):
-    tokens = {"A": token_a, "B": token_b, "C": token_c, "D": token_d}
     initial_pool = StableSwapPoolState(
-        tokens=tokens,
+        tokens={"A": token_a, "B": token_b, "C": token_c, "D": token_d},
         amplification=amp,
         trade_fee=0.0,
         unique_id='stableswap'
@@ -80,13 +80,14 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
     spot_price_initial = initial_pool.price(tkns[i], "A")
 
     trade_size = 1
-    agent = Agent(holdings={"A": 1.1, "B": 1.1, "C": 1.1, "D": 1.1})
-    initial_pool.swap(agent, tkn_sell="A", tkn_buy=tkns[i], sell_quantity=trade_size)
-    delta_a = initial_pool.liquidity["A"] - tokens["A"]
-    delta_b = tokens[tkns[i]] - initial_pool.liquidity[tkns[i]]
+    initial_agent = Agent(holdings={"A": 1.1, "B": 1.1, "C": 1.1, "D": 1.1})
+    swap_agent = initial_agent.copy()
+    swap_pool = initial_pool.copy().swap(swap_agent, tkn_sell="A", tkn_buy=tkns[i], sell_quantity=trade_size)
+    delta_a = swap_pool.liquidity["A"] - initial_pool.liquidity["A"]
+    delta_b = initial_pool.liquidity[tkns[i]] - swap_pool.liquidity[tkns[i]]
     exec_price = delta_a / delta_b
 
-    spot_price_final = initial_pool.price(tkns[i], "A")
+    spot_price_final = swap_pool.price(tkns[i], "A")
 
     if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
@@ -400,4 +401,3 @@ def test_swap_one(amplification, swap_fraction):
 
     if buy_state.d != pytest.approx(initial_state.d):
         raise AssertionError('D changed after buy operation.')
-
