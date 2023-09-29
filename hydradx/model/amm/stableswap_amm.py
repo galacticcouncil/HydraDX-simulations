@@ -280,6 +280,68 @@ class StableSwapPoolState(AMM):
             quantity: float,
             tkn_add: str
     ):
+        updated_reserves = {
+            tkn: self.liquidity[tkn] + (quantity if tkn == tkn_add else 0) for tkn in self.asset_list
+        }
+        initial_d = self.calculate_d()
+        updated_d = self.calculate_d(tuple(updated_reserves.values()))
+        if updated_d < initial_d:
+            return self.fail_transaction('Invariant decreased for some reason.', agent)
+
+        fixed_fee = self.trade_fee
+        fee = fixed_fee * self.n_coins / (4 * (self.n_coins - 1))
+
+        d0, d1 = initial_d, updated_d
+
+        adjusted_balances = (
+            [
+                updated_reserves[tkn] -
+                abs(d1 * self.liquidity[tkn] / d0 - updated_reserves[tkn]) * fee
+                for tkn in self.asset_list
+            ]
+            if self.shares > 0 else
+            updated_reserves
+        )
+
+        # adjusted_balances = updated_reserves.map( | (idx, asset_reserve) | -> Option < AssetReserve > {
+        #     let(initial_reserve, updated_reserve) = to_u256!(initial_reserves[idx].amount, asset_reserve.amount);
+        #     ideal_balance = d1.checked_mul(initial_reserve)?.checked_div(d0)?;
+        #     diff = Balance::try_from(updated_reserve.abs_diff(ideal_balance)).ok()?;
+        #     fee_amount = fee.checked_mul_int(diff)?;
+        #     Some(AssetReserve::new(
+        #         asset_reserve.amount.saturating_sub(fee_amount),
+        #         asset_reserve.decimals,
+        #     ))
+        # })
+
+        adjusted_d = self.calculate_d(adjusted_balances)
+        if self.shares == 0:
+            shares_return = updated_d
+        else:
+            d_diff = adjusted_d - initial_d
+            shares_return = self.shares * d_diff / initial_d
+        # if share_issuance == 0 {
+        # // if first liquidity added
+        # Some(updated_d)
+        # } else {
+        # let(issuance_hp, d_diff, d0) = to_u256!(share_issuance, adjusted_d.checked_sub(initial_d)?, initial_d);
+        # let
+        # share_amount = issuance_hp.checked_mul(d_diff)?.checked_div(d0)?;
+        # Balance::try_from(share_amount).ok()
+        # }
+        if self.unique_id not in agent.holdings:
+            agent.holdings[self.unique_id] = 0
+        agent.holdings[self.unique_id] += shares_return
+        self.shares += shares_return
+        self.liquidity[tkn_add] += quantity
+        agent.holdings[tkn_add] -= quantity
+
+    def add_liquidity_old(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
         initial_d = self.d
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_add: quantity}))
 
