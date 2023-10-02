@@ -135,34 +135,11 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]}
     )
     # agent holds all the shares
-    tkn_add = 'USDA'
+    tkn_add = initial_pool.asset_list[0]
     pool_name = initial_pool.unique_id
-    delta_tkn = 5000
+    delta_tkn = 10
     initial_agent.holdings.update({tkn_add: 10})
 
-    assets = {
-        'USDA': {'usd price': 1, 'weight': 0.25},
-        'USDB': {'usd price': 1, 'weight': 0.25},
-        'USDC': {'usd price': 1, 'weight': 0.25},
-        'USDD': {'usd price': 1, 'weight': 0.25},
-    }
-
-    assert sum([t['weight'] for t in assets.values()]) == 1
-
-    initial_tvl = 1000000
-
-    initial_pool = StableSwapPoolState(
-        tokens={
-            tkn: initial_tvl * assets[tkn]['weight'] for tkn in assets
-        },
-        unique_id='stableswap',
-        amplification=10,
-        trade_fee=0.0
-    )
-
-    initial_agent = Agent(
-        holdings={'USDA': 5000}
-    )
     add_liquidity_pool, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
