@@ -325,12 +325,33 @@ class StableSwapPoolState(AMM):
             tkn_add: str,
             fail_overdraft: bool = True
     ):
+
         initial_d = self.d
-        updated_d = initial_d * (self.shares + quantity) / self.shares
-        delta_tkn = self.calculate_y(
-            self.modified_balances(omit=[tkn_add]),
-            d=updated_d
-        ) - self.liquidity[tkn_add]
+        d1 = initial_d + initial_d * quantity / self.shares
+
+        xp = self.modified_balances(omit=[tkn_add])
+        y = self.calculate_y(xp, d1)
+
+        fee = self.trade_fee * self.n_coins / (4 * (self.n_coins - 1))
+        reserves_reduced = []
+        asset_reserve = 0
+        for tkn, balance in self.liquidity.items():
+            dx_expected = (
+                balance * d1 / initial_d - balance
+            ) if tkn != tkn_add else (
+                y - balance * d1 / initial_d
+            )
+            reduced_balance = balance - fee * dx_expected
+            if tkn == tkn_add:
+                asset_reserve = reduced_balance
+            else:
+                reserves_reduced.append(reduced_balance)
+
+        y1 = self.calculate_y(reserves_reduced, d1)
+        dy = y1 - asset_reserve
+        dy_0 = y - asset_reserve
+        fee_amount = dy - dy_0
+        delta_tkn = dy + fee_amount
 
         if delta_tkn > agent.holdings[tkn_add]:
             if fail_overdraft:
