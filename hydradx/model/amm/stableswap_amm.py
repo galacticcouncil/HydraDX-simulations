@@ -44,7 +44,7 @@ class StableSwapPoolState(AMM):
 
     @property
     def ann(self) -> float:
-        return self.amplification * len(self.asset_list) ** len(self.asset_list)
+        return self.amplification * len(self.asset_list)  # ** len(self.asset_list)
 
     @property
     def n_coins(self) -> int:
@@ -296,7 +296,7 @@ class StableSwapPoolState(AMM):
         adjusted_balances = (
             [
                 updated_reserves[tkn] -
-                abs(d1 * self.liquidity[tkn] / d0 - updated_reserves[tkn]) * fee
+                abs(updated_reserves[tkn] - d1 * self.liquidity[tkn] / d0) * fee
                 for tkn in self.asset_list
             ]
             if self.shares > 0 else
@@ -335,6 +335,7 @@ class StableSwapPoolState(AMM):
         self.shares += shares_return
         self.liquidity[tkn_add] += quantity
         agent.holdings[tkn_add] -= quantity
+        return self
 
     def add_liquidity_old(
             self,
