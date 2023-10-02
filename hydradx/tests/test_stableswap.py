@@ -22,12 +22,12 @@ def stable_swap_equation(pool: StableSwapPoolState):  # d: float, a: float, n: i
     """
     this is the equation that should remain true at all times within a stableswap pool
     """
-    a = pool.amplification
+    a = pool.ann
     d = pool.d
     n = pool.n_coins
     reserves = list(pool.liquidity.values())
-    side1 = a * n ** n * sum(reserves) + d
-    side2 = a * n ** n * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, reserves))
+    side1 = a * sum(reserves) + d
+    side2 = a * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, reserves))
     return side1 == pytest.approx(side2)
 
 
@@ -68,7 +68,6 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
        st.integers(min_value=10, max_value=1000),
        st.integers(min_value=1, max_value=3)
        )
-@reproduce_failure('6.39.6', b'AAniqAxXWAxlag3jsgDeAA==')
 def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int):
     initial_pool = StableSwapPoolState(
         tokens={"A": token_a, "B": token_b, "C": token_c, "D": token_d},
