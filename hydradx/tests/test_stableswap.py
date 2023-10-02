@@ -18,12 +18,14 @@ trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 asset_number_strategy = st.integers(min_value=2, max_value=5)
 
 
-def stable_swap_equation(d: float, a: float, n: int, reserves: list):
+def stable_swap_equation(state: StableSwapPoolState):
     """
     this is the equation that should remain true at all times within a stableswap pool
     """
-    side1 = a * n ** n * sum(reserves) + d
-    side2 = a * n ** n * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, reserves))
+    d = state.d
+    n = state.n_coins
+    side1 = state.ann * sum(state.liquidity.values()) + d
+    side2 = state.ann * d + d ** (n + 1) / (n ** n * functools.reduce(lambda i, j: i * j, state.liquidity.values()))
     return side1 == pytest.approx(side2)
 
 
@@ -58,8 +60,8 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
 
 
 @given(st.integers(min_value=1000,max_value=1000000),
-       st.integers(min_value=1000,max_value=1000000),
-       st.integers(min_value=10,max_value=1000)
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=10, max_value=1000)
        )
 def test_spot_price(token_a: int, token_b: int, amp: int):
     tokens = {"A": token_a, "B": token_b}
@@ -72,7 +74,7 @@ def test_spot_price(token_a: int, token_b: int, amp: int):
 
     spot_price_initial = initial_pool.spot_price
 
-    trade_size=1
+    trade_size = 1
     agent = Agent(holdings={"A": 100000, "B": 100000})
     initial_pool.swap(agent, tkn_sell="A", tkn_buy="B", sell_quantity=trade_size)
     delta_a = initial_pool.liquidity["A"] - tokens["A"]
@@ -229,12 +231,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
     add_liquidity_state, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, old_agent=lp, quantity=10000, tkn_add=lp_tkn
     )
-    if not stable_swap_equation(
-        add_liquidity_state.calculate_d(),
-        add_liquidity_state.amplification,
-        add_liquidity_state.n_coins,
-        add_liquidity_state.liquidity.values()
-    ):
+    if not stable_swap_equation(add_liquidity_state):
         raise AssertionError('Stableswap equation does not hold after add liquidity operation.')
 
     remove_liquidity_state, remove_liquidity_agent = stableswap.simulate_remove_liquidity(
@@ -243,12 +240,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
         quantity=add_liquidity_agent.holdings[initial_pool.unique_id],
         tkn_remove=lp_tkn
     )
-    if not stable_swap_equation(
-        remove_liquidity_state.calculate_d(),
-        remove_liquidity_state.amplification,
-        remove_liquidity_state.n_coins,
-        remove_liquidity_state.liquidity.values()
-    ):
+    if not stable_swap_equation(remove_liquidity_state):
         raise AssertionError('Stableswap equation does not hold after remove liquidity operation.')
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
         raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
