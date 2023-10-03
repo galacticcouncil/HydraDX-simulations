@@ -62,8 +62,8 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
 @given(st.integers(min_value=1000,max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=10, max_value=1000)
-       )
-def test_spot_price(token_a: int, token_b: int, amp: int):
+)
+def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
     tokens = {"A": token_a, "B": token_b}
     initial_pool = StableSwapPoolState(
         tokens=tokens,
@@ -72,7 +72,7 @@ def test_spot_price(token_a: int, token_b: int, amp: int):
         unique_id='stableswap'
     )
 
-    spot_price_initial = initial_pool.spot_price
+    spot_price_initial = initial_pool.spot_price()
 
     trade_size = 1
     initial_agent = Agent(holdings={"A": 1, "B": 1})
@@ -85,7 +85,7 @@ def test_spot_price(token_a: int, token_b: int, amp: int):
     delta_b = initial_pool.liquidity["B"] - swap_state.liquidity["B"]
     exec_price = delta_a / delta_b
 
-    spot_price_final = swap_state.spot_price
+    spot_price_final = swap_state.spot_price()
 
     if spot_price_initial > exec_price:
         raise AssertionError('Initial spot price should be lower than execution price.')
