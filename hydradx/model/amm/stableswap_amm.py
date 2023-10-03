@@ -108,16 +108,44 @@ class StableSwapPoolState(AMM):
         return y
 
     # price is denominated in the first asset
-    @property
-    def spot_price(self):
-        x, y = self.liquidity.values()
-        return self.price_at_balance([x, y], self.d)
+    def spot_price(self, i: int = 1):
+        """
+        return the price of TKN denominated in NUMÉRAIRE
+        """
+        balances = list(self.liquidity.values())
+        if i == 0:  # price of the numeraire is always 1
+            return 1
+        return self.price_at_balance(balances, self.d, i)
 
-    # price is denominated in the first asset
-    def price_at_balance(self, balances: list, d: float):
-        x, y = balances
-        c = self.amplification * self.n_coins ** (2 * self.n_coins)
-        return (x / y) * (c * x * y ** 2 + d ** 3) / (c * x ** 2 * y + d ** 3)
+    def price(self, tkn, denomination: str = ''):
+        """
+        return the price of TKN denominated in NUMÉRAIRE
+        """
+        if tkn == denomination:
+            return 1
+        i = list(self.liquidity.keys()).index(tkn)
+        j = list(self.liquidity.keys()).index(denomination)
+        return self.price_at_balance(
+            balances=list(self.liquidity.values()),
+            d=self.d,
+            i=i, j=j
+        )
+
+    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
+        n = self.n_coins
+        ann = self.ann
+
+        c = d
+        sorted_bal = sorted(balances)
+        for x in sorted_bal:
+            c = c * d / (n * x)
+
+        xi = balances[i]
+        xj = balances[j]
+
+        p = xj * (ann * xi + c) / (ann * xj + c) / xi
+
+        return p
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
