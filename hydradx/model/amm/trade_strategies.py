@@ -595,7 +595,6 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
 
         def find_trade_size(target_price, precision=precision):
             i = 0
-            start_price = price_after_trade(0)
             trade_increment = stable_pool.liquidity[buy_asset] / 2
             max_iterations = 50
             b = trade_increment
@@ -603,18 +602,13 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
 
             while abs(p - target_price) > precision and i < max_iterations:
                 trade_increment /= 2
-
                 if p > target_price:
                     b -= trade_increment
-
                 else:
                     b += trade_increment
-
                 p = price_after_trade(b)
                 i += 1
 
-            if i >= max_iterations:
-                er = 1
             return b
 
         delta_y = find_trade_size(target_price, precision=precision)
