@@ -33,7 +33,7 @@ def test_buy_from_stable_swap(initial_state: oamm.OmnipoolState):
         return
     new_d = new_stable_pool.calculate_d()
     d = stable_pool.calculate_d()
-    if not (stable_swap_equation(new_stable_pool)):
+    if not stable_swap_equation(new_stable_pool):
         raise AssertionError("Stableswap equation didn't hold.")
     if not (
             d * new_stable_pool.shares <=
@@ -95,7 +95,7 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
     if new_state.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
-    if not (stable_swap_equation(new_stable_pool)):
+    if not stable_swap_equation(new_stable_pool):
         raise AssertionError("Stableswap equation didn't hold.")
     if not (
             stable_pool.d * new_stable_pool.shares ==
