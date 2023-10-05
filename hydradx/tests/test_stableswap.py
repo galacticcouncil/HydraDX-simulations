@@ -1,7 +1,7 @@
 import pytest
 import functools
 from hydradx.model.amm import stableswap_amm as stableswap
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
@@ -162,45 +162,89 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
-@given(stableswap_config(asset_dict={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000}, trade_fee=0))
-def test_arbitrage(stable_pool):
-    initial_state = GlobalState(
-        pools={
-            'R1/R2': stable_pool
+@given(
+    st.floats(min_value=0.0001, max_value=.9999),
+    st.integers(min_value=1, max_value=1000000),
+    st.floats(min_value=0.0001, max_value=0.1)
+)
+def test_arbitrage_profitability(trade_fraction, amp, fee):
+    initial_pool = StableSwapPoolState(
+        tokens={
+            tkn: mpf(10000) for tkn in ['R' + str(n) for n in range(1, 5)]
         },
-        agents={
-            'Trader': Agent(
-                holdings={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000},
-                trade_strategy=random_swaps(
-                    pool_id='R1/R2', amount={'R1': 10000, 'R2': 10000, 'R3': 10000, 'R4': 10000}, randomize_amount=False
-                )
-            ),
-            'Arbitrageur': Agent(
-                holdings={'R1': 1000000, 'R2': 1000000, 'R3': 1000000, 'R4': 1000000},
-                trade_strategy=stableswap_arbitrage(pool_id='R1/R2', minimum_profit=0, precision=0.000001)
-            )
-        },
-        external_market={
-            'R1': 1,
-            'R2': 1,
-            'R3': 1,
-            'R4': 1
-        },
-        # evolve_function = fluctuate_prices(volatility={'R1': 1, 'R2': 1}, trend = {'R1': 1, 'R1': 1})
+        amplification=amp,
+        trade_fee=fee
     )
-    events = run.run(initial_state, time_steps=50, silent=True)
+    trader = Agent(
+        holdings={tkn: 10000000000 for tkn in initial_pool.asset_list}
+    )
+    arbitrageur = Agent(
+        holdings={tkn: 10000000000 for tkn in initial_pool.asset_list},
+        trade_strategy=stableswap_arbitrage(
+            pool_id='stableswap', minimum_profit=0, precision=1e-6
+        )
+    )
+    swapped_pool: StableSwapPoolState = initial_pool.copy().swap(
+        agent=trader,
+        tkn_sell='R1', tkn_buy='R2',
+        buy_quantity=trade_fraction * initial_pool.liquidity['R1']
+    )
+    pre_arb_state = GlobalState(
+        pools={'stableswap': swapped_pool},
+        agents={'Arbitrageur': arbitrageur},
+        external_market={'R1': 1, 'R2': 1, 'R3': 1, 'R4': 1}
+    )
+    arbitrageur.trade_strategy.execute(pre_arb_state, 'Arbitrageur')
     if (
-        events[0].pools['R1/R2'].price('R1', 'R2')
-        != pytest.approx(events[-1].pools['R1/R2'].price('R1', 'R2'), abs=0.000001)
+        sum(arbitrageur.holdings.values()) < sum(arbitrageur.initial_holdings.values())
+    ):
+        raise AssertionError(
+            f"Arbitrageur lost money. "
+            f"(start: {sum(arbitrageur.initial_holdings.values())}, end: {sum(arbitrageur.holdings.values())})"
+        )
+
+
+@given(
+    st.floats(min_value=0.0001, max_value=.9999),
+    st.integers(min_value=1, max_value=10000)
+)
+def test_arbitrage_efficacy(trade_fraction, amp):
+    initial_pool = StableSwapPoolState(
+        tokens={
+            tkn: mpf(10000) for tkn in ['R' + str(n) for n in range(1, 5)]
+        },
+        amplification=amp,
+        trade_fee=0
+    )
+    trader = Agent(
+        holdings={tkn: 10000000000 for tkn in initial_pool.asset_list}
+    )
+    arbitrageur = Agent(
+        holdings={tkn: 10000000000 for tkn in initial_pool.asset_list},
+        trade_strategy=stableswap_arbitrage(
+            pool_id='stableswap', minimum_profit=0, precision=1e-6
+        )
+    )
+    swapped_pool: StableSwapPoolState = initial_pool.copy().swap(
+        agent=trader,
+        tkn_sell='R1', tkn_buy='R2',
+        buy_quantity=trade_fraction * initial_pool.liquidity['R1']
+    )
+    pre_arb_state = GlobalState(
+        pools={'stableswap': swapped_pool},
+        agents={'Arbitrageur': arbitrageur},
+        external_market={'R1': 1, 'R2': 1, 'R3': 1, 'R4': 1}
+    )
+    final_state = arbitrageur.trade_strategy.execute(pre_arb_state.copy(), 'Arbitrageur')
+    final_pool = final_state.pools['stableswap']
+
+    if (
+        initial_pool.price('R1', 'R2')
+        != pytest.approx(final_pool.price('R1', 'R2'), abs=1e-6)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
-                             f"({events[0].pools['R1/R2'].price('R1', 'R2')},"
-                             f"{events[-1].pools['R1/R2'].price('R1', 'R2')}")
-    if (
-        sum(events[0].agents['Arbitrageur'].holdings.values())
-        > sum(events[-1].agents['Arbitrageur'].holdings.values())
-    ):
-        raise AssertionError("Arbitrageur lost money.")
+                             f"({initial_pool.price('R1', 'R2')},"
+                             f"{final_pool.price('R1', 'R2')}")
 
 
 @given(stableswap_config(trade_fee=0))
