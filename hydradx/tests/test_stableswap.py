@@ -66,7 +66,12 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
        st.integers(min_value=10, max_value=1000)
 )
 def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
-    tokens = {"A": token_a, "B": token_b}
+    initial_pool = StableSwapPoolState(
+        tokens={"A": token_a, "B": token_b},
+        amplification=amp,
+        trade_fee=0.0,
+        unique_id='stableswap'
+    )
     spot_price_initial = initial_pool.spot_price()
 
     trade_size = 1
