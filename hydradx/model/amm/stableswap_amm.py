@@ -123,7 +123,7 @@ class StableSwapPoolState(AMM):
 
         return y
 
-    # price is denominated in the first asset
+    # price is denominated in the first asset by default
     def spot_price(self, i: int = 1):
         """
         return the price of TKN denominated in NUMÉRAIRE
@@ -230,11 +230,10 @@ class StableSwapPoolState(AMM):
         elif self.liquidity[tkn_buy] <= buy_quantity:
             return self.fail_transaction('Pool has insufficient liquidity.')
 
-        new_agent = agent  # .copy()
-        if tkn_buy not in new_agent.holdings:
-            new_agent.holdings[tkn_buy] = 0
-        new_agent.holdings[tkn_buy] += buy_quantity
-        new_agent.holdings[tkn_sell] -= sell_quantity
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+        agent.holdings[tkn_buy] += buy_quantity
+        agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
