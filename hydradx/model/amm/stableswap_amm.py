@@ -163,6 +163,22 @@ class StableSwapPoolState(AMM):
 
         return p
 
+    def share_price(self, numeraire: int = 0):
+        i = numeraire
+        d = self.calculate_d()
+        s = self.shares
+        a = self.amplification
+        n = self.n_coins
+
+        c = d
+        sorted_liq = sorted(self.liquidity.values())
+        for x in sorted_liq:
+            c = c * d / (n * x)
+        xi = self.liquidity[self.asset_list[i]]
+        ann = self.ann
+        p = (d * xi * ann + xi * (n+1) * c - xi * d) / (xi * ann + c) / s
+        return p
+
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
         if delta:
