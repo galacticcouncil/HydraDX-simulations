@@ -63,7 +63,7 @@ class StableSwapPoolState(AMM):
 
     def update(self):
         self.time_step += 1
-        if self.target_amp_block > self.time_step:
+        if self.target_amp_block >= self.time_step:
             self.amplification += self.amp_change_step
 
     def set_amplification(self, amplification: float, duration: float):
