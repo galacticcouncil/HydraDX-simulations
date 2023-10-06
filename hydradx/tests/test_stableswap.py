@@ -444,3 +444,61 @@ def test_swap_one(amplification, swap_fraction):
 
     if buy_state.d != pytest.approx(initial_state.d):
         raise AssertionError('D changed after buy operation.')
+
+
+def test_amplification_change_exploit():
+    start_amp = 1000
+    end_amp = 100
+    initial_pool = StableSwapPoolState(
+        tokens={
+            'USDA': mpf(1000000),
+            'USDB': mpf(1000000),
+            'USDC': mpf(1000000),
+            'USDD': mpf(1000000),
+        },
+        amplification=start_amp,
+        trade_fee=0,
+    )
+    initial_agent = Agent(
+        holdings={'USDA': 10000000000000, 'USDB': 10000000000000},
+        # trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=0, precision=0.000001)
+    )
+    initial_state = GlobalState(
+        pools={
+            'stableswap': initial_pool
+        },
+        agents={
+            'trader': initial_agent,
+            'arbitrageur': Agent(
+                holdings={tkn: 10000000000000 for tkn in initial_pool.asset_list},
+                trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=10, precision=0.000001)
+            )
+        },
+        external_market={
+            'USDA': 1,
+            'USDB': 1,
+            'USDC': 1,
+            'USDD': 1,
+        }
+    )
+    sell_quantity = initial_pool.liquidity['USDA'] * 10
+    sell_state = initial_state.copy()
+    sell_state.pools['stableswap'].swap(
+        agent=sell_state.agents['trader'],
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        sell_quantity=sell_quantity
+    )
+    duration = int((start_amp - end_amp) / end_amp * 99.9)
+    sell_state.pools['stableswap'].set_amplification(end_amp, duration)
+    events = run.run(sell_state, time_steps=duration, silent=True)
+    final_pool: StableSwapPoolState = events[-1].pools['stableswap']
+    final_agent: Agent = events[-1].agents['trader']
+    final_pool.swap(
+        agent=final_agent,
+        tkn_sell='USDB',
+        tkn_buy='USDA',
+        buy_quantity=sell_quantity
+    )
+    loss = sum(initial_pool.liquidity.values()) - sum(final_pool.liquidity.values())
+    print(f"loss to pool: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
