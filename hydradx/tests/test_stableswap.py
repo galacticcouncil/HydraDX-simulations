@@ -446,7 +446,8 @@ def test_swap_one(amplification, swap_fraction):
         raise AssertionError('D changed after buy operation.')
 
 
-def test_amplification_change_exploit():
+# @given(st.integers(min_value=1, max_value=999))
+def test_amplification_change_exploit():  # (end_amp):
     start_amp = 1000
     end_amp = 100
     initial_pool = StableSwapPoolState(
@@ -457,7 +458,7 @@ def test_amplification_change_exploit():
             'USDD': mpf(1000000),
         },
         amplification=start_amp,
-        trade_fee=0,
+        trade_fee=0.001,
     )
     initial_agent = Agent(
         holdings={'USDA': 10000000000000, 'USDB': 10000000000000},
@@ -471,7 +472,7 @@ def test_amplification_change_exploit():
             'trader': initial_agent,
             'arbitrageur': Agent(
                 holdings={tkn: 10000000000000 for tkn in initial_pool.asset_list},
-                trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=10, precision=0.000001)
+                trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=1, precision=0.000001)
             )
         },
         external_market={
@@ -501,4 +502,5 @@ def test_amplification_change_exploit():
         buy_quantity=sell_quantity
     )
     loss = sum(initial_pool.liquidity.values()) - sum(final_pool.liquidity.values())
-    print(f"loss to pool: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
+    if loss > 0:
+        raise AssertionError(F"Pool lost money. loss: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
