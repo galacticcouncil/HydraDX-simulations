@@ -146,26 +146,6 @@ class OmnipoolState(AMM):
         else:
             super().__setattr__(key, value)
 
-    def _get_fee(self, value: dict or FeeMechanism or float) -> dict:
-
-        if isinstance(value, dict):
-            if set(value.keys()) != set(self.asset_list):
-                # I do not believe we were handling this case correctly
-                # we can extend this when it is a priority
-                raise ValueError(f'fee dict keys must match asset list: {self.asset_list}')
-            return ({
-                tkn: (
-                    value[tkn].assign(self, tkn)
-                    if isinstance(fee, FeeMechanism)
-                    else basic_fee(fee).assign(self, tkn)
-                )
-                for tkn, fee in value.items()
-            })
-        elif isinstance(value, FeeMechanism):
-            return {tkn: value.assign(self, tkn) for tkn in self.asset_list}
-        else:
-            return {tkn: basic_fee(value or 0).assign(self, tkn) for tkn in self.asset_list}
-
     def add_token(
             self,
             tkn: str,
