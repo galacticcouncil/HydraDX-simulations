@@ -621,7 +621,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
         delta_x = (
             stable_pool.liquidity[tkn_sell]
             - stable_pool.calculate_y(stable_pool.modified_balances(delta={tkn_buy: -delta_y}, omit=[tkn_sell]), d)
-        ) / (1 - stable_pool.trade_fee)
+        ) / (1 - stable_pool.trade_fee[tkn_buy].compute(delta_tkn=delta_y))
 
         projected_profit = (
             delta_y * state.price(tkn_buy)
