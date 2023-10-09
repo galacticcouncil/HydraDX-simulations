@@ -1,7 +1,7 @@
 import pytest
 import functools
 from hydradx.model.amm import stableswap_amm as stableswap
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, stableswap_slip_fee
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.model.amm.global_state import GlobalState
@@ -537,3 +537,40 @@ def test_amplification_change_exploit():  # (end_amp):
     loss = sum(initial_pool.liquidity.values()) - sum(final_pool.liquidity.values())
     if loss > 0:
         raise AssertionError(F"Pool lost money. loss: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
+
+
+def test_stableswap_slip_fee():
+    initial_state = StableSwapPoolState(
+        tokens={
+            'USDA': mpf(1000000),
+            'USDB': mpf(1000000),
+            'USDC': mpf(1000000),
+            'USDD': mpf(1000000),
+        },
+        amplification=1000,
+        trade_fee=stableswap_slip_fee(
+            base_percentage=0,
+            slip_percentage=0.5
+        ),
+    )
+    initial_agent = Agent(
+        holdings={'USDA': 1000000, 'USDB': 1000000},
+    )
+    swap_agent = initial_agent.copy()
+    swap_state = initial_state.copy().swap(
+        agent=swap_agent,
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        sell_quantity=initial_agent.holdings['USDA']
+    )
+    no_fee_state = initial_state.copy()
+    no_fee_state.set_fee('trade_fee', 0)
+    no_fee_agent = initial_agent.copy()
+    no_fee_state.swap(
+        agent=no_fee_agent,
+        tkn_sell='USDA',
+        tkn_buy='USDB',
+        sell_quantity=initial_agent.holdings['USDA']
+    )
+    if swap_agent.holdings['USDB'] >= no_fee_agent.holdings['USDB']:
+        raise AssertionError('Slip fee did not apply.')
