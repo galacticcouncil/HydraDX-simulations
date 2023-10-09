@@ -505,7 +505,7 @@ def test_amplification_change_exploit():  # (end_amp):
             'trader': initial_agent,
             'arbitrageur': Agent(
                 holdings={tkn: 10000000000000 for tkn in initial_pool.asset_list},
-                trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=1, precision=0.000001)
+                trade_strategy=stableswap_arbitrage(pool_id='stableswap', minimum_profit=1, precision=0.0001)
             )
         },
         external_market={
