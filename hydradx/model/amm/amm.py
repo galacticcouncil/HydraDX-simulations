@@ -76,16 +76,28 @@ class AMM:
         self.fail = error
         return self
 
-    def __setattr__(self, key, value):
-        if hasattr(self, key):
-            if isinstance(self.__getattribute__(key), FeeMechanism):
-                if not isinstance(value, FeeMechanism):
-                    super().__setattr__(key, basic_fee(value))
-                    return
-                else:
-                    super().__setattr__(key, value.assign(self))
-                    return
-        super().__setattr__(key, value)
+    def set_fee(self, fee_name: str, fee_amount: dict or FeeMechanism or float):
+        return setattr(self, fee_name, self._get_fee(fee_amount))
+
+    def _get_fee(self, value: dict or FeeMechanism or float) -> dict:
+
+        if isinstance(value, dict):
+            if set(value.keys()) != set(self.asset_list):
+                # I do not believe we were handling this case correctly
+                # we can extend this when it is a priority
+                raise ValueError(f'fee dict keys must match asset list: {self.asset_list}')
+            return ({
+                tkn: (
+                    value[tkn].assign(self, tkn)
+                    if isinstance(fee, FeeMechanism)
+                    else basic_fee(fee).assign(self, tkn)
+                )
+                for tkn, fee in value.items()
+            })
+        elif isinstance(value, FeeMechanism):
+            return {tkn: value.assign(self, tkn) for tkn in self.asset_list}
+        else:
+            return {tkn: basic_fee(value or 0).assign(self, tkn) for tkn in self.asset_list}
 
 
 def basic_fee(f: float = 0) -> FeeMechanism:
