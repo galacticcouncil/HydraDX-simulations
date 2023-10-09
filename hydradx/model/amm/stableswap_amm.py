@@ -163,8 +163,8 @@ class StableSwapPoolState(AMM):
 
         return p
 
-    def share_price(self, numeraire: int = 0):
-        i = numeraire
+    def share_price(self, numeraire: str = ''):
+        i = 0 if numeraire == '' else list(self.liquidity.keys()).index(numeraire)
         d = self.calculate_d()
         s = self.shares
         a = self.amplification
