@@ -1,3 +1,4 @@
+import copy
 import functools
 
 import pytest
@@ -147,9 +148,10 @@ def test_share_price(token_a: int, token_b: int, amp: int):
     agent = Agent(holdings={"A": 100000000, "B": 100000000})
     delta_tkn = 1
     shares_initial = initial_pool.shares
-    initial_pool.add_liquidity(agent, quantity=delta_tkn, tkn_add="A")
-    shares_final = initial_pool.shares
-    delta_a = initial_pool.liquidity["A"] - tokens["A"]
+    add_pool = initial_pool.copy()
+    add_pool.add_liquidity(agent, quantity=delta_tkn, tkn_add="A")
+    shares_final = add_pool.shares
+    delta_a = add_pool.liquidity["A"] - tokens["A"]
     delta_s = shares_final - shares_initial
     exec_price = delta_a / delta_s
 
@@ -159,10 +161,11 @@ def test_share_price(token_a: int, token_b: int, amp: int):
     # now we test withdraw
 
     delta_s = agent.holdings['stableswap']
-    share_price_initial = initial_pool.share_price()
-    a_initial = initial_pool.liquidity['A']
-    initial_pool.remove_liquidity(agent, shares_removed=delta_s, tkn_remove='A')
-    a_final = initial_pool.liquidity['A']
+    share_price_initial = add_pool.share_price()
+    a_initial = add_pool.liquidity['A']
+    withdraw_pool = add_pool.copy()
+    withdraw_pool.remove_liquidity(agent, shares_removed=delta_s, tkn_remove='A')
+    a_final = withdraw_pool.liquidity['A']
     exec_price = (a_initial - a_final) / delta_s
 
     if share_price_initial < exec_price and (exec_price - share_price_initial) / share_price_initial > 10e-10:
