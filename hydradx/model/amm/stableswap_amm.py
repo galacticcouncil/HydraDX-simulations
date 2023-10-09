@@ -1,6 +1,6 @@
 import copy
 
-from .amm import AMM
+from .amm import AMM, FeeMechanism
 from .agents import Agent
 
 
@@ -12,7 +12,7 @@ class StableSwapPoolState(AMM):
             tokens: dict,
             amplification: float,
             precision: float = 0.0001,
-            trade_fee: float = 0,
+            trade_fee: dict or FeeMechanism or float = None,
             unique_id: str = ''
     ):
         """
@@ -34,7 +34,6 @@ class StableSwapPoolState(AMM):
         self.precision = precision
         self.liquidity = dict()
         self.asset_list: list[str] = []
-        self.trade_fee = trade_fee
         if unique_id:
             self.unique_id = unique_id
 
@@ -44,6 +43,7 @@ class StableSwapPoolState(AMM):
 
         self.shares = self.calculate_d()
         self.conversion_metrics = {}
+        self.trade_fee = self._get_fee(trade_fee)
 
     @property
     def ann(self) -> float:
@@ -133,7 +133,7 @@ class StableSwapPoolState(AMM):
             return 1
         return self.price_at_balance(balances, self.d, i)
 
-    def price(self, tkn, denomination: str = ''):
+    def price(self, tkn: str, denomination: str = ''):
         """
         return the price of TKN denominated in NUMÉRAIRE
         """
@@ -175,7 +175,7 @@ class StableSwapPoolState(AMM):
 
     def calculate_withdrawal_shares(self, tkn_remove, quantity):
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
-        return self.shares * (1 - updated_d / self.d) / (1 - self.trade_fee)
+        return self.shares * (1 - updated_d / self.d) / (1 - self.trade_fee[tkn_remove].compute(delta_tkn=0))
 
     def copy(self):
         return copy.deepcopy(self)
@@ -220,10 +220,16 @@ class StableSwapPoolState(AMM):
     ):
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-            sell_quantity = (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+            sell_quantity = (
+                    (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell])
+                    / (1 - self.trade_fee[tkn_sell].compute(delta_tkn=buy_quantity))
+            )
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
-            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
+            buy_quantity = (
+                    (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d))
+                    * (1 - self.trade_fee[tkn_buy].compute(delta_tkn=sell_quantity))
+            )
 
         if agent.holdings[tkn_sell] < sell_quantity:
             return self.fail_transaction('Agent has insufficient funds.')
@@ -267,7 +273,7 @@ class StableSwapPoolState(AMM):
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(
                 self.modified_balances(delta={tkn: quantity for tkn in tkns_sell}, omit=[tkn_buy]),
                 self.d
-            )) * (1 - self.trade_fee)
+            )) * (1 - self.trade_fee[tkn_buy].compute(delta_tkn=quantity))
 
             if self.liquidity[tkn_buy] < buy_quantity:
                 return self.fail_transaction('Pool has insufficient liquidity.')
@@ -288,7 +294,7 @@ class StableSwapPoolState(AMM):
             sell_quantity = (self.calculate_y(
                 self.modified_balances(delta={tkn: -quantity for tkn in tkns_buy}, omit=[tkn_sell]),
                 self.d
-            ) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+            ) - self.liquidity[tkn_sell]) / (1 - self.trade_fee[tkn_sell].compute(delta_tkn=quantity))
             if agent.holdings[tkn_sell] < sell_quantity:
                 return self.fail_transaction(f'Agent has insufficient funds. {agent.holdings[tkn_sell]} < {quantity}')
             for tkn in tkns_buy:
@@ -349,7 +355,7 @@ class StableSwapPoolState(AMM):
         elif shares_removed <= 0:
             return self.fail_transaction('Withdraw quantity must be > 0.')
 
-        _fee = self.trade_fee
+        _fee = self.trade_fee[tkn_remove].compute(delta_tkn=0)
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
         initial_d = self.calculate_d()
@@ -395,7 +401,7 @@ class StableSwapPoolState(AMM):
         if agent.holdings[tkn_add] < quantity:
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
-        fixed_fee = self.trade_fee
+        fixed_fee = self.trade_fee[tkn_add].compute(delta_tkn=0)
         fee = fixed_fee * self.n_coins / (4 * (self.n_coins - 1))
 
         d0, d1 = initial_d, updated_d
@@ -438,7 +444,7 @@ class StableSwapPoolState(AMM):
         xp = self.modified_balances(omit=[tkn_add])
         y = self.calculate_y(xp, d1)
 
-        fee = self.trade_fee * self.n_coins / (4 * (self.n_coins - 1))
+        fee = self.trade_fee[tkn_add].compute(delta_tkn=0) * self.n_coins / (4 * (self.n_coins - 1))
         reserves_reduced = []
         asset_reserve = 0
         for tkn, balance in self.liquidity.items():
@@ -556,3 +562,33 @@ def simulate_buy_shares(
         tkn_add=tkn_add,
         fail_overdraft=fail_overdraft
     ), new_agent
+
+
+def stableswap_slip_fee(
+        base_percentage: float,
+        slip_percentage: float
+):
+    def fee_function(
+        exchange: StableSwapPoolState,
+        tkn: str,
+        delta_tkn: float
+    ):
+        i = exchange.asset_list.index(tkn)
+        d = exchange.d
+        fee = abs(exchange.price_at_balance(
+            balances=exchange.modified_balances(delta={tkn: delta_tkn}),
+            i=i,
+            j=(i + 1) % exchange.n_coins,
+            d=d
+        ) / exchange.price_at_balance(
+            balances=list(exchange.liquidity.values()),
+            i=i,
+            j=(i + 1) % exchange.n_coins,
+            d=d
+        ) - 1) * slip_percentage + base_percentage
+        return fee
+
+    return FeeMechanism(
+        fee_function=fee_function,
+        name='stableswap slip-based fee'
+    )
