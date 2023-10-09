@@ -61,6 +61,38 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
+@given(st.integers(min_value=1000,max_value=1000000),
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=10, max_value=1000)
+)
+def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
+    initial_pool = StableSwapPoolState(
+        tokens={"A": token_a, "B": token_b},
+        amplification=amp,
+        trade_fee=0.0,
+        unique_id='stableswap'
+    )
+    spot_price_initial = initial_pool.spot_price()
+
+    trade_size = 1
+    initial_agent = Agent(holdings={"A": 1, "B": 1})
+    swap_state, swap_agent = stableswap.simulate_swap(
+        old_state=initial_pool,
+        old_agent=initial_agent,
+        tkn_sell="A", tkn_buy="B", sell_quantity=trade_size
+    )
+    delta_a = swap_state.liquidity["A"] - initial_pool.liquidity["A"]
+    delta_b = initial_pool.liquidity["B"] - swap_state.liquidity["B"]
+    exec_price = delta_a / delta_b
+
+    spot_price_final = swap_state.spot_price()
+    
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
+        raise AssertionError('Initial spot price should be lower than execution price.')
+    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-10:
+        raise AssertionError('Execution price should be lower than final spot price.')
+    
+    
 @given(st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
@@ -144,6 +176,7 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
     pool_name = initial_pool.unique_id
     delta_tkn = 10
     initial_agent.holdings.update({tkn_add: 10})
+
     add_liquidity_pool, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
