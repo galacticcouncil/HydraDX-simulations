@@ -11,15 +11,26 @@ class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
-                 external_market: dict[str: float] = None,
+                 external_market: dict[str: float] or dict[str: dict[float: float]] = None,
                  evolve_function: Callable = None,
                  save_data: dict = None,
                  archive_all: bool = True
                  ):
+        """
+        external_market will be converted into the form of dict[str: dict[float: float]]
+        The inner dict represents an order book, with prices as keys and quantities as values.
+        For example, {'USD': {1.0: 1000, 1.1: 500}} represents an order book with 1000 units of USD
+        available at a price of 1.0, and 500 units available at a price of 1.1.
+        """
         if external_market is None:
             self.external_market = {}
         else:
             self.external_market = external_market
+            for tkn in external_market:
+                # in the event that {str: float} is passed, convert it into an orderbook with infinite liquidity
+                if isinstance(external_market[tkn], float):
+                    self.external_market[tkn] = {external_market[tkn]: float('inf')}
+
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
@@ -33,7 +44,7 @@ class GlobalState:
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
         if 'USD' not in self.external_market:
-            self.external_market['USD'] = 1  # default denomination
+            self.external_market['USD'] = {1: float('inf')}  # default denomination
         for agent in self.agents.values():
             for asset in self.asset_list:
                 if asset not in agent.holdings:
@@ -50,7 +61,7 @@ class GlobalState:
 
     def price(self, asset: str):
         if asset in self.external_market:
-            return self.external_market[asset]
+            return list(sorted(self.external_market[asset].keys()))[0]
         else:
             return 0
 
@@ -80,7 +91,11 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            external_market=copy.copy(self.external_market),
+            external_market={
+                tkn: {
+                    price: self.external_market[tkn][price] for price in self.external_market[tkn]
+                } for tkn in self.external_market
+            },
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
@@ -214,16 +229,6 @@ class GlobalState:
     ):
         # do a trade at spot price on the external market
         agent = self.agents[agent_id]
-        if buy_quantity:
-            sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
-        elif sell_quantity:
-            buy_quantity = sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
-        else:
-            # raise TypeError('Must include either buy_quantity or sell_quantity.')
-            return self
-
-        if tkn_buy not in agent.holdings:
-            agent.holdings[tkn_buy] = 0
 
         if agent.holdings[tkn_sell] - sell_quantity < 0:
             # insufficient funds, reduce quantity to match
@@ -232,9 +237,58 @@ class GlobalState:
             # also insufficient funds
             buy_quantity = -agent.holdings[tkn_buy]
 
-        # there could probably be a fee or something here, but for now you can sell infinite quantities for free
+        # using order book, calculate how many tkn_buy we can get for tkn_sell or vice versa
+        tkns_bought = {}
+        if buy_quantity:
+            sell_quantity = 0
+            sell_price = self.price(tkn_sell)
+            buy_tkns_remaining = buy_quantity
+            for buy_price in sorted(self.external_market[tkn_buy].keys()):
+                buy_quantity_at_price = min(buy_tkns_remaining, self.external_market[tkn_buy][buy_price])
+                sell_quantity += buy_quantity_at_price * buy_price / sell_price
+                tkns_bought[buy_price] = buy_quantity_at_price
+                buy_tkns_remaining -= buy_quantity_at_price
+                if buy_tkns_remaining <= 0:
+                    break
+                # sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
+            if buy_tkns_remaining > 0:
+                # can't buy that much, insufficient liquidity
+                buy_quantity -= buy_tkns_remaining
+
+        elif sell_quantity:
+            # buy_quantity = sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
+            buy_quantity = 0
+            sell_price = self.price(tkn_sell)
+            sell_tkns_remaining = sell_quantity
+            for buy_price in sorted(self.external_market[tkn_buy].keys()):
+                exchange_rate = buy_price / sell_price
+                buy_quantity_at_price = min(
+                    sell_tkns_remaining / exchange_rate,
+                    self.external_market[tkn_buy][buy_price]
+                )
+                buy_quantity += buy_quantity_at_price
+                tkns_bought[buy_price] = buy_quantity_at_price
+                sell_tkns_remaining -= buy_quantity_at_price * exchange_rate
+                if sell_tkns_remaining <= 0:
+                    break
+            if sell_tkns_remaining > 0:
+                # can't sell that much, insufficient liquidity in tkn_buy
+                sell_quantity -= sell_tkns_remaining
+
+        else:
+            # raise TypeError('Must include either buy_quantity or sell_quantity.')
+            return self
+
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+
         agent.holdings[tkn_buy] += buy_quantity
         agent.holdings[tkn_sell] -= sell_quantity
+        # remove used liquidity from the order book
+        for buy_price in tkns_bought:
+            self.external_market[tkn_buy][buy_price] -= tkns_bought[buy_price]
+            # if self.external_market[tkn_buy][buy_price] == 0:
+            #     del self.external_market[tkn_buy][buy_price]
 
         return self
 
