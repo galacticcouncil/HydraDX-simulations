@@ -1,14 +1,18 @@
-import pytest
+import copy
 import functools
-from hydradx.model.amm import stableswap_amm as stableswap
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
-from hydradx.model.amm.global_state import GlobalState
-from hydradx.model import run
-from hypothesis import given, strategies as st, settings, reproduce_failure
+
+import pytest
+from hypothesis import given, strategies as st
 from mpmath import mp, mpf
+
+from hydradx.model import run
+from hydradx.model.amm import stableswap_amm as stableswap
+from hydradx.model.amm.agents import Agent
+from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
+
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
@@ -61,10 +65,10 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
-@given(st.integers(min_value=1000,max_value=1000000),
+@given(st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=10, max_value=1000)
-)
+       )
 def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
     initial_pool = StableSwapPoolState(
         tokens={"A": token_a, "B": token_b},
@@ -86,13 +90,13 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
     exec_price = delta_a / delta_b
 
     spot_price_final = swap_state.spot_price()
-    
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
+
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-10:
+    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 10e-10:
         raise AssertionError('Execution price should be lower than final spot price.')
-    
-    
+
+
 @given(st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
@@ -120,10 +124,52 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
 
     spot_price_final = swap_pool.price(tkns[i], "A")
 
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price)/spot_price_initial > 10e-10:
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final)/spot_price_final > 10e-10:
+    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 10e-10:
         raise AssertionError('Execution price should be lower than final spot price.')
+
+
+@given(st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=1000, max_value=1000000),
+       st.integers(min_value=10, max_value=1000)
+       )
+def test_share_price(token_a: int, token_b: int, amp: int):
+    tokens = {"A": token_a, "B": token_b}
+    initial_pool = StableSwapPoolState(
+        tokens=tokens,
+        amplification=amp,
+        trade_fee=0.0,
+        unique_id='stableswap'
+    )
+
+    share_price_initial = initial_pool.share_price()
+
+    agent = Agent(holdings={"A": 100000000, "B": 100000000})
+    delta_tkn = 1
+    shares_initial = initial_pool.shares
+    add_pool = initial_pool.copy()
+    add_pool.add_liquidity(agent, quantity=delta_tkn, tkn_add="A")
+    shares_final = add_pool.shares
+    delta_a = add_pool.liquidity["A"] - tokens["A"]
+    delta_s = shares_final - shares_initial
+    exec_price = delta_a / delta_s
+
+    if share_price_initial > exec_price and (share_price_initial - exec_price) / share_price_initial > 10e-10:
+        raise AssertionError('Initial share price should be lower than execution price.')
+
+    # now we test withdraw
+
+    delta_s = agent.holdings['stableswap']
+    share_price_initial = add_pool.share_price()
+    a_initial = add_pool.liquidity['A']
+    withdraw_pool = add_pool.copy()
+    withdraw_pool.remove_liquidity(agent, shares_removed=delta_s, tkn_remove='A')
+    a_final = withdraw_pool.liquidity['A']
+    exec_price = (a_initial - a_final) / delta_s
+
+    if share_price_initial < exec_price and (exec_price - share_price_initial) / share_price_initial > 10e-10:
+        raise AssertionError('Initial share price should be higher than execution price.')
 
 
 @given(stableswap_config(trade_fee=0))
@@ -135,7 +181,7 @@ def test_round_trip_dy(initial_pool: StableSwapPoolState):
     if y != pytest.approx(initial_pool.liquidity[asset_a]) or y < initial_pool.liquidity[asset_a]:
         raise AssertionError('Round-trip calculation incorrect.')
     modified_d = initial_pool.calculate_d(initial_pool.modified_balances(delta={asset_a: 1}))
-    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d) != pytest.approx(y+1):
+    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d) != pytest.approx(y + 1):
         raise AssertionError('Round-trip calculation incorrect.')
 
 
@@ -158,10 +204,10 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         withdraw_asset_agent, delta_tkn, tkn_remove
     )
     if (
-        withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
-        or withdraw_asset_agent.holdings[pool_name] != pytest.approx(withdraw_shares_agent.holdings[pool_name])
-        or withdraw_shares_pool.liquidity[tkn_remove] != pytest.approx(withdraw_asset_pool.liquidity[tkn_remove])
-        or withdraw_shares_pool.shares != pytest.approx(withdraw_asset_pool.shares)
+            withdraw_asset_agent.holdings[tkn_remove] != pytest.approx(withdraw_shares_agent.holdings[tkn_remove])
+            or withdraw_asset_agent.holdings[pool_name] != pytest.approx(withdraw_shares_agent.holdings[pool_name])
+            or withdraw_shares_pool.liquidity[tkn_remove] != pytest.approx(withdraw_asset_pool.liquidity[tkn_remove])
+            or withdraw_shares_pool.shares != pytest.approx(withdraw_asset_pool.shares)
     ):
         raise AssertionError("Asset values don't match.")
 
@@ -186,11 +232,11 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
     )
 
     if (
-        add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add])
-        or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name])
-        or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add])
-        or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares)
-        or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d())
+            add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add])
+            or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name])
+            or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add])
+            or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares)
+            or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d())
     ):
         raise AssertionError("Asset values don't match.")
 
@@ -223,16 +269,16 @@ def test_arbitrage(stable_pool):
     )
     events = run.run(initial_state, time_steps=50, silent=True)
     if (
-        events[0].pools['R1/R2'].price('R1', 'R2')
-        != pytest.approx(events[-1].pools['R1/R2'].price('R1', 'R2'), abs=0.000001)
+            events[0].pools['R1/R2'].price('R1', 'R2')
+            != pytest.approx(events[-1].pools['R1/R2'].price('R1', 'R2'), abs=0.000001)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
                              f"({events[0].pools['R1/R2'].price('R1', 'R2')},"
                              f"{events[-1].pools['R1/R2'].price('R1', 'R2')}")
 
     if (
-        sum(events[0].agents['Arbitrageur'].holdings.values())
-        > sum(events[-1].agents['Arbitrageur'].holdings.values())
+            sum(events[0].agents['Arbitrageur'].holdings.values())
+            > sum(events[-1].agents['Arbitrageur'].holdings.values())
     ):
         raise AssertionError("Arbitrageur lost money.")
 
@@ -260,6 +306,7 @@ def test_add_remove_liquidity(initial_pool: StableSwapPoolState):
         raise AssertionError('Stableswap equation does not hold after remove liquidity operation.')
     if remove_liquidity_agent.holdings[lp_tkn] != pytest.approx(lp.holdings[lp_tkn]):
         raise AssertionError('LP did not get the same balance back when withdrawing liquidity.')
+
 
 #
 # def test_curve_style_withdraw_fees():
@@ -399,9 +446,9 @@ def test_swap_one(amplification, swap_fraction):
 
     for tkn in initial_state.asset_list:
         if (
-            sell_state.price(tkn, stablecoin)
-            != pytest.approx(initial_state.price(tkn, stablecoin))
-            and tkn != tkn_sell
+                sell_state.price(tkn, stablecoin)
+                != pytest.approx(initial_state.price(tkn, stablecoin))
+                and tkn != tkn_sell
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
 
@@ -423,9 +470,9 @@ def test_swap_one(amplification, swap_fraction):
 
     for tkn in initial_state.asset_list:
         if (
-            buy_state.price(tkn, stablecoin)
-            != pytest.approx(initial_state.price(tkn, stablecoin))
-            and tkn != tkn_buy
+                buy_state.price(tkn, stablecoin)
+                != pytest.approx(initial_state.price(tkn, stablecoin))
+                and tkn != tkn_buy
         ):
             raise AssertionError('Spot price changed for non-swapped token.')
 
