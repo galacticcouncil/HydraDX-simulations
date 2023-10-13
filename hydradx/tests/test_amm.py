@@ -277,7 +277,7 @@ def test_arbitrage_profitability(initial_state: GlobalState):
     }
 ), asset_price_strategy)
 def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
-    initial_state.external_market['Y'] = initial_state.external_market['X'] * target_price
+    initial_state.order_book['Y'] = {initial_state.price('X') * target_price: float('inf')}
     algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
     recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
 
