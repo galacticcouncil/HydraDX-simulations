@@ -3,15 +3,16 @@ import random
 from typing import Callable
 
 from .agents import Agent, AgentArchiveState
-from .amm import AMM, FeeMechanism
-from .omnipool_amm import OmnipoolState, OmnipoolArchiveState
+from .amm import AMM
+from .omnipool_amm import OmnipoolState
 
 
 class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
-                 external_market: dict[str: float] or dict[str: dict[float: float]] = None,
+                 external_market: dict[str: float] = None,
+                 order_book: dict[str: dict[float: float]] = None,
                  evolve_function: Callable = None,
                  save_data: dict = None,
                  archive_all: bool = True
@@ -22,20 +23,23 @@ class GlobalState:
         For example, {'USD': {1.0: 1000, 1.1: 500}} represents an order book with 1000 units of USD
         available at a price of 1.0, and 500 units available at a price of 1.1.
         """
-        if external_market is None:
-            self.external_market = {}
-        else:
-            self.external_market = external_market
+        if order_book is None and external_market is not None:
+            self.order_book = {}
+            if 'USD' not in external_market:
+                external_market['USD'] = 1  # default denomination
             for tkn in external_market:
-                # in the event that {str: float} is passed, convert it into an orderbook with infinite liquidity
-                if isinstance(external_market[tkn], float):
-                    self.external_market[tkn] = {external_market[tkn]: float('inf')}
+                # if there is no orderbook convert external into an orderbook with infinite liquidity
+                self.order_book[tkn] = {external_market[tkn]: float('inf')}
+        elif order_book is not None:
+            self.order_book = order_book
+        else:
+            self.order_book = {}
 
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
             + [asset for agent in agents.values() for asset in agent.asset_list]
-            + list(self.external_market.keys())
+            + list(self.order_book.keys())
         ))
         self.agents = agents
         for agent_name in self.agents:
@@ -43,8 +47,6 @@ class GlobalState:
         self.pools = pools
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
-        if 'USD' not in self.external_market:
-            self.external_market['USD'] = {1: float('inf')}  # default denomination
         for agent in self.agents.values():
             for asset in self.asset_list:
                 if asset not in agent.holdings:
@@ -60,8 +62,10 @@ class GlobalState:
         self.archive_all = archive_all
 
     def price(self, asset: str):
-        if asset in self.external_market:
-            return list(sorted(self.external_market[asset].keys()))[0]
+        if asset in self.order_book:
+            # return the lowest available price
+            return list(sorted(self.order_book[asset].keys()))[0]
+
         else:
             return 0
 
@@ -91,10 +95,11 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            external_market={
+            order_book={
                 tkn: {
-                    price: self.external_market[tkn][price] for price in self.external_market[tkn]
-                } for tkn in self.external_market
+                    price: self.order_book[tkn][price] for price in self.order_book[tkn]
+                } if isinstance(self.order_book[tkn], dict) else self.order_book[tkn]
+                for tkn in self.order_book
             },
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
@@ -219,6 +224,10 @@ class GlobalState:
     def withdraw_val(self, agent: Agent) -> float:
         return self.cash_out(agent)
 
+    @property
+    def external_market(self) -> dict[str: float]:
+        return {tkn: self.price(tkn) for tkn in self.asset_list}
+
     def external_market_trade(
             self,
             agent_id: str,
@@ -243,8 +252,8 @@ class GlobalState:
             sell_quantity = 0
             sell_price = self.price(tkn_sell)
             buy_tkns_remaining = buy_quantity
-            for buy_price in sorted(self.external_market[tkn_buy].keys()):
-                buy_quantity_at_price = min(buy_tkns_remaining, self.external_market[tkn_buy][buy_price])
+            for buy_price in sorted(self.order_book[tkn_buy].keys()):
+                buy_quantity_at_price = min(buy_tkns_remaining, self.order_book[tkn_buy][buy_price])
                 sell_quantity += buy_quantity_at_price * buy_price / sell_price
                 tkns_bought[buy_price] = buy_quantity_at_price
                 buy_tkns_remaining -= buy_quantity_at_price
@@ -260,11 +269,11 @@ class GlobalState:
             buy_quantity = 0
             sell_price = self.price(tkn_sell)
             sell_tkns_remaining = sell_quantity
-            for buy_price in sorted(self.external_market[tkn_buy].keys()):
+            for buy_price in sorted(self.order_book[tkn_buy].keys()):
                 exchange_rate = buy_price / sell_price
                 buy_quantity_at_price = min(
                     sell_tkns_remaining / exchange_rate,
-                    self.external_market[tkn_buy][buy_price]
+                    self.order_book[tkn_buy][buy_price]
                 )
                 buy_quantity += buy_quantity_at_price
                 tkns_bought[buy_price] = buy_quantity_at_price
@@ -286,7 +295,7 @@ class GlobalState:
         agent.holdings[tkn_sell] -= sell_quantity
         # remove used liquidity from the order book
         for buy_price in tkns_bought:
-            self.external_market[tkn_buy][buy_price] -= tkns_bought[buy_price]
+            self.order_book[tkn_buy][buy_price] -= tkns_bought[buy_price]
             # if self.external_market[tkn_buy][buy_price] == 0:
             #     del self.external_market[tkn_buy][buy_price]
 
@@ -310,7 +319,7 @@ class GlobalState:
                 ])) + newline +
                 f'market prices: {newline + newline}    ' +
                 ((newline + indent).join([
-                    f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
+                    f'{indent}{tkn}: ${price}' for tkn, price in self.order_book.items()
                 ])) +
                 f'{newline}{newline}'
                 f'evolution function: {self.evolve_function}'
@@ -321,7 +330,7 @@ class GlobalState:
 class ArchiveState:
     def __init__(self, state: GlobalState):
         self.time_step = state.time_step
-        self.external_market = {k: v for k, v in state.external_market.items()}
+        self.order_book = {k: {k2: v2 for k2, v2 in v.items} for k, v in state.order_book.items()}
         self.pools = {k: v.archive() for (k, v) in state.pools.items()}
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
@@ -356,18 +365,18 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
     def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
-        for asset in new_state.external_market:
+        for asset in new_state.order_book:
             change = volatility[asset] if asset in volatility else 0
             bias = trend[asset] / 100 if asset in trend else 0
             # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
             # instead, we need to subtract (100/101)% to avoid a long-term downward trend
-            new_state.external_market[asset] *= (
+            new_state.order_book[asset] = {new_state.price(asset) * (
                     (1 + random.random() * change / 100 if random.choice([True, False])
                      else 1 - random.random() * (1 - 100 / (100 + change)))
                     # 1 / (1 + change / 100)
                     # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
                     + bias / 100
-            )
+            ): float('inf')} # for simplicity, just give infinite liquidity at this price
         return new_state
 
     return transform
@@ -397,10 +406,10 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
                 # reverse trend
                 updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
                 updown[tkn].inertia = 0
-            state.external_market[tkn] += (
+            state.order_book[tkn] = {state.price(tkn) + (
                     updown[tkn].direction / 100 / updown[tkn].wavelength
                     + updown[tkn].bias / 100 / updown[tkn].wavelength
-            )
+            ): float('inf')}
             updown[tkn].inertia += 1
         return state
 
@@ -410,7 +419,7 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         for tkn in price_list[state.time_step]:
-            state.external_market[tkn] = price_list[state.time_step][tkn]
+            state.order_book[tkn] = {price_list[state.time_step][tkn]: float('inf')}
         return state
 
     return transform

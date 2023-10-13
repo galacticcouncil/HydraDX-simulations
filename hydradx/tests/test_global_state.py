@@ -31,7 +31,7 @@ def test_external_market_sale(quantity: float):
                 }
             )
         },
-        external_market={
+        order_book={
             'DAI': {1: 100000, 1.01: 100000, 1.02: 800000},
             'ETH': {1000: 100, 1002: 100, 1004: 800}
         }
@@ -49,9 +49,9 @@ def test_external_market_sale(quantity: float):
     # print(new_state.agents['agent'].holdings)
 
     tkns_bought = {
-        price: initial_state.external_market[tkn_buy][price]
-        - sell_state.external_market[tkn_buy][price]
-        for price in initial_state.external_market[tkn_buy]
+        price: initial_state.order_book[tkn_buy][price]
+        - sell_state.order_book[tkn_buy][price]
+        for price in initial_state.order_book[tkn_buy]
     }
 
     if sum([quantity * price for (price, quantity) in tkns_bought.items()]) != pytest.approx(quantity):
@@ -69,9 +69,9 @@ def test_external_market_sale(quantity: float):
     # print(new_state.agents['agent'].holdings)
 
     tkns_bought = {
-        price: initial_state.external_market[tkn_buy][price]
-        - buy_state.external_market[tkn_buy][price]
-        for price in initial_state.external_market[tkn_buy]
+        price: initial_state.order_book[tkn_buy][price]
+        - buy_state.order_book[tkn_buy][price]
+        for price in initial_state.order_book[tkn_buy]
     }
 
     sell_quantity = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
