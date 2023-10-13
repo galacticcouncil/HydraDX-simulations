@@ -502,7 +502,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                 low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
                 high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
 
-                if asset != omnipool.stablecoin and low_price <= state.external_market[asset] <= high_price:
+                if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
                     skip_ct += 1
                     if i < usd_index:
                         usd_index -= 1
@@ -510,7 +510,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
-            prices.append(state.external_market[asset])
+            prices.append(state.price(asset))
             asset_list.append(asset)
             asset_fees.append(asset_fee)
             lrna_fees.append(asset_LRNA_fee)
