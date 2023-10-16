@@ -8,10 +8,8 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         pair_order_book = order_book[tkn_pair]
         tkn = tkn_pair[0]
         numeraire = tkn_pair[1]
-        bids = pair_order_book['bids']
-        asks = pair_order_book['asks']
-        bids = sorted(bids, key=lambda x: x['price'], reverse=True)
-        asks = sorted(asks, key=lambda x: x['price'], reverse=False)
+        bids = sorted(pair_order_book['bids'], key=lambda x: x['price'], reverse=True)
+        asks = sorted(pair_order_book['asks'], key=lambda x: x['price'], reverse=False)
 
         agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000, 'HDX': 1000000}, unique_id='bot')
 
