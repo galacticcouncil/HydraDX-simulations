@@ -191,6 +191,12 @@ def import_monthly_binance_prices(
     return price_data
 
 
+def parse_kraken_orderbook(orderbook):
+    asks = [{'price': float(ask[0]), 'amount': float(ask[1])} for ask in orderbook['asks']]
+    bids = [{'price': float(bid[0]), 'amount': float(bid[1])} for bid in orderbook['bids']]
+    return {'bids': bids, 'asks': asks}
+
+
 # def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
 #     price_data = []
 #     with open(input_path + input_filename, newline='') as input_file:
