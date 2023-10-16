@@ -19,10 +19,8 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
         sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
         i = 0
-        profit = 0
         bid_executed = False
         ask_executed = False
-        last_profit = 0
         if buy_spot < bids[i]['price'] * (1 - cex_fee):
             bid_executed = True
             test_state = op_state
@@ -117,7 +115,7 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
     return all_swaps
 
 
-def execute_arb(state, agent, all_swaps, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0):
+def execute_arb(state, agent, all_swaps, cex_fee=0.0):
 
     for tkn_pair in all_swaps:
         swaps = all_swaps[tkn_pair]
@@ -129,12 +127,12 @@ def execute_arb(state, agent, all_swaps, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.
                 state.swap(agent, tkn_buy=tkn_pair[0], tkn_sell=tkn_pair[1], buy_quantity=swap[1]['amount'])
                 # CEX leg
                 agent.holdings[tkn_pair[0]] -= swap[1]['amount']
-                agent.holdings[tkn_pair[1]] += swap[1]['amount'] * swap[1]['price']
+                agent.holdings[tkn_pair[1]] += swap[1]['amount'] * swap[1]['price'] * (1 - cex_fee)
             elif swap[0] == 'sell':
                 # omnipool leg
                 state.swap(agent, tkn_buy=tkn_pair[1], tkn_sell=tkn_pair[0], sell_quantity=swap[1]['amount'])
                 # CEX leg
-                agent.holdings[tkn_pair[0]] += swap[1]['amount']
+                agent.holdings[tkn_pair[0]] += swap[1]['amount'] * (1 - cex_fee)
                 agent.holdings[tkn_pair[1]] -= swap[1]['amount'] * swap[1]['price']
 
 
