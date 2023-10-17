@@ -91,7 +91,7 @@ class CentralizedMarket(AMM):
                         bid[1] = 0
 
                 agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
-                agent.holdings[tkn_buy] += tkns_bought / (1 - self.trade_fee)
+                agent.holdings[tkn_buy] += tkns_bought
                 self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
             else:
                 sell_tkns_remaining = sell_quantity
@@ -110,7 +110,7 @@ class CentralizedMarket(AMM):
                         ask[1] = 0
 
                 agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
-                agent.holdings[tkn_buy] += tkns_bought / (1 - self.trade_fee)
+                agent.holdings[tkn_buy] += tkns_bought
                 self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
 
         elif buy_quantity > 0:
@@ -131,7 +131,7 @@ class CentralizedMarket(AMM):
                         ask[1] = 0
 
                 agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-                agent.holdings[tkn_sell] -= tkns_sold * (1 - self.trade_fee)
+                agent.holdings[tkn_sell] -= tkns_sold
                 self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
 
             else:
@@ -151,7 +151,7 @@ class CentralizedMarket(AMM):
                         bid[1] = 0
 
                 agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-                agent.holdings[tkn_sell] -= tkns_sold * (1 - self.trade_fee)
+                agent.holdings[tkn_sell] -= tkns_sold
                 self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
 
         return self
