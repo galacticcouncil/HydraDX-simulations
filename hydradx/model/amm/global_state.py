@@ -12,34 +12,16 @@ class GlobalState:
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
                  external_market: dict[str: float] = None,
-                 order_book: dict[str: dict[float: float]] = None,
                  evolve_function: Callable = None,
                  save_data: dict = None,
                  archive_all: bool = True
                  ):
-        """
-        external_market will be converted into the form of dict[str: dict[float: float]]
-        The inner dict represents an order book, with prices as keys and quantities as values.
-        For example, {'USD': {1.0: 1000, 1.1: 500}} represents an order book with 1000 units of USD
-        available at a price of 1.0, and 500 units available at a price of 1.1.
-        """
-        if order_book is None and external_market is not None:
-            self.order_book = {}
-            if 'USD' not in external_market:
-                external_market['USD'] = 1  # default denomination
-            for tkn in external_market:
-                # if there is no orderbook convert external into an orderbook with infinite liquidity
-                self.order_book[tkn] = {external_market[tkn]: float('inf')}
-        elif order_book is not None:
-            self.order_book = order_book
-        else:
-            self.order_book = {}
+        self.external_market = external_market or {}
 
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.liquidity.keys()]
             + [asset for agent in agents.values() for asset in agent.asset_list]
-            + list(self.order_book.keys())
         ))
         self.agents = agents
         for agent_name in self.agents:
@@ -61,11 +43,9 @@ class GlobalState:
         self.time_step = 0
         self.archive_all = archive_all
 
-    def price(self, asset: str):
-        if asset in self.order_book:
-            # return the lowest available price
-            return list(sorted(self.order_book[asset].keys()))[0]
-
+    def price(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn in self.external_market:
+            return self.external_market[tkn]
         else:
             return 0
 
@@ -95,12 +75,7 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            order_book={
-                tkn: {
-                    price: self.order_book[tkn][price] for price in self.order_book[tkn]
-                } if isinstance(self.order_book[tkn], dict) else self.order_book[tkn]
-                for tkn in self.order_book
-            },
+            external_market=copy.copy(self.external_market),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
@@ -224,10 +199,6 @@ class GlobalState:
     def withdraw_val(self, agent: Agent) -> float:
         return self.cash_out(agent)
 
-    @property
-    def external_market(self) -> dict[str: float]:
-        return {tkn: self.price(tkn) for tkn in self.asset_list}
-
     def external_market_trade(
             self,
             agent_id: str,
@@ -238,6 +209,16 @@ class GlobalState:
     ):
         # do a trade at spot price on the external market
         agent = self.agents[agent_id]
+        if buy_quantity:
+            sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
+        elif sell_quantity:
+            buy_quantity = sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
+        else:
+            # raise TypeError('Must include either buy_quantity or sell_quantity.')
+            return self
+
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
 
         if agent.holdings[tkn_sell] - sell_quantity < 0:
             # insufficient funds, reduce quantity to match
@@ -246,58 +227,9 @@ class GlobalState:
             # also insufficient funds
             buy_quantity = -agent.holdings[tkn_buy]
 
-        # using order book, calculate how many tkn_buy we can get for tkn_sell or vice versa
-        tkns_bought = {}
-        if buy_quantity:
-            sell_quantity = 0
-            sell_price = self.price(tkn_sell)
-            buy_tkns_remaining = buy_quantity
-            for buy_price in sorted(self.order_book[tkn_buy].keys()):
-                buy_quantity_at_price = min(buy_tkns_remaining, self.order_book[tkn_buy][buy_price])
-                sell_quantity += buy_quantity_at_price * buy_price / sell_price
-                tkns_bought[buy_price] = buy_quantity_at_price
-                buy_tkns_remaining -= buy_quantity_at_price
-                if buy_tkns_remaining <= 0:
-                    break
-                # sell_quantity = buy_quantity * self.price(tkn_buy) / self.price(tkn_sell)
-            if buy_tkns_remaining > 0:
-                # can't buy that much, insufficient liquidity
-                buy_quantity -= buy_tkns_remaining
-
-        elif sell_quantity:
-            # buy_quantity = sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
-            buy_quantity = 0
-            sell_price = self.price(tkn_sell)
-            sell_tkns_remaining = sell_quantity
-            for buy_price in sorted(self.order_book[tkn_buy].keys()):
-                exchange_rate = buy_price / sell_price
-                buy_quantity_at_price = min(
-                    sell_tkns_remaining / exchange_rate,
-                    self.order_book[tkn_buy][buy_price]
-                )
-                buy_quantity += buy_quantity_at_price
-                tkns_bought[buy_price] = buy_quantity_at_price
-                sell_tkns_remaining -= buy_quantity_at_price * exchange_rate
-                if sell_tkns_remaining <= 0:
-                    break
-            if sell_tkns_remaining > 0:
-                # can't sell that much, insufficient liquidity in tkn_buy
-                sell_quantity -= sell_tkns_remaining
-
-        else:
-            # raise TypeError('Must include either buy_quantity or sell_quantity.')
-            return self
-
-        if tkn_buy not in agent.holdings:
-            agent.holdings[tkn_buy] = 0
-
+        # there could probably be a fee or something here, but for now you can sell infinite quantities for free
         agent.holdings[tkn_buy] += buy_quantity
         agent.holdings[tkn_sell] -= sell_quantity
-        # remove used liquidity from the order book
-        for buy_price in tkns_bought:
-            self.order_book[tkn_buy][buy_price] -= tkns_bought[buy_price]
-            # if self.external_market[tkn_buy][buy_price] == 0:
-            #     del self.external_market[tkn_buy][buy_price]
 
         return self
 
@@ -319,7 +251,7 @@ class GlobalState:
                 ])) + newline +
                 f'market prices: {newline + newline}    ' +
                 ((newline + indent).join([
-                    f'{indent}{tkn}: ${price}' for tkn, price in self.order_book.items()
+                    f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
                 ])) +
                 f'{newline}{newline}'
                 f'evolution function: {self.evolve_function}'
@@ -330,7 +262,7 @@ class GlobalState:
 class ArchiveState:
     def __init__(self, state: GlobalState):
         self.time_step = state.time_step
-        self.order_book = {k: {k2: v2 for k2, v2 in v.items} for k, v in state.order_book.items()}
+        self.external_market = copy.copy(state.external_market)
         self.pools = {k: v.archive() for (k, v) in state.pools.items()}
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
@@ -365,18 +297,18 @@ def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 
     def transform(state: GlobalState) -> GlobalState:
         new_state = state  # .copy()
-        for asset in new_state.order_book:
+        for asset in new_state.external_market:
             change = volatility[asset] if asset in volatility else 0
             bias = trend[asset] / 100 if asset in trend else 0
             # not exactly the same as above, because adding 1% and then subtracting 1% does not get us back to 100%
             # instead, we need to subtract (100/101)% to avoid a long-term downward trend
-            new_state.order_book[asset] = {new_state.price(asset) * (
+            new_state.external_market[asset] *= (
                     (1 + random.random() * change / 100 if random.choice([True, False])
                      else 1 - random.random() * (1 - 100 / (100 + change)))
                     # 1 / (1 + change / 100)
                     # + random.random() * (1 - 1 / (1 + change / 100) + change / 100)
                     + bias / 100
-            ): float('inf')} # for simplicity, just give infinite liquidity at this price
+            )
         return new_state
 
     return transform
@@ -406,10 +338,10 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
                 # reverse trend
                 updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
                 updown[tkn].inertia = 0
-            state.order_book[tkn] = {state.price(tkn) + (
+            state.external_market[tkn] *= (
                     updown[tkn].direction / 100 / updown[tkn].wavelength
                     + updown[tkn].bias / 100 / updown[tkn].wavelength
-            ): float('inf')}
+            )
             updown[tkn].inertia += 1
         return state
 
@@ -419,7 +351,7 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
 def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         for tkn in price_list[state.time_step]:
-            state.order_book[tkn] = {price_list[state.time_step][tkn]: float('inf')}
+            state.external_market[tkn] = price_list[state.time_step][tkn]
         return state
 
     return transform
