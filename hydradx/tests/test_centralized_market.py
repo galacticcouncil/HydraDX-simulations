@@ -218,3 +218,26 @@ def test_buy_base(quantity: float, order_book: OrderBook):
 
     if value_sold != pytest.approx(quantity_bought):
         raise AssertionError('External market sell trade failed to execute correctly.')
+
+
+def test_price():
+    initial_state = GlobalState(
+        pools={
+            'Kraken': CentralizedMarket(
+                order_book={
+                    ('ETH', 'DAI'): OrderBook(
+                        bids=[[1000, 1], [999, 1]],
+                        asks=[[1001, 1], [1002, 1]]
+                    )
+                },
+            )
+        },
+        agents={'agent': initial_agent}
+    )
+    eth_price = initial_state.pools['Kraken'].price('ETH', 'DAI')
+    if eth_price != 1000:
+        raise AssertionError('External market price incorrect.')
+
+    dai_price = initial_state.pools['Kraken'].price('DAI', 'ETH')
+    if dai_price != 1/1001:
+        raise AssertionError('External market price incorrect.')
