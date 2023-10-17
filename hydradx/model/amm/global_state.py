@@ -20,7 +20,7 @@ class GlobalState:
 
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
-            [asset for pool in pools.values() for asset in pool.liquidity.keys()]
+            [asset for pool in pools.values() for asset in pool.asset_list]
             + [asset for agent in agents.values() for asset in agent.asset_list]
         ))
         self.agents = agents
