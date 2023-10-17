@@ -17,11 +17,14 @@ class GlobalState:
                  archive_all: bool = True
                  ):
         self.external_market = external_market or {}
+        if 'USD' not in self.external_market:
+            self.external_market = {'USD': 1, **self.external_market}
 
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
             [asset for pool in pools.values() for asset in pool.asset_list]
             + [asset for agent in agents.values() for asset in agent.asset_list]
+            + list(self.external_market.keys())
         ))
         self.agents = agents
         for agent_name in self.agents:
