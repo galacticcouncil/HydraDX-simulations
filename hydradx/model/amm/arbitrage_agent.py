@@ -17,46 +17,29 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
         sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
         i = 0
-        bid_executed = False
-        ask_executed = False
+
+        swaps = []
+
         if buy_spot < bids[i]['price'] * (1 - cex_fee):
-            bid_executed = True
-            test_state = op_state
-            test_agent = agent
-            while i < len(bids) and buy_spot < bids[i]['price'] * (
-                    1 - cex_fee):  # spot is lower than the highest bid, so we should buy from Omnipool and sell to CEX
+            # test_state = op_state
+            # test_agent = agent
+            while i < len(bids):  # spot is lower than the highest bid, so we should buy from Omnipool and sell to CEX
                 print('buy')
-                op_state = test_state
-                agent = test_agent
                 test_state = op_state.copy()
                 test_agent = agent.copy()
                 test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=bids[i]['amount'])
                 op_spot = OmnipoolState.price(test_state, tkn, numeraire)
                 buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
+                if buy_spot < bids[i]['price'] * (1 - cex_fee):
+                    break
                 i += 1
-        elif sell_spot > asks[i]['price'] / (1 - cex_fee):
-            ask_executed = True
-            test_state = op_state
-            test_agent = agent
-            while i < len(bids) and sell_spot > asks[i]['price'] / (
-                    1 - cex_fee):  # spot is higher than the lowest ask, so we should buy from CEX and sell to Omnipool
-                print('sell')
                 op_state = test_state
                 agent = test_agent
-                test_state = op_state.copy()
-                test_agent = agent.copy()
-                test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=asks[i]['amount'])
-                op_spot = OmnipoolState.price(test_state, tkn, numeraire)
-                sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
-                i += 1
 
-        swaps = []
-        if bid_executed:
             if buy_spot < bids[i - 1]['price'] * (
                     1 - cex_fee):  # last trade can be fully executed without moving spot price too much
                 swaps = [('buy', bids[j]) for j in range(i)]
             else:  # Use binary search to partially fill last order
-                swaps = bids[0:i - 1]
                 swaps = [('buy', bids[j]) for j in range(i - 1)]
                 bid = bids[i - 1]
                 amt_high = bid['amount']
@@ -80,8 +63,22 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
                 op_spot = OmnipoolState.price(op_state, tkn, numeraire)
                 swaps.append(('buy', {'price': bid['price'], 'amount': amt_low}))
 
+        elif sell_spot > asks[i]['price'] / (1 - cex_fee):
+            # test_state = op_state
+            # test_agent = agent
+            while i < len(bids):  # spot is higher than the lowest ask, so we should buy from CEX and sell to Omnipool
+                print('sell')
+                test_state = op_state.copy()
+                test_agent = agent.copy()
+                test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=asks[i]['amount'])
+                op_spot = OmnipoolState.price(test_state, tkn, numeraire)
+                sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
+                if sell_spot > asks[i]['price'] / (1 - cex_fee):
+                    break
+                i += 1
+                op_state = test_state
+                agent = test_agent
 
-        elif ask_executed:
             if sell_spot > asks[i - 1]['price'] / (
                     1 - cex_fee):  # last trade can be fully executed without moving spot price too much
                 swaps = [('sell', asks[j]) for j in range(i)]
@@ -111,6 +108,61 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         print(op_spot)
         all_swaps[tkn_pair] = swaps
     return all_swaps
+
+
+def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: float, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
+
+    state = init_state.copy()
+    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+
+    asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
+    lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
+    cex_price = bid['price'] * (1 - cex_fee)
+
+    # If buying the min amount moves the price too much, return 0
+    if min_amt < 1e-18:
+        raise
+    test_agent = agent.copy()
+    test_state = state.copy()
+    test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=min_amt)
+    op_spot = OmnipoolState.price(test_state, tkn, numeraire)
+    buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
+    if min_amt >= state.liquidity[tkn] or buy_spot > cex_price or test_state.fail != '':
+        return 0
+
+    op_spot = OmnipoolState.price(state, tkn, numeraire)
+    buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
+
+    # we use binary search to find the amount that can be swapped
+    amt_low = min_amt
+    amt_high = bid['amount']
+    amt = min(amt_high, state.liquidity[tkn])
+    i = 0
+    best_buy_spot = buy_spot
+    while cex_price - best_buy_spot > precision:
+        if amt < state.liquidity[tkn]:
+            test_agent = agent.copy()
+            test_state = state.copy()
+            test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+            op_spot = OmnipoolState.price(test_state, tkn, numeraire)
+            buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
+            if amt_high == amt_low:  # full amount can be traded
+                break
+        if amt >= state.liquidity[tkn] or buy_spot > cex_price or test_state.fail != '':
+            amt_high = amt
+        elif buy_spot < cex_price:
+            amt_low = amt
+            best_buy_spot = buy_spot
+
+        # only want to update amt if there will be another iteration
+        if cex_price - best_buy_spot > precision:
+            amt = amt_low + (amt_high - amt_low) / 2
+
+        i += 1
+        if max_iters is not None and i >= max_iters:
+            break
+
+    return amt
 
 
 def execute_arb(state, agent, all_swaps, cex_fee=0.0):
