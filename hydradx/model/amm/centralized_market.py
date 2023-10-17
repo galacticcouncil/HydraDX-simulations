@@ -72,10 +72,10 @@ class CentralizedMarket(AMM):
         self.order_book[(base, quote)].bids.sort(key=lambda x: x[0], reverse=True)
 
         if sell_quantity > 0:
-            if tkn_sell == quote:
-                sell_tkns_remaining = sell_quantity
-                tkns_bought = 0
+            sell_tkns_remaining = sell_quantity
+            tkns_bought = 0
 
+            if tkn_sell == quote:
                 for bid in self.order_book[(base, quote)].bids:
                     if sell_tkns_remaining <= 0:
                         break
@@ -90,13 +90,7 @@ class CentralizedMarket(AMM):
                         sell_tkns_remaining -= bid[0] * bid[1]
                         bid[1] = 0
 
-                agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
-                agent.holdings[tkn_buy] += tkns_bought
-                self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
             else:
-                sell_tkns_remaining = sell_quantity
-                tkns_bought = 0
-
                 for ask in self.order_book[(base, quote)].asks:
                     if sell_tkns_remaining <= 0:
                         break
@@ -109,15 +103,15 @@ class CentralizedMarket(AMM):
                         sell_tkns_remaining -= ask[1]
                         ask[1] = 0
 
-                agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
-                agent.holdings[tkn_buy] += tkns_bought
-                self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
+            agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
+            agent.holdings[tkn_buy] += tkns_bought * (1 - self.trade_fee)
+            self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
 
         elif buy_quantity > 0:
-            if tkn_buy == quote:
-                buy_tkns_remaining = buy_quantity
-                tkns_sold = 0
+            buy_tkns_remaining = buy_quantity
+            tkns_sold = 0
 
+            if tkn_buy == quote:
                 for ask in self.order_book[(base, quote)].asks:
                     if buy_tkns_remaining <= 0:
                         break
@@ -130,14 +124,7 @@ class CentralizedMarket(AMM):
                         buy_tkns_remaining -= ask[0] * ask[1]
                         ask[1] = 0
 
-                agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-                agent.holdings[tkn_sell] -= tkns_sold
-                self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
-
             else:
-                buy_tkns_remaining = buy_quantity
-                tkns_sold = 0
-
                 for bid in self.order_book[(base, quote)].bids:
                     if buy_tkns_remaining <= 0:
                         break
@@ -150,9 +137,9 @@ class CentralizedMarket(AMM):
                         buy_tkns_remaining -= bid[1]
                         bid[1] = 0
 
-                agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-                agent.holdings[tkn_sell] -= tkns_sold
-                self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
+            agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
+            agent.holdings[tkn_sell] -= tkns_sold / (1 - self.trade_fee)
+            self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
 
         return self
 
