@@ -164,24 +164,19 @@ class CentralizedMarket(AMM):
         return copy.deepcopy(self)
 
     def price(self, tkn: str, numeraire: str = 'USD') -> float:
-        if self.asset_list.index(tkn) > self.asset_list.index(numeraire):
-            if (numeraire, tkn) in self.order_book:
-                # return the lowest available bid
-                return list(sorted(filter(
-                    lambda bid: bid[0] == numeraire and bid[1] == tkn, self.order_book[(numeraire, tkn)].bids
-                ), key=lambda bid: bid[1]))[0][1]
-
-            else:
-                return 0
+        if (tkn, numeraire) in self.order_book:
+            base = tkn
+            quote = numeraire
+        elif (numeraire, tkn) in self.order_book:
+            base = numeraire
+            quote = tkn
         else:
-            if (tkn, numeraire) in self.order_book:
-                # return the highest available ask
-                return list(sorted(filter(
-                    lambda ask: ask[0] == tkn and ask[1] == numeraire, self.order_book[(tkn, numeraire)].asks
-                ), key=lambda ask: ask[1], reverse=True))[0][1]
+            return 0
 
-            else:
-                return 0
+        if tkn == base:
+            return sorted(self.order_book[(base, quote)].bids, reverse=True)[0][0]
+        else:
+            return 1 / sorted(self.order_book[(base, quote)].asks)[0][0]
 
 
 # faster
