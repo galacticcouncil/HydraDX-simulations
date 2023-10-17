@@ -27,6 +27,9 @@ def test_calculate_profit():
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
     price_mult=st.floats(min_value=1.1, max_value=10.0),
+    lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
+    asset_fee=st.floats(min_value=0.0001, max_value=0.004),
+    cex_fee=st.floats(min_value=0.0001, max_value=0.005),
 )
 def test_calculate_arb_amount_bid(
         usdt_amt: float,
@@ -34,7 +37,10 @@ def test_calculate_arb_amount_bid(
         hdx_price: float,
         dot_wt: float,
         hdx_wt: float,
-        price_mult: float
+        price_mult: float,
+        lrna_fee: float,
+        asset_fee: float,
+        cex_fee: float
 ):
 
     usdt_wt = 1 - dot_wt - hdx_wt
@@ -48,10 +54,6 @@ def test_calculate_arb_amount_bid(
         'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
         'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
     }
-
-    lrna_fee = 0.0005
-    asset_fee = 0.0025
-    cex_fee = 0.0016
 
     initial_state = OmnipoolState(
         tokens=tokens,
@@ -98,6 +100,9 @@ def test_calculate_arb_amount_bid(
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
     price_mult=st.floats(min_value=0.1, max_value=0.95),
+    lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
+    asset_fee=st.floats(min_value=0.0001, max_value=0.004),
+    cex_fee=st.floats(min_value=0.0001, max_value=0.005),
 )
 def test_calculate_arb_amount_ask(
         usdt_amt: float,
@@ -105,7 +110,10 @@ def test_calculate_arb_amount_ask(
         hdx_price: float,
         dot_wt: float,
         hdx_wt: float,
-        price_mult: float
+        price_mult: float,
+        lrna_fee: float,
+        asset_fee: float,
+        cex_fee: float
 ):
     usdt_wt = 1 - dot_wt - hdx_wt
     dot_lrna = dot_wt / usdt_wt * usdt_amt
