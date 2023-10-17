@@ -2,7 +2,9 @@ from hypothesis import given, strategies as st, settings, reproduce_failure
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask
+from hydradx.model.amm.arbitrage_agent import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.processing import parse_kraken_orderbook
 
 
 def test_calculate_profit():
@@ -156,3 +158,79 @@ def test_calculate_arb_amount_ask(
     profit = calculate_profit(init_agent, agent)
     for tkn in profit:
         assert profit[tkn] >= 0
+
+
+def test_get_arb_swaps():
+
+    dot_usdt_order_book = {
+        'bids': [{'price': 3.60, 'amount': 200},
+                 {'price': 3.59, 'amount': 100},
+                 {'price': 3.50, 'amount': 100},
+                 {'price': 3.40, 'amount': 2000}],
+        'asks': [{'price': 3.70, 'amount': 100},
+                 {'price': 3.74, 'amount': 5000},
+                 {'price': 3.80, 'amount': 200},
+                 {'price': 3.90, 'amount': 2000}]
+    }
+
+    hdx_usdt_order_book = {
+        'bids': [{'price': 0.03, 'amount': 2000},
+                 {'price': 0.025, 'amount': 2000},
+                 {'price': 0.02, 'amount': 2000},
+                 {'price': 0.015, 'amount': 2000}],
+        'asks': [{'price': 0.04, 'amount': 2000},
+                 {'price': 0.05, 'amount': 2000},
+                 {'price': 0.06, 'amount': 2000},
+                 {'price': 0.07, 'amount': 2000}]
+    }
+
+    hdx_dot_order_book = {
+        'bids': [{'price': 0.005, 'amount': 2000},
+                 {'price': 0.004, 'amount': 2000}],
+        'asks': [{'price': 0.0052, 'amount': 2000},
+                 {'price': 0.0055, 'amount': 2000}]
+    }
+
+    order_book = {
+        ('DOT', 'USDT'): dot_usdt_order_book,
+        ('HDX', 'USDT'): hdx_usdt_order_book,
+        ('HDX','DOT'): hdx_dot_order_book
+    }
+
+    tokens = {
+        'USDT': {
+            'liquidity': 2062772,
+            'LRNA': 2062772
+        },
+        'DOT': {
+            # 'liquidity': 389000,
+            'liquidity': 350000,
+            'LRNA': 1456248
+        },
+        'HDX': {
+            'liquidity': 108000000,
+            'LRNA': 494896
+        }
+    }
+
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    cex_fee = 0.0016
+
+    op_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    arb_swaps = get_arb_swaps(op_state, order_book, lrna_fee=lrna_fee, asset_fee=asset_fee, cex_fee=cex_fee)
+    initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    agent = initial_agent.copy()
+
+    execute_arb(op_state, agent, arb_swaps, cex_fee=cex_fee)
+
+    profit = calculate_profit(initial_agent, agent)
+    for tkn in profit:
+        if profit[tkn] < 0:
+            raise
