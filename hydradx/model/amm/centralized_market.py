@@ -182,5 +182,6 @@ class CentralizedMarket(AMM):
 # faster
 CentralizedMarket.copy = lambda self: CentralizedMarket(
     asset_list=[tkn for tkn in self.asset_list],
-    order_book={pair: book.copy() for pair, book in self.order_book.items()}
+    order_book={pair: book.copy() for pair, book in self.order_book.items()},
+    trade_fee=self.trade_fee
 )
