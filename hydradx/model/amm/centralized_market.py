@@ -24,10 +24,16 @@ OrderBook.copy = lambda self: OrderBook(
 
 
 class CentralizedMarket(AMM):
-    def __init__(self, asset_list: list[str], order_books: dict[tuple[str, str], OrderBook]):
+    def __init__(self, order_book: dict[tuple[str, str], OrderBook], asset_list: list[str] = None):
         super().__init__()
-        self.order_book = order_books
-        self.asset_list = asset_list
+        self.order_book = order_book
+        if asset_list:
+            self.asset_list = asset_list
+        else:
+            # using a dict instead of a set here to preserve order (python 3.7+)
+            self.asset_list = list({tkn: 0 for pair in self.order_book for tkn in pair}.keys())
+        if 'USD' not in self.asset_list:
+            self.asset_list = ['USD', *self.asset_list]
 
     def swap(
         self,
@@ -141,5 +147,5 @@ class CentralizedMarket(AMM):
 # faster
 CentralizedMarket.copy = lambda self: CentralizedMarket(
     asset_list=[tkn for tkn in self.asset_list],
-    order_books={pair: book.copy() for pair, book in self.order_book.items()}
+    order_book={pair: book.copy() for pair, book in self.order_book.items()}
 )
