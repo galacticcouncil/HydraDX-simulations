@@ -2,7 +2,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 
-def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0, iters=10):
+def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0, iters=20):
     all_swaps = {}
     state = op_state.copy()
     for tkn_pair in order_book:
@@ -20,10 +20,9 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         if buy_spot < bids[0]['price'] * (1 - cex_fee):
             for bid in bids:
                 test_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
-                amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, precision=1e-10, max_iters=20)
+                amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, precision=1e-10, max_iters=iters)
                 state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
-                # buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
                 if amt == 0:
                     break
                 swaps.append(('buy', {'price': bid['price'], 'amount': amt}))
@@ -32,11 +31,9 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
         elif sell_spot > asks[0]['price'] / (1 - cex_fee):
             for ask in asks:
                 test_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
-                amt = calculate_arb_amount_ask(state, tkn, numeraire, ask, cex_fee, precision=1e-10, max_iters=20)
+                amt = calculate_arb_amount_ask(state, tkn, numeraire, ask, cex_fee, precision=1e-10, max_iters=iters)
                 state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
-                # sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
-                test_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
                 if amt == 0:
                     break
                 swaps.append(('sell', {'price': ask['price'], 'amount': amt}))
