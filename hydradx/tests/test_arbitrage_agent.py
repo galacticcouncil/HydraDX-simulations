@@ -68,6 +68,7 @@ def test_calculate_arb_amount_bid(
     p = 1e-10
     amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
@@ -79,7 +80,15 @@ def test_calculate_arb_amount_bid(
     if amt == bid['amount'] and buy_spot > cex_price:
         raise
 
+    agent.holdings[tkn] -= amt
+    agent.holdings[numeraire] += amt * cex_price
 
+    profit = calculate_profit(init_agent, agent)
+    for tkn in profit:
+        assert profit[tkn] >= 0
+
+
+# @settings(max_examples=1)
 @given(
     usdt_amt=st.floats(min_value=100000, max_value=1000000),
     dot_price=st.floats(min_value=0.01, max_value=1000),
@@ -96,7 +105,6 @@ def test_calculate_arb_amount_ask(
         hdx_wt: float,
         price_mult: float
 ):
-
     usdt_wt = 1 - dot_wt - hdx_wt
     dot_lrna = dot_wt / usdt_wt * usdt_amt
     dot_amt = dot_lrna / dot_price
@@ -130,6 +138,7 @@ def test_calculate_arb_amount_ask(
     p = 1e-10
     amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
@@ -140,3 +149,10 @@ def test_calculate_arb_amount_ask(
 
     if amt == ask['amount'] and cex_price > sell_spot:
         raise
+
+    agent.holdings[tkn] += amt
+    agent.holdings[numeraire] -= amt * cex_price
+
+    profit = calculate_profit(init_agent, agent)
+    for tkn in profit:
+        assert profit[tkn] >= 0
