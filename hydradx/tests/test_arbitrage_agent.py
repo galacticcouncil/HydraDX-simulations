@@ -127,10 +127,6 @@ def test_calculate_arb_amount_ask(
         'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
     }
 
-    lrna_fee = 0.0005
-    asset_fee = 0.0025
-    cex_fee = 0.0016
-
     initial_state = OmnipoolState(
         tokens=tokens,
         lrna_fee=lrna_fee,
