@@ -160,42 +160,22 @@ def test_calculate_arb_amount_ask(
         assert profit[tkn] >= 0
 
 
-def test_get_arb_swaps():
-
-    dot_usdt_order_book = {
-        'bids': [{'price': 3.60, 'amount': 200},
-                 {'price': 3.59, 'amount': 100},
-                 {'price': 3.50, 'amount': 100},
-                 {'price': 3.40, 'amount': 2000}],
-        'asks': [{'price': 3.70, 'amount': 100},
-                 {'price': 3.74, 'amount': 5000},
-                 {'price': 3.80, 'amount': 200},
-                 {'price': 3.90, 'amount': 2000}]
-    }
-
-    hdx_usdt_order_book = {
-        'bids': [{'price': 0.03, 'amount': 2000},
-                 {'price': 0.025, 'amount': 2000},
-                 {'price': 0.02, 'amount': 2000},
-                 {'price': 0.015, 'amount': 2000}],
-        'asks': [{'price': 0.04, 'amount': 2000},
-                 {'price': 0.05, 'amount': 2000},
-                 {'price': 0.06, 'amount': 2000},
-                 {'price': 0.07, 'amount': 2000}]
-    }
-
-    hdx_dot_order_book = {
-        'bids': [{'price': 0.005, 'amount': 2000},
-                 {'price': 0.004, 'amount': 2000}],
-        'asks': [{'price': 0.0052, 'amount': 2000},
-                 {'price': 0.0055, 'amount': 2000}]
-    }
-
-    order_book = {
-        ('DOT', 'USDT'): dot_usdt_order_book,
-        ('HDX', 'USDT'): hdx_usdt_order_book,
-        ('HDX','DOT'): hdx_dot_order_book
-    }
+@given(
+    dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    hdxdot_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
+    hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+)
+def test_get_arb_swaps(
+        dotusd_price_mult: float,
+        dot_amts: list,
+        hdxdot_price_mult: float,
+        hdxdot_amts: list,
+        hdxusd_price_mult: float,
+        hdxusd_amts: list
+):
 
     tokens = {
         'USDT': {
@@ -203,7 +183,6 @@ def test_get_arb_swaps():
             'LRNA': 2062772
         },
         'DOT': {
-            # 'liquidity': 389000,
             'liquidity': 350000,
             'LRNA': 1456248
         },
@@ -223,6 +202,50 @@ def test_get_arb_swaps():
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
+
+    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot_adj = dotusd_spot * dotusd_price_mult
+
+    dot_usdt_order_book = {
+        'bids': [{'price': dotusd_spot_adj * 0.999, 'amount': dot_amts[0]},
+                 {'price': dotusd_spot_adj * 0.99, 'amount': dot_amts[1]},
+                 {'price': dotusd_spot_adj * 0.9, 'amount': dot_amts[2]},
+                 {'price': dotusd_spot_adj * 0.8, 'amount': dot_amts[3]}],
+        'asks': [{'price': dotusd_spot_adj * 1.001, 'amount': dot_amts[4]},
+                 {'price': dotusd_spot_adj * 1.01, 'amount': dot_amts[5]},
+                 {'price': dotusd_spot_adj * 1.1, 'amount': dot_amts[6]},
+                 {'price': dotusd_spot_adj * 1.2, 'amount': dot_amts[7]}]
+    }
+
+    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
+
+    hdx_usdt_order_book = {
+        'bids': [{'price': hdxusd_spot_adj * 0.999, 'amount': hdxusd_amts[0]},
+                 {'price': hdxusd_spot_adj * 0.99, 'amount': hdxusd_amts[1]},
+                 {'price': hdxusd_spot_adj * 0.9, 'amount': hdxusd_amts[2]},
+                 {'price': hdxusd_spot_adj * 0.8, 'amount': hdxusd_amts[3]}],
+        'asks': [{'price': hdxusd_spot_adj * 1.001, 'amount': hdxusd_amts[4]},
+                 {'price': hdxusd_spot_adj * 1.01, 'amount': hdxusd_amts[5]},
+                 {'price': hdxusd_spot_adj * 1.1, 'amount': hdxusd_amts[6]},
+                 {'price': hdxusd_spot_adj * 1.2, 'amount': hdxusd_amts[7]}]
+    }
+
+    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
+
+    hdx_dot_order_book = {
+        'bids': [{'price': hdxdot_spot_adj * 0.99, 'amount': hdxdot_amts[0]},
+                 {'price': hdxdot_spot_adj * 0.9, 'amount': hdxdot_amts[1]}],
+        'asks': [{'price': hdxdot_spot_adj * 1.01, 'amount': hdxdot_amts[2]},
+                 {'price': hdxdot_spot_adj * 1.1, 'amount': hdxdot_amts[3]}]
+    }
+
+    order_book = {
+        ('DOT', 'USDT'): dot_usdt_order_book,
+        ('HDX', 'USDT'): hdx_usdt_order_book,
+        ('HDX','DOT'): hdx_dot_order_book
+    }
 
     arb_swaps = get_arb_swaps(op_state, order_book, lrna_fee=lrna_fee, asset_fee=asset_fee, cex_fee=cex_fee)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
