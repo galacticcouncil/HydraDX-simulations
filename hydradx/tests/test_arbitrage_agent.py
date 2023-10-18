@@ -4,7 +4,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask
 from hydradx.model.amm.arbitrage_agent import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.processing import parse_kraken_orderbook
+from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 
 
 def test_calculate_profit():
@@ -69,7 +69,7 @@ def test_calculate_arb_amount_bid(
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    bid = {'price': bid_price, 'amount': 100000}
+    bid = [bid_price, 100000]
     p = 1e-10
     amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p, max_iters=1000)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
@@ -77,12 +77,12 @@ def test_calculate_arb_amount_bid(
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = bid['price'] * (1 - cex_fee)
+    cex_price = bid[0] * (1 - cex_fee)
 
-    if abs(buy_spot - cex_price) > p and amt != bid['amount']:
+    if abs(buy_spot - cex_price) > p and amt != bid[1]:
         raise
 
-    if amt == bid['amount'] and buy_spot > cex_price:
+    if amt == bid[1] and buy_spot > cex_price:
         raise
 
     agent.holdings[tkn] -= amt
@@ -142,7 +142,7 @@ def test_calculate_arb_amount_ask(
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    ask = {'price': ask_price, 'amount': 100000}
+    ask = [ask_price, 100000]
     p = 1e-10
     amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p, max_iters=1000)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
@@ -150,12 +150,12 @@ def test_calculate_arb_amount_ask(
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = ask['price'] / (1 - cex_fee)
+    cex_price = ask[0] / (1 - cex_fee)
 
-    if abs(sell_spot - cex_price) > p and amt != ask['amount']:
+    if abs(sell_spot - cex_price) > p and amt != ask[1]:
         raise
 
-    if amt == ask['amount'] and cex_price > sell_spot:
+    if amt == ask[1] and cex_price > sell_spot:
         raise
 
     agent.holdings[tkn] += amt
@@ -223,6 +223,9 @@ def test_get_arb_swaps(
                  {'price': dotusd_spot_adj * 1.2, 'amount': dot_amts[7]}]
     }
 
+    dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
+
     hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
@@ -237,6 +240,9 @@ def test_get_arb_swaps(
                  {'price': hdxusd_spot_adj * 1.2, 'amount': hdxusd_amts[7]}]
     }
 
+    hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
+
     hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
@@ -247,13 +253,22 @@ def test_get_arb_swaps(
                  {'price': hdxdot_spot_adj * 1.1, 'amount': hdxdot_amts[3]}]
     }
 
+    hdx_dot_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_dot_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_dot_order_book['asks']])
+
     order_book = {
-        ('DOT', 'USDT'): dot_usdt_order_book,
-        ('HDX', 'USDT'): hdx_usdt_order_book,
-        ('HDX','DOT'): hdx_dot_order_book
+        ('DOT', 'USDT'): dot_usdt_order_book_obj,
+        ('HDX', 'USDT'): hdx_usdt_order_book_obj,
+        ('HDX','DOT'): hdx_dot_order_book_obj
     }
 
-    arb_swaps = get_arb_swaps(op_state, order_book, lrna_fee=lrna_fee, asset_fee=asset_fee, cex_fee=cex_fee)
+    cex = CentralizedMarket(
+        order_book=order_book,
+        asset_list=['USDT', 'DOT', 'HDX'],
+        trade_fee=cex_fee
+    )
+
+    arb_swaps = get_arb_swaps(op_state, cex)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 

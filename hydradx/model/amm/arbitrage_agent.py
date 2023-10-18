@@ -2,22 +2,31 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 
-def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0, iters=20):
+# def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0, iters=20):
+def get_arb_swaps(op_state, cex, iters=20):
+    order_book = cex.order_book
+    cex_fee = cex.trade_fee
+
     all_swaps = {}
     state = op_state.copy()
     for tkn_pair in order_book:
         pair_order_book = order_book[tkn_pair]
         tkn = tkn_pair[0]
         numeraire = tkn_pair[1]
-        bids = sorted(pair_order_book['bids'], key=lambda x: x['price'], reverse=True)
-        asks = sorted(pair_order_book['asks'], key=lambda x: x['price'], reverse=False)
+        bids = sorted(pair_order_book.bids, key=lambda x: x[0], reverse=True)
+        asks = sorted(pair_order_book.asks, key=lambda x: x[0], reverse=False)
+
+        tkn_lrna_fee = op_state.lrna_fee[tkn].compute(tkn=tkn)
+        numeraire_lrna_fee = op_state.lrna_fee[numeraire].compute(tkn=numeraire)
+        tkn_asset_fee = op_state.asset_fee[tkn].compute(tkn=tkn)
+        numeraire_asset_fee = op_state.asset_fee[numeraire].compute(tkn=numeraire)
 
         op_spot = OmnipoolState.price(op_state, tkn, numeraire)
-        buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
-        sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
+        buy_spot = op_spot / ((1 - numeraire_lrna_fee) * (1 - tkn_asset_fee))
+        sell_spot = op_spot * (1 - tkn_lrna_fee) * (1 - numeraire_asset_fee)
         swaps = []
 
-        if buy_spot < bids[0]['price'] * (1 - cex_fee):
+        if buy_spot < bids[0][0] * (1 - cex_fee):
             for bid in bids:
                 test_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
                 amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, precision=1e-10, max_iters=iters)
@@ -25,10 +34,10 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
                 if amt == 0:
                     break
-                swaps.append(('buy', {'price': bid['price'], 'amount': amt}))
-                if amt != bid['amount']:
+                swaps.append(('buy', {'price': bid[0], 'amount': amt}))
+                if amt != bid[1]:
                     break
-        elif sell_spot > asks[0]['price'] / (1 - cex_fee):
+        elif sell_spot > asks[0][0] / (1 - cex_fee):
             for ask in asks:
                 test_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
                 amt = calculate_arb_amount_ask(state, tkn, numeraire, ask, cex_fee, precision=1e-10, max_iters=iters)
@@ -36,8 +45,8 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
                 if amt == 0:
                     break
-                swaps.append(('sell', {'price': ask['price'], 'amount': amt}))
-                if amt != ask['amount']:
+                swaps.append(('sell', {'price': ask[0], 'amount': amt}))
+                if amt != ask[1]:
                     break
 
         print(op_spot)
@@ -45,14 +54,14 @@ def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0
     return all_swaps
 
 
-def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: dict, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
+def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: list, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
 
     state = init_state.copy()
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
 
     asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
     lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
-    cex_price = bid['price'] * (1 - cex_fee)
+    cex_price = bid[0] * (1 - cex_fee)
 
     # If buying the min amount moves the price too much, return 0
     if min_amt < 1e-18:
@@ -70,7 +79,7 @@ def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: dic
 
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
-    amt_high = bid['amount']
+    amt_high = bid[1]
     amt = min(amt_high, state.liquidity[tkn])
     i = 0
     best_buy_spot = buy_spot
@@ -100,14 +109,14 @@ def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: dic
     return amt
 
 
-def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: float, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
+def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: list, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
 
     state = init_state.copy()
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
 
     asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
     lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
-    cex_price = ask['price'] / (1 - cex_fee)
+    cex_price = ask[0] / (1 - cex_fee)
 
     # If buying the min amount moves the price too much, return 0
     if min_amt < 1e-18:
@@ -125,7 +134,7 @@ def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: flo
 
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
-    amt_high = ask['amount']
+    amt_high = ask[1]
     amt = amt_high
     i = 0
     best_sell_spot = sell_spot
