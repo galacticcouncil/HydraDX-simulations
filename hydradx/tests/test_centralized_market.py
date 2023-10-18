@@ -52,9 +52,9 @@ def test_sell_quote(quantity: float, trade_fee: float, order_book: OrderBook):
     )
 
     value_bought = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
@@ -65,9 +65,9 @@ def test_sell_quote(quantity: float, trade_fee: float, order_book: OrderBook):
     quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
     value_sold = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
@@ -104,18 +104,18 @@ def test_sell_base(quantity: float, trade_fee: float, order_book: OrderBook):
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
     value_bought = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     if value_bought != pytest.approx(quantity_sold):
         raise AssertionError('Central market sell trade failed to execute correctly.')
 
     value_sold = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
@@ -152,9 +152,9 @@ def test_buy_quote(quantity: float, trade_fee: float, order_book: OrderBook):
     )
 
     value_sold = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
@@ -165,9 +165,9 @@ def test_buy_quote(quantity: float, trade_fee: float, order_book: OrderBook):
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
     value_bought = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].asks]
+        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     if value_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
@@ -203,18 +203,18 @@ def test_buy_base(quantity: float, order_book: OrderBook):
     quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
     value_sold = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     if value_sold != pytest.approx(quantity_bought):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     value_bought = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].bids]
+        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]

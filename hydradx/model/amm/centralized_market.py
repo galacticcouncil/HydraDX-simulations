@@ -75,32 +75,32 @@ class CentralizedMarket(AMM):
             sell_tkns_remaining = sell_quantity
             tkns_bought = 0
 
-            if tkn_sell == quote:
+            if tkn_sell == base:
                 for bid in self.order_book[(base, quote)].bids:
                     if sell_tkns_remaining <= 0:
                         break
-                    if bid[0] * bid[1] >= sell_tkns_remaining:
+                    if bid[1] >= sell_tkns_remaining:
                         # this bid can fill the entire remaining order
-                        tkns_bought += sell_tkns_remaining / bid[0]
-                        bid[1] -= sell_tkns_remaining / bid[0]
+                        tkns_bought += bid[0] * sell_tkns_remaining
+                        bid[1] -= sell_tkns_remaining
                         sell_tkns_remaining = 0
                     else:
                         # this bid can partially fill the order
-                        tkns_bought += bid[1]
-                        sell_tkns_remaining -= bid[0] * bid[1]
+                        tkns_bought += bid[1] * bid[0]
+                        sell_tkns_remaining -= bid[1]
                         bid[1] = 0
 
             else:
                 for ask in self.order_book[(base, quote)].asks:
                     if sell_tkns_remaining <= 0:
                         break
-                    if ask[1] >= sell_tkns_remaining:
-                        tkns_bought += ask[0] * sell_tkns_remaining
-                        ask[1] -= sell_tkns_remaining
+                    if ask[0] * ask[1] >= sell_tkns_remaining:
+                        tkns_bought += sell_tkns_remaining / ask[0]
+                        ask[1] -= sell_tkns_remaining / ask[0]
                         sell_tkns_remaining = 0
                     else:
-                        tkns_bought += ask[0] * ask[1]
-                        sell_tkns_remaining -= ask[1]
+                        tkns_bought += ask[1]
+                        sell_tkns_remaining -= ask[1] * ask[0]
                         ask[1] = 0
 
             agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
@@ -111,30 +111,30 @@ class CentralizedMarket(AMM):
             buy_tkns_remaining = buy_quantity
             tkns_sold = 0
 
-            if tkn_buy == quote:
+            if tkn_buy == base:
                 for ask in self.order_book[(base, quote)].asks:
                     if buy_tkns_remaining <= 0:
                         break
-                    if ask[0] * ask[1] >= buy_tkns_remaining:
-                        tkns_sold += buy_tkns_remaining / ask[0]
-                        ask[1] -= buy_tkns_remaining / ask[0]
+                    if ask[1] >= buy_tkns_remaining:
+                        tkns_sold += buy_tkns_remaining * ask[0]
+                        ask[1] -= buy_tkns_remaining
                         buy_tkns_remaining = 0
                     else:
-                        tkns_sold += ask[1]
-                        buy_tkns_remaining -= ask[0] * ask[1]
+                        tkns_sold += ask[0] * ask[1]
+                        buy_tkns_remaining -= ask[1]
                         ask[1] = 0
 
             else:
                 for bid in self.order_book[(base, quote)].bids:
                     if buy_tkns_remaining <= 0:
                         break
-                    if bid[1] >= buy_tkns_remaining:
-                        tkns_sold += bid[0] * buy_tkns_remaining
-                        bid[1] -= buy_tkns_remaining
+                    if bid[0] * bid[1] >= buy_tkns_remaining:
+                        tkns_sold += buy_tkns_remaining / bid[0]
+                        bid[1] -= buy_tkns_remaining / bid[0]
                         buy_tkns_remaining = 0
                     else:
-                        tkns_sold += bid[0] * bid[1]
-                        buy_tkns_remaining -= bid[1]
+                        tkns_sold += bid[1]
+                        buy_tkns_remaining -= bid[0] * bid[1]
                         bid[1] = 0
 
             agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
