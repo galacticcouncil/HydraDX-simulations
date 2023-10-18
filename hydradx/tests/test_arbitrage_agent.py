@@ -1,4 +1,4 @@
-from hypothesis import given, strategies as st, settings, reproduce_failure
+from hypothesis import given, strategies as st, settings, reproduce_failure, Verbosity, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask
@@ -20,6 +20,7 @@ def test_calculate_profit():
 
 
 # @settings(max_examples=1)
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
     usdt_amt=st.floats(min_value=100000, max_value=1000000),
     dot_price=st.floats(min_value=0.01, max_value=1000),
@@ -70,7 +71,7 @@ def test_calculate_arb_amount_bid(
     numeraire = 'USDT'
     bid = {'price': bid_price, 'amount': 100000}
     p = 1e-10
-    amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p)
+    amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p, max_iters=1000)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
@@ -92,6 +93,7 @@ def test_calculate_arb_amount_bid(
         assert profit[tkn] >= 0
 
 
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 # @settings(max_examples=1)
 @given(
     usdt_amt=st.floats(min_value=100000, max_value=1000000),
@@ -142,7 +144,7 @@ def test_calculate_arb_amount_ask(
     numeraire = 'USDT'
     ask = {'price': ask_price, 'amount': 100000}
     p = 1e-10
-    amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p)
+    amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p, max_iters=1000)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
