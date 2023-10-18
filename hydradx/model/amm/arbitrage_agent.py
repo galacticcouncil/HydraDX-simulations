@@ -116,7 +116,8 @@ def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: lis
 
     asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
     lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
-    cex_price = ask[0] / (1 - cex_fee)
+    # cex_price = ask[0] / (1 - cex_fee)
+    cex_price = ask[0] * (1 + cex_fee)
 
     # If buying the min amount moves the price too much, return 0
     if min_amt < 1e-18:
@@ -163,26 +164,38 @@ def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: lis
     return amt
 
 
-def execute_arb(state, agent, all_swaps, cex_fee=0.0):
-
+def execute_arb(state, cex, agent, all_swaps):
     for tkn_pair in all_swaps:
         swaps = all_swaps[tkn_pair]
 
         for swap in swaps:
 
             if swap[0] == 'buy':
+                init_asset = agent.holdings[tkn_pair[0]]
+                init_numeraire = agent.holdings[tkn_pair[1]]
                 # omnipool leg
                 state.swap(agent, tkn_buy=tkn_pair[0], tkn_sell=tkn_pair[1], buy_quantity=swap[1]['amount'])
                 # CEX leg
-                agent.holdings[tkn_pair[0]] -= swap[1]['amount']
-                agent.holdings[tkn_pair[1]] += swap[1]['amount'] * swap[1]['price'] * (1 - cex_fee)
+                cex.swap(agent, tkn_buy=tkn_pair[1], tkn_sell=tkn_pair[0], sell_quantity=swap[1]['amount'])
+                final_asset = agent.holdings[tkn_pair[0]]
+                final_numeraire = agent.holdings[tkn_pair[1]]
+                if init_numeraire >= final_numeraire:
+                    raise
+                if init_asset != final_asset:
+                    raise
             elif swap[0] == 'sell':
+                init_asset = agent.holdings[tkn_pair[0]]
+                init_numeraire = agent.holdings[tkn_pair[1]]
                 # omnipool leg
                 state.swap(agent, tkn_buy=tkn_pair[1], tkn_sell=tkn_pair[0], sell_quantity=swap[1]['amount'])
                 # CEX leg
-                agent.holdings[tkn_pair[0]] += swap[1]['amount']
-                agent.holdings[tkn_pair[1]] -= swap[1]['amount'] * swap[1]['price'] / (1 - cex_fee)
-
+                cex.swap(agent, tkn_buy=tkn_pair[0], tkn_sell=tkn_pair[1], buy_quantity=swap[1]['amount'])
+                final_asset = agent.holdings[tkn_pair[0]]
+                final_numeraire = agent.holdings[tkn_pair[1]]
+                if init_numeraire >= final_numeraire:
+                    raise
+                if init_asset != final_asset:
+                    raise
 
 def calculate_profit(init_agent, agent):
     profit = {tkn: agent.holdings[tkn] - init_agent.holdings[tkn] for tkn in agent.holdings}

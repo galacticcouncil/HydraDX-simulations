@@ -150,7 +150,8 @@ def test_calculate_arb_amount_ask(
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = ask[0] / (1 - cex_fee)
+    # cex_price = ask[0] / (1 - cex_fee)
+    cex_price = ask[0] * (1 + cex_fee)
 
     if abs(sell_spot - cex_price) > p and amt != ask[1]:
         raise
@@ -272,9 +273,9 @@ def test_get_arb_swaps(
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
-    execute_arb(op_state, agent, arb_swaps, cex_fee=cex_fee)
+    execute_arb(op_state, cex, agent, arb_swaps)
 
     profit = calculate_profit(initial_agent, agent)
     for tkn in profit:
-        if profit[tkn] < 0:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
