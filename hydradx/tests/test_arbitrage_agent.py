@@ -343,13 +343,11 @@ def test_max_trade(dotusd_price_mult: float, dot_amts: list, max_trade: float):
         trade_fee=cex_fee
     )
 
-    arb_swaps = get_arb_swaps(op_state, cex, max_trades={'DOT': max_trade})
+    arb_swaps = get_arb_swaps(op_state, cex, max_trades={('DOT', 'USDT'): max_trade})
 
     swap_list = arb_swaps[('DOT', 'USDT')]
-    if len(swap_list) != 1:
-        raise
-    swap = swap_list[0]
-    if swap[1]['amount'] > max_trade:
+    total_amt = sum([swap[1]['amount'] for swap in swap_list])
+    if total_amt > max_trade:
         raise
 
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
