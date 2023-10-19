@@ -30,7 +30,7 @@ def get_arb_swaps(op_state, cex, max_trades = {}, iters=20):
             for bid in bids:
                 test_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
                 if tkn in max_trades:
-                    amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, max_trade=max_trades[tkn], precision=1e-10, max_iters=iters)
+                    amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, precision=1e-10, max_iters=iters)
                 else:
                     amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, precision=1e-10, max_iters=iters)
                 state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
@@ -63,11 +63,14 @@ def get_arb_swaps(op_state, cex, max_trades = {}, iters=20):
                 swap_sell_amt += swap[1]['amount']
             elif swap[0] == 'buy':
                 swap_sell_amt -= swap[1]['amount']
-        swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': abs(swap_sell_amt)})]
+        if k[0] in max_trades:
+            swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': min(abs(swap_sell_amt), max_trades[k[0]])})]
+        else:
+            swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': abs(swap_sell_amt)})]
     return swaps
 
 
-def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: list, cex_fee: float, max_trade = None, min_amt = 1e-18, precision = 1e-15, max_iters=None):
+def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: list, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
 
     state = init_state.copy()
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
@@ -79,8 +82,6 @@ def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: lis
     # If buying the min amount moves the price too much, return 0
     if min_amt < 1e-18:
         raise
-    if max_trade is not None and min_amt > max_trade:
-        return 0
     test_agent = agent.copy()
     test_state = state.copy()
     test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=min_amt)
@@ -97,8 +98,6 @@ def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: lis
     amt_low = min_amt
     amt_high = bid[1]
     amt = min(amt_high, state.liquidity[tkn])
-    if max_trade is not None:
-        amt = min(amt, max_trade)
     i = 0
     best_buy_spot = buy_spot
     while cex_price - best_buy_spot > precision:
@@ -127,7 +126,7 @@ def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: lis
     return amt
 
 
-def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: list, cex_fee: float, max_trade = None, min_amt = 1e-18, precision = 1e-15, max_iters=None):
+def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: list, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
 
     state = init_state.copy()
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
@@ -140,8 +139,6 @@ def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: lis
     # If buying the min amount moves the price too much, return 0
     if min_amt < 1e-18:
         raise
-    if max_trade is not None and min_amt > max_trade:
-        return 0
     test_agent = agent.copy()
     test_state = state.copy()
     test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=min_amt)
@@ -157,8 +154,6 @@ def calculate_arb_amount_ask(init_state: OmnipoolState, tkn, numeraire, ask: lis
     amt_low = min_amt
     amt_high = ask[1]
     amt = amt_high
-    if max_trade is not None:
-        amt = min(amt, max_trade)
     i = 0
     best_sell_spot = sell_spot
     while best_sell_spot - cex_price > precision:
