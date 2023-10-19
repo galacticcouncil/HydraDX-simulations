@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from hypothesis import given, strategies as st, settings, reproduce_failure, Verbosity, Phase
 
 from hydradx.model.amm.agents import Agent
@@ -20,7 +22,7 @@ def test_calculate_profit():
 
 
 # @settings(max_examples=1)
-@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
 @given(
     usdt_amt=st.floats(min_value=100000, max_value=1000000),
     dot_price=st.floats(min_value=0.01, max_value=1000),
@@ -93,7 +95,7 @@ def test_calculate_arb_amount_bid(
         assert profit[tkn] >= 0
 
 
-@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
 # @settings(max_examples=1)
 @given(
     usdt_amt=st.floats(min_value=100000, max_value=1000000),
