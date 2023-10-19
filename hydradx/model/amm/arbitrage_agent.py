@@ -10,6 +10,7 @@ def get_arb_swaps(op_state, cex, max_trades = {}, iters=20):
     all_swaps = {}
     state = op_state.copy()
     for tkn_pair in order_book:
+        max_trade_tkn = max_trades[tkn_pair] if tkn_pair in max_trades else float('inf')
         pair_order_book = order_book[tkn_pair]
         tkn = tkn_pair[0]
         numeraire = tkn_pair[1]
@@ -37,8 +38,11 @@ def get_arb_swaps(op_state, cex, max_trades = {}, iters=20):
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
                 if amt == 0:
                     break
-                swaps.append(('buy', {'price': bid[0], 'amount': amt}))
+                swaps.append(('buy', {'price': bid[0], 'amount': min(amt, max_trade_tkn)}))
+                max_trade_tkn -= min(amt, max_trade_tkn)
                 if amt != bid[1]:
+                    break
+                if max_trade_tkn == 0:
                     break
         elif sell_spot > asks[0][0] / (1 - cex_fee):
             for ask in asks:
@@ -48,26 +52,30 @@ def get_arb_swaps(op_state, cex, max_trades = {}, iters=20):
                 op_spot = OmnipoolState.price(state, tkn, numeraire)
                 if amt == 0:
                     break
-                swaps.append(('sell', {'price': ask[0], 'amount': amt}))
+                swaps.append(('sell', {'price': ask[0], 'amount': min(amt, max_trade_tkn)}))
+                max_trade_tkn -= min(amt, max_trade_tkn)
                 if amt != ask[1]:
+                    break
+                if max_trade_tkn == 0:
                     break
 
         all_swaps[tkn_pair] = swaps
 
-    swaps = {}
-    for k in all_swaps:
-        swap_sell_amt = 0
-        swaps_k = all_swaps[k]
-        for swap in swaps_k:
-            if swap[0] == 'sell':
-                swap_sell_amt += swap[1]['amount']
-            elif swap[0] == 'buy':
-                swap_sell_amt -= swap[1]['amount']
-        if k[0] in max_trades:
-            swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': min(abs(swap_sell_amt), max_trades[k[0]])})]
-        else:
-            swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': abs(swap_sell_amt)})]
-    return swaps
+    # swaps = {}
+    # for k in all_swaps:
+    #     swap_sell_amt = 0
+    #     swaps_k = all_swaps[k]
+    #     for swap in swaps_k:
+    #         if swap[0] == 'sell':
+    #             swap_sell_amt += swap[1]['amount']
+    #         elif swap[0] == 'buy':
+    #             swap_sell_amt -= swap[1]['amount']
+    #     if k[0] in max_trades:
+    #         swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': min(abs(swap_sell_amt), max_trades[k[0]])})]
+    #     else:
+    #         swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': abs(swap_sell_amt)})]
+
+    return all_swaps
 
 
 def calculate_arb_amount_bid(init_state: OmnipoolState, tkn, numeraire, bid: list, cex_fee: float, min_amt = 1e-18, precision = 1e-15, max_iters=None):
