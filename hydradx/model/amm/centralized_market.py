@@ -214,9 +214,10 @@ class CentralizedMarket(AMM):
 
             agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
             agent.holdings[tkn_sell] -= tkns_sold / (1 - self.trade_fee)
-            # remove these afterward, so we don't mess up the iteration
-            self.order_book[(base, quote)].bids = self.order_book[(base, quote)].bids[remove_bids:]
-            self.order_book[(base, quote)].asks = self.order_book[(base, quote)].asks[remove_asks:]
+
+        # remove these afterward, so we don't mess up the iteration
+        self.order_book[(base, quote)].bids = self.order_book[(base, quote)].bids[remove_bids:]
+        self.order_book[(base, quote)].asks = self.order_book[(base, quote)].asks[remove_asks:]
 
         return self
 
