@@ -4,8 +4,6 @@ from .amm import AMM
 import bisect
 
 
-import bisect
-
 class SortedList(list):
     def __init__(self, iterable=None, reverse=False):
         super().__init__()
