@@ -78,7 +78,7 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            external_market=copy.copy(self.external_market),
+            external_market=self.external_market.copy(),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
@@ -341,7 +341,7 @@ def oscillate_prices(volatility: dict[str: float], trend: dict[str: float] = Non
                 # reverse trend
                 updown[tkn].direction = (updown[tkn].direction + 1) * -1 + 1
                 updown[tkn].inertia = 0
-            state.external_market[tkn] *= (
+            state.external_market[tkn] += (
                     updown[tkn].direction / 100 / updown[tkn].wavelength
                     + updown[tkn].bias / 100 / updown[tkn].wavelength
             )
