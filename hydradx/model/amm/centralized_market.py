@@ -4,6 +4,8 @@ from .amm import AMM
 import bisect
 
 
+import bisect
+
 class SortedList(list):
     def __init__(self, iterable=None, reverse=False):
         super().__init__()
@@ -226,6 +228,22 @@ class CentralizedMarket(AMM):
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def buy_spot(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn == numeraire:
+            return 1
+        elif (tkn, numeraire) in self.order_book:
+            return self.order_book[(tkn, numeraire)].asks[0][0] / (1 - self.trade_fee)
+        else:
+            return 0
+
+    def sell_spot(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn == numeraire:
+            return 1
+        elif (tkn, numeraire) in self.order_book:
+            return self.order_book[(tkn, numeraire)].bids[0][0] * (1 - self.trade_fee)
+        else:
+            return 0
 
 
 # faster
