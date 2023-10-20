@@ -346,7 +346,7 @@ def test_max_trade(dotusd_price_mult: float, dot_amts: list, max_trade: float):
     arb_swaps = get_arb_swaps(op_state, cex, max_trades={('DOT', 'USDT'): max_trade})
 
     swap_list = arb_swaps[('DOT', 'USDT')]
-    total_amt = sum([swap[1]['amount'] for swap in swap_list])
+    total_amt = sum([swap['cex']['amount'] for swap in swap_list])
     if total_amt > max_trade:
         raise
 
