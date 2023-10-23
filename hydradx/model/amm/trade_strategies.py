@@ -561,7 +561,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
     return TradeStrategy(strategy, name='omnipool arbitrage')
 
 
-def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 0.00001):
+def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 1e-6):
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
 
@@ -571,37 +571,61 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
         sorted_assets = sorted(list(
             stable_pool.liquidity.keys()), key=lambda k: state.external_market[k] / stable_pool.liquidity.get(k)
         )
-        buy_asset = sorted_assets[0]
-        sell_asset = sorted_assets[-1]
-        target_price = state.external_market[buy_asset] / state.external_market[sell_asset]
+        tkn_buy = sorted_assets[0]
+        tkn_sell = sorted_assets[-1]
+        target_price = state.external_market[tkn_buy] / state.external_market[tkn_sell]
 
         d = stable_pool.calculate_d()
 
         def price_after_trade(buy_amount: float = 0, sell_amount: float = 0):
             buy_amount = buy_amount or sell_amount
-            balance_out = stable_pool.liquidity[buy_asset] - buy_amount
+            balance_out = stable_pool.liquidity[tkn_buy] - buy_amount
             balance_in = stable_pool.calculate_y(
-                stable_pool.modified_balances(delta={buy_asset: -buy_amount}, omit=[sell_asset]), d
+                stable_pool.modified_balances(delta={tkn_buy: -buy_amount}, omit=[tkn_sell]), d
             )
             balances = list(stable_pool.liquidity.values())
-            balances[list(stable_pool.liquidity.keys()).index(buy_asset)] = balance_out
-            balances[list(stable_pool.liquidity.keys()).index(sell_asset)] = balance_in
+            balances[list(stable_pool.liquidity.keys()).index(tkn_buy)] = balance_out
+            balances[list(stable_pool.liquidity.keys()).index(tkn_sell)] = balance_in
             return stable_pool.price_at_balance(
                 balances,
                 d=stable_pool.d,
-                i=list(stable_pool.liquidity.keys()).index(buy_asset),
-                j=list(stable_pool.liquidity.keys()).index(sell_asset)
+                i=list(stable_pool.liquidity.keys()).index(tkn_buy),
+                j=list(stable_pool.liquidity.keys()).index(tkn_sell)
             )
 
-        delta_y = find_agent_delta_y(target_price, price_after_trade, precision=precision)
+        def find_trade_size(target_price, precision=precision):
+            i = 0
+            trade_increment = stable_pool.liquidity[tkn_buy] / 2
+            max_iterations = 50
+            b = trade_increment
+            p = price_after_trade(b)
+
+            while abs(p - target_price) > precision and i < max_iterations:
+                trade_increment /= 2
+                if p > target_price:
+                    b -= trade_increment
+                else:
+                    b += trade_increment
+                p = price_after_trade(b)
+                i += 1
+
+            return b
+
+        # delta_y = find_agent_delta_y(
+        #     target_price,
+        #     price_after_trade,
+        #     # starting_bid=stable_pool.liquidity[tkn_buy] / 2,
+        #     precision=precision
+        # )
+        delta_y = find_trade_size(target_price, precision=precision)
         delta_x = (
-            stable_pool.liquidity[sell_asset]
-            - stable_pool.calculate_y(stable_pool.modified_balances(delta={buy_asset: -delta_y}, omit=[sell_asset]), d)
+            stable_pool.liquidity[tkn_sell]
+            - stable_pool.calculate_y(stable_pool.modified_balances(delta={tkn_buy: -delta_y}, omit=[tkn_sell]), d)
         ) / (1 - stable_pool.trade_fee)
 
         projected_profit = (
-            delta_y * state.price(buy_asset)
-            + delta_x * state.price(sell_asset)
+            delta_y * state.price(tkn_buy)
+            + delta_x * state.price(tkn_sell)
         )
 
         if projected_profit <= minimum_profit:
@@ -611,7 +635,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
 
         agent = state.agents[agent_id]
         # old_wealth = sum([state.price(tkn) * agent.holdings[tkn] for tkn in agent.holdings.keys()])
-        state.pools[pool_id].swap(agent, tkn_sell=sell_asset, tkn_buy=buy_asset, buy_quantity=delta_y)
+        state.pools[pool_id].swap(agent, tkn_sell=tkn_sell, tkn_buy=tkn_buy, buy_quantity=delta_y)
         #
         # actual_profit = sum([state.price(tkn) * agent.holdings[tkn] for tkn in agent.holdings.keys()]) - old_wealth
         return state
