@@ -32,7 +32,8 @@ def get_arb_swaps(op_state, cex, buffer=0.0, max_trades={}, iters=20):
 
         if buy_spot < bids[0][0] * (1 - cex_fee):
             for bid in bids:
-                test_agent = Agent(holdings={'USDT': init_amt, 'DOT': init_amt, 'HDX': init_amt}, unique_id='bot')
+                holdings = {asset: init_amt for asset in cex.asset_list}
+                test_agent = Agent(holdings=holdings, unique_id='bot')
                 if tkn in max_trades:
                     amt = calculate_arb_amount_bid(state, tkn, numeraire, bid, cex_fee, buffer, precision=1e-10,
                                                    max_iters=iters)
@@ -55,7 +56,8 @@ def get_arb_swaps(op_state, cex, buffer=0.0, max_trades={}, iters=20):
                     break
         elif sell_spot > asks[0][0] / (1 - cex_fee):
             for ask in asks:
-                test_agent = Agent(holdings={'USDT': init_amt, 'DOT': init_amt, 'HDX': init_amt}, unique_id='bot')
+                holdings = {asset: init_amt for asset in cex.asset_list}
+                test_agent = Agent(holdings=holdings, unique_id='bot')
                 amt = calculate_arb_amount_ask(state, tkn, numeraire, ask, cex_fee, buffer, precision=1e-10, max_iters=iters)
                 state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
                 amt_out = test_agent.holdings[numeraire] - init_amt
@@ -102,7 +104,9 @@ def calculate_arb_amount_bid(
         max_iters=None
 ):
     state = init_state.copy()
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    init_amt = 1000000000
+    holdings = {asset: init_amt for asset in [tkn, numeraire]}
+    agent = Agent(holdings=holdings, unique_id='bot')
 
     asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
     lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
@@ -166,7 +170,9 @@ def calculate_arb_amount_ask(
         max_iters=None
 ):
     state = init_state.copy()
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    init_amt = 1000000000
+    holdings = {asset: init_amt for asset in [tkn, numeraire]}
+    agent = Agent(holdings=holdings, unique_id='bot')
 
     asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
     lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
