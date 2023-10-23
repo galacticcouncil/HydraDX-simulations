@@ -170,7 +170,7 @@ def test_buy_quote(quantity: float, trade_fee: float, order_book: OrderBook):
         [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
-    if value_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
 
 
@@ -219,5 +219,5 @@ def test_buy_base(quantity: float, order_book: OrderBook):
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
 
-    if value_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
