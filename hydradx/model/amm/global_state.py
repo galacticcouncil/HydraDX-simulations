@@ -3,8 +3,8 @@ import random
 from typing import Callable
 
 from .agents import Agent, AgentArchiveState
-from .amm import AMM, FeeMechanism
-from .omnipool_amm import OmnipoolState, OmnipoolArchiveState
+from .amm import AMM
+from .omnipool_amm import OmnipoolState
 
 
 class GlobalState:
@@ -16,13 +16,13 @@ class GlobalState:
                  save_data: dict = None,
                  archive_all: bool = True
                  ):
-        if external_market is None:
-            self.external_market = {}
-        else:
-            self.external_market = external_market
+        self.external_market = external_market or {}
+        if 'USD' not in self.external_market:
+            self.external_market = {'USD': 1, **self.external_market}
+
         # get a list of all assets contained in any member of the state
         self.asset_list = list(set(
-            [asset for pool in pools.values() for asset in pool.liquidity.keys()]
+            [asset for pool in pools.values() for asset in pool.asset_list]
             + [asset for agent in agents.values() for asset in agent.asset_list]
             + list(self.external_market.keys())
         ))
@@ -32,8 +32,6 @@ class GlobalState:
         self.pools = pools
         for pool_name in self.pools:
             self.pools[pool_name].unique_id = pool_name
-        if 'USD' not in self.external_market:
-            self.external_market['USD'] = 1  # default denomination
         for agent in self.agents.values():
             for asset in self.asset_list:
                 if asset not in agent.holdings:
@@ -48,9 +46,9 @@ class GlobalState:
         self.time_step = 0
         self.archive_all = archive_all
 
-    def price(self, asset: str):
-        if asset in self.external_market:
-            return self.external_market[asset]
+    def price(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn in self.external_market:
+            return self.external_market[tkn]
         else:
             return 0
 
@@ -80,7 +78,7 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            external_market=copy.copy(self.external_market),
+            external_market=self.external_market.copy(),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
@@ -267,7 +265,7 @@ class GlobalState:
 class ArchiveState:
     def __init__(self, state: GlobalState):
         self.time_step = state.time_step
-        self.external_market = {k: v for k, v in state.external_market.items()}
+        self.external_market = copy.copy(state.external_market)
         self.pools = {k: v.archive() for (k, v) in state.pools.items()}
         self.agents = {k: AgentArchiveState(v) for (k, v) in state.agents.items()}
 
