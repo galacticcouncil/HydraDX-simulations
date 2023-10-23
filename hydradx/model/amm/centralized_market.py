@@ -1,6 +1,72 @@
 import copy
 from .agents import Agent
 from .amm import AMM
+import bisect
+
+
+class SortedList(list):
+    def __init__(self, iterable=None, reverse=False):
+        super().__init__()
+        # Store the reverse flag as an attribute
+        self.reverse = reverse
+        if iterable is not None:
+            self.extend(iterable)
+
+    def append(self, item):
+        # Find the position where to insert the item
+        if self.reverse:
+            # Use bisect_left for descending order
+            index = bisect.bisect_left(self, item)
+        else:
+            # Use bisect_right for ascending order
+            index = bisect.bisect_right(self, item)
+        # Insert the item at that position
+        super().insert(index, item)
+
+    def extend(self, iterable):
+        # Extend the list by appending all items from the iterable
+        for item in iterable:
+            self.append(item)
+
+    def insert(self, index, item):
+        # Ignore the index and append the item
+        self.append(item)
+
+    def remove(self, item):
+        # Find the position of the item
+        if self.reverse:
+            # Use bisect_right for descending order
+            index = bisect.bisect_right(self, item)
+        else:
+            # Use bisect_left for ascending order
+            index = bisect.bisect_left(self, item)
+        # Check if the item is actually present
+        if index < len(self) and self[index] == item:
+            # Remove the item
+            super().pop(index)
+        else:
+            # Raise an exception
+            raise ValueError(f"{item} not in list")
+
+    def pop(self, index=-1):
+        # Check if the index is valid
+        if 0 <= index < len(self):
+            # Pop and return the item at the index
+            return super().pop(index)
+        else:
+            # Raise an exception
+            raise IndexError("pop index out of range")
+
+    @property
+    def reversed(self):
+        # Return a new sorted list with the opposite order
+        return SortedList(self, not self.reverse)
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            # Return a new SortedList with the sliced items and the same reverse flag
+            return SortedList(super().__getitem__(key), self.reverse)
+        return super().__getitem__(key)
 
 
 class OrderBook:
@@ -9,8 +75,8 @@ class OrderBook:
         bids and asks are in the form of (price: float, quantity: float) tuples
         could add an ID in there later
         """
-        self.bids = bids
-        self.asks = asks
+        self.bids = SortedList(bids, reverse=True)
+        self.asks = SortedList(asks)
 
     def copy(self):
         return copy.deepcopy(self)
@@ -18,8 +84,8 @@ class OrderBook:
 
 # faster
 OrderBook.copy = lambda self: OrderBook(
-    bids=[list(i for i in bid) for bid in self.bids],
-    asks=[list(i for i in ask) for ask in self.asks],
+    bids=[bid.copy() for bid in self.bids],
+    asks=[ask.copy() for ask in self.asks],
 )
 
 
@@ -30,6 +96,12 @@ class CentralizedMarket(AMM):
             asset_list: list[str] = None,
             trade_fee: float = 0
     ):
+        """
+        This is an 'AMM' even though it's not, because it's a convenient way to
+        interface with the rest of the codebase.
+        order_book is a dict of (base: str, quote: str) tuples to OrderBook objects.
+        The lists in the OrderBook are SortedLists which stay sorted by price
+        """
         super().__init__()
         self.order_book = order_book
         if asset_list:
@@ -67,18 +139,14 @@ class CentralizedMarket(AMM):
             else:
                 return self.fail_transaction('Order book not found.')
 
-        # make sure asks are sorted by price ascending and bids are sorted by price descending
-        self.order_book[(base, quote)].asks.sort(key=lambda x: x[0])
-        self.order_book[(base, quote)].bids.sort(key=lambda x: x[0], reverse=True)
-
+        remove_bids = 0
+        remove_asks = 0
         if sell_quantity > 0:
             sell_tkns_remaining = sell_quantity
             tkns_bought = 0
 
             if tkn_sell == base:
                 for bid in self.order_book[(base, quote)].bids:
-                    if sell_tkns_remaining <= 0:
-                        break
                     if bid[1] >= sell_tkns_remaining:
                         # this bid can fill the entire remaining order
                         tkns_bought += bid[0] * sell_tkns_remaining
@@ -89,11 +157,12 @@ class CentralizedMarket(AMM):
                         tkns_bought += bid[1] * bid[0]
                         sell_tkns_remaining -= bid[1]
                         bid[1] = 0
-
-            else:
-                for ask in self.order_book[(base, quote)].asks:
+                    if bid[1] == 0:
+                        remove_bids += 1
                     if sell_tkns_remaining <= 0:
                         break
+            else:
+                for ask in self.order_book[(base, quote)].asks:
                     if ask[0] * ask[1] >= sell_tkns_remaining:
                         tkns_bought += sell_tkns_remaining / ask[0]
                         ask[1] -= sell_tkns_remaining / ask[0]
@@ -102,10 +171,13 @@ class CentralizedMarket(AMM):
                         tkns_bought += ask[1]
                         sell_tkns_remaining -= ask[1] * ask[0]
                         ask[1] = 0
+                    if ask[1] == 0:
+                        remove_asks += 1
+                    if sell_tkns_remaining <= 0:
+                        break
 
             agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
             agent.holdings[tkn_buy] += tkns_bought * (1 - self.trade_fee)
-            self.order_book[(base, quote)].asks = [ask for ask in self.order_book[(base, quote)].asks if ask[1] > 0]
 
         elif buy_quantity > 0:
             buy_tkns_remaining = buy_quantity
@@ -113,8 +185,6 @@ class CentralizedMarket(AMM):
 
             if tkn_buy == base:
                 for ask in self.order_book[(base, quote)].asks:
-                    if buy_tkns_remaining <= 0:
-                        break
                     if ask[1] >= buy_tkns_remaining:
                         tkns_sold += buy_tkns_remaining * ask[0]
                         ask[1] -= buy_tkns_remaining
@@ -123,11 +193,12 @@ class CentralizedMarket(AMM):
                         tkns_sold += ask[0] * ask[1]
                         buy_tkns_remaining -= ask[1]
                         ask[1] = 0
-
-            else:
-                for bid in self.order_book[(base, quote)].bids:
+                    if ask[1] == 0:
+                        remove_asks += 1
                     if buy_tkns_remaining <= 0:
                         break
+            else:
+                for bid in self.order_book[(base, quote)].bids:
                     if bid[0] * bid[1] >= buy_tkns_remaining:
                         tkns_sold += buy_tkns_remaining / bid[0]
                         bid[1] -= buy_tkns_remaining / bid[0]
@@ -136,10 +207,17 @@ class CentralizedMarket(AMM):
                         tkns_sold += bid[1]
                         buy_tkns_remaining -= bid[0] * bid[1]
                         bid[1] = 0
+                    if bid[1] == 0:
+                        remove_bids += 1
+                    if buy_tkns_remaining <= 0:
+                        break
 
             agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-            agent.holdings[tkn_sell] -= tkns_sold / (1 - self.trade_fee)
-            self.order_book[(base, quote)].bids = [bid for bid in self.order_book[(base, quote)].bids if bid[1] > 0]
+            agent.holdings[tkn_sell] -= tkns_sold * (1 + self.trade_fee)
+
+        # remove these afterward, so we don't mess up the iteration
+        self.order_book[(base, quote)].bids = self.order_book[(base, quote)].bids[remove_bids:]
+        self.order_book[(base, quote)].asks = self.order_book[(base, quote)].asks[remove_asks:]
 
         return self
 
@@ -150,20 +228,21 @@ class CentralizedMarket(AMM):
     def copy(self):
         return copy.deepcopy(self)
 
-    def price(self, tkn: str, numeraire: str = 'USD') -> float:
-        if (tkn, numeraire) in self.order_book:
-            base = tkn
-            quote = numeraire
-        elif (numeraire, tkn) in self.order_book:
-            base = numeraire
-            quote = tkn
+    def buy_spot(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn == numeraire:
+            return 1
+        elif (tkn, numeraire) in self.order_book:
+            return self.order_book[(tkn, numeraire)].asks[0][0] * (1 + self.trade_fee)
         else:
             return 0
 
-        if tkn == base:
-            return sorted(self.order_book[(base, quote)].bids, reverse=True)[0][0]
+    def sell_spot(self, tkn: str, numeraire: str = 'USD') -> float:
+        if tkn == numeraire:
+            return 1
+        elif (tkn, numeraire) in self.order_book:
+            return self.order_book[(tkn, numeraire)].bids[0][0] * (1 - self.trade_fee)
         else:
-            return 1 / sorted(self.order_book[(base, quote)].asks)[0][0]
+            return 0
 
 
 # faster
