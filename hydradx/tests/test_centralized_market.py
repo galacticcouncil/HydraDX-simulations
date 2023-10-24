@@ -221,3 +221,17 @@ def test_buy_base(quantity: float, order_book: OrderBook):
 
     if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
+
+
+@given(
+    orderbook=order_book_strategy()
+)
+def test_orderbook(orderbook):
+    last_bid = orderbook.bids[0][0]
+    for bid in orderbook.bids:
+        if bid[0] > last_bid:
+            raise AssertionError('Bids are not sorted correctly.')
+    last_ask = orderbook.asks[0][0]
+    for ask in orderbook.asks:
+        if ask[0] < last_ask:
+            raise AssertionError('Asks are not sorted correctly.')
