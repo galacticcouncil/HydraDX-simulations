@@ -54,7 +54,7 @@ def get_arb_swaps(op_state, cex, buffer=0.0, max_trades={}, iters=20):
                     break
                 if max_trade_tkn == 0:
                     break
-        elif sell_spot > asks[0][0] / (1 - cex_fee):
+        elif sell_spot > asks[0][0] * (1 + cex_fee):
             for ask in asks:
                 holdings = {asset: init_amt for asset in cex.asset_list}
                 test_agent = Agent(holdings=holdings, unique_id='bot')
@@ -155,7 +155,7 @@ def calculate_arb_amount_bid(
         if max_iters is not None and i >= max_iters:
             break
 
-    return amt
+    return amt_low
 
 
 def calculate_arb_amount_ask(
@@ -221,7 +221,7 @@ def calculate_arb_amount_ask(
         if max_iters is not None and i >= max_iters:
             break
 
-    return amt
+    return amt_low
 
 
 def execute_arb(state, cex, agent, all_swaps, buffer=0.0):
