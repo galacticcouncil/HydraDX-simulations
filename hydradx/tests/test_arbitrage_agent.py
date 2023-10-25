@@ -21,6 +21,22 @@ def test_calculate_profit():
         assert calculated_profit[tkn] == profits[tkn]
 
 
+def test_calculate_profit_with_mapping():
+    init_agent = Agent(holdings={'USDT': 1000000, 'DOT': 2000000, 'HDX': 3000000, 'DAI': 4000000}, unique_id='bot')
+    agent = init_agent.copy()
+    profits = {'USDT': 100, 'DOT': 200, 'HDX': 0, 'DAI': 100}
+    agent.holdings['USDT'] += profits['USDT']
+    agent.holdings['DAI'] += profits['DAI']
+    agent.holdings['DOT'] += profits['DOT']
+    agent.holdings['HDX'] += profits['HDX']
+    mapping = {'DAI': 'USD', 'USDT': 'USD'}
+    calculated_profit = calculate_profit(init_agent, agent, mapping)
+
+    assert calculated_profit['USD'] == 200
+    assert calculated_profit['DOT'] == 200
+    assert calculated_profit['HDX'] == 0
+
+
 # @settings(max_examples=1)
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
 @given(
@@ -271,7 +287,11 @@ def test_get_arb_swaps(
         trade_fee=cex_fee
     )
 
-    arb_swaps = get_arb_swaps(op_state, cex)
+    # get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iters=20)
+
+    order_book_map = {k: k for k in order_book}
+
+    arb_swaps = get_arb_swaps(op_state, cex, order_book_map)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
@@ -343,7 +363,9 @@ def test_max_trade(dotusd_price_mult: float, dot_amts: list, max_trade: float):
         trade_fee=cex_fee
     )
 
-    arb_swaps = get_arb_swaps(op_state, cex, max_trades={('DOT', 'USDT'): max_trade})
+    order_book_map = {k: k for k in order_book}
+
+    arb_swaps = get_arb_swaps(op_state, cex, order_book_map, max_trades={('DOT', 'USDT'): max_trade})
 
     swap_list = arb_swaps[('DOT', 'USDT')]
     total_amt = sum([swap['cex']['amount'] for swap in swap_list])
