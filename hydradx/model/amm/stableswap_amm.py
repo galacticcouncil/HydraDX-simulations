@@ -1,7 +1,7 @@
 import copy
 
-from .amm import AMM
 from .agents import Agent
+from .amm import AMM
 
 
 class StableSwapPoolState(AMM):
@@ -63,7 +63,7 @@ class StableSwapPoolState(AMM):
 
     def update(self):
         self.time_step += 1
-        if self.target_amp_block > self.time_step:
+        if self.target_amp_block >= self.time_step:
             self.amplification += self.amp_change_step
 
     def set_amplification(self, amplification: float, duration: float):
@@ -123,7 +123,7 @@ class StableSwapPoolState(AMM):
 
         return y
 
-    # price is denominated in the first asset
+    # price is denominated in the first asset by default
     def spot_price(self, i: int = 1):
         """
         return the price of TKN denominated in NUMÉRAIRE
@@ -163,6 +163,22 @@ class StableSwapPoolState(AMM):
 
         return p
 
+    def share_price(self, numeraire: str = ''):
+        i = 0 if numeraire == '' else list(self.liquidity.keys()).index(numeraire)
+        d = self.calculate_d()
+        s = self.shares
+        a = self.amplification
+        n = self.n_coins
+
+        c = d
+        sorted_liq = sorted(self.liquidity.values())
+        for x in sorted_liq:
+            c = c * d / (n * x)
+        xi = self.liquidity[self.asset_list[i]]
+        ann = self.ann
+        p = (d * xi * ann + xi * (n + 1) * c - xi * d) / (xi * ann + c) / s
+        return p
+
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
         if delta:
@@ -186,29 +202,29 @@ class StableSwapPoolState(AMM):
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.asset_list}
         shares = round(self.shares, precision)
         return (
-                   f'Stable Swap Pool: {self.unique_id}\n'
-                   f'********************************\n'
-                   f'trade fee: {self.trade_fee}\n'
-                   f'shares: {shares}\n'
-                   f'amplification constant: {self.amplification}\n'
-                   f'tokens: (\n\n'
-               ) + '\n'.join(
+            f'Stable Swap Pool: {self.unique_id}\n'
+            f'********************************\n'
+            f'trade fee: {self.trade_fee}\n'
+            f'shares: {shares}\n'
+            f'amplification constant: {self.amplification}\n'
+            f'tokens: (\n\n'
+        ) + '\n'.join(
             [(
-                f'    {token}\n'
-                f'    quantity: {liquidity[token]}\n'
-                f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
-                + (
-                    f'    conversion metrics:\n'
-                    f'        price: {self.conversion_metrics[token]["price"]}\n'
-                    f'        old shares: {self.conversion_metrics[token]["old_shares"]}\n'
-                    f'        Omnipool shares: {self.conversion_metrics[token]["omnipool_shares"]}\n'
-                    f'        subpool shares: {self.conversion_metrics[token]["subpool_shares"]}\n'
-                    if token in self.conversion_metrics else ""
-                )
+                    f'    {token}\n'
+                    f'    quantity: {liquidity[token]}\n'
+                    f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
+                    + (
+                        f'    conversion metrics:\n'
+                        f'        price: {self.conversion_metrics[token]["price"]}\n'
+                        f'        old shares: {self.conversion_metrics[token]["old_shares"]}\n'
+                        f'        Omnipool shares: {self.conversion_metrics[token]["omnipool_shares"]}\n'
+                        f'        subpool shares: {self.conversion_metrics[token]["subpool_shares"]}\n'
+                        if token in self.conversion_metrics else ""
+                    )
             ) for token in self.asset_list]
         ) + '\n)\n' + (
-                   f'error message:{self.fail or "none"}'
-               )
+            f'error message:{self.fail or "none"}'
+        )
 
     def swap(
             self,
@@ -230,11 +246,10 @@ class StableSwapPoolState(AMM):
         elif self.liquidity[tkn_buy] <= buy_quantity:
             return self.fail_transaction('Pool has insufficient liquidity.')
 
-        new_agent = agent  # .copy()
-        if tkn_buy not in new_agent.holdings:
-            new_agent.holdings[tkn_buy] = 0
-        new_agent.holdings[tkn_buy] += buy_quantity
-        new_agent.holdings[tkn_sell] -= sell_quantity
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+        agent.holdings[tkn_buy] += buy_quantity
+        agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
@@ -444,9 +459,9 @@ class StableSwapPoolState(AMM):
         asset_reserve = 0
         for tkn, balance in self.liquidity.items():
             dx_expected = (
-                balance * d1 / initial_d - balance
+                    balance * d1 / initial_d - balance
             ) if tkn != tkn_add else (
-                y - balance * d1 / initial_d
+                    y - balance * d1 / initial_d
             )
             reduced_balance = balance - fee * dx_expected
             if tkn == tkn_add:
