@@ -97,7 +97,7 @@ def test_calculate_arb_amount_bid(
     buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
     cex_price = bid[0] * (1 - cex_fee)
 
-    if abs(buy_spot - cex_price) > p and amt != bid[1]:
+    if abs(buy_spot - cex_price)/cex_price > p and abs(buy_spot - cex_price) > p and amt != bid[1]:
         raise
 
     if amt == bid[1] and buy_spot > cex_price:
