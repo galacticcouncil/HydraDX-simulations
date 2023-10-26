@@ -42,10 +42,12 @@ class SortedList(list):
 
     @property
     def reversed(self):
+        # Return a new sorted list with the opposite order
         return SortedList(self, not self.reverse)
 
     def __getitem__(self, key):
         if isinstance(key, slice):
+            # Return a new SortedList with the sliced items and the same reverse flag
             return SortedList(super().__getitem__(key), self.reverse)
         return super().__getitem__(key)
 

@@ -171,7 +171,7 @@ def test_calculate_arb_amount_ask(
     # cex_price = ask[0] / (1 - cex_fee)
     cex_price = ask[0] * (1 + cex_fee)
 
-    if abs(sell_spot - cex_price) > p and amt != ask[1]:
+    if abs(sell_spot - cex_price)/cex_price > p and abs(sell_spot - cex_price) > p and amt != ask[1]:
         raise
 
     if amt == ask[1] and cex_price > sell_spot:

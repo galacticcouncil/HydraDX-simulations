@@ -222,7 +222,7 @@ def test_buy_base(quantity: float, order_book: OrderBook):
     if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
 
-
+        
 @given(
     orderbook=order_book_strategy()
 )
