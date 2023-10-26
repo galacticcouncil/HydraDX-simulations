@@ -2,12 +2,34 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 
-# def get_arb_swaps(op_state, order_book, lrna_fee=0.0, asset_fee=0.0, cex_fee=0.0, iters=20):
 def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iters=20):
     order_book = cex.order_book
     cex_fee = cex.trade_fee
     dex_slippage_tolerance = buffer / 2
     cex_slippage_tolerance = buffer / 2
+
+    arb_opps = []
+
+    for tkn_pair in order_book_map:
+        ob_tkn_pair = order_book_map[tkn_pair]
+        pair_order_book = order_book[ob_tkn_pair]
+        bid_price = pair_order_book.bids[0][0]
+        cex_sell_price = bid_price * (1 - cex_fee - buffer)
+        ask_price = pair_order_book.asks[0][0]
+        cex_buy_price = ask_price * (1 + cex_fee + buffer)
+        dex_spot_price = op_state.price(op_state, tkn_pair[0], tkn_pair[1])
+        tkn_asset_fee = op_state.asset_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+        numeraire_asset_fee = op_state.asset_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+        tkn_lrna_fee = op_state.lrna_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+        numeraire_lrna_fee = op_state.lrna_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+        dex_buy_price = dex_spot_price / ((1 - tkn_asset_fee) * (1 - numeraire_lrna_fee))
+        dex_sell_price = dex_spot_price * (1 - numeraire_asset_fee) * (1 - tkn_lrna_fee)
+
+        if dex_sell_price > cex_buy_price:  # buy from CEX, sell to DEX
+            arb_opps.append(((dex_sell_price - cex_buy_price) / cex_buy_price, tkn_pair))
+        elif dex_buy_price < cex_sell_price:  # buy from DEX, sell to CEX
+            arb_opps.append(((cex_sell_price - dex_buy_price) / dex_buy_price, tkn_pair))
+    arb_opps.sort(key=lambda x: x[0], reverse=True)
 
     init_amt = 1000000000
     all_swaps = {}
@@ -197,8 +219,8 @@ def calculate_arb_amount_ask(
     holdings = {asset: init_amt for asset in [tkn, numeraire]}
     agent = Agent(holdings=holdings, unique_id='bot')
 
-    asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
-    lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
+    asset_fee = state.asset_fee[numeraire].compute(tkn=numeraire)
+    lrna_fee = state.lrna_fee[tkn].compute(tkn=tkn)
     # cex_price = ask[0] / (1 - cex_fee)
     cex_price = ask[0] * (1 + cex_fee + buffer)
 
