@@ -197,8 +197,8 @@ def calculate_arb_amount_ask(
     holdings = {asset: init_amt for asset in [tkn, numeraire]}
     agent = Agent(holdings=holdings, unique_id='bot')
 
-    asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
-    lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
+    asset_fee = state.asset_fee[numeraire].compute(tkn=numeraire)
+    lrna_fee = state.lrna_fee[tkn].compute(tkn=tkn)
     # cex_price = ask[0] / (1 - cex_fee)
     cex_price = ask[0] * (1 + cex_fee + buffer)
 
