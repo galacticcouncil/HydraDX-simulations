@@ -162,13 +162,14 @@ def calculate_arb_amount_bid(
             test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
             op_spot = OmnipoolState.price(test_state, tkn, numeraire)
             buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
-            if amt_high == amt_low:  # full amount can be traded
-                break
         if amt >= state.liquidity[tkn] or buy_spot > cex_price or test_state.fail != '':
             amt_high = amt
         elif buy_spot < cex_price:
             amt_low = amt
             best_buy_spot = buy_spot
+
+        if amt_high == amt_low:  # full amount can be traded
+            break
 
         # only want to update amt if there will be another iteration
         if cex_price - best_buy_spot > precision:
@@ -228,13 +229,14 @@ def calculate_arb_amount_ask(
         test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
         op_spot = OmnipoolState.price(test_state, tkn, numeraire)
         sell_spot = op_spot * (1 - lrna_fee) * (1 - asset_fee)
-        if amt_high == amt_low:  # full amount can be traded
-            break
         if sell_spot < cex_price or test_state.fail != '':
             amt_high = amt
         elif sell_spot > cex_price:
             amt_low = amt
             best_sell_spot = sell_spot
+
+        if amt_high == amt_low:  # full amount can be traded
+            break
 
         # only want to update amt if there will be another iteration
         if best_sell_spot - cex_price > precision:
