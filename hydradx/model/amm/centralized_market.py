@@ -7,54 +7,37 @@ import bisect
 class SortedList(list):
     def __init__(self, iterable=None, reverse=False):
         super().__init__()
-        # Store the reverse flag as an attribute
         self.reverse = reverse
         if iterable is not None:
-            self.extend(iterable)
+            self.extend(sorted(iterable, reverse=self.reverse))
 
     def append(self, item):
-        # Find the position where to insert the item
         if self.reverse:
-            # Use bisect_left for descending order
-            index = bisect.bisect_left(self, item)
+            index = bisect.bisect_left([x for x in reversed(self)], item)
+            super().insert(len(self) - index, item)
         else:
-            # Use bisect_right for ascending order
             index = bisect.bisect_right(self, item)
-        # Insert the item at that position
-        super().insert(index, item)
+            super().insert(index, item)
 
     def extend(self, iterable):
-        # Extend the list by appending all items from the iterable
         for item in iterable:
             self.append(item)
 
     def insert(self, index, item):
-        # Ignore the index and append the item
         self.append(item)
 
     def remove(self, item):
-        # Find the position of the item
-        if self.reverse:
-            # Use bisect_right for descending order
-            index = bisect.bisect_right(self, item)
-        else:
-            # Use bisect_left for ascending order
-            index = bisect.bisect_left(self, item)
-        # Check if the item is actually present
+        index = bisect.bisect_left(self, item) if not self.reverse else bisect.bisect_left([x for x in reversed(self)], item)
+        index = len(self) - index - 1 if self.reverse else index
         if index < len(self) and self[index] == item:
-            # Remove the item
             super().pop(index)
         else:
-            # Raise an exception
             raise ValueError(f"{item} not in list")
 
     def pop(self, index=-1):
-        # Check if the index is valid
         if 0 <= index < len(self):
-            # Pop and return the item at the index
             return super().pop(index)
         else:
-            # Raise an exception
             raise IndexError("pop index out of range")
 
     @property
@@ -138,7 +121,7 @@ class CentralizedMarket(AMM):
                 base, quote = quote, base
             else:
                 return self.fail_transaction('Order book not found.')
-        
+
         remove_bids = 0
         remove_asks = 0
         if sell_quantity > 0:

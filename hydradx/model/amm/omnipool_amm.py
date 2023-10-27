@@ -293,7 +293,7 @@ class OmnipoolState(AMM):
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
         lrna_fee = self.lrna_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=(
                 self.liquidity[tkn_buy] * delta_Qj /
-                (self.lrna[tkn_buy] - delta_Qj)
+                (self.lrna[tkn_buy] + delta_Qj)
         ))
         # lrna_fee = self.last_lrna_fee[tkn_sell]
         delta_Qi = -delta_Qj / (1 - lrna_fee)
@@ -327,7 +327,7 @@ class OmnipoolState(AMM):
         """
         old_buy_liquidity = self.liquidity[tkn_buy] if tkn_buy in self.liquidity else 0
         old_sell_liquidity = self.liquidity[tkn_sell] if tkn_sell in self.liquidity else 0
-    
+
         if tkn_buy not in self.asset_list + ['LRNA'] or tkn_sell not in self.asset_list + ['LRNA']:
             # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
             return_val = self.stable_swap(
