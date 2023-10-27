@@ -197,6 +197,16 @@ def parse_kraken_orderbook(orderbook):
     return {'bids': bids, 'asks': asks}
 
 
+def get_unique_name(ls: list[str], name: str) -> str:
+    if name not in ls:
+        return name
+    else:
+        c = 1
+        while name + str(c).zfill(3) in ls:
+            c += 1
+        return name + str(c).zfill(3)
+
+
 # def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
 #     price_data = []
 #     with open(input_path + input_filename, newline='') as input_file:
