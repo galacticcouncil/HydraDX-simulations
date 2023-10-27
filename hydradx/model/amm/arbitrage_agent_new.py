@@ -9,22 +9,31 @@ def get_arb_opps(op_state, order_book, order_book_map, cex_fee, buffer):
     for tkn_pair in order_book_map:
         ob_tkn_pair = order_book_map[tkn_pair]
         pair_order_book = order_book[ob_tkn_pair]
-        bid_price = pair_order_book.bids[0][0]
-        cex_sell_price = bid_price * (1 - cex_fee - buffer)
-        ask_price = pair_order_book.asks[0][0]
-        cex_buy_price = ask_price * (1 + cex_fee + buffer)
-        dex_spot_price = OmnipoolState.price(op_state, tkn_pair[0], tkn_pair[1])
-        tkn_asset_fee = op_state.asset_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
-        numeraire_asset_fee = op_state.asset_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
-        tkn_lrna_fee = op_state.lrna_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
-        numeraire_lrna_fee = op_state.lrna_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
-        dex_buy_price = dex_spot_price / ((1 - tkn_asset_fee) * (1 - numeraire_lrna_fee))
-        dex_sell_price = dex_spot_price * (1 - numeraire_asset_fee) * (1 - tkn_lrna_fee)
 
-        if dex_sell_price > cex_buy_price:  # buy from CEX, sell to DEX
-            arb_opps.append(((dex_sell_price - cex_buy_price) / cex_buy_price, tkn_pair))
-        elif dex_buy_price < cex_sell_price:  # buy from DEX, sell to CEX
-            arb_opps.append(((cex_sell_price - dex_buy_price) / dex_buy_price, tkn_pair))
+        dex_spot_price = OmnipoolState.price(op_state, tkn_pair[0], tkn_pair[1])
+
+        if len(pair_order_book.bids) > 0:
+            bid_price = pair_order_book.bids[0][0]
+            cex_sell_price = bid_price * (1 - cex_fee - buffer)
+
+            numeraire_lrna_fee = op_state.lrna_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+            tkn_asset_fee = op_state.asset_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            dex_buy_price = dex_spot_price / ((1 - tkn_asset_fee) * (1 - numeraire_lrna_fee))
+
+            if dex_buy_price < cex_sell_price:  # buy from DEX, sell to CEX
+                arb_opps.append(((cex_sell_price - dex_buy_price) / dex_buy_price, tkn_pair))
+
+        if len(pair_order_book.asks) > 0:
+            ask_price = pair_order_book.asks[0][0]
+            cex_buy_price = ask_price * (1 + cex_fee + buffer)
+
+            numeraire_asset_fee = op_state.asset_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+            tkn_lrna_fee = op_state.lrna_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            dex_sell_price = dex_spot_price * (1 - numeraire_asset_fee) * (1 - tkn_lrna_fee)
+
+            if dex_sell_price > cex_buy_price:  # buy from CEX, sell to DEX
+                arb_opps.append(((dex_sell_price - cex_buy_price) / cex_buy_price, tkn_pair))
+
     arb_opps.sort(key=lambda x: x[0], reverse=True)
     return arb_opps
 
@@ -117,7 +126,7 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iter
                 max_trade_tkn -= min(amt, max_trade_tkn)
 
         new_arb_opps = get_arb_opps(state, order_book, order_book_map, cex_fee, buffer)
-        if arb_opps[0][0] == new_arb_opps[0][0]:
+        if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
             break
         arb_opps = new_arb_opps
 
