@@ -18,11 +18,9 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iter
     for tkn_pair in order_book_map:
         ob_tkn_pair = order_book_map[tkn_pair]
         max_trade_tkn = max_trades[tkn_pair] if tkn_pair in max_trades else float('inf')
-        pair_order_book = order_book[ob_tkn_pair]
+        bids, asks = order_book[ob_tkn_pair].bids, order_book[ob_tkn_pair].asks
         tkn = tkn_pair[0]
         numeraire = tkn_pair[1]
-        bids = sorted(pair_order_book.bids, key=lambda x: x[0], reverse=True)
-        asks = sorted(pair_order_book.asks, key=lambda x: x[0], reverse=False)
 
         tkn_lrna_fee = state.lrna_fee[tkn].compute(tkn=tkn)
         numeraire_lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
