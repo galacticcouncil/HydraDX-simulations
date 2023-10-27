@@ -1021,47 +1021,47 @@ class OmnipoolArchiveState:
 
 
 # Works with OmnipoolState *or* OmnipoolArchiveState
-def price(self: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '') -> float:
+def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '') -> float:
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
-    if self.liquidity[tkn] == 0:
+    if state.liquidity[tkn] == 0:
         return 0
     elif not denominator:
-        return lrna_price(self, tkn)
-    return self.lrna[tkn] / self.liquidity[tkn] / self.lrna[denominator] * self.liquidity[denominator]
+        return lrna_price(state, tkn)
+    return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
-def usd_price(self: OmnipoolState or OmnipoolArchiveState, tkn):
+def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
     if tkn == 'LRNA':
-        return 1 / self.lrna_price(self, self.stablecoin)
+        return 1 / state.lrna_price(state, state.stablecoin)
     else:
-        return price(self, tkn) / price(self, self.stablecoin)
+        return price(state, tkn) / price(state, state.stablecoin)
 
 
-def lrna_price(self: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
+def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
-    if self.liquidity[i] == 0:
+    if state.liquidity[i] == 0:
         return 0
     else:
-        return (self.lrna[i] / self.liquidity[i]) * (1 - fee)
+        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
 
 
-def asset_invariant(self: OmnipoolState, i: str) -> float:
+def asset_invariant(state: OmnipoolState, i: str) -> float:
     """Invariant for specific asset"""
-    return self.liquidity[i] * self.lrna[i]
+    return state.liquidity[i] * state.lrna[i]
 
 
-def swap_lrna_delta_Qi(self: OmnipoolState, delta_ri: float, i: str) -> float:
-    return self.lrna[i] * (- delta_ri / (self.liquidity[i] + delta_ri))
+def swap_lrna_delta_Qi(state: OmnipoolState, delta_ri: float, i: str) -> float:
+    return state.lrna[i] * (- delta_ri / (state.liquidity[i] + delta_ri))
 
 
-def swap_lrna_delta_Ri(self: OmnipoolState, delta_qi: float, i: str) -> float:
-    return self.liquidity[i] * (- delta_qi / (self.lrna[i] + delta_qi))
+def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
+    return state.liquidity[i] * (- delta_qi / (state.lrna[i] + delta_qi))
 
 
-def weight_i(self: OmnipoolState, i: str) -> float:
-    return self.lrna[i] / self.lrna_total
+def weight_i(state: OmnipoolState, i: str) -> float:
+    return state.lrna[i] / state.lrna_total
 
 
 def simulate_swap_lrna(
