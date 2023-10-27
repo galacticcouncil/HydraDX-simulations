@@ -3,6 +3,7 @@ import requests
 from zipfile import ZipFile
 import datetime
 import os
+from hydradxapi import HydraDX
 
 
 from .amm.global_state import GlobalState, AMM, value_assets
@@ -205,6 +206,36 @@ def get_unique_name(ls: list[str], name: str) -> str:
         while name + str(c).zfill(3) in ls:
             c += 1
         return name + str(c).zfill(3)
+
+
+def get_omnipool_data(rpc: str, n: int):
+    with HydraDX(rpc) as chain:
+
+        asset_list = []
+        fees = {}
+        tokens = {}
+        asset_map = {}
+
+        for i in range(n):
+            try:
+                md = chain.api.registry.asset_metadata(i)
+                state = chain.api.omnipool.asset_state(md.asset_id)
+                fee = chain.api.fees.asset_fees(md.asset_id)
+
+            except:
+                continue
+
+
+            tkn = get_unique_name(asset_list, md.symbol)
+            asset_list.append(tkn)
+            asset_map[i] = tkn
+            tokens[tkn] = {
+                'liquidity': state.reserve / 10 ** md.decimals,
+                'LRNA': state.hub_reserve / 10 ** 12
+            }
+            fees[tkn] = {"asset_fee": fee.asset_fee / 100, "protocol_fee": fee.protocol_fee / 100}
+
+    return asset_list, asset_map, tokens, fees
 
 
 # def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
