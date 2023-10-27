@@ -53,12 +53,12 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iter
         bids = sorted(pair_order_book.bids, key=lambda x: x[0], reverse=True)
         asks = sorted(pair_order_book.asks, key=lambda x: x[0], reverse=False)
 
-        tkn_lrna_fee = op_state.lrna_fee[tkn].compute(tkn=tkn)
-        numeraire_lrna_fee = op_state.lrna_fee[numeraire].compute(tkn=numeraire)
-        tkn_asset_fee = op_state.asset_fee[tkn].compute(tkn=tkn)
-        numeraire_asset_fee = op_state.asset_fee[numeraire].compute(tkn=numeraire)
+        tkn_lrna_fee = state.lrna_fee[tkn].compute(tkn=tkn)
+        numeraire_lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
+        tkn_asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
+        numeraire_asset_fee = state.asset_fee[numeraire].compute(tkn=numeraire)
 
-        op_spot = OmnipoolState.price(op_state, tkn, numeraire)
+        op_spot = OmnipoolState.price(state, tkn, numeraire)
         buy_spot = op_spot / ((1 - numeraire_lrna_fee) * (1 - tkn_asset_fee))
         sell_spot = op_spot * (1 - tkn_lrna_fee) * (1 - numeraire_asset_fee)
 
