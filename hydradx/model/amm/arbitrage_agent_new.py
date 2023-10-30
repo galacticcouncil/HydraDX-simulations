@@ -131,11 +131,11 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
                 if tkn in max_liquidity['cex']:
                     max_liquidity['cex'][tkn] += amt
                 if numeraire in max_liquidity['cex']:
-                    max_liquidity['cex'][numeraire] -= amt_in
+                    max_liquidity['cex'][numeraire] -= amt_out
                 if tkn in max_liquidity['dex']:
                     max_liquidity['dex'][tkn] -= amt
                 if numeraire in max_liquidity['dex']:
-                    max_liquidity['dex'][numeraire] += amt_in
+                    max_liquidity['dex'][numeraire] += amt_out
         new_arb_opps = get_arb_opps(state, order_book, order_book_map, cex_fee, buffer)
         if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
             break
