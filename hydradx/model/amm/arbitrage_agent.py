@@ -97,20 +97,6 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iter
 
         all_swaps[tkn_pair] = swaps
 
-    # swaps = {}
-    # for k in all_swaps:
-    #     swap_sell_amt = 0
-    #     swaps_k = all_swaps[k]
-    #     for swap in swaps_k:
-    #         if swap[0] == 'sell':
-    #             swap_sell_amt += swap[1]['amount']
-    #         elif swap[0] == 'buy':
-    #             swap_sell_amt -= swap[1]['amount']
-    #     if k[0] in max_trades:
-    #         swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': min(abs(swap_sell_amt), max_trades[k[0]])})]
-    #     else:
-    #         swaps[k] = [('sell' if swap_sell_amt > 0 else 'buy', {'amount': abs(swap_sell_amt)})]
-
     return all_swaps
 
 
@@ -121,6 +107,8 @@ def calculate_arb_amount_bid(
         cex_fee: float = 0.0,
         buffer: float = 0.0,
         min_amt=1e-18,
+        max_liq_tkn=float('inf'),
+        max_liq_num=float('inf'),
         precision=1e-15,
         max_iters=None
 ):
@@ -143,13 +131,15 @@ def calculate_arb_amount_bid(
     buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
     if min_amt >= state.liquidity[tkn] or buy_spot > cex_price or test_state.fail != '':
         return 0
+    if agent.holdings[numeraire] - test_agent.holdings[numeraire] > max_liq_num:
+        return 0
 
     op_spot = OmnipoolState.price(state, tkn, numeraire)
     buy_spot = op_spot / ((1 - lrna_fee) * (1 - asset_fee))
 
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
-    amt_high = bid[1]
+    amt_high = min(max_liq_tkn,bid[1])
     amt = min(amt_high, state.liquidity[tkn])
     i = 0
     best_buy_spot = buy_spot
@@ -163,8 +153,15 @@ def calculate_arb_amount_bid(
         if amt >= state.liquidity[tkn] or buy_spot > cex_price or test_state.fail != '':
             amt_high = amt
         elif buy_spot < cex_price:
-            amt_low = amt
-            best_buy_spot = buy_spot
+            if agent.holdings[numeraire] - test_agent.holdings[numeraire] > max_liq_num:
+                # best trade will involve trading max_liquidity, so can be calculated as a sell
+                test_agent = agent.copy()
+                test_state = state.copy()
+                test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, sell_quantity=max_liq_num)
+                return test_agent.holdings[tkn] - agent.holdings[tkn]
+            else:
+                amt_low = amt
+                best_buy_spot = buy_spot
 
         if amt_high == amt_low:  # full amount can be traded
             break
@@ -188,6 +185,8 @@ def calculate_arb_amount_ask(
         cex_fee: float = 0.0,
         buffer: float = 0.0,
         min_amt=1e-18,
+        max_liq_tkn=float('inf'),
+        max_liq_num=float('inf'),
         precision=1e-15,
         max_iters=None
 ):
@@ -217,7 +216,7 @@ def calculate_arb_amount_ask(
 
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
-    amt_high = ask[1]
+    amt_high = min(ask[1], max_liq_tkn)
     amt = amt_high
     i = 0
     best_sell_spot = sell_spot
@@ -230,8 +229,15 @@ def calculate_arb_amount_ask(
         if sell_spot < cex_price or test_state.fail != '':
             amt_high = amt
         elif sell_spot > cex_price:
-            amt_low = amt
-            best_sell_spot = sell_spot
+            if test_agent.holdings[numeraire] - agent.holdings[numeraire] > max_liq_num:
+                # best trade will involve trading max_liquidity, so can be calculated as a sell
+                test_agent = agent.copy()
+                test_state = state.copy()
+                test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, buy_quantity=max_liq_num)
+                return test_agent.holdings[tkn] - agent.holdings[tkn]
+            else:
+                amt_low = amt
+                best_sell_spot = sell_spot
 
         if amt_high == amt_low:  # full amount can be traded
             break
