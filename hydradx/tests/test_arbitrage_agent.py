@@ -477,6 +477,146 @@ def test_get_arb_swaps(
 @given(
     dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
     dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    hdxdot_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
+    hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    buffer=st.floats(min_value=0.0002, max_value=0.0100)
+)
+def test_get_arb_swaps_with_buffer(
+        dotusd_price_mult: float,
+        dot_amts: list,
+        hdxdot_price_mult: float,
+        hdxdot_amts: list,
+        hdxusd_price_mult: float,
+        hdxusd_amts: list,
+        buffer: float
+):
+
+    tokens = {
+        'USDT': {
+            'liquidity': 2062772,
+            'LRNA': 2062772
+        },
+        'DOT': {
+            'liquidity': 350000,
+            'LRNA': 1456248
+        },
+        'HDX': {
+            'liquidity': 108000000,
+            'LRNA': 494896
+        }
+    }
+
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    cex_fee = 0.0016
+
+    op_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot_adj = dotusd_spot * dotusd_price_mult
+
+    dot_usdt_order_book = {
+        'bids': [{'price': dotusd_spot_adj * 0.999, 'amount': dot_amts[0]},
+                 {'price': dotusd_spot_adj * 0.99, 'amount': dot_amts[1]},
+                 {'price': dotusd_spot_adj * 0.9, 'amount': dot_amts[2]},
+                 {'price': dotusd_spot_adj * 0.8, 'amount': dot_amts[3]}],
+        'asks': [{'price': dotusd_spot_adj * 1.001, 'amount': dot_amts[4]},
+                 {'price': dotusd_spot_adj * 1.01, 'amount': dot_amts[5]},
+                 {'price': dotusd_spot_adj * 1.1, 'amount': dot_amts[6]},
+                 {'price': dotusd_spot_adj * 1.2, 'amount': dot_amts[7]}]
+    }
+
+    dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
+
+    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
+
+    hdx_usdt_order_book = {
+        'bids': [{'price': hdxusd_spot_adj * 0.999, 'amount': hdxusd_amts[0]},
+                 {'price': hdxusd_spot_adj * 0.99, 'amount': hdxusd_amts[1]},
+                 {'price': hdxusd_spot_adj * 0.9, 'amount': hdxusd_amts[2]},
+                 {'price': hdxusd_spot_adj * 0.8, 'amount': hdxusd_amts[3]}],
+        'asks': [{'price': hdxusd_spot_adj * 1.001, 'amount': hdxusd_amts[4]},
+                 {'price': hdxusd_spot_adj * 1.01, 'amount': hdxusd_amts[5]},
+                 {'price': hdxusd_spot_adj * 1.1, 'amount': hdxusd_amts[6]},
+                 {'price': hdxusd_spot_adj * 1.2, 'amount': hdxusd_amts[7]}]
+    }
+
+    hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
+
+    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
+
+    hdx_dot_order_book = {
+        'bids': [{'price': hdxdot_spot_adj * 0.99, 'amount': hdxdot_amts[0]},
+                 {'price': hdxdot_spot_adj * 0.9, 'amount': hdxdot_amts[1]}],
+        'asks': [{'price': hdxdot_spot_adj * 1.01, 'amount': hdxdot_amts[2]},
+                 {'price': hdxdot_spot_adj * 1.1, 'amount': hdxdot_amts[3]}]
+    }
+
+    hdx_dot_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_dot_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_dot_order_book['asks']])
+
+    order_book = {
+        ('DOT', 'USDT'): dot_usdt_order_book_obj,
+        ('HDX', 'USDT'): hdx_usdt_order_book_obj,
+        ('HDX','DOT'): hdx_dot_order_book_obj
+    }
+
+    cex = CentralizedMarket(
+        order_book=order_book,
+        asset_list=['USDT', 'DOT', 'HDX'],
+        trade_fee=cex_fee
+    )
+
+    order_book_map = {k: k for k in order_book}
+
+    arb_swaps = get_arb_swaps(op_state, cex, order_book_map, buffer)
+    initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    agent = initial_agent.copy()
+
+    execute_arb(op_state, cex, agent, arb_swaps)
+
+    profit = calculate_profit(initial_agent, agent)
+    for tkn in profit:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            raise
+
+    # Check profitability if trades are executed at slippage limits
+
+    for tkn_pair in arb_swaps:
+        for swap in arb_swaps[tkn_pair]:
+            cex_swap = swap['cex']
+            dex_swap = swap['dex']
+            if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
+                raise
+            cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
+            if dex_swap['trade'] == 'sell':
+                dex_numeraire_amt = dex_swap['min_buy']
+                if dex_numeraire_amt < cex_numeraire_amt:
+                    raise
+                if dex_numeraire_amt > cex_numeraire_amt:
+                    raise
+            elif dex_swap['trade'] == 'buy':
+                dex_numeraire_amt = dex_swap['max_sell']
+                if dex_numeraire_amt > cex_numeraire_amt:
+                    raise
+                if dex_numeraire_amt < cex_numeraire_amt:
+                    raise
+
+
+@given(
+    dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
     max_trade=st.floats(min_value=1, max_value=100)
 )
 def test_max_liquidity(dotusd_price_mult: float, dot_amts: list, max_trade: float):
