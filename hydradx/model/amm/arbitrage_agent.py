@@ -234,7 +234,7 @@ def calculate_arb_amount_ask(
                 test_agent = agent.copy()
                 test_state = state.copy()
                 test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, buy_quantity=max_liq_num)
-                return test_agent.holdings[tkn] - agent.holdings[tkn]
+                return agent.holdings[tkn] - test_agent.holdings[tkn]
             else:
                 amt_low = amt
                 best_sell_spot = sell_spot
