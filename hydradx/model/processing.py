@@ -7,7 +7,6 @@ from hydradxapi import HydraDX
 
 from .amm.centralized_market import OrderBook
 from .amm.global_state import GlobalState, AMM, value_assets
-# from .amm.agents import Agent
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -197,10 +196,6 @@ def get_kraken_orderbook(tkn_pair: tuple, orderbook_url: str) -> OrderBook:
     y = resp.json()
     orderbook = y['result'][tkn_pair[0] + tkn_pair[1]]
 
-    # bids = [{'price': float(bid[0]), 'amount': float(bid[1])} for bid in orderbook['bids']]
-    # asks = [{'price': float(ask[0]), 'amount': float(ask[1])} for ask in orderbook['asks']]
-    #
-    # ob = {'bids': bids, 'asks': asks}
     ob_obj = OrderBook(
         bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
         asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
