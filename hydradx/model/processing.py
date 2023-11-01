@@ -4,8 +4,10 @@ from zipfile import ZipFile
 import datetime
 import os
 from hydradxapi import HydraDX
+import json
 
-from .amm.centralized_market import OrderBook
+from .amm.centralized_market import OrderBook, CentralizedMarket
+from .amm.omnipool_amm import OmnipoolState
 from .amm.global_state import GlobalState, AMM, value_assets
 
 cash_out = GlobalState.cash_out
@@ -230,7 +232,6 @@ def get_omnipool_data(rpc: str, n: int):
             except:
                 continue
 
-
             tkn = get_unique_name(asset_list, md.symbol)
             asset_list.append(tkn)
             asset_map[i] = tkn
@@ -254,3 +255,161 @@ def get_omnipool_data(rpc: str, n: int):
 #
 #     price_data.sort(key=lambda x: x.timestamp)
 #     return price_data
+
+
+def save_market_config():
+    asset_list, asset_map, tokens, fees = get_omnipool_data("wss://hydradx-rpc.dwellir.com", 24)
+    lrna_fee = {asset: fees[asset]['protocol_fee'] for asset in asset_list}
+    asset_fee = {asset: fees[asset]['asset_fee'] for asset in asset_list}
+
+    arb_list = [
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 10), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 23), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 2), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 7), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 18), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 21), "order_book": ("HDX", "USD")},
+        {"tkns": ("HDX", "USDT"), "tkn_ids": (0, 22), "order_book": ("HDX", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 10), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 23), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 2), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 7), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 18), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 21), "order_book": ("DOT", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": (5, 22), "order_book": ("DOT", "USD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 10), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 23), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 2), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 7), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 18), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 21), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (4, 22), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 10), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 23), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 2), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 7), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 18), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 21), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": (20, 22), "order_book": ("XETH", "ZUSD")},
+        {"tkns": ("DOT", "WETH"), "tkn_ids": (5, 4), "order_book": ("DOT", "ETH")},
+        {"tkns": ("DOT", "WETH"), "tkn_ids": (5, 20), "order_book": ("DOT", "ETH")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 10), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 23), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 2), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 7), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 18), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 21), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": (19, 22), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 10), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 23), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 2), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 7), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 18), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 21), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": (11, 22), "order_book": ("XXBT", "ZUSD")},
+        {"tkns": ("DOT", "WBTC"), "tkn_ids": (5, 19), "order_book": ("DOT", "XBT")},
+        {"tkns": ("DOT", "IBTC"), "tkn_ids": (5, 11), "order_book": ("DOT", "XBT")},
+        {"tkns": ("WETH", "WBTC"), "tkn_ids": (4, 19), "order_book": ("XETH", "XXBT")},
+        {"tkns": ("WETH", "IBTC"), "tkn_ids": (4, 11), "order_book": ("XETH", "XXBT")},
+        {"tkns": ("WETH", "WBTC"), "tkn_ids": (20, 19), "order_book": ("XETH", "XXBT")},
+        {"tkns": ("WETH", "IBTC"), "tkn_ids": (20, 11), "order_book": ("XETH", "XXBT")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 10), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 23), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 2), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 7), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 18), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 21), "order_book": ("ASTR", "USD")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": (9, 22), "order_book": ("ASTR", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 10), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 23), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 2), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 7), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 18), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 21), "order_book": ("CFG", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": (13, 22), "order_book": ("CFG", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 10), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 23), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 2), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 7), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 18), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 21), "order_book": ("BNC", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": (14, 22), "order_book": ("BNC", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 10), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 23), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 2), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 7), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 18), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 21), "order_book": ("GLMR", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": (16, 22), "order_book": ("GLMR", "USD")}
+    ]
+
+    ob_objs = {}
+    order_book_asset_list = []
+
+    for arb_cfg in arb_list:
+        tkn_pair = arb_cfg['order_book']
+        if tkn_pair not in ob_objs:
+            order_book_url = f'https://api.kraken.com/0/public/Depth?pair={tkn_pair[0]}{tkn_pair[1]}'
+            ob_objs[tkn_pair] = get_kraken_orderbook(tkn_pair, order_book_url)
+            for tkn in tkn_pair:
+                if tkn not in order_book_asset_list:
+                    order_book_asset_list.append(tkn)
+
+    cex_fee = 0.0016
+    # buffer = 0.0010
+
+    order_book_map = {}
+    for i in range(len(arb_list)):
+        base_id, quote_id = arb_list[i]['tkn_ids']
+        orderbook_tkn_pair = arb_list[i]['order_book']
+        if base_id in asset_map and quote_id in asset_map:
+            tkn_pair = (asset_map[base_id], asset_map[quote_id])
+            order_book_map[f"{tkn_pair[0]}, {tkn_pair[1]}"] = orderbook_tkn_pair
+
+    save_data = {
+        'tokens': tokens,
+        'lrna_fees': lrna_fee,
+        'asset_fees': asset_fee,
+        'order_books': {
+            f"{tkn_pair[0]}, {tkn_pair[1]}": {'bids': orderbook.bids, 'asks': orderbook.asks}
+            for tkn_pair, orderbook in ob_objs.items()
+        },
+        'order_book_map': order_book_map,
+        'cex_fee': cex_fee,
+    }
+    with open('./config.txt', 'w') as outfile:
+        json.dump(save_data, outfile)
+
+
+def load_market_config() -> (OmnipoolState, CentralizedMarket, dict):
+    with open('./config.txt', 'r') as openfile:
+        data = json.load(openfile)
+
+    tokens = data['tokens']
+    asset_fee = data['asset_fees']
+    lrna_fee = data['lrna_fees']
+    order_books = {
+        tuple([tkn for tkn in tkn_pair.split(', ')]): OrderBook(
+            bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
+            asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
+        )
+        for tkn_pair, orderbook in data['order_books'].items()
+    }
+    order_book_map = {
+        tuple([tkn for tkn in pair1.split(', ')]): tuple(pair2)
+        for pair1, pair2 in data['order_book_map'].items()
+    }
+    cex_fee = data['cex_fee']
+    return (
+        OmnipoolState(
+            tokens=tokens,
+            asset_fee=asset_fee,
+            lrna_fee=lrna_fee,
+            preferred_stablecoin='USDT',
+        ),
+        CentralizedMarket(
+            order_book=order_books,
+            trade_fee=cex_fee,
+        ),
+        order_book_map
+    )
