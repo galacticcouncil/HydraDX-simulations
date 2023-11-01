@@ -1,12 +1,16 @@
+import json
 from datetime import timedelta
 
 from hypothesis import given, strategies as st, settings, reproduce_failure, Verbosity, Phase
 
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.arbitrage_agent_new import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask
+from hydradx.model.amm.arbitrage_agent_new import (
+    calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, combine_step
+)
 from hydradx.model.amm.arbitrage_agent_new import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
+from hydradx.model.processing import save_market_config, load_market_config
 
 
 def test_calculate_profit():
@@ -153,3 +157,21 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
+
+
+def test_save():
+    save_market_config()
+
+
+def test_load():
+    omnipool, cex, order_book_map = load_market_config()
+    arb_swaps = get_arb_swaps(omnipool, cex, order_book_map)
+    initial_agent = Agent(holdings={tkn: 10000000000 for tkn in omnipool.asset_list + cex.asset_list}, unique_id='bot')
+    agent = initial_agent.copy()
+
+    execute_arb(omnipool, cex, agent, arb_swaps)
+
+    profit = calculate_profit(initial_agent, agent)
+    for tkn in profit:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            raise AssertionError('Loss detected.')
