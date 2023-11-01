@@ -1,5 +1,6 @@
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.centralized_market import CentralizedMarket
 from hydradx.model.amm.arbitrage_agent import calculate_arb_amount_bid, calculate_arb_amount_ask
 
 
@@ -103,7 +104,6 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
                 if numeraire in max_liquidity['dex']:
                     max_liquidity['dex'][numeraire] -= amt_in
 
-
         elif sell_spot > asks[0][0] * (1 + cex_fee + buffer):
             ask = asks[0]
             max_liq_tkn = max_liquidity['dex'][tkn] if tkn in max_liquidity['dex'] else float('inf')
@@ -142,6 +142,30 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
         arb_opps = new_arb_opps
 
     return all_swaps
+
+
+def combine_step(
+        omnipool: OmnipoolState,
+        cex: CentralizedMarket,
+        agent: Agent,
+        all_swaps: list[dict],
+):
+    # try to output a list of swaps which is strictly better than those which came in
+    # if not possible, return the original list
+    # print(all_swaps)
+    for i, swap in enumerate(all_swaps):
+        for next_swap in all_swaps[i + 1:]:
+            if swap['cex']['buy_asset'] == next_swap['cex']['sell_asset']:
+                # combine
+                if swap['cex']['trade'] == 'buy' and next_swap['cex']['trade'] == 'sell':
+                    # buy from CEX, sell to DEX
+                    # if swap['dex']['trade'] == 'buy' and next_swap['dex']['trade'] == 'sell':
+                    # find a new swap that skips the in-between part
+                    # for example, if I'm buying token x from the cex,
+                    # selling it to the dex, buying token y
+                    pass
+                elif swap['cex']['sell_asset'] == next_swap['cex']['buy_asset']:
+                    pass
 
 
 def execute_arb(state, cex, agent, all_swaps, buffer=0.0):
