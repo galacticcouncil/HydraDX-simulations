@@ -235,3 +235,41 @@ def test_orderbook(orderbook):
     for ask in orderbook.asks:
         if ask[0] < last_ask:
             raise AssertionError('Asks are not sorted correctly.')
+
+
+@given(
+    buy_quantity=st.floats(min_value=0.1, max_value=1000),
+    order_book=order_book_strategy()
+)
+def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float):
+    cex = CentralizedMarket(
+        order_book={
+            ('DOT', 'USD'): order_book
+        },
+    )
+    tkn_sell = 'DOT'
+    tkn_buy = 'USD'
+    sell_quantity = cex.calculate_sell_from_buy(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity,
+    )
+    agent = Agent(
+        holdings={'DOT': 10000000},
+    )
+    cex.swap(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity,
+        agent=agent
+    )
+    actual_sell_quantity = agent.initial_holdings[tkn_sell] - agent.holdings[tkn_sell]
+    if sell_quantity != pytest.approx(actual_sell_quantity):
+        raise AssertionError('Loss detected.')
+    buy_quantity2 = cex.calculate_buy_from_sell(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity,
+    )
+    if buy_quantity2 != pytest.approx(buy_quantity):
+        raise AssertionError('Loss detected.')
