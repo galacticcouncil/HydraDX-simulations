@@ -193,7 +193,8 @@ def import_monthly_binance_prices(
     return price_data
 
 
-def get_kraken_orderbook(tkn_pair: tuple, orderbook_url: str) -> OrderBook:
+def get_kraken_orderbook(tkn_pair: tuple) -> OrderBook:
+    orderbook_url = f'https://api.kraken.com/0/public/Depth?pair={tkn_pair[0]}{tkn_pair[1]}'
     resp = requests.get(orderbook_url)
     y = resp.json()
     orderbook = y['result'][tkn_pair[0] + tkn_pair[1]]
@@ -349,11 +350,13 @@ def save_market_config():
     for arb_cfg in arb_list:
         tkn_pair = arb_cfg['order_book']
         if tkn_pair not in ob_objs:
-            order_book_url = f'https://api.kraken.com/0/public/Depth?pair={tkn_pair[0]}{tkn_pair[1]}'
-            ob_objs[tkn_pair] = get_kraken_orderbook(tkn_pair, order_book_url)
+            ob_objs[tkn_pair] = get_kraken_orderbook(tkn_pair)
             for tkn in tkn_pair:
                 if tkn not in order_book_asset_list:
                     order_book_asset_list.append(tkn)
+
+    # # get this extra one
+    # ob_objs[('USD', 'XBT')] = get_kraken_orderbook(('USD', 'XBT'))
 
     cex_fee = 0.0016
     # buffer = 0.0010
@@ -381,7 +384,7 @@ def save_market_config():
         json.dump(save_data, outfile)
 
 
-def load_market_config() -> (OmnipoolState, CentralizedMarket, dict):
+def load_market_config() -> tuple[OmnipoolState, CentralizedMarket, dict]:
     with open('./config.txt', 'r') as openfile:
         data = json.load(openfile)
 
