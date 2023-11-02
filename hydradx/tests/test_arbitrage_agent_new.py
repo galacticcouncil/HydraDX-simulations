@@ -5,7 +5,7 @@ from hypothesis import given, strategies as st, settings, reproduce_failure, Ver
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_new import (
-    calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, combine_step
+    calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, combine_execute
 )
 from hydradx.model.amm.arbitrage_agent_new import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -171,7 +171,14 @@ def test_load():
 
     execute_arb(omnipool, cex, agent, arb_swaps)
 
-    profit = calculate_profit(initial_agent, agent)
+    asset_map = {}
+    for tkn_pair1, tkn_pair2 in order_book_map.items():
+        if tkn_pair1[0] != tkn_pair2[0]:
+            asset_map[tkn_pair1[0]] = tkn_pair2[0]
+        if tkn_pair1[1] != tkn_pair2[1]:
+            asset_map[tkn_pair1[1]] = tkn_pair2[1]
+
+    profit = calculate_profit(initial_agent, agent, asset_map)
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise AssertionError('Loss detected.')
