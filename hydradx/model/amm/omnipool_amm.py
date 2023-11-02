@@ -299,7 +299,42 @@ class OmnipoolState(AMM):
         delta_Qi = -delta_Qj / (1 - lrna_fee)
         delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
         return delta_Ri
-    
+
+    def calculate_buy_from_sell(
+            self,
+            tkn_buy: str,
+            tkn_sell: str,
+            sell_quantity: float
+    ):
+
+        """
+        Given a sell quantity, calculate the effective price, so we can execute it as a buy
+        """
+        delta_Ri = sell_quantity
+        delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
+        asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+        lrna_fee = self.lrna_fee[tkn_buy].compute(
+            tkn=tkn_buy,
+            delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
+                       / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
+        )
+
+        delta_Qt = -delta_Qi * (1 - lrna_fee)
+        delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
+        return -delta_Rj
+
+    def buy_spot(self, tkn: str, numeraire: str = 'USD'):
+        return (
+            price(self, tkn, numeraire)
+            / (1 - self.lrna_fee[numeraire].compute()) / (1 - self.asset_fee[tkn].compute())
+        )
+
+    def sell_spot(self, tkn: str, numeraire: str = 'USD'):
+        return (
+            price(self, tkn, numeraire)
+            * (1 - self.lrna_fee[numeraire].compute()) * (1 - self.asset_fee[tkn].compute())
+        )
+
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found
         if tkn in self.asset_list:
