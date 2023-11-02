@@ -1,9 +1,11 @@
+import json
 from csv import reader
 import requests
 from zipfile import ZipFile
 import datetime
 import os
 from hydradxapi import HydraDX
+import time
 
 from .amm.centralized_market import OrderBook
 from .amm.global_state import GlobalState, AMM, value_assets
@@ -191,16 +193,37 @@ def import_monthly_binance_prices(
     return price_data
 
 
-def get_kraken_orderbook(tkn_pair: tuple, orderbook_url: str) -> OrderBook:
-    resp = requests.get(orderbook_url)
-    y = resp.json()
-    orderbook = y['result'][tkn_pair[0] + tkn_pair[1]]
+def convert_kraken_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
+    orderbook = x['result'][tkn_pair[0] + tkn_pair[1]]
 
     ob_obj = OrderBook(
         bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
         asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
     )
     return ob_obj
+
+
+def get_kraken_orderbooks_from_file(input_path: str) -> dict:
+    file_ls = os.listdir(input_path)
+    ob_dict = {}
+    for filename in file_ls:
+        if filename.startswith('kraken_orderbook'):
+            tkn_pair = tuple(filename.split('_')[2].split('-'))
+            filepath = input_path + filename
+            with open(filepath, newline='') as input_file:
+                y = json.load(input_file)
+                ob_dict[tkn_pair] = convert_kraken_orderbook(tkn_pair, y)
+    return ob_dict
+
+
+def get_kraken_orderbook(tkn_pair: tuple, orderbook_url: str, archive: bool = False) -> OrderBook:
+    resp = requests.get(orderbook_url)
+    y = resp.json()
+    if archive:
+        ts = time.time()
+        with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
+            json.dump(y, output_file)
+    return convert_kraken_orderbook(tkn_pair, y)
 
 
 def get_unique_name(ls: list[str], name: str) -> str:
@@ -213,7 +236,7 @@ def get_unique_name(ls: list[str], name: str) -> str:
         return name + str(c).zfill(3)
 
 
-def get_omnipool_data(rpc: str, n: int):
+def get_omnipool_data(rpc: str, n: int, archive: bool = False):
     with HydraDX(rpc) as chain:
 
         asset_list = []
@@ -230,7 +253,6 @@ def get_omnipool_data(rpc: str, n: int):
             except:
                 continue
 
-
             tkn = get_unique_name(asset_list, md.symbol)
             asset_list.append(tkn)
             asset_map[i] = tkn
@@ -240,6 +262,37 @@ def get_omnipool_data(rpc: str, n: int):
             }
             fees[tkn] = {"asset_fee": fee.asset_fee / 100, "protocol_fee": fee.protocol_fee / 100}
 
+    if archive:
+        ts = time.time()
+        with open(f'./archive/omnipool_data_tokens_{ts}.json', 'w') as output_file:
+            json.dump(tokens, output_file)
+        with open(f'./archive/omnipool_data_fees_{ts}.json', 'w') as output_file:
+            json.dump(fees, output_file)
+        with open(f'./archive/omnipool_data_assetmap_{ts}.json', 'w') as output_file:
+            json.dump(asset_map, output_file)
+
+    return asset_list, asset_map, tokens, fees
+
+
+def get_omnipool_data_from_file(path: str):
+    file_ls = os.listdir(path)
+    tokens = {}
+    asset_map = {}
+    fees = {}
+    for filename in file_ls:
+        if filename.startswith('omnipool_data'):
+            if filename.split('_')[2] == 'tokens':
+                with open(path + filename, newline='') as json_file:
+                    tokens = json.load(json_file)
+            elif filename.split('_')[2] == 'fees':
+                with open(path + filename, newline='') as json_file:
+                    fees = json.load(json_file)
+            elif filename.split('_')[2] == 'assetmap':
+                with open(path + filename, newline='') as json_file:
+                    asset_map_str = json.load(json_file)
+                    asset_map = {int(k): v for k, v in asset_map_str.items()}
+
+    asset_list = list(asset_map.values())
     return asset_list, asset_map, tokens, fees
 
 

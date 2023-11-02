@@ -481,7 +481,7 @@ def test_get_arb_swaps(
     hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
     hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
     hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
-    buffer=st.floats(min_value=0.0002, max_value=0.0100)
+    buffer_ls=st.lists(st.floats(min_value=0.0002, max_value=0.0100), min_size=3, max_size=3),
 )
 def test_get_arb_swaps_with_buffer(
         dotusd_price_mult: float,
@@ -490,7 +490,7 @@ def test_get_arb_swaps_with_buffer(
         hdxdot_amts: list,
         hdxusd_price_mult: float,
         hdxusd_amts: list,
-        buffer: float
+        buffer_ls: float
 ):
 
     tokens = {
@@ -572,6 +572,8 @@ def test_get_arb_swaps_with_buffer(
         ('HDX','DOT'): hdx_dot_order_book_obj
     }
 
+    buffer = {k: buffer_ls[i] for i, k in enumerate(order_book)}
+
     cex = CentralizedMarket(
         order_book=order_book,
         asset_list=['USDT', 'DOT', 'HDX'],
@@ -593,25 +595,20 @@ def test_get_arb_swaps_with_buffer(
 
     # Check profitability if trades are executed at slippage limits
 
-    for tkn_pair in arb_swaps:
-        for swap in arb_swaps[tkn_pair]:
-            cex_swap = swap['cex']
-            dex_swap = swap['dex']
-            if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
+    for swap in arb_swaps:
+        cex_swap = swap['cex']
+        dex_swap = swap['dex']
+        if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
+            raise
+        cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
+        if dex_swap['trade'] == 'sell':
+            dex_numeraire_amt = dex_swap['min_buy']
+            if dex_numeraire_amt < cex_numeraire_amt:
                 raise
-            cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
-            if dex_swap['trade'] == 'sell':
-                dex_numeraire_amt = dex_swap['min_buy']
-                if dex_numeraire_amt < cex_numeraire_amt:
-                    raise
-                if dex_numeraire_amt > cex_numeraire_amt:
-                    raise
-            elif dex_swap['trade'] == 'buy':
-                dex_numeraire_amt = dex_swap['max_sell']
-                if dex_numeraire_amt > cex_numeraire_amt:
-                    raise
-                if dex_numeraire_amt < cex_numeraire_amt:
-                    raise
+        elif dex_swap['trade'] == 'buy':
+            dex_numeraire_amt = dex_swap['max_sell']
+            if dex_numeraire_amt > cex_numeraire_amt:
+                raise
 
 
 @given(
@@ -683,8 +680,13 @@ def test_max_liquidity(dotusd_price_mult: float, dot_amts: list, max_trade: floa
 
     arb_swaps = get_arb_swaps(op_state, cex, order_book_map, max_trades={('DOT', 'USDT'): max_trade})
 
-    swap_list = arb_swaps[('DOT', 'USDT')]
-    total_amt = sum([swap['cex']['amount'] for swap in swap_list])
+    dot_swaps = []
+    for swap in arb_swaps:
+        if swap['cex']['buy_asset'] == 'DOT' and swap['cex']['sell_asset'] == 'USDT':
+            dot_swaps.append(swap)
+        if swap['cex']['sell_asset'] == 'DOT' and swap['cex']['buy_asset'] == 'USDT':
+            dot_swaps.append(swap)
+    total_amt = sum([swap['cex']['amount'] for swap in dot_swaps])
     if total_amt > max_trade:
         raise
 
