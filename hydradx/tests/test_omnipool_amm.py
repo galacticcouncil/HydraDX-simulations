@@ -2467,3 +2467,36 @@ def test_trade_manipulation(
 
     if lp2_profit > no_lp_profit and trade_state_2.fail == '' and trade_state_3.fail == '':
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
+
+
+def test_calculate_buy_from_sell():
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 44000000, 'LRNA': 275143},
+            'WETH': {'liquidity': 1400, 'LRNA': 2276599},
+            'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
+            'DOT': {'liquidity': 88000, 'LRNA': 546461},
+            'WBTC': {'liquidity': 47, 'LRNA': 1145210},
+        },
+        preferred_stablecoin='DAI',
+        asset_fee=0.001,
+        lrna_fee=0.001
+    )
+    agent = Agent(holdings={tkn: 1000000000 for tkn in omnipool.asset_list})
+    sell_quantity = 1000
+    test_state, test_agent = omnipool.copy(), agent.copy()
+    test_state.swap(
+        agent=test_agent,
+        tkn_sell='DAI',
+        tkn_buy='DOT',
+        sell_quantity=sell_quantity
+    )
+    buy_quantity = omnipool.calculate_buy_from_sell(
+        tkn_sell='DAI',
+        tkn_buy='DOT',
+        sell_quantity=sell_quantity
+    )
+    right_answer = test_agent.holdings['DOT'] - test_agent.initial_holdings['DOT']
+    if buy_quantity != pytest.approx(right_answer):
+        raise AssertionError(f'buy_quantity {buy_quantity} != right_answer {right_answer}')
+
