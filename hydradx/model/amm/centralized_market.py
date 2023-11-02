@@ -77,7 +77,8 @@ class CentralizedMarket(AMM):
             self,
             order_book: dict[tuple[str, str], OrderBook],
             asset_list: list[str] = None,
-            trade_fee: float = 0
+            trade_fee: float = 0,
+            preferred_stablecoin: str = 'USD'
     ):
         """
         This is an 'AMM' even though it's not, because it's a convenient way to
@@ -95,6 +96,7 @@ class CentralizedMarket(AMM):
         if 'USD' not in self.asset_list:
             self.asset_list = ['USD', *self.asset_list]
         self.trade_fee = trade_fee
+        self.preferred_stablecoin = preferred_stablecoin
 
     def swap(
         self,
@@ -108,6 +110,8 @@ class CentralizedMarket(AMM):
             raise AssertionError('Agent does not have enough holdings to execute trade.')
         if tkn_sell not in self.asset_list or tkn_buy not in self.asset_list:
             raise AssertionError('Asset not found in centralized market.')
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
 
         if self.asset_list.index(tkn_sell) < self.asset_list.index(tkn_buy):
             base = tkn_buy
@@ -119,7 +123,7 @@ class CentralizedMarket(AMM):
         if (base, quote) not in self.order_book:
             if (quote, base) in self.order_book:
                 base, quote = quote, base
-            else:
+            if (base, quote) not in self.order_book:
                 return self.fail_transaction('Order book not found.')
 
         remove_bids = 0
@@ -203,6 +207,76 @@ class CentralizedMarket(AMM):
         self.order_book[(base, quote)].asks = self.order_book[(base, quote)].asks[remove_asks:]
 
         return self
+
+    def calculate_sell_from_buy(self, tkn_sell, tkn_buy, buy_quantity):
+        # given a buy order, calculate how much of tkn_sell would be sold
+        buy_tkns_remaining = buy_quantity
+        tkns_sold = 0
+
+        base, quote = tkn_sell, tkn_buy
+        if (base, quote) not in self.order_book:
+            if (quote, base) in self.order_book:
+                base, quote = quote, base
+            if (base, quote) not in self.order_book:
+                return 0
+
+        if tkn_buy == base:
+            for ask in self.order_book[(base, quote)].asks:
+                if ask[1] >= buy_tkns_remaining:
+                    tkns_sold += buy_tkns_remaining * ask[0]
+                    buy_tkns_remaining = 0
+                else:
+                    tkns_sold += ask[0] * ask[1]
+                    buy_tkns_remaining -= ask[1]
+                if buy_tkns_remaining <= 0:
+                    break
+        else:
+            for bid in self.order_book[(base, quote)].bids:
+                if bid[0] * bid[1] >= buy_tkns_remaining:
+                    tkns_sold += buy_tkns_remaining / bid[0]
+                    buy_tkns_remaining = 0
+                else:
+                    tkns_sold += bid[1]
+                    buy_tkns_remaining -= bid[0] * bid[1]
+                if buy_tkns_remaining <= 0:
+                    break
+        return tkns_sold * (1 + self.trade_fee)
+
+    def calculate_buy_from_sell(self, tkn_sell, tkn_buy, sell_quantity):
+        # given a sell order, calculate how much of tkn_buy would be bought
+        base, quote = tkn_sell, tkn_buy
+        if (base, quote) not in self.order_book:
+            if (quote, base) in self.order_book:
+                base, quote = quote, base
+            if (base, quote) not in self.order_book:
+                return 0
+
+        sell_tkns_remaining = sell_quantity
+        tkns_bought = 0
+
+        if tkn_sell == base:
+            for bid in self.order_book[(base, quote)].bids:
+                if bid[1] >= sell_tkns_remaining:
+                    # this bid can fill the entire remaining order
+                    tkns_bought += bid[0] * sell_tkns_remaining
+                    sell_tkns_remaining = 0
+                else:
+                    # this bid can partially fill the order
+                    tkns_bought += bid[1] * bid[0]
+                    sell_tkns_remaining -= bid[1]
+                if sell_tkns_remaining <= 0:
+                    break
+        else:
+            for ask in self.order_book[(base, quote)].asks:
+                if ask[0] * ask[1] >= sell_tkns_remaining:
+                    tkns_bought += sell_tkns_remaining / ask[0]
+                    sell_tkns_remaining = 0
+                else:
+                    tkns_bought += ask[1]
+                    sell_tkns_remaining -= ask[1] * ask[0]
+                if sell_tkns_remaining <= 0:
+                    break
+        return tkns_bought * (1 - self.trade_fee)
 
     def fail_transaction(self, error: str, **kwargs):
         self.fail = error
