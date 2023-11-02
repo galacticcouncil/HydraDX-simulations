@@ -106,8 +106,10 @@ class CentralizedMarket(AMM):
     ):
         if sell_quantity > agent.holdings[tkn_sell]:
             raise AssertionError('Agent does not have enough holdings to execute trade.')
-        if tkn_sell not in self.asset_list or tkn_buy not in self.asset_list:
-            raise AssertionError('Asset not found in centralized market.')
+        if tkn_sell not in self.asset_list:
+            raise AssertionError('Asset ' + tkn_sell + ' not found in centralized market.')
+        if tkn_buy not in self.asset_list:
+            raise AssertionError('Asset ' + tkn_buy + ' not found in centralized market.')
 
         if self.asset_list.index(tkn_sell) < self.asset_list.index(tkn_buy):
             base = tkn_buy
