@@ -96,7 +96,7 @@ class CentralizedMarket(AMM):
         if 'USD' not in self.asset_list:
             self.asset_list = ['USD', *self.asset_list]
         self.trade_fee = trade_fee
-        self.preferred_stablecoin = preferred_stablecoin
+        self.stablecoin = preferred_stablecoin
 
     def swap(
         self,
