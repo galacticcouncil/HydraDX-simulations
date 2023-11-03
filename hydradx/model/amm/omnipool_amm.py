@@ -323,13 +323,17 @@ class OmnipoolState(AMM):
         delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         return -delta_Rj
 
-    def buy_spot(self, tkn: str, numeraire: str = 'USD'):
+    def buy_spot(self, tkn: str, numeraire: str = ''):
+        if numeraire == '':
+            numeraire = self.stablecoin
         return (
             price(self, tkn, numeraire)
             / (1 - self.lrna_fee[numeraire].compute()) / (1 - self.asset_fee[tkn].compute())
         )
 
-    def sell_spot(self, tkn: str, numeraire: str = 'USD'):
+    def sell_spot(self, tkn: str, numeraire: str = ''):
+        if numeraire == '':
+            numeraire = self.stablecoin
         return (
             price(self, tkn, numeraire)
             * (1 - self.lrna_fee[numeraire].compute()) * (1 - self.asset_fee[tkn].compute())
