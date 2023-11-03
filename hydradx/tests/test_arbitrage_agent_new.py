@@ -187,13 +187,34 @@ def test_load():
 def test_combine_step():
     omnipool, cex, order_book_map = load_market_config()
     arb_swaps = get_arb_swaps(omnipool, cex, order_book_map)
-    initial_agent = Agent(holdings={tkn: 10000000000 for tkn in omnipool.asset_list + cex.asset_list}, unique_id='bot')
     asset_map = {}
     for tkn_pair1, tkn_pair2 in order_book_map.items():
         if tkn_pair1[0] != tkn_pair2[0]:
             asset_map[tkn_pair1[0]] = tkn_pair2[0]
         if tkn_pair1[1] != tkn_pair2[1]:
             asset_map[tkn_pair1[1]] = tkn_pair2[1]
+    asset_map.update({
+        'WETH': 'ETH',
+        'XETH': 'ETH',
+        'XXBT': 'BTC',
+        'WBTC': 'BTC',
+        'ZUSD': 'USD',
+        'USDT': 'USD',
+        'USDC': 'USD',
+        'DAI': 'USD',
+        'USDT001': 'USD',
+        'DAI001': 'USD',
+        'WETH001': 'ETH',
+        'WBTC001': 'BTC',
+        'iBTC': 'BTC',
+        'XBT': 'BTC'
+    })
+    initial_agent = Agent(
+        holdings={
+            tkn: 10000000000
+            for tkn in omnipool.asset_list + cex.asset_list + list(asset_map.values())
+        }
+    )
 
     test_omnipool, test_cex, test_agent = omnipool.copy(), cex.copy(), initial_agent.copy()
     execute_arb(test_omnipool, test_cex, test_agent, arb_swaps)
@@ -204,6 +225,14 @@ def test_combine_step():
     combine_execute(combine_omnipool, combine_cex, combine_agent, arb_swaps)
     combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
     combined_profit_total = sum(quantity * combine_cex.sell_spot(tkn) for tkn, quantity in combined_profit.items())
+
+    for tkn in profit:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            raise AssertionError('Loss detected.')
+
+    for tkn in combined_profit:
+        if combined_profit[tkn] < -1e-10:
+            raise AssertionError('Loss detected.')
 
     if profit_total > combined_profit_total:
         raise AssertionError('Loss detected.')
