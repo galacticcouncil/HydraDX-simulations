@@ -740,18 +740,26 @@ def test_get_arb_swaps_simple_with_buffer(
     for swap in arb_swaps:
         cex_swap = swap['cex']
         dex_swap = swap['dex']
+        # check that trades match
         if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
             raise
         cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
         if dex_swap['trade'] == 'sell':
             dex_numeraire_amt = dex_swap['min_buy']
+            # check profitability
             if dex_numeraire_amt < cex_numeraire_amt:
+                raise
+            # check that cex slippage price is worse than cex spot price
+            if cex_swap['price'] < dex_swap['price']:
                 raise
         elif dex_swap['trade'] == 'buy':
             dex_numeraire_amt = dex_swap['max_sell']
+            # check profitability
             if dex_numeraire_amt > cex_numeraire_amt:
                 raise
-
+            # check that cex slippage price is worse than cex spot price
+            if cex_swap['price'] > dex_swap['price']:
+                raise
 
 @given(
     dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
