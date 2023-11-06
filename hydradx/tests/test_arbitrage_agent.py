@@ -478,6 +478,36 @@ def test_process_next_swap(
 
     swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, order_book_map, buffer, max_liquidity, iters)
     if swap:
+
+        cex_swap, dex_swap = swap['cex'], swap['dex']
+        dex_spot = op_state.price(op_state, 'DOT', 'USDT')
+        # check that trades match
+        if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
+            raise
+        cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
+        if dex_swap['trade'] == 'sell':
+            dex_numeraire_amt = dex_swap['min_buy']
+            # check profitability
+            if dex_numeraire_amt < cex_numeraire_amt:
+                raise
+            # check that dex slippage price is worse than dex spot price
+            if dex_swap['min_buy'] / dex_swap['amount'] > dex_spot:
+                raise
+            # check that cex slippage price is worse than cex spot price
+            if cex_swap['price'] < dex_swap['price']:
+                raise
+        elif dex_swap['trade'] == 'buy':
+            dex_numeraire_amt = dex_swap['max_sell']
+            # check profitability
+            if dex_numeraire_amt > cex_numeraire_amt:
+                raise
+            # check that dex slippage price is worse than dex spot price
+            if dex_swap['max_sell'] / dex_swap['amount'] < dex_spot:
+                raise
+            # check that cex slippage price is worse than cex spot price
+            if cex_swap['price'] > dex_swap['price']:
+                raise
+
         arb_swaps = [swap]
 
         initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
@@ -735,31 +765,6 @@ def test_get_arb_swaps_simple_with_buffer(
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
 
-    # Check profitability if trades are executed at slippage limits
-
-    for swap in arb_swaps:
-        cex_swap = swap['cex']
-        dex_swap = swap['dex']
-        # check that trades match
-        if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
-            raise
-        cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
-        if dex_swap['trade'] == 'sell':
-            dex_numeraire_amt = dex_swap['min_buy']
-            # check profitability
-            if dex_numeraire_amt < cex_numeraire_amt:
-                raise
-            # check that cex slippage price is worse than cex spot price
-            if cex_swap['price'] < dex_swap['price']:
-                raise
-        elif dex_swap['trade'] == 'buy':
-            dex_numeraire_amt = dex_swap['max_sell']
-            # check profitability
-            if dex_numeraire_amt > cex_numeraire_amt:
-                raise
-            # check that cex slippage price is worse than cex spot price
-            if cex_swap['price'] > dex_swap['price']:
-                raise
 
 @given(
     dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
@@ -877,3 +882,6 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
+
+
+
