@@ -41,7 +41,7 @@ def get_arb_opps(op_state, order_book, order_book_map, cex_fee, buffer):
     return arb_opps
 
 
-def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex': {}, 'dex': {}}, iters=20):
+def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex': {}, 'dex': {}}, iters=20) -> list:
     cex_fee = cex.trade_fee
     dex_slippage_tolerance = buffer / 2
     cex_slippage_tolerance = buffer / 2
@@ -83,20 +83,22 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
                 state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
                 amt_in = init_amt - test_agent.holdings[numeraire]
                 test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[0], tkn_buy=ob_tkn_pair[1], sell_quantity=amt)
-                op_spot = OmnipoolState.price(state, tkn, numeraire)
-                all_swaps.append({'dex': {'trade': 'buy',
-                                      'buy_asset': tkn,
-                                      'sell_asset': numeraire,
-                                      'price': bid[0],
-                                      'amount': amt,
-                                      'max_sell': amt_in * (1 + dex_slippage_tolerance)
-                                      },
-                              'cex': {'trade': 'sell',
-                                      'buy_asset': ob_tkn_pair[1],
-                                      'sell_asset': ob_tkn_pair[0],
-                                      'price': bid[0] * (1 - cex_slippage_tolerance),
-                                      'amount': amt
-                                      }})
+                all_swaps += [{
+                        'exchange': 'dex',
+                        'trade': 'buy',
+                        'buy_asset': tkn,
+                        'sell_asset': numeraire,
+                        'price': bid[0],
+                        'amount': amt,
+                        'max_sell': amt_in * (1 + dex_slippage_tolerance)
+                    }, {
+                        'exchange': 'cex',
+                        'trade': 'sell',
+                        'buy_asset': ob_tkn_pair[1],
+                        'sell_asset': ob_tkn_pair[0],
+                        'price': bid[0] * (1 - cex_slippage_tolerance),
+                        'amount': amt
+                    }]
                 if tkn in max_liquidity['cex']:
                     max_liquidity['cex'][tkn] -= amt
                 if numeraire in max_liquidity['cex']:
@@ -116,20 +118,23 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
                 state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
                 amt_out = test_agent.holdings[numeraire] - init_amt
                 test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[1], tkn_buy=ob_tkn_pair[0], buy_quantity=amt)
-                op_spot = OmnipoolState.price(state, tkn, numeraire)
 
-                all_swaps.append({'dex': {'trade': 'sell',
-                                      'buy_asset': numeraire,
-                                      'sell_asset': tkn,
-                                      'price': ask[0],
-                                      'amount': amt,
-                                      'min_buy': amt_out * (1 - dex_slippage_tolerance)},
-                              'cex': {'trade': 'buy',
-                                      'buy_asset': ob_tkn_pair[0],
-                                      'sell_asset': ob_tkn_pair[1],
-                                      'price': ask[0] * (1 + cex_slippage_tolerance),
-                                      'amount': amt
-                                      }})
+                all_swaps += [{
+                        'exchange': 'dex',
+                        'trade': 'sell',
+                        'buy_asset': numeraire,
+                        'sell_asset': tkn,
+                        'price': ask[0],
+                        'amount': amt,
+                        'min_buy': amt_out * (1 - dex_slippage_tolerance)
+                    }, {
+                        'exchange': 'cex',
+                        'trade': 'buy',
+                        'buy_asset': ob_tkn_pair[0],
+                        'sell_asset': ob_tkn_pair[1],
+                        'price': ask[0] * (1 + cex_slippage_tolerance),
+                        'amount': amt
+                    }]
                 if tkn in max_liquidity['cex']:
                     max_liquidity['cex'][tkn] += amt
                 if numeraire in max_liquidity['cex']:
@@ -146,31 +151,40 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
     return all_swaps
 
 
-def combine_execute(
+def combine_swaps(
         dex: OmnipoolState,
         cex: CentralizedMarket,
         agent: Agent,
         all_swaps: list[dict],
+        asset_map: dict[str, str],
 ):
     # take the list of swaps and try to get the same result more efficiently
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
-    exchanges = (cex, 'cex'), (dex, 'dex')
+    exchanges = {'cex': cex, 'dex': dex}
     net_swaps = {'dex': {}, 'cex': {}}
+    return_swaps = []
 
-    for ex, ex_name in exchanges:
+    for ex_name, ex in exchanges.items():
 
         test_agent = agent.copy()
         test_ex = ex.copy()
+        default_swaps = list(filter(lambda s: s['exchange'] == ex_name, all_swaps))
 
-        for swap in all_swaps:
-            tkn_sell = swap[ex_name]['sell_asset']
-            tkn_buy = swap[ex_name]['buy_asset']
-            if swap[ex_name]['trade'] == 'buy':
-                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap[ex_name]['amount'])
+        for swap in default_swaps:
+            tkn_sell = swap['sell_asset']
+            tkn_buy = swap['buy_asset']
+            if swap['trade'] == 'buy':
+                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
             else:
-                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap[ex_name]['amount'])
+                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
         net_swaps[ex_name] = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
+        default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
+        default_profit_usd = ex.value_assets(default_profit, asset_map)
+
+        test_ex = ex.copy()
+        test_agent = agent.copy()
+        optimized_swaps = []
 
         buy_tkns = {tkn: 0 for tkn in ex.asset_list}
         buy_tkns.update({
@@ -195,8 +209,11 @@ def combine_execute(
                     for tkn, price in filter(
                         lambda x: x[1] > 0 and x[0] != tkn_buy,  # all tokens we want to sell for which there is a price
                         {
-                            x: ex.sell_spot(x, numeraire=tkn_buy)
-                            or (ex.buy_spot(tkn_buy, numeraire=x) if ex.buy_spot(tkn_buy, numeraire=x) > 0 else 0)
+                            x: test_ex.sell_spot(x, numeraire=tkn_buy)
+                            or (
+                                   test_ex.buy_spot(tkn_buy, numeraire=x)
+                                   if test_ex.buy_spot(tkn_buy, numeraire=x) > 0 else 0
+                               )
                             for x in sell_tkns
                         }.items()
                     )
@@ -204,73 +221,142 @@ def combine_execute(
 
                 for tkn_sell in best_sell_tkns:
                     sell_quantity, price = best_sell_tkns[tkn_sell]
-                    max_buy = ex.calculate_buy_from_sell(
+                    max_buy = test_ex.calculate_buy_from_sell(
                         tkn_sell=tkn_sell,
                         tkn_buy=tkn_buy,
                         sell_quantity=sell_quantity
                     )
-                    if max_buy == 0:
+                    if max_buy <= 0:
                         continue
                     if max_buy <= buy_tkns[tkn_buy]:
                         # buy as much as we can without going over sell_quantity
-                        previous_tkn_sell = agent.holdings[tkn_sell]
-                        ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=max_buy)
+                        previous_tkn_sell = test_agent.holdings[tkn_sell]
+                        test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=max_buy)
+                        optimized_swaps.append({
+                            'exchange': ex_name,
+                            'trade': 'buy',
+                            'buy_asset': tkn_buy,
+                            'sell_asset': tkn_sell,
+                            'amount': max_buy
+                        })
                         buy_tkns[tkn_buy] -= max_buy
-                        # actual_swaps[tkn_buy] -= max_buy
-                        # actual_swaps[tkn_sell] -= agent.holdings[tkn_sell] - previous_tkn_sell
                         if tkn_sell in sell_tkns:
-                            sell_tkns[tkn_sell] -= previous_tkn_sell - agent.holdings[tkn_sell]
+                            sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                     else:
                         # buy enough to satisfy buy_quantity
-                        previous_tkn_sell = agent.holdings[tkn_sell]
-                        ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_tkns[tkn_buy])
+                        previous_tkn_sell = test_agent.holdings[tkn_sell]
+                        test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_tkns[tkn_buy])
                         if tkn_sell in sell_tkns:
-                            sell_tkns[tkn_sell] -= previous_tkn_sell - agent.holdings[tkn_sell]
-                        # actual_swaps[tkn_buy] -= buy_tkns[tkn_buy]
-                        # actual_swaps[tkn_sell] -= agent.holdings[tkn_sell] - previous_tkn_sell
+                            sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
+                        optimized_swaps.append({
+                            'exchange': ex_name,
+                            'trade': 'buy',
+                            'buy_asset': tkn_buy,
+                            'sell_asset': tkn_sell,
+                            'amount': buy_tkns[tkn_buy]
+                        })
                         buy_tkns[tkn_buy] = 0
                         break
 
-
-def execute_arb(state, cex, agent, all_swaps, buffer=0.0):
-
-    for swap in all_swaps:
-        tkn_buy_dex = swap['dex']['buy_asset']
-        tkn_sell_dex = swap['dex']['sell_asset']
-        tkn_buy_cex = swap['cex']['buy_asset']
-        tkn_sell_cex = swap['cex']['sell_asset']
-        init_agent = agent.copy()
-        if swap['dex']['trade'] == 'buy' and swap['cex']['trade'] == 'sell':
-            # omnipool leg
-            state.swap(agent, tkn_buy=tkn_buy_dex, tkn_sell=tkn_sell_dex, buy_quantity=swap['dex']['amount'])
-            # CEX leg
-            cex.swap(agent, tkn_buy=tkn_buy_cex, tkn_sell=tkn_sell_cex, sell_quantity=swap['cex']['amount'])
-            dex_tkn_diff = agent.holdings[tkn_buy_dex] - init_agent.holdings[tkn_buy_dex]
-            cex_tkn_diff = init_agent.holdings[tkn_sell_cex] - agent.holdings[tkn_sell_cex]
-            if dex_tkn_diff != cex_tkn_diff:
-                raise
-            dex_numeraire_diff = agent.holdings[tkn_sell_dex] - init_agent.holdings[tkn_sell_dex]
-            cex_numeraire_diff = agent.holdings[tkn_buy_cex] - init_agent.holdings[tkn_buy_cex]
-            if dex_numeraire_diff + cex_numeraire_diff < 0:
-                raise
-        elif swap['dex']['trade'] == 'sell' and swap['cex']['trade'] == 'buy':
-            # omnipool leg
-            state.swap(agent, tkn_buy=tkn_buy_dex, tkn_sell=tkn_sell_dex, sell_quantity=swap['dex']['amount'])
-            # CEX leg
-            cex.swap(agent, tkn_buy=tkn_buy_cex, tkn_sell=tkn_sell_cex, buy_quantity=swap['cex']['amount'])
-            dex_tkn_diff = agent.holdings[tkn_sell_dex] - init_agent.holdings[tkn_sell_dex]
-            cex_tkn_diff = init_agent.holdings[tkn_buy_cex] - agent.holdings[tkn_buy_cex]
-            if dex_tkn_diff != cex_tkn_diff:
-                raise
-            dex_numeraire_diff = agent.holdings[tkn_buy_dex] - init_agent.holdings[tkn_buy_dex]
-            cex_numeraire_diff = agent.holdings[tkn_sell_cex] - init_agent.holdings[tkn_sell_cex]
-            if dex_numeraire_diff + cex_numeraire_diff < 0:
-                raise
+        optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
+        optimized_profit_usd = ex.value_assets(optimized_profit, asset_map)
+        if optimized_profit_usd < default_profit_usd:
+            return_swaps += default_swaps
+        elif sum(buy_tkns.values()) > 0:
+            return_swaps += default_swaps
         else:
-            raise
+            return_swaps += optimized_swaps
+            test_ex = ex.copy()
+            test_agent = agent.copy()
+            for swap in optimized_swaps:
+                tkn_sell = swap['sell_asset']
+                tkn_buy = swap['buy_asset']
+                if swap['trade'] == 'buy':
+                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
+                else:
+                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
+            optimized_net_swaps = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
+            test_ex = ex.copy()
+            test_agent = agent.copy()
+            for swap in default_swaps:
+                tkn_sell = swap['sell_asset']
+                tkn_buy = swap['buy_asset']
+                if swap['trade'] == 'buy':
+                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
+                else:
+                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
+            default_net_swaps = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
+            for tkn in ex.asset_list:
+                if optimized_net_swaps[tkn] < default_net_swaps[tkn]:
+                    er = 1
+            # # try and sell everything remaining for USD, then use that to buy the remaining tokens
+            # for tkn_sell in sell_tkns:
+            #     if sell_tkns[tkn_sell] > 0:
+            #         ex.swap(
+            #             agent=agent,
+            #             tkn_buy=ex.stablecoin,
+            #             tkn_sell=tkn_sell,
+            #             sell_quantity=sell_tkns[tkn_sell]
+            #         )
+            # for tkn_buy in buy_tkns:
+            #     if buy_tkns[tkn_buy] > 0:
+            #         ex.fail = ''
+            #         ex.swap(
+            #             agent=agent,
+            #             tkn_buy=tkn_buy,
+            #             tkn_sell=ex.stablecoin,
+            #             buy_quantity=buy_tkns[tkn_buy]
+            #         )
+            #         if ex.fail:
+            #             for intermediate_tkn in ex.asset_list:
+            #                 if ex.buy_spot(tkn_buy, intermediate_tkn) and ex.buy_spot(intermediate_tkn, ex.stablecoin):
+            #                     ex.swap(
+            #                         agent=agent,
+            #                         tkn_buy=intermediate_tkn,
+            #                         tkn_sell=ex.stablecoin,
+            #                         buy_quantity=ex.calculate_sell_from_buy(
+            #                             tkn_buy=tkn_buy,
+            #                             tkn_sell=intermediate_tkn,
+            #                             buy_quantity=buy_tkns[tkn_buy]
+            #                         )
+            #                     )
+            #                     ex.swap(
+            #                         agent=agent,
+            #                         tkn_buy=tkn_buy,
+            #                         tkn_sell=intermediate_tkn,
+            #                         buy_quantity=buy_tkns[tkn_buy]
+            #                     )
+            #                     break
+
+    return return_swaps
 
 
-def calculate_profit(init_agent, agent, asset_map={}):
+def execute_arb(dex, cex, agent, all_swaps):
+    exchanges = {
+        'dex': dex,
+        'cex': cex
+    }
+    for swap in all_swaps:
+        tkn_buy = swap['buy_asset']
+        tkn_sell = swap['sell_asset']
+        ex = exchanges[swap['exchange']]
+        ex.fail = ''
+        if swap['trade'] == 'buy':
+            ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
+            if ex.fail:
+                er = 1
+        elif swap['trade'] == 'sell':
+            # omnipool leg
+            ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
+            if ex.fail:
+                er = 1
+        else:
+            raise ValueError('Incorrect trade type.')
+
+
+def calculate_profit(init_agent, agent, asset_map=None):
+    if asset_map is None:
+        asset_map = {}
     profit_asset = {tkn: agent.holdings[tkn] - init_agent.holdings[tkn] for tkn in agent.holdings}
     profit = {}
 
