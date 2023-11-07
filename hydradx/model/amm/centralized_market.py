@@ -290,6 +290,8 @@ class CentralizedMarket(AMM):
             return 1
         elif (tkn, numeraire) in self.order_book:
             return self.order_book[(tkn, numeraire)].asks[0][0] * (1 + self.trade_fee)
+        elif (numeraire, tkn) in self.order_book:
+            return 1 / self.order_book[(numeraire, tkn)].bids[0][0] * (1 + self.trade_fee)
         else:
             return 0
 
@@ -298,8 +300,36 @@ class CentralizedMarket(AMM):
             return 1
         elif (tkn, numeraire) in self.order_book:
             return self.order_book[(tkn, numeraire)].bids[0][0] * (1 - self.trade_fee)
+        elif (numeraire, tkn) in self.order_book:
+            return 1 / self.order_book[(numeraire, tkn)].asks[0][0] * (1 - self.trade_fee)
         else:
             return 0
+
+    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
+        # assets is a dict of token: quantity
+        # returns the value of the assets in USD
+        usd_synonyms = ['USD']
+        for eq in equivalency_map:
+            if equivalency_map[eq] == 'USD':
+                usd_synonyms.append(eq)
+        value = 0
+        for tkn in assets:
+            equivalents = [tkn]
+            if tkn in equivalency_map:
+                equivalents += [equivalency_map[tkn]]
+            for eq in equivalency_map:
+                if equivalency_map[eq] in equivalents:
+                    equivalents.append(eq)
+            tkn_value = 0
+            for usd in usd_synonyms:
+                for eq in equivalents:
+                    if self.buy_spot(eq, usd) > 0:
+                        tkn_value += assets[tkn] * (self.buy_spot(eq, usd) + self.sell_spot(eq, usd)) / 2
+                        break
+                if tkn_value != 0:
+                    break
+            value += tkn_value
+        return value
 
 
 # faster
