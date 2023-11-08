@@ -458,8 +458,6 @@ def test_process_next_swap(
         trade_fee=cex_fee
     )
 
-    order_book_map = {k: k for k in order_book}
-
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
 
     test_state = op_state.copy()
@@ -496,12 +494,14 @@ def test_process_next_swap(
             if cex_swap['price'] > dex_swap['price']:  # check cex slippage direction
                 raise
 
+        swap['exchange'] = 'exchange_name'
+
         arb_swaps = [swap]
 
         initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
         agent = initial_agent.copy()
 
-        execute_arb(op_state, cex, agent, arb_swaps)
+        execute_arb(op_state, {'exchange_name': cex}, agent, arb_swaps)
 
         profit = calculate_profit(initial_agent, agent)
         for tkn in profit:
@@ -621,15 +621,17 @@ def test_get_arb_swaps_simple(
         trade_fee=cex_fee
     )
 
-    buffer = {(('DOT', 'USDT'), ('DOT', 'USDT')): 0.0,
-              (('HDX', 'USDT'), ('HDX', 'USDT')): 0.0,
-              (('HDX', 'DOT'), ('HDX', 'DOT')): 0.0}
+    cfg = [
+        {"tkn_pair": ("DOT", "USDT"), "exchange": "exchange_name", "order_book": ("DOT", "USDT"), "buffer": 0.0},
+        {"tkn_pair": ("HDX", "USDT"), "exchange": "exchange_name", "order_book": ("HDX", "USDT"), "buffer": 0.0},
+        {"tkn_pair": ("HDX", "DOT"), "exchange": "exchange_name", "order_book": ("HDX", "DOT"), "buffer": 0.0}
+    ]
 
-    arb_swaps = get_arb_swaps_simple(op_state, cex, buffer)
+    arb_swaps = get_arb_swaps_simple(op_state, {'exchange_name': cex}, cfg)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
-    execute_arb(op_state, cex, agent, arb_swaps)
+    execute_arb(op_state, {'exchange_name': cex}, agent, arb_swaps)
 
     profit = calculate_profit(initial_agent, agent)
     for tkn in profit:
@@ -734,7 +736,7 @@ def test_get_arb_swaps_simple_with_buffer(
         ('HDX', 'DOT'): hdx_dot_order_book_obj
     }
 
-    buffer = {(k, k): buffer_ls[i] for i, k in enumerate(order_book)}
+    cfg = [{"tkn_pair": k, "exchange": "exchange_name", "order_book": k, "buffer": buffer_ls[i]} for i, k in enumerate(order_book)]
 
     cex = CentralizedMarket(
         order_book=order_book,
@@ -742,11 +744,11 @@ def test_get_arb_swaps_simple_with_buffer(
         trade_fee=cex_fee
     )
 
-    arb_swaps = get_arb_swaps_simple(op_state, cex, buffer)
+    arb_swaps = get_arb_swaps_simple(op_state, {'exchange_name': cex}, cfg)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
-    execute_arb(op_state, cex, agent, arb_swaps)
+    execute_arb(op_state, {'exchange_name': cex}, agent, arb_swaps)
 
     profit = calculate_profit(initial_agent, agent)
     for tkn in profit:
@@ -855,12 +857,12 @@ def test_get_arb_swaps(
         trade_fee=cex_fee
     )
 
-    buffer = {(k, k): 0 for k in order_book}
-    arb_swaps = get_arb_swaps(op_state, cex, buffer)
+    cfg = [{"tkn_pair": k, "exchange": "exchange_name", "order_book": k, "buffer": 0.0} for k in order_book]
+    arb_swaps = get_arb_swaps(op_state, {"exchange_name": cex}, cfg)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
-    execute_arb(op_state, cex, agent, arb_swaps)
+    execute_arb(op_state, {"exchange_name": cex}, agent, arb_swaps)
 
     profit = calculate_profit(initial_agent, agent)
     for tkn in profit:
