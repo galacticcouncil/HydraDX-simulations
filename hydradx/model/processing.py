@@ -203,16 +203,41 @@ def convert_kraken_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
     return ob_obj
 
 
-def get_kraken_orderbooks_from_file(input_path: str) -> dict:
+def convert_binance_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
+    orderbook = x
+
+    ob_obj = OrderBook(
+        bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
+        asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
+    )
+    return ob_obj
+
+
+# def get_kraken_orderbooks_from_file(input_path: str) -> dict:
+#     return get_orderbooks_from_file(input_path, ['kraken_orderbook'])
+#
+#
+# def get_binance_orderbooks_from_file(input_path: str) -> dict:
+#     return get_orderbooks_from_file(input_path, ['binance_orderbook'])
+#
+
+def get_orderbooks_from_file(input_path: str) -> dict:
     file_ls = os.listdir(input_path)
-    ob_dict = {}
+    ob_dict = {'kraken': {}, 'binance': {}}
     for filename in file_ls:
         if filename.startswith('kraken_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
             filepath = input_path + filename
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
-                ob_dict[tkn_pair] = convert_kraken_orderbook(tkn_pair, y)
+                ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(tkn_pair, y)
+        elif filename.startswith('binance_orderbook'):
+            tkn_pair = tuple(filename.split('_')[2].split('-'))
+            filepath = input_path + filename
+            with open(filepath, newline='') as input_file:
+                y = json.load(input_file)
+                ob_dict['binance'][tkn_pair] = convert_binance_orderbook(tkn_pair, y)
+
     return ob_dict
 
 
@@ -225,6 +250,17 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
         with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
     return convert_kraken_orderbook(tkn_pair, y)
+
+
+def get_binance_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
+    orderbook_url = 'https://api.binance.com/api/v3/depth?symbol=' + tkn_pair[0] + tkn_pair[1]
+    resp = requests.get(orderbook_url)
+    y = resp.json()
+    if archive:
+        ts = time.time()
+        with open(f'./archive/binance_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
+            json.dump(y, output_file)
+    return convert_binance_orderbook(tkn_pair, y)
 
 
 def get_unique_name(ls: list[str], name: str) -> str:
