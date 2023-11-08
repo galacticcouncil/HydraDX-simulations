@@ -1,4 +1,5 @@
 from datetime import timedelta
+import pytest
 
 from hypothesis import given, strategies as st, settings, reproduce_failure, Verbosity, Phase
 
@@ -111,6 +112,93 @@ def test_calculate_arb_amount_bid(
         assert profit[tkn] >= 0
 
 
+# @settings(max_examples=1)
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
+@given(
+    usdt_amt=st.floats(min_value=100000, max_value=1000000),
+    dot_price=st.floats(min_value=0.01, max_value=1000),
+    hdx_price=st.floats(min_value=0.01, max_value=1000),
+    dot_wt=st.floats(min_value=0.05, max_value=0.50),
+    hdx_wt=st.floats(min_value=0.01, max_value=0.20),
+    price_mult=st.floats(min_value=1.1, max_value=10.0),
+    lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
+    asset_fee=st.floats(min_value=0.0001, max_value=0.004),
+    cex_fee=st.floats(min_value=0.0001, max_value=0.005),
+    max_trade=st.floats(min_value=1, max_value=100),
+)
+def test_calculate_arb_amount_bid_max_liquidity(
+        usdt_amt: float,
+        dot_price: float,
+        hdx_price: float,
+        dot_wt: float,
+        hdx_wt: float,
+        price_mult: float,
+        lrna_fee: float,
+        asset_fee: float,
+        cex_fee: float,
+        max_trade: float
+):
+
+    usdt_wt = 1 - dot_wt - hdx_wt
+    dot_lrna = dot_wt / usdt_wt * usdt_amt
+    dot_amt = dot_lrna / dot_price
+    hdx_lrna = hdx_wt / usdt_wt * usdt_amt
+    hdx_amt = hdx_lrna / hdx_price
+
+    tokens = {
+        'USDT': {'liquidity': usdt_amt, 'LRNA': usdt_amt},
+        'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
+        'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
+    }
+
+    initial_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    buy_spot = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
+    bid_price = buy_spot / (1 - cex_fee) * price_mult
+
+    tkn = 'DOT'
+    numeraire = 'USDT'
+    bid = [bid_price, 100000]
+    p = 1e-10
+    amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, max_liq_tkn=max_trade,
+                                   max_liq_num=max_trade, precision=p, max_iters=1000)
+    init_holding = 1000000
+    agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
+    init_agent = agent.copy()
+    initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    test_price = initial_state.price(initial_state, tkn, numeraire)
+    buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
+    cex_price = bid[0] * (1 - cex_fee)
+
+    if (abs(init_holding - agent.holdings[tkn]) - max_trade)/init_holding > 1e-10:
+        raise
+    if (abs(init_holding - agent.holdings[numeraire]) - max_trade)/init_holding > 1e-10:
+        raise
+
+    # checks if the cex price and spot price have been brought into alignment
+    if abs(buy_spot - cex_price)/cex_price > p and abs(buy_spot - cex_price) > p and amt != bid[1]:
+        # if cex price and spot price aren't in alignment, it should be because of trade size limit
+        if ((max_trade - abs(init_holding - agent.holdings[tkn]))/init_holding) > 1e-10:
+            if ((max_trade - abs(init_holding - agent.holdings[numeraire]))/init_holding) > 1e-10:
+                raise
+
+    if amt == bid[1] and buy_spot > cex_price:
+        raise
+
+    agent.holdings[tkn] -= amt
+    agent.holdings[numeraire] += amt * cex_price
+
+    profit = calculate_profit(init_agent, agent)
+    for tkn in profit:
+        assert profit[tkn] >= 0
+
+
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
 # @settings(max_examples=1)
 @given(
@@ -168,11 +256,96 @@ def test_calculate_arb_amount_ask(
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
     test_price = initial_state.price(initial_state, tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
-    # cex_price = ask[0] / (1 - cex_fee)
     cex_price = ask[0] * (1 + cex_fee)
 
     if abs(sell_spot - cex_price)/cex_price > p and abs(sell_spot - cex_price) > p and amt != ask[1]:
         raise
+
+    if amt == ask[1] and cex_price > sell_spot:
+        raise
+
+    agent.holdings[tkn] += amt
+    agent.holdings[numeraire] -= amt * cex_price
+
+    profit = calculate_profit(init_agent, agent)
+    for tkn in profit:
+        assert profit[tkn] >= 0
+
+
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],deadline=timedelta(milliseconds=500))
+# @settings(max_examples=1)
+@given(
+    usdt_amt=st.floats(min_value=100000, max_value=1000000),
+    dot_price=st.floats(min_value=0.01, max_value=1000),
+    hdx_price=st.floats(min_value=0.01, max_value=1000),
+    dot_wt=st.floats(min_value=0.05, max_value=0.50),
+    hdx_wt=st.floats(min_value=0.01, max_value=0.20),
+    price_mult=st.floats(min_value=0.1, max_value=0.95),
+    lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
+    asset_fee=st.floats(min_value=0.0001, max_value=0.004),
+    cex_fee=st.floats(min_value=0.0001, max_value=0.005),
+    max_trade=st.floats(min_value=1, max_value=100),
+)
+def test_calculate_arb_amount_ask_max_liquidity(
+        usdt_amt: float,
+        dot_price: float,
+        hdx_price: float,
+        dot_wt: float,
+        hdx_wt: float,
+        price_mult: float,
+        lrna_fee: float,
+        asset_fee: float,
+        cex_fee: float,
+        max_trade: float
+):
+    usdt_wt = 1 - dot_wt - hdx_wt
+    dot_lrna = dot_wt / usdt_wt * usdt_amt
+    dot_amt = dot_lrna / dot_price
+    hdx_lrna = hdx_wt / usdt_wt * usdt_amt
+    hdx_amt = hdx_lrna / hdx_price
+
+    tokens = {
+        'USDT': {'liquidity': usdt_amt, 'LRNA': usdt_amt},
+        'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
+        'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
+    }
+
+    initial_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    sell_spot = orig_price * ((1 - lrna_fee) * (1 - asset_fee))
+    ask_price = sell_spot * (1 - cex_fee) * price_mult
+
+    tkn = 'DOT'
+    numeraire = 'USDT'
+    ask = [ask_price, 100000]
+    p = 1e-10
+    amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, max_liq_tkn=max_trade,
+                                   max_liq_num=max_trade, precision=p, max_iters=1000)
+    init_holding = 1000000
+    agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
+    init_agent = agent.copy()
+    initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    test_price = initial_state.price(initial_state, tkn, numeraire)
+    sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
+    cex_price = ask[0] * (1 + cex_fee)
+
+    if (abs(init_holding - agent.holdings[tkn]) - max_trade)/init_holding > 1e-10:
+        raise
+    if (abs(init_holding - agent.holdings[numeraire]) - max_trade)/init_holding > 1e-10:
+        raise
+
+    # checks if the cex price and spot price have been brought into alignment
+    if abs(sell_spot - cex_price)/cex_price > p and abs(sell_spot - cex_price) > p and amt != ask[1]:
+        # if cex price and spot price aren't in alignment, it should be because of trade size limit
+        if ((max_trade - abs(init_holding - agent.holdings[tkn]))/init_holding) > 1e-10:
+            if ((max_trade - abs(init_holding - agent.holdings[numeraire]))/init_holding) > 1e-10:
+                raise
 
     if amt == ask[1] and cex_price > sell_spot:
         raise
@@ -287,8 +460,6 @@ def test_get_arb_swaps(
         trade_fee=cex_fee
     )
 
-    # get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iters=20)
-
     order_book_map = {k: k for k in order_book}
 
     arb_swaps = get_arb_swaps(op_state, cex, order_book_map)
@@ -308,7 +479,7 @@ def test_get_arb_swaps(
     dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
     max_trade=st.floats(min_value=1, max_value=100)
 )
-def test_max_trade(dotusd_price_mult: float, dot_amts: list, max_trade: float):
+def test_max_liquidity(dotusd_price_mult: float, dot_amts: list, max_trade: float):
 
     tokens = {
         'USDT': {
@@ -323,6 +494,11 @@ def test_max_trade(dotusd_price_mult: float, dot_amts: list, max_trade: float):
             'liquidity': 108000000,
             'LRNA': 494896
         }
+    }
+
+    max_liquidity = {
+        'cex': {'DOT': max_trade, 'USDT': max_trade},
+        'dex': {'DOT': max_trade, 'USDT': max_trade}
     }
 
     lrna_fee = 0.0005
