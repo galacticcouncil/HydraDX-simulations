@@ -472,7 +472,7 @@ def test_process_next_swap(
     iters = 20
     tkn_pair = ('DOT', 'USDT')
 
-    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, order_book_map, buffer, max_liquidity, iters)
+    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity, iters)
     if swap:
         cex_swap, dex_swap = swap['cex'], swap['dex']
         dex_spot = op_state.price(op_state, 'DOT', 'USDT')
@@ -621,9 +621,11 @@ def test_get_arb_swaps_simple(
         trade_fee=cex_fee
     )
 
-    order_book_map = {k: k for k in order_book}
+    buffer = {(('DOT', 'USDT'), ('DOT', 'USDT')): 0.0,
+              (('HDX', 'USDT'), ('HDX', 'USDT')): 0.0,
+              (('HDX', 'DOT'), ('HDX', 'DOT')): 0.0}
 
-    arb_swaps = get_arb_swaps_simple(op_state, cex, order_book_map)
+    arb_swaps = get_arb_swaps_simple(op_state, cex, buffer)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
@@ -732,7 +734,7 @@ def test_get_arb_swaps_simple_with_buffer(
         ('HDX', 'DOT'): hdx_dot_order_book_obj
     }
 
-    buffer = {k: buffer_ls[i] for i, k in enumerate(order_book)}
+    buffer = {(k, k): buffer_ls[i] for i, k in enumerate(order_book)}
 
     cex = CentralizedMarket(
         order_book=order_book,
@@ -740,9 +742,7 @@ def test_get_arb_swaps_simple_with_buffer(
         trade_fee=cex_fee
     )
 
-    order_book_map = {k: k for k in order_book}
-
-    arb_swaps = get_arb_swaps_simple(op_state, cex, order_book_map, buffer)
+    arb_swaps = get_arb_swaps_simple(op_state, cex, buffer)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
@@ -855,11 +855,8 @@ def test_get_arb_swaps(
         trade_fee=cex_fee
     )
 
-    # get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_trades={}, iters=20)
-
-    order_book_map = {k: k for k in order_book}
-
-    arb_swaps = get_arb_swaps(op_state, cex, order_book_map)
+    buffer = {(k, k): 0 for k in order_book}
+    arb_swaps = get_arb_swaps(op_state, cex, buffer)
     initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     agent = initial_agent.copy()
 
