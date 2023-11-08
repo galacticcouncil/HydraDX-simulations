@@ -216,7 +216,8 @@ def get_kraken_orderbooks_from_file(input_path: str) -> dict:
     return ob_dict
 
 
-def get_kraken_orderbook(tkn_pair: tuple, orderbook_url: str, archive: bool = False) -> OrderBook:
+def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
+    orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
     if archive:
