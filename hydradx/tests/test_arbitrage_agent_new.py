@@ -5,7 +5,7 @@ from hypothesis import given, strategies as st, settings, reproduce_failure, Ver
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_new import (
-    calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, combine_execute
+    calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, combine_swaps
 )
 from hydradx.model.amm.arbitrage_agent_new import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -185,8 +185,9 @@ def test_load():
 
 
 def test_combine_step():
-    omnipool, cex, order_book_map = load_market_config()
-    arb_swaps = get_arb_swaps(omnipool, cex, order_book_map)
+    test_save()
+    dex, cex, order_book_map = load_market_config()
+    arb_swaps = get_arb_swaps(dex, cex, order_book_map)
     asset_map = {}
     for tkn_pair1, tkn_pair2 in order_book_map.items():
         if tkn_pair1[0] != tkn_pair2[0]:
@@ -212,19 +213,29 @@ def test_combine_step():
     initial_agent = Agent(
         holdings={
             tkn: 10000000000
-            for tkn in omnipool.asset_list + cex.asset_list + list(asset_map.values())
+            for tkn in dex.asset_list + cex.asset_list + list(asset_map.values())
         }
     )
+    # initial_holdings_total = cex.value_assets(initial_agent.holdings, asset_map)
 
-    test_omnipool, test_cex, test_agent = omnipool.copy(), cex.copy(), initial_agent.copy()
-    execute_arb(test_omnipool, test_cex, test_agent, arb_swaps)
+    test_dex, test_cex, test_agent = dex.copy(), cex.copy(), initial_agent.copy()
+    execute_arb(test_dex, test_cex, test_agent, arb_swaps)
     profit = calculate_profit(initial_agent, test_agent, asset_map)
-    profit_total = sum(quantity * test_cex.sell_spot(tkn) for tkn, quantity in profit.items())
+    profit_total = test_cex.value_assets(profit, asset_map)
+    print('profit: ', profit_total)
 
-    combine_omnipool, combine_cex, combine_agent = omnipool.copy(), cex.copy(), initial_agent.copy()
-    combine_execute(combine_omnipool, combine_cex, combine_agent, arb_swaps)
+    combine_dex, combine_cex, combine_agent = dex.copy(), cex.copy(), initial_agent.copy()
+    combined_swaps = combine_swaps(combine_dex, combine_cex, combine_agent, arb_swaps, asset_map)
+    execute_arb(combine_dex, combine_cex, combine_agent, combined_swaps)
     combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
-    combined_profit_total = sum(quantity * combine_cex.sell_spot(tkn) for tkn, quantity in combined_profit.items())
+    combined_profit_total = combine_cex.value_assets(combined_profit, asset_map)
+
+    iter_dex, iter_cex, iter_agent = dex.copy(), cex.copy(), initial_agent.copy()
+    arb_swaps = get_arb_swaps(iter_dex, iter_cex, order_book_map)
+    itered_swaps = combine_swaps(iter_dex, iter_cex, iter_agent, arb_swaps, asset_map)
+    execute_arb(iter_dex, iter_cex, iter_agent, itered_swaps)
+    iter_profit = calculate_profit(initial_agent, iter_agent, asset_map)
+    iter_profit_total = iter_cex.value_assets(iter_profit, asset_map)
 
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
@@ -238,3 +249,7 @@ def test_combine_step():
         raise AssertionError('Loss detected.')
     else:
         print(f"extra profit obtained: {combined_profit_total - profit_total}")
+        if iter_profit_total > combined_profit_total:
+            print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
+        else:
+            print('Iteration did not improve profit.')
