@@ -273,7 +273,7 @@ def get_unique_name(ls: list[str], name: str) -> str:
         return name + str(c).zfill(3)
 
 
-def get_omnipool_data(rpc: str, n: int, archive: bool = False):
+def get_omnipool_data(rpc: str, archive: bool = False):
     with HydraDX(rpc) as chain:
 
         asset_list = []
@@ -281,21 +281,20 @@ def get_omnipool_data(rpc: str, n: int, archive: bool = False):
         tokens = {}
         asset_map = {}
 
-        for i in range(n):
-            try:
-                md = chain.api.registry.asset_metadata(i)
-                state = chain.api.omnipool.asset_state(md.asset_id)
-                fee = chain.api.fees.asset_fees(md.asset_id)
+        op_state = chain.api.omnipool.state()
 
-            except:
-                continue
+        for asset_id in op_state:
 
-            tkn = get_unique_name(asset_list, md.symbol)
+            fee = op_state[asset_id].fees
+            decimals = op_state[asset_id].asset.decimals
+            symbol = op_state[asset_id].asset.symbol
+
+            tkn = get_unique_name(asset_list, symbol)
             asset_list.append(tkn)
-            asset_map[i] = tkn
+            asset_map[asset_id] = tkn
             tokens[tkn] = {
-                'liquidity': state.reserve / 10 ** md.decimals,
-                'LRNA': state.hub_reserve / 10 ** 12
+                'liquidity': op_state[asset_id].reserve / 10 ** decimals,
+                'LRNA': op_state[asset_id].hub_reserve / 10 ** 12
             }
             fees[tkn] = {"asset_fee": fee.asset_fee / 100, "protocol_fee": fee.protocol_fee / 100}
 
