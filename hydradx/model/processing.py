@@ -213,14 +213,6 @@ def convert_binance_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
     return ob_obj
 
 
-# def get_kraken_orderbooks_from_file(input_path: str) -> dict:
-#     return get_orderbooks_from_file(input_path, ['kraken_orderbook'])
-#
-#
-# def get_binance_orderbooks_from_file(input_path: str) -> dict:
-#     return get_orderbooks_from_file(input_path, ['binance_orderbook'])
-#
-
 def get_orderbooks_from_file(input_path: str) -> dict:
     file_ls = os.listdir(input_path)
     ob_dict = {'kraken': {}, 'binance': {}}
