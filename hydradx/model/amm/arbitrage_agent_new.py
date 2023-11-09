@@ -180,7 +180,7 @@ def combine_swaps(
         net_swaps[ex_name] = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
         default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        default_profit_usd = ex.value_assets(default_profit, asset_map)
+        default_profit_usd = cex.value_assets(default_profit, asset_map)
 
         test_ex = ex.copy()
         test_agent = agent.copy()
@@ -231,6 +231,7 @@ def combine_swaps(
                     if max_buy <= buy_tkns[tkn_buy]:
                         # buy as much as we can without going over sell_quantity
                         previous_tkn_sell = test_agent.holdings[tkn_sell]
+                        previous_tkn_buy = test_agent.holdings[tkn_buy]
                         test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=max_buy)
                         optimized_swaps.append({
                             'exchange': ex_name,
@@ -239,7 +240,7 @@ def combine_swaps(
                             'sell_asset': tkn_sell,
                             'amount': max_buy
                         })
-                        buy_tkns[tkn_buy] -= max_buy
+                        buy_tkns[tkn_buy] -= test_agent.holdings[tkn_buy] - previous_tkn_buy
                         if tkn_sell in sell_tkns:
                             sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                     else:
@@ -259,7 +260,7 @@ def combine_swaps(
                         break
 
         optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        optimized_profit_usd = ex.value_assets(optimized_profit, asset_map)
+        optimized_profit_usd = cex.value_assets(optimized_profit, asset_map)
         if optimized_profit_usd < default_profit_usd:
             return_swaps += default_swaps
         elif sum(buy_tkns.values()) > 0:
