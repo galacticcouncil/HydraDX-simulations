@@ -101,7 +101,7 @@ def omnipool_reasonable_config(
 
 
 @st.composite
-def assets_config(draw, token_count: int = 0) -> dict:
+def assets_config(draw, token_count: int = 0):
     token_count = token_count or draw(asset_number_strategy)
     usd_price_lrna = draw(asset_price_strategy)
     return_dict = {
