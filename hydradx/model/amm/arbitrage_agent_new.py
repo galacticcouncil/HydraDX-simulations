@@ -218,8 +218,6 @@ def combine_swaps(
                         }.items()
                     )
                 }
-                if tkn_buy == 'BNC':
-                    er = 1
                 for tkn_sell in best_sell_tkns:
                     sell_quantity, price = best_sell_tkns[tkn_sell]
                     previous_tkn_sell = test_agent.holdings[tkn_sell]
@@ -241,10 +239,6 @@ def combine_swaps(
                             'sell_asset': tkn_sell,
                             'amount': max_buy
                         })
-                        if test_agent.holdings[tkn_buy] - previous_tkn_buy != max_buy:
-                            er = 1
-                        else:
-                            er = 2
                         buy_tkns[tkn_buy] -= test_agent.holdings[tkn_buy] - previous_tkn_buy
                         sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                     else:
@@ -345,29 +339,7 @@ def combine_swaps(
             return_swaps += default_swaps
         else:
             return_swaps += optimized_swaps
-            test_ex = ex.copy()
-            test_agent = agent.copy()
-            for swap in optimized_swaps:
-                tkn_sell = swap['sell_asset']
-                tkn_buy = swap['buy_asset']
-                if swap['trade'] == 'buy':
-                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
-                else:
-                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
-            optimized_net_swaps = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
-            test_ex = ex.copy()
-            test_agent = agent.copy()
-            for swap in default_swaps:
-                tkn_sell = swap['sell_asset']
-                tkn_buy = swap['buy_asset']
-                if swap['trade'] == 'buy':
-                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
-                else:
-                    test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
-            default_net_swaps = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
-            for tkn in ex.asset_list:
-                if optimized_net_swaps[tkn] < default_net_swaps[tkn]:
-                    er = 1
+
     return return_swaps
 
 
