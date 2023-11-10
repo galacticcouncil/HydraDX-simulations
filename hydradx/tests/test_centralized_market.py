@@ -6,6 +6,7 @@ import pytest
 
 
 base_price_strat = st.floats(min_value=0.001, max_value=1000)
+fee_strat = st.floats(min_value=0, max_value=0.1)
 
 @st.composite
 def order_book_strategy(draw, base_price: float = 0, book_depth: float = 0):
@@ -15,8 +16,8 @@ def order_book_strategy(draw, base_price: float = 0, book_depth: float = 0):
     price_points = draw(st.integers(min_value=1, max_value=10))
     book_depth = book_depth or draw(st.integers(min_value=1, max_value=1000))
     return OrderBook(
-        bids=[[base_price - i * price_increment, book_depth / price_points] for i in range(price_points)],
-        asks=[[base_price + i * price_increment, book_depth / price_points] for i in range(price_points)]
+        bids=[[base_price - i * price_increment, book_depth / price_points] for i in range(1, price_points + 1)],
+        asks=[[base_price + i * price_increment, book_depth / price_points] for i in range(1, price_points + 1)]
     )
 
 
@@ -29,166 +30,18 @@ initial_agent = Agent(
 
 
 @given(
-    quantity=st.floats(min_value=100, max_value=1000000),
-    trade_fee=st.floats(min_value=0, max_value=0.1),
-    order_book=order_book_strategy()
+    sell_quantity=st.floats(min_value=0.1, max_value=100),
+    order_book=order_book_strategy(book_depth=1000000),
+    trade_fee=fee_strat
 )
-def test_sell_quote(quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                }, trade_fee=trade_fee
-            )
-        },
-        agents={'agent': initial_agent}
-    )
-    tkn_buy = 'ETH'
-    tkn_sell = 'DAI'
-    sell_state = initial_state.copy()
-    sell_state.execute_swap(
-        agent_id='agent',
-        pool_id='Kraken',
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        sell_quantity=quantity
-    )
-
-    value_bought = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    ) - sum(
-        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    )
-
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
-
-    if value_bought != pytest.approx(quantity_sold):
-        raise AssertionError('Central market sell trade failed to execute correctly.')
-
-    quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
-
-    value_sold = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    ) - sum(
-        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    )
-
-    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
-        raise AssertionError('Fee was not applied correctly.')
-
-
-@given(
-    quantity=st.floats(min_value=0.1, max_value=1000),
-    trade_fee=st.floats(min_value=0, max_value=0.1),
-    order_book=order_book_strategy()
-)
-def test_sell_base(quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                }, trade_fee=trade_fee
-            )
-        },
-        agents={'agent': initial_agent}
-    )
-    tkn_buy = 'DAI'
-    tkn_sell = 'ETH'
-    buy_state = initial_state.copy()
-    buy_state.execute_swap(
-        pool_id='Kraken',
-        agent_id='agent',
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        sell_quantity=quantity
-    )
-
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
-
-    value_bought = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    ) - sum(
-        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    )
-
-    if value_bought != pytest.approx(quantity_sold):
-        raise AssertionError('Central market sell trade failed to execute correctly.')
-
-    value_sold = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    ) - sum(
-        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    )
-
-    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
-
-    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
-        raise AssertionError('Fee was not applied correctly.')
-
-
-@given(
-    quantity=st.floats(min_value=100, max_value=1000000),
-    trade_fee=st.floats(min_value=0, max_value=0.1),
-    order_book=order_book_strategy()
-)
-def test_buy_quote(quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                }, trade_fee=trade_fee
-            )
-        },
-        agents={'agent': initial_agent}
-    )
-    tkn_buy = 'DAI'
-    tkn_sell = 'ETH'
-    buy_state = initial_state.copy()
-    buy_state.execute_swap(
-        pool_id='Kraken',
-        agent_id='agent',
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        buy_quantity=quantity
-    )
-
-    value_sold = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    ) - sum(
-        [quantity * price for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    )
-
-    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
-
-    if value_sold != pytest.approx(quantity_bought):
-        raise AssertionError('Central market buy trade failed to execute correctly.')
-
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
-
-    value_bought = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    ) - sum(
-        [quantity for (price, quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    )
-
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
-        raise AssertionError('Fee was not applied correctly.')
-
-
-@given(
-    quantity=st.floats(min_value=0.1, max_value=1000),
-    order_book=order_book_strategy()
-)
-def test_buy_base(quantity: float, order_book: OrderBook):
+def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBook):
     initial_state = GlobalState(
         pools={
             'Kraken': CentralizedMarket(
                 order_book={
                     ('ETH', 'DAI'): order_book
                 },
+                trade_fee=trade_fee
             )
         },
         agents={'agent': initial_agent}
@@ -201,30 +54,195 @@ def test_buy_base(quantity: float, order_book: OrderBook):
         pool_id='Kraken',
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
-        buy_quantity=quantity
+        sell_quantity=sell_quantity
     )
+
+    value_bought = sum(
+        [sell_quantity * price for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+    ) - sum(
+        [sell_quantity * price for (price, sell_quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+    )
+
+    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
+
+    if value_bought != pytest.approx(quantity_sold):
+        raise AssertionError('Central market sell trade failed to execute correctly.')
 
     quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
     value_sold = sum(
-        [quantity for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity for (price, sell_quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+    )
+
+    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
+        raise AssertionError('Fee was not applied correctly.')
+
+    if quantity_sold != pytest.approx(sell_quantity):
+        raise AssertionError('Sell quantity was not applied correctly.')
+
+
+@given(
+    sell_quantity=st.floats(min_value=0.1, max_value=100),
+    order_book=order_book_strategy(book_depth=1000000),
+    trade_fee=fee_strat
+)
+def test_sell_base(sell_quantity: float, trade_fee: float, order_book: OrderBook):
+    initial_state = GlobalState(
+        pools={
+            'Kraken': CentralizedMarket(
+                order_book={
+                    ('ETH', 'DAI'): order_book
+                },
+                trade_fee=trade_fee
+            )
+        },
+        agents={'agent': initial_agent}
+    )
+    tkn_buy = 'DAI'
+    tkn_sell = 'ETH'
+    buy_state = initial_state.copy()
+    buy_state.execute_swap(
+        pool_id='Kraken',
+        agent_id='agent',
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity
+    )
+
+    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
+
+    value_bought = sum(
+        [sell_quantity for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    ) - sum(
+        [sell_quantity for (price, sell_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    )
+
+    if value_bought != pytest.approx(quantity_sold):
+        raise AssertionError('Central market sell trade failed to execute correctly.')
+
+    value_sold = sum(
+        [sell_quantity * price for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    ) - sum(
+        [sell_quantity * price for (price, sell_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    )
+
+    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
+
+    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
+        raise AssertionError('Fee was not applied correctly.')
+
+    if quantity_sold != pytest.approx(sell_quantity):
+        raise AssertionError('Sell quantity was not applied correctly.')
+
+
+@given(
+    buy_quantity=st.floats(min_value=0.1, max_value=100),
+    order_book=order_book_strategy(book_depth=1000000),
+    trade_fee=fee_strat
+)
+def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook):
+    initial_state = GlobalState(
+        pools={
+            'Kraken': CentralizedMarket(
+                order_book={
+                    ('ETH', 'DAI'): order_book
+                },
+                trade_fee=trade_fee
+            )
+        },
+        agents={'agent': initial_agent}
+    )
+    tkn_buy = 'DAI'
+    tkn_sell = 'ETH'
+    buy_state = initial_state.copy()
+    buy_state.execute_swap(
+        pool_id='Kraken',
+        agent_id='agent',
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+
+    value_sold = sum(
+        [buy_quantity * price for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    ) - sum(
+        [buy_quantity * price for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    )
+
+    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
+
+    if value_sold != pytest.approx(quantity_bought):
+        raise AssertionError('Central market buy trade failed to execute correctly.')
+
+    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
+
+    value_bought = sum(
+        [buy_quantity for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    ) - sum(
+        [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+    )
+
+    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+        raise AssertionError('Fee was not applied correctly.')
+
+    if quantity_bought != pytest.approx(buy_quantity):
+        raise AssertionError('Buy quantity was not applied correctly.')
+
+
+@given(
+    buy_quantity=st.floats(min_value=0.1, max_value=100),
+    order_book=order_book_strategy(book_depth=1000000),
+    trade_fee=fee_strat
+)
+def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
+    initial_state = GlobalState(
+        pools={
+            'Kraken': CentralizedMarket(
+                order_book={
+                    ('ETH', 'DAI'): order_book
+                },
+                trade_fee=trade_fee
+            )
+        },
+        agents={'agent': initial_agent}
+    )
+    tkn_buy = 'ETH'
+    tkn_sell = 'DAI'
+    buy_state = initial_state.copy()
+    buy_state.execute_swap(
+        agent_id='agent',
+        pool_id='Kraken',
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+
+    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
+
+    value_sold = sum(
+        [buy_quantity for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+    ) - sum(
+        [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     if value_sold != pytest.approx(quantity_bought):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     value_bought = sum(
-        [quantity * price for (price, quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [buy_quantity * price for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [quantity * price for (price, quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [buy_quantity * price for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
+    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
     if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
+
+    if quantity_bought != pytest.approx(buy_quantity):
+        raise AssertionError('Buy quantity was not applied correctly.')
 
         
 @given(
@@ -242,18 +260,20 @@ def test_orderbook(orderbook):
 
 
 @given(
-    buy_quantity=st.floats(min_value=0.1, max_value=1000),
-    order_book=order_book_strategy()
+    buy_quantity=st.floats(min_value=0.01, max_value=100),
+    order_book=order_book_strategy(book_depth=10000),
+    trade_fee=fee_strat
 )
-def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float):
-    cex = CentralizedMarket(
+def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float, trade_fee):
+    initial_cex = CentralizedMarket(
         order_book={
             ('DOT', 'USD'): order_book
         },
+        trade_fee=trade_fee
     )
     tkn_sell = 'DOT'
     tkn_buy = 'USD'
-    sell_quantity = cex.calculate_sell_from_buy(
+    sell_quantity = initial_cex.calculate_sell_from_buy(
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity,
@@ -261,7 +281,8 @@ def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float):
     agent = Agent(
         holdings={'DOT': 10000000},
     )
-    cex.swap(
+    test_cex = initial_cex.copy()
+    test_cex.swap(
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity,
@@ -270,14 +291,6 @@ def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float):
     actual_sell_quantity = agent.initial_holdings[tkn_sell] - agent.holdings[tkn_sell]
     if sell_quantity != pytest.approx(actual_sell_quantity):
         raise AssertionError('Loss detected.')
-    buy_quantity2 = cex.calculate_buy_from_sell(
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        sell_quantity=sell_quantity,
-    )
-    if buy_quantity2 != pytest.approx(buy_quantity):
-        raise AssertionError('Loss detected.')
-
 
 @given(
     order_book=order_book_strategy(book_depth=100)
