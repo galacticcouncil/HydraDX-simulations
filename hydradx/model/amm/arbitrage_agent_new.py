@@ -218,9 +218,12 @@ def combine_swaps(
                         }.items()
                     )
                 }
-
+                if tkn_buy == 'BNC':
+                    er = 1
                 for tkn_sell in best_sell_tkns:
                     sell_quantity, price = best_sell_tkns[tkn_sell]
+                    previous_tkn_sell = test_agent.holdings[tkn_sell]
+                    previous_tkn_buy = test_agent.holdings[tkn_buy]
                     max_buy = test_ex.calculate_buy_from_sell(
                         tkn_sell=tkn_sell,
                         tkn_buy=tkn_buy,
@@ -230,8 +233,6 @@ def combine_swaps(
                         continue
                     if max_buy <= buy_tkns[tkn_buy]:
                         # buy as much as we can without going over sell_quantity
-                        previous_tkn_sell = test_agent.holdings[tkn_sell]
-                        previous_tkn_buy = test_agent.holdings[tkn_buy]
                         test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=max_buy)
                         optimized_swaps.append({
                             'exchange': ex_name,
@@ -240,15 +241,16 @@ def combine_swaps(
                             'sell_asset': tkn_sell,
                             'amount': max_buy
                         })
+                        if test_agent.holdings[tkn_buy] - previous_tkn_buy != max_buy:
+                            er = 1
+                        else:
+                            er = 2
                         buy_tkns[tkn_buy] -= test_agent.holdings[tkn_buy] - previous_tkn_buy
-                        if tkn_sell in sell_tkns:
-                            sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
+                        sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                     else:
                         # buy enough to satisfy buy_quantity
-                        previous_tkn_sell = test_agent.holdings[tkn_sell]
                         test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_tkns[tkn_buy])
-                        if tkn_sell in sell_tkns:
-                            sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
+                        sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                         optimized_swaps.append({
                             'exchange': ex_name,
                             'trade': 'buy',
@@ -259,11 +261,87 @@ def combine_swaps(
                         buy_tkns[tkn_buy] = 0
                         break
 
+        if sum(buy_tkns.values()) > 0:
+            # try and sell everything remaining for USD, then use that to buy the remaining tokens
+            for tkn_sell in sell_tkns:
+                if sell_tkns[tkn_sell] > 0:
+                    test_ex.swap(
+                        agent=test_agent,
+                        tkn_buy=ex.stablecoin,
+                        tkn_sell=tkn_sell,
+                        sell_quantity=sell_tkns[tkn_sell]
+                    )
+                    optimized_swaps.append({
+                        'exchange': ex_name,
+                        'trade': 'sell',
+                        'buy_asset': ex.stablecoin,
+                        'sell_asset': tkn_sell,
+                        'amount': sell_tkns[tkn_sell]
+                    })
+            for tkn_buy in buy_tkns:
+                if buy_tkns[tkn_buy] > 0:
+                    test_ex.fail = ''
+                    test_ex.swap(
+                        agent=test_agent,
+                        tkn_buy=tkn_buy,
+                        tkn_sell=ex.stablecoin,
+                        buy_quantity=buy_tkns[tkn_buy]
+                    )
+                    if not test_ex.fail:
+                        optimized_swaps.append({
+                            'exchange': ex_name,
+                            'trade': 'buy',
+                            'buy_asset': tkn_buy,
+                            'sell_asset': ex.stablecoin,
+                            'amount': buy_tkns[tkn_buy]
+                        })
+                    else:
+                        for intermediate_tkn in ex.asset_list:
+                            if ex.buy_spot(tkn_buy, intermediate_tkn) and ex.buy_spot(intermediate_tkn, ex.stablecoin):
+                                buy_quantity = test_ex.calculate_sell_from_buy(
+                                    tkn_buy=tkn_buy,
+                                    tkn_sell=intermediate_tkn,
+                                    buy_quantity=buy_tkns[tkn_buy]
+                                )
+                                test_ex.swap(
+                                    agent=test_agent,
+                                    tkn_buy=intermediate_tkn,
+                                    tkn_sell=ex.stablecoin,
+                                    buy_quantity=ex.calculate_sell_from_buy(
+                                        tkn_buy=tkn_buy,
+                                        tkn_sell=intermediate_tkn,
+                                        buy_quantity=buy_quantity
+                                    )
+                                )
+                                optimized_swaps.append({
+                                    'exchange': ex_name,
+                                    'trade': 'buy',
+                                    'buy_asset': intermediate_tkn,
+                                    'sell_asset': ex.stablecoin,
+                                    'amount': ex.calculate_sell_from_buy(
+                                        tkn_buy=tkn_buy,
+                                        tkn_sell=intermediate_tkn,
+                                        buy_quantity=buy_quantity
+                                    )
+                                })
+                                test_ex.swap(
+                                    agent=test_agent,
+                                    tkn_buy=tkn_buy,
+                                    tkn_sell=intermediate_tkn,
+                                    buy_quantity=buy_tkns[tkn_buy]
+                                )
+                                optimized_swaps.append({
+                                    'exchange': ex_name,
+                                    'trade': 'buy',
+                                    'buy_asset': tkn_buy,
+                                    'sell_asset': intermediate_tkn,
+                                    'amount': buy_tkns[tkn_buy]
+                                })
+                                break
+
         optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
         optimized_profit_usd = cex.value_assets(optimized_profit, asset_map)
         if optimized_profit_usd < default_profit_usd:
-            return_swaps += default_swaps
-        elif sum(buy_tkns.values()) > 0:
             return_swaps += default_swaps
         else:
             return_swaps += optimized_swaps
@@ -290,45 +368,6 @@ def combine_swaps(
             for tkn in ex.asset_list:
                 if optimized_net_swaps[tkn] < default_net_swaps[tkn]:
                     er = 1
-            # # try and sell everything remaining for USD, then use that to buy the remaining tokens
-            # for tkn_sell in sell_tkns:
-            #     if sell_tkns[tkn_sell] > 0:
-            #         ex.swap(
-            #             agent=agent,
-            #             tkn_buy=ex.stablecoin,
-            #             tkn_sell=tkn_sell,
-            #             sell_quantity=sell_tkns[tkn_sell]
-            #         )
-            # for tkn_buy in buy_tkns:
-            #     if buy_tkns[tkn_buy] > 0:
-            #         ex.fail = ''
-            #         ex.swap(
-            #             agent=agent,
-            #             tkn_buy=tkn_buy,
-            #             tkn_sell=ex.stablecoin,
-            #             buy_quantity=buy_tkns[tkn_buy]
-            #         )
-            #         if ex.fail:
-            #             for intermediate_tkn in ex.asset_list:
-            #                 if ex.buy_spot(tkn_buy, intermediate_tkn) and ex.buy_spot(intermediate_tkn, ex.stablecoin):
-            #                     ex.swap(
-            #                         agent=agent,
-            #                         tkn_buy=intermediate_tkn,
-            #                         tkn_sell=ex.stablecoin,
-            #                         buy_quantity=ex.calculate_sell_from_buy(
-            #                             tkn_buy=tkn_buy,
-            #                             tkn_sell=intermediate_tkn,
-            #                             buy_quantity=buy_tkns[tkn_buy]
-            #                         )
-            #                     )
-            #                     ex.swap(
-            #                         agent=agent,
-            #                         tkn_buy=tkn_buy,
-            #                         tkn_sell=intermediate_tkn,
-            #                         buy_quantity=buy_tkns[tkn_buy]
-            #                     )
-            #                     break
-
     return return_swaps
 
 
