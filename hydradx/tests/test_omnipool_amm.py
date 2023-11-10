@@ -371,7 +371,8 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     qi_arb = old_state.lrna[i] + delta_qi * old_state.lrna[i] / old_state.lrna_total
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
-    if ((old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
+    if (
+        (old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
     ) != pytest.approx(
         (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
@@ -880,66 +881,6 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
 #                              + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
 #         raise AssertionError('Asset quantity is not constant after trade (two-part)')
 #
-
-def test_arbitrage():
-    import sys
-    sys.path.append('../..')
-
-    from hydradx.model import run
-    from hydradx.model.amm.omnipool_amm import OmnipoolState
-    from hydradx.model.amm.agents import Agent
-    from hydradx.model.amm.trade_strategies import omnipool_arbitrage
-    from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
-
-    assets = {
-        'HDX': {'usd price': 0.05, 'weight': 0.10},
-        'USD': {'usd price': 1, 'weight': 0.20},
-        'AUSD': {'usd price': 1, 'weight': 0.10},
-        'ETH': {'usd price': 2500, 'weight': 0.40},
-        'DOT': {'usd price': 5.37, 'weight': 0.20}
-    }
-
-    lrna_price_usd = 0.07
-    initial_omnipool_tvl = 10000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    initial_state = GlobalState(
-        pools={
-            'Omnipool': OmnipoolState(
-                tokens={
-                    tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-                },
-                lrna_fee=0,
-                asset_fee=0,
-                preferred_stablecoin='USD'
-            )
-        },
-        agents={
-            # 'Attacker': Agent(
-            #     holdings={'USD': 0, 'AUSD': 1000000000},
-            #     trade_strategy=toxic_asset_attack(
-            #         pool_id='omnipool',
-            #         asset_name='AUSD',
-            #         trade_size=10000
-            #     )
-            # ),
-            'Arbitrageur': Agent(
-                holdings={tkn: float('inf') for tkn in list(assets.keys()) + ['LRNA']},
-                trade_strategy=omnipool_arbitrage('Omnipool')
-            )
-        },
-        evolve_function=fluctuate_prices(volatility={tkn: 0.1 for tkn in assets}),
-        external_market={tkn: assets[tkn]['usd price'] for tkn in assets}
-    )
-    # print(initial_state)
-    time_steps = 1000  # len(price_list) - 1
-    events = run.run(initial_state, time_steps=time_steps, silent=True)
-
 
 def test_trade_limit():
     initial_state = oamm.OmnipoolState(
@@ -2110,9 +2051,9 @@ def test_withdraw_exploit():
     st.floats(min_value=0.50, max_value=1.5)
 )
 def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
-    lp_multiplier = 0.2
-    trade_mult = 0.01
-    oracle_mult = 0.99
+    # lp_multiplier = 0.2
+    # trade_mult = 0.01
+    # oracle_mult = 0.99
 
     tokens = {
         'HDX': {'liquidity': 44000000, 'LRNA': 275143},
@@ -2469,34 +2410,34 @@ def test_trade_manipulation(
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
 
 
-def test_calculate_buy_from_sell():
+def test_calculate_buy_from_sell(tokens):
     omnipool = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 44000000, 'LRNA': 275143},
-            'WETH': {'liquidity': 1400, 'LRNA': 2276599},
-            'DAI': {'liquidity': 2268262, 'LRNA': 2268262},
-            'DOT': {'liquidity': 88000, 'LRNA': 546461},
-            'WBTC': {'liquidity': 47, 'LRNA': 1145210},
-        },
-        preferred_stablecoin='DAI',
-        asset_fee=0.001,
-        lrna_fee=0.001
+        tokens={'HDX': {'liquidity': 105084496.90141414, 'LRNA': mpf('21845.412115189029')}, 'DAI': {'liquidity': mpf('351999.04041514907'), 'LRNA': mpf('12392.530980629856')}, 'WBTC': {'liquidity': 0.04374934, 'LRNA': 50.601798806111}, 'WETH': {'liquidity': mpf('298.61378484369175'), 'LRNA': mpf('22190.956824254714')}, 'DOT': {'liquidity': 395065.0905081596, 'LRNA': 70016.0975356499}, 'ASTR': {'liquidity': 4179926.5143579226, 'LRNA': 10129.972378939132}, 'USDT': {'liquidity': 2337702.154388, 'LRNA': 81604.09174801815}, 'iBTC': {'liquidity': 26.40010622, 'LRNA': 34606.685351551605}, 'ZTG': {'liquidity': 3342363.514628371, 'LRNA': 4259.712546263024}, 'CFG': {'liquidity': 558477.3865852563, 'LRNA': 9957.82239223428}, 'BNC': {'liquidity': 714088.4467206022, 'LRNA': 6747.35274402192}, 'vDOT': {'liquidity': 101074.5141752639, 'LRNA': 21652.030726406738}, 'GLMR': {'liquidity': 609607.7538571042, 'LRNA': 5839.577068162894}, 'INTR': {'liquidity': 12709711.287548447, 'LRNA': 9007.213901804105}, 'DAI001': {'liquidity': 37585.53464434876, 'LRNA': 1407.281258338137}, 'WBTC001': {'liquidity': 31.55639488, 'LRNA': 41187.40262813065}, 'WETH001': {'liquidity': 992.1378594480628, 'LRNA': 73534.78121224766}},
+        preferred_stablecoin='USDT',  # list(tokens.keys())[1],  # 'USDT',
+        asset_fee={'HDX': 0.0025, 'DAI': 0.0025, 'WBTC': 0.0025, 'WETH': 0.0025, 'DOT': 0.003905, 'ASTR': 0.002504, 'USDT': 0.0025, 'iBTC': 0.0025, 'ZTG': 0.0025, 'CFG': 0.003744, 'BNC': 0.0025, 'vDOT': 0.0026650000000000003, 'GLMR': 0.0025, 'INTR': 0.0025, 'DAI001': 0.0025, 'WBTC001': 0.0025, 'WETH001': 0.0025},
+        lrna_fee={'HDX': 0.0005, 'DAI': 0.0007199999999999999, 'WBTC': 0.0005, 'WETH': 0.0005, 'DOT': 0.0005, 'ASTR': 0.0005, 'USDT': 0.000751, 'iBTC': 0.0005, 'ZTG': 0.0005, 'CFG': 0.0005, 'BNC': 0.0005, 'vDOT': 0.0005, 'GLMR': 0.0005, 'INTR': 0.0005, 'DAI001': 0.0005, 'WBTC001': 0.0005, 'WETH001': 0.0005}
     )
     agent = Agent(holdings={tkn: 1000000000 for tkn in omnipool.asset_list})
-    sell_quantity = 1000
+    sell_quantity = 280.372600567434985450343971404080739362
+    tkn_sell = omnipool.asset_list[0]
+    tkn_buy = omnipool.asset_list[1]
     test_state, test_agent = omnipool.copy(), agent.copy()
+    buy_quantity = omnipool.calculate_buy_from_sell(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity
+    )
     test_state.swap(
         agent=test_agent,
-        tkn_sell='DAI',
-        tkn_buy='DOT',
-        sell_quantity=sell_quantity
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
     )
-    buy_quantity = omnipool.calculate_buy_from_sell(
-        tkn_sell='DAI',
-        tkn_buy='DOT',
-        sell_quantity=sell_quantity
-    )
-    right_answer = test_agent.holdings['DOT'] - test_agent.initial_holdings['DOT']
+    actual_sell_quantity = test_agent.initial_holdings[tkn_sell] - test_agent.holdings[tkn_sell]
+    right_answer = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
     if buy_quantity != pytest.approx(right_answer):
         raise AssertionError(f'buy_quantity {buy_quantity} != right_answer {right_answer}')
+    if sell_quantity != pytest.approx(actual_sell_quantity):
+        raise AssertionError(f'sell_quantity {sell_quantity} != actual_sell_quantity {actual_sell_quantity}')
+    # buy_quantity_2 = omnipool.calculate_buy_from_sell(
 
