@@ -299,9 +299,9 @@ class CentralizedMarket(AMM):
         if tkn == numeraire:
             return 1
         elif (tkn, numeraire) in self.order_book:
-            return self.order_book[(tkn, numeraire)].bids[0][0] * (1 - self.trade_fee)
+            return self.order_book[(tkn, numeraire)].asks[0][0] * (1 - self.trade_fee)
         elif (numeraire, tkn) in self.order_book:
-            return 1 / self.order_book[(numeraire, tkn)].asks[0][0] * (1 - self.trade_fee)
+            return 1 / self.order_book[(numeraire, tkn)].bids[0][0] * (1 - self.trade_fee)
         else:
             return 0
 
