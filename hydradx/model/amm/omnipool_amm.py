@@ -1098,17 +1098,14 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
-    if denominator == '':
-        denominator = state.stablecoin
     if tkn not in state.asset_list:
         return 0
+    elif not denominator:
+        return lrna_price(state, tkn)
     elif denominator not in state.asset_list:
         return 0
     elif state.liquidity[tkn] == 0:
         return 0
-    elif not denominator:
-        return lrna_price(state, tkn)
-
     return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
