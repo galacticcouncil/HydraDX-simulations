@@ -292,6 +292,39 @@ def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float, tra
     if sell_quantity != pytest.approx(actual_sell_quantity):
         raise AssertionError('Loss detected.')
 
+
+@given(
+    sell_quantity=st.floats(min_value=0.01, max_value=100),
+    order_book=order_book_strategy(book_depth=10000)
+)
+def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('DOT', 'USD'): order_book
+        },
+    )
+    tkn_sell = 'DOT'
+    tkn_buy = 'USD'
+    buy_quantity = initial_cex.calculate_buy_from_sell(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity,
+    )
+    agent = Agent(
+        holdings={'DOT': 10000000, 'USD': 0},
+    )
+    test_cex = initial_cex.copy()
+    test_cex.swap(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity,
+        agent=agent
+    )
+    actual_buy_quantity = agent.holdings[tkn_buy] - agent.initial_holdings[tkn_buy]
+    if buy_quantity != pytest.approx(actual_buy_quantity):
+        raise AssertionError('Loss detected.')
+
+
 @given(
     order_book=order_book_strategy(book_depth=100)
 )
