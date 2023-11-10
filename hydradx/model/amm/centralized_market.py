@@ -11,6 +11,9 @@ class SortedList(list):
         if iterable is not None:
             self.extend(sorted(iterable, reverse=self.reverse))
 
+    def __repr__(self):
+        return f"SortedList({super().__repr__()})"
+
     def append(self, item):
         if self.reverse:
             index = bisect.bisect_left([x for x in reversed(self)], item)
@@ -61,6 +64,9 @@ class OrderBook:
         self.bids = SortedList(bids, reverse=True)
         self.asks = SortedList(asks)
 
+    def __repr__(self):
+        return f"OrderBook(bids={self.bids}, asks={self.asks})"
+
     def copy(self):
         return copy.deepcopy(self)
 
@@ -108,8 +114,10 @@ class CentralizedMarket(AMM):
     ):
         if sell_quantity > agent.holdings[tkn_sell]:
             raise AssertionError('Agent does not have enough holdings to execute trade.')
-        if tkn_sell not in self.asset_list or tkn_buy not in self.asset_list:
-            raise AssertionError('Asset not found in centralized market.')
+        if tkn_sell not in self.asset_list:
+            raise AssertionError('Asset ' + tkn_sell + ' not found in centralized market.')
+        if tkn_buy not in self.asset_list:
+            raise AssertionError('Asset ' + tkn_buy + ' not found in centralized market.')
         if tkn_buy not in agent.holdings:
             agent.holdings[tkn_buy] = 0
 

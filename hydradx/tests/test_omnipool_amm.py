@@ -2410,7 +2410,7 @@ def test_trade_manipulation(
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
 
 
-def test_calculate_buy_from_sell(tokens):
+def test_calculate_buy_from_sell():
     omnipool = oamm.OmnipoolState(
         tokens={'HDX': {'liquidity': 105084496.90141414, 'LRNA': mpf('21845.412115189029')}, 'DAI': {'liquidity': mpf('351999.04041514907'), 'LRNA': mpf('12392.530980629856')}, 'WBTC': {'liquidity': 0.04374934, 'LRNA': 50.601798806111}, 'WETH': {'liquidity': mpf('298.61378484369175'), 'LRNA': mpf('22190.956824254714')}, 'DOT': {'liquidity': 395065.0905081596, 'LRNA': 70016.0975356499}, 'ASTR': {'liquidity': 4179926.5143579226, 'LRNA': 10129.972378939132}, 'USDT': {'liquidity': 2337702.154388, 'LRNA': 81604.09174801815}, 'iBTC': {'liquidity': 26.40010622, 'LRNA': 34606.685351551605}, 'ZTG': {'liquidity': 3342363.514628371, 'LRNA': 4259.712546263024}, 'CFG': {'liquidity': 558477.3865852563, 'LRNA': 9957.82239223428}, 'BNC': {'liquidity': 714088.4467206022, 'LRNA': 6747.35274402192}, 'vDOT': {'liquidity': 101074.5141752639, 'LRNA': 21652.030726406738}, 'GLMR': {'liquidity': 609607.7538571042, 'LRNA': 5839.577068162894}, 'INTR': {'liquidity': 12709711.287548447, 'LRNA': 9007.213901804105}, 'DAI001': {'liquidity': 37585.53464434876, 'LRNA': 1407.281258338137}, 'WBTC001': {'liquidity': 31.55639488, 'LRNA': 41187.40262813065}, 'WETH001': {'liquidity': 992.1378594480628, 'LRNA': 73534.78121224766}},
         preferred_stablecoin='USDT',  # list(tokens.keys())[1],  # 'USDT',
