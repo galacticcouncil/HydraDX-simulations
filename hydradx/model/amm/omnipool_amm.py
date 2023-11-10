@@ -312,9 +312,9 @@ class OmnipoolState(AMM):
         """
         delta_Ri = sell_quantity
         delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
-        asset_fee = self.asset_fee[tkn_sell].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
-        lrna_fee = self.lrna_fee[tkn_buy].compute(
-            tkn=tkn_buy,
+        asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=sell_quantity)
+        lrna_fee = self.lrna_fee[tkn_sell].compute(
+            tkn=tkn_sell,
             delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
                        / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
         )
@@ -1098,6 +1098,8 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
+    if denominator == '':
+        denominator = state.stablecoin
     if tkn not in state.asset_list:
         return 0
     elif denominator not in state.asset_list:
