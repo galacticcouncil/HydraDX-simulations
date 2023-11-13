@@ -3,7 +3,8 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 import pytest
-
+from mpmath import mp, mpf
+mp.dps = 100
 
 base_price_strat = st.floats(min_value=0.001, max_value=1000)
 fee_strat = st.floats(min_value=0, max_value=0.1)
@@ -279,7 +280,7 @@ def test_calculate_sell_from_buy(order_book: OrderBook, buy_quantity: float, tra
         buy_quantity=buy_quantity,
     )
     agent = Agent(
-        holdings={'DOT': 10000000},
+        holdings={'DOT': mpf(10000000)},
     )
     test_cex = initial_cex.copy()
     test_cex.swap(
@@ -311,7 +312,7 @@ def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
         sell_quantity=sell_quantity,
     )
     agent = Agent(
-        holdings={'DOT': 10000000, 'USD': 0},
+        holdings={'DOT': mpf(10000000), 'USD': mpf(0)},
     )
     test_cex = initial_cex.copy()
     test_cex.swap(

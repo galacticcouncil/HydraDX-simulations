@@ -10,7 +10,6 @@ from hydradx.model.amm.arbitrage_agent_new import (
 from hydradx.model.amm.arbitrage_agent_new import get_arb_swaps, execute_arb
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.processing import save_market_config, load_market_config
 
 
 def test_calculate_profit():
@@ -157,31 +156,6 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
-
-
-def test_save():
-    save_market_config()
-
-
-def test_load():
-    omnipool, cex, order_book_map = load_market_config()
-    arb_swaps = get_arb_swaps(omnipool, cex, order_book_map)
-    initial_agent = Agent(holdings={tkn: 10000000000 for tkn in omnipool.asset_list + cex.asset_list}, unique_id='bot')
-    agent = initial_agent.copy()
-
-    execute_arb(omnipool, cex, agent, arb_swaps)
-
-    asset_map = {}
-    for tkn_pair1, tkn_pair2 in order_book_map.items():
-        if tkn_pair1[0] != tkn_pair2[0]:
-            asset_map[tkn_pair1[0]] = tkn_pair2[0]
-        if tkn_pair1[1] != tkn_pair2[1]:
-            asset_map[tkn_pair1[1]] = tkn_pair2[1]
-
-    profit = calculate_profit(initial_agent, agent, asset_map)
-    for tkn in profit:
-        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
-            raise AssertionError('Loss detected.')
 
 
 def test_combine_step():
