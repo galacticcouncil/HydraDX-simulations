@@ -7,7 +7,7 @@ import os
 from hydradxapi import HydraDX
 import time
 
-from .amm.centralized_market import OrderBook
+from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, AMM, value_assets
 
 cash_out = GlobalState.cash_out
@@ -324,14 +324,33 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-# def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
-#     price_data = []
-#     with open(input_path + input_filename, newline='') as input_file:
-#         fieldnames = ['timestamp', 'price']
-#         reader = DictReader(input_file, fieldnames=fieldnames)
-#         next(reader)  # skip header
-#         for row in reader:
-#             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-#
-#     price_data.sort(key=lambda x: x.timestamp)
-#     return price_data
+def load_centralized_market(config_filename, exchange_name, trade_fee: float) -> CentralizedMarket:
+    with open('config/' + config_filename, 'r') as json_file:
+        cfg = json.load(json_file)
+
+    for d in cfg:
+        d['tkns'] = tuple(d['tkns'])
+        d['tkn_ids'] = tuple(d['tkn_ids'])
+        d['order_book'] = tuple(d['order_book'])
+
+    order_books = {}
+
+    for arb_cfg in cfg:
+        tkn_pair = arb_cfg['order_book']
+        exchange = arb_cfg['exchange']
+        if tkn_pair not in order_books:
+            if exchange == exchange_name:
+                if exchange_name == 'kraken':
+                    order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=True)
+                elif exchange_name == 'binance':
+                    order_books[tkn_pair] = get_binance_orderbook(tkn_pair, archive=True)
+                else:
+                    raise ValueError(f"Exchange {exchange_name} not supported")
+
+    return CentralizedMarket(
+        unique_id=exchange_name,
+        order_book=order_books,
+        trade_fee=trade_fee
+    )
+
+
