@@ -84,7 +84,8 @@ class CentralizedMarket(AMM):
             order_book: dict[tuple[str, str], OrderBook],
             asset_list: list[str] = None,
             trade_fee: float = 0,
-            preferred_stablecoin: str = 'USD'
+            preferred_stablecoin: str = 'USD',
+            unique_id: str = None
     ):
         """
         This is an 'AMM' even though it's not, because it's a convenient way to
@@ -103,6 +104,7 @@ class CentralizedMarket(AMM):
             self.asset_list = ['USD', *self.asset_list]
         self.trade_fee = trade_fee
         self.stablecoin = preferred_stablecoin
+        self.unique_id = unique_id or 'CentralizedMarket'
 
     def swap(
         self,
