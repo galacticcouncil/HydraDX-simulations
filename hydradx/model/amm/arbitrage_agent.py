@@ -186,7 +186,7 @@ def get_arb_swaps(op_state, cex_dict, config, max_liquidity=None, iters=20):
             break
         arb_opps = new_arb_opps
 
-    return flatten_swaps(all_swaps)
+    return all_swaps
 
 
 def get_arb_swaps_simple(op_state, cex_dict, config, max_liquidity=None, iters=20):
@@ -218,7 +218,7 @@ def get_arb_swaps_simple(op_state, cex_dict, config, max_liquidity=None, iters=2
                 swap['exchange'] = arb_cfg['exchange']
                 all_swaps.append(swap)
 
-    return flatten_swaps(all_swaps)
+    return all_swaps
 
 
 def calculate_arb_amount_bid(
@@ -384,6 +384,8 @@ def execute_arb(dex, cex_dict, agent, all_swaps):
         'kraken': cex_dict['kraken'],
         'binance': cex_dict['binance']
     }
+    if 'dex' in all_swaps[0]:
+        all_swaps = flatten_swaps(all_swaps)
     for swap in all_swaps:
         tkn_buy = swap['buy_asset']
         tkn_sell = swap['sell_asset']
@@ -416,16 +418,20 @@ def calculate_profit(init_agent, agent, asset_map=None):
 
 def combine_swaps(
         dex: OmnipoolState,
-        cex: CentralizedMarket,
+        cex: dict[str, CentralizedMarket],
         agent: Agent,
         all_swaps: list[dict],
         asset_map: dict[str, str],
 ):
     # take the list of swaps and try to get the same result more efficiently
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
-    exchanges = {'cex': cex, 'dex': dex}
+    exchanges = {**{ex_name: ex for (ex_name, ex) in cex.items()}, 'dex': dex}
+    ref_exchange: CentralizedMarket = exchanges['binance']
     net_swaps = {'dex': {}, 'cex': {}}
     return_swaps = []
+
+    if 'dex' in all_swaps[0]:
+        all_swaps = flatten_swaps(all_swaps)
 
     for ex_name, ex in exchanges.items():
 
@@ -443,7 +449,7 @@ def combine_swaps(
         net_swaps[ex_name] = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
         default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        default_profit_usd = cex.value_assets(default_profit, asset_map)
+        default_profit_usd = ref_exchange.value_assets(default_profit, asset_map)
 
         test_ex = ex.copy()
         test_agent = agent.copy()
@@ -597,7 +603,7 @@ def combine_swaps(
                                 break
 
         optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        optimized_profit_usd = cex.value_assets(optimized_profit, asset_map)
+        optimized_profit_usd = ref_exchange.value_assets(optimized_profit, asset_map)
         if optimized_profit_usd < default_profit_usd:
             return_swaps += default_swaps
         else:
