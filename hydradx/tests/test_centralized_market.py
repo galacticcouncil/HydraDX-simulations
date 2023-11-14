@@ -59,9 +59,11 @@ def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBoo
     )
 
     value_bought = sum(
-        [sell_quantity * price for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity * price for (price, sell_quantity)
+         in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [sell_quantity * price for (price, sell_quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity * price for (price, sell_quantity)
+         in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
@@ -124,9 +126,11 @@ def test_sell_base(sell_quantity: float, trade_fee: float, order_book: OrderBook
         raise AssertionError('Central market sell trade failed to execute correctly.')
 
     value_sold = sum(
-        [sell_quantity * price for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+        [sell_quantity * price for (price, sell_quantity)
+         in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [sell_quantity * price for (price, sell_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+        [sell_quantity * price for (price, sell_quantity)
+         in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
@@ -167,9 +171,11 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
     )
 
     value_sold = sum(
-        [buy_quantity * price for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+        [buy_quantity * price for (price, buy_quantity)
+         in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
-        [buy_quantity * price for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+        [buy_quantity * price for (price, buy_quantity)
+         in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
@@ -232,9 +238,11 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     value_bought = sum(
-        [buy_quantity * price for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [buy_quantity * price for (price, buy_quantity)
+         in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [buy_quantity * price for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [buy_quantity * price for (price, buy_quantity)
+         in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
