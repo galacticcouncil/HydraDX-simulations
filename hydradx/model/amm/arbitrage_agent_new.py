@@ -41,7 +41,17 @@ def get_arb_opps(op_state, order_book, order_book_map, cex_fee, buffer):
     return arb_opps
 
 
-def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex': {}, 'dex': {}}, iters=20) -> list:
+def flatten_swaps(swaps):
+    return [
+        {'exchange': 'omnipool', **trade['dex']}
+        if key == 'dex' else
+        {'exchange': trade['exchange'], **trade['cex']}
+        for trade in swaps for key in trade if key in ['dex', 'cex']
+    ]
+
+
+def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity=None, iters=20) -> list:
+    max_liquidity = max_liquidity or {'cex': {}, 'dex': {}}
     cex_fee = cex.trade_fee
     dex_slippage_tolerance = buffer / 2
     cex_slippage_tolerance = buffer / 2
@@ -148,7 +158,7 @@ def get_arb_swaps(op_state, cex, order_book_map, buffer=0.0, max_liquidity={'cex
             break
         arb_opps = new_arb_opps
 
-    return all_swaps
+    return flatten_swaps(all_swaps)
 
 
 def combine_swaps(
@@ -355,13 +365,9 @@ def execute_arb(dex, cex, agent, all_swaps):
         ex.fail = ''
         if swap['trade'] == 'buy':
             ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
-            if ex.fail:
-                er = 1
         elif swap['trade'] == 'sell':
             # omnipool leg
             ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
-            if ex.fail:
-                er = 1
         else:
             raise ValueError('Incorrect trade type.')
 
