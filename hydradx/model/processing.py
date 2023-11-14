@@ -237,7 +237,9 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if archive:
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
         ts = time.time()
         with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
@@ -248,7 +250,9 @@ def get_binance_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.binance.com/api/v3/depth?symbol=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if archive:
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
         ts = time.time()
         with open(f'./archive/binance_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
