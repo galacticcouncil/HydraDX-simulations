@@ -464,13 +464,15 @@ def test_process_next_swap(
     test_agent = agent.copy()
     test_cex = cex.copy()
     buffer = 0.0
-    init_max_liquidity = {'cex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
-                          'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}}
+    init_max_liquidity = {'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+                          'cex': {'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+                                  'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
+                                  }}
     max_liquidity = copy.deepcopy(init_max_liquidity)
     iters = 20
     tkn_pair = ('DOT', 'USDT')
 
-    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity, iters)
+    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity['dex'], max_liquidity['cex']['kraken'], iters)
     if swap:
         cex_swap, dex_swap = swap['cex'], swap['dex']
         dex_spot = op_state.price(op_state, 'DOT', 'USDT')

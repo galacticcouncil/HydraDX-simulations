@@ -193,12 +193,17 @@ def import_monthly_binance_prices(
     return price_data
 
 
-def convert_kraken_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
-    orderbook = x['result'][tkn_pair[0] + tkn_pair[1]]
+def convert_kraken_orderbook(x: dict) -> OrderBook:
+    result = x['result']
+    ks = list(result.keys())
+    if len(ks) > 1:
+        raise ValueError('Multiple keys in result')
+    k = ks[0]
+    ob = x['result'][k]
 
     ob_obj = OrderBook(
-        bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
-        asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
+        bids=[[float(bid[0]), float(bid[1])] for bid in ob['bids']],
+        asks=[[float(ask[0]), float(ask[1])] for ask in ob['asks']]
     )
     return ob_obj
 
@@ -222,7 +227,7 @@ def get_orderbooks_from_file(input_path: str) -> dict:
             filepath = input_path + filename
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
-                ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(tkn_pair, y)
+                ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(y)
         elif filename.startswith('binance_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
             filepath = input_path + filename
@@ -241,7 +246,7 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
         ts = time.time()
         with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
-    return convert_kraken_orderbook(tkn_pair, y)
+    return convert_kraken_orderbook(y)
 
 
 def get_binance_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
