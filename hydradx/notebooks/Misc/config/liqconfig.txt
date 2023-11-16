@@ -1,0 +1,9 @@
+{"cex": {"kraken":
+    {"USD": 1000, "USDT": 1000, "DAI": 1000, "DOT": 200, "BTC": 0.030, "ETH": 0.5, "HDX": 300000, "ASTR": 3000,
+     "CFG": 350, "INTR": 8000, "BNC": 800, "GLMR": 800},
+    "binance":
+        {"USD": 1000, "USDT": 1000, "DAI": 1000, "DOT": 200, "BTC": 0.03, "ETH": 0.5, "HDX": 300000, "ASTR": 3000,
+         "GLMR": 800}},
+"dex": {"USDT": 1000, "DAI": 1000, "DOT": 200, "iBTC": 0.03, "WBTC": 0.03, "WETH": 0.5, "HDX": 300000, "ASTR": 3000,
+     "CFG": 350, "INTR": 8000, "BNC": 800, "GLMR": 800}
+}
