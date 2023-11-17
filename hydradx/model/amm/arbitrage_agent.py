@@ -52,14 +52,14 @@ def process_next_swap(text_dex, test_agent, test_cex, tkn_pair, ob_tkn_pair, buf
                     'amount': amt
                 }
             }
-            if tkn in max_liquidity['cex']:
-                max_liquidity['cex'][tkn] -= amt
-            if numeraire in max_liquidity['cex']:
-                max_liquidity['cex'][numeraire] += amt_in
-            if tkn in max_liquidity['dex']:
-                max_liquidity['dex'][tkn] += amt
-            if numeraire in max_liquidity['dex']:
-                max_liquidity['dex'][numeraire] -= amt_in
+            if tkn in max_liquidity_cex:
+                max_liquidity_cex[tkn] -= amt
+            if numeraire in max_liquidity_cex:
+                max_liquidity_cex[numeraire] += amt_in
+            if tkn in max_liquidity_dex:
+                max_liquidity_dex[tkn] += amt
+            if numeraire in max_liquidity_dex:
+                max_liquidity_dex[numeraire] -= amt_in
 
     elif asks and sell_spot > asks[0][0] * (1 + cex_fee + buffer):
         ask = asks[0]
@@ -89,14 +89,14 @@ def process_next_swap(text_dex, test_agent, test_cex, tkn_pair, ob_tkn_pair, buf
                     'amount': amt
                 }
             }
-            if tkn in max_liquidity['cex']:
-                max_liquidity['cex'][tkn] += amt
-            if numeraire in max_liquidity['cex']:
-                max_liquidity['cex'][numeraire] -= amt_out
-            if tkn in max_liquidity['dex']:
-                max_liquidity['dex'][tkn] -= amt
-            if numeraire in max_liquidity['dex']:
-                max_liquidity['dex'][numeraire] += amt_out
+            if tkn in max_liquidity_cex:
+                max_liquidity_cex[tkn] += amt
+            if numeraire in max_liquidity_cex:
+                max_liquidity_cex[numeraire] -= amt_out
+            if tkn in max_liquidity_dex:
+                max_liquidity_dex[tkn] -= amt
+            if numeraire in max_liquidity_dex:
+                max_liquidity_dex[numeraire] += amt_out
 
     return swap
 
