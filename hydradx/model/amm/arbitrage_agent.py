@@ -381,8 +381,7 @@ def calculate_arb_amount_ask(
 def execute_arb(dex, cex_dict, agent, all_swaps):
     exchanges = {
         'omnipool': dex,
-        'kraken': cex_dict['kraken'],
-        'binance': cex_dict['binance']
+        **{ex_name: ex for (ex_name, ex) in cex_dict.items()}
     }
     if 'dex' in all_swaps[0]:
         all_swaps = flatten_swaps(all_swaps)
@@ -432,6 +431,8 @@ def combine_swaps(
 
     if 'dex' in all_swaps[0]:
         all_swaps = flatten_swaps(all_swaps)
+
+    print(all_swaps)
 
     for ex_name, ex in exchanges.items():
 
