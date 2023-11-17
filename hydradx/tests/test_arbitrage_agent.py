@@ -8,7 +8,8 @@ from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_am
     process_next_swap, get_arb_swaps_simple, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market
+from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market, \
+    get_orderbooks_from_file
 
 
 def test_calculate_profit():
@@ -910,19 +911,31 @@ def test_combine_step():
         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
     ]
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
 
     for arb_cfg in cfg:
         arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
         arb_cfg['buffer'] = 0.001
 
-    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.16)
-    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.1)
+    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016)
+    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001)
     cex = {
         'kraken': kraken,
         'binance': binance
     }
+    # uncomment below to test with archived data
+    # asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
+    #
+    # cex = {}
+    # for exchange in ('kraken', 'binance'):
+    #     cex[exchange] = CentralizedMarket(
+    #         order_book=get_orderbooks_from_file("archive/")[exchange],
+    #         unique_id=exchange,
+    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+    #     )
+    # kraken = cex['kraken']
+    # binance = cex['binance']
+
     dex = OmnipoolState(
         tokens=tokens,
         lrna_fee={asset: fees[asset]['protocol_fee'] for asset in asset_list},
@@ -969,7 +982,9 @@ def test_combine_step():
     combined_profit_total = combine_binance.value_assets(combined_profit, asset_map)
 
     # see if iterating on that can get any extra profit
-    iter_dex, iter_kraken, iter_binance, iter_agent = dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+    iter_dex, iter_kraken, iter_binance, iter_agent = (
+        combine_dex.copy(), combine_kraken.copy(), combine_binance.copy(), combine_agent.copy()
+    )
     arb_swaps = get_arb_swaps(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg)
     itered_swaps = combine_swaps(
         iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map
