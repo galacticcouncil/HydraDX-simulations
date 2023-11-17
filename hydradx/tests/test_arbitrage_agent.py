@@ -877,7 +877,7 @@ def test_get_arb_swaps(
 
 def test_combine_step():
     # asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(path='./archive/')
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=True)
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
 
     kraken = load_centralized_market('arbconfig2.txt', 'kraken', trade_fee=0.16)
     binance = load_centralized_market('arbconfig2.txt', 'binance', trade_fee=0.1)
