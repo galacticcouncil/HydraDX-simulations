@@ -876,11 +876,49 @@ def test_get_arb_swaps(
 
 
 def test_combine_step():
+    cfg = [
+        {"tkns": ("HDX", "USDT"), "tkn_ids": [0, 10], "exchange": "kraken", "order_book": ("HDX", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "kraken", "order_book": ("DOT", "USDT")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "kraken", "order_book": ("ETH", "USDT")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 18], "exchange": "kraken", "order_book": ("ETH", "DAI")},
+        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "kraken", "order_book": ("DOT", "ETH")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
+        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "XBT")},
+        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "XBT")},
+        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
+        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "kraken", "order_book": ("ASTR", "USD")},
+        {"tkns": ("CFG", "USDT"), "tkn_ids": [13, 10], "exchange": "kraken", "order_book": ("CFG", "USD")},
+        {"tkns": ("BNC", "USDT"), "tkn_ids": [14, 10], "exchange": "kraken", "order_book": ("BNC", "USD")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "kraken", "order_book": ("GLMR", "USD")},
+        {"tkns": ("INTR", "USDT"), "tkn_ids": [17, 10], "exchange": "kraken", "order_book": ("INTR", "USD")},
+        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "binance", "order_book": ("DOT", "USDT")},
+        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "binance", "order_book": ("DOT", "ETH")},
+        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "binance", "order_book": ("DOT", "BTC")},
+        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "binance", "order_book": ("DOT", "BTC")},
+        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "binance", "order_book": ("ETH", "USDT")},
+        {"tkns": ("WETH", "DAI"), "tkn_ids": [20, 18], "exchange": "binance", "order_book": ("ETH", "DAI")},
+        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "binance", "order_book": ("ETH", "BTC")},
+        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "binance", "order_book": ("ETH", "BTC")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
+        {"tkns": ("WBTC", "DAI"), "tkn_ids": [19, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
+        {"tkns": ("IBTC", "DAI"), "tkn_ids": [11, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
+        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
+        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
+    ]
     # asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(path='./archive/')
     asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
 
-    kraken = load_centralized_market('arbconfig2.txt', 'kraken', trade_fee=0.16)
-    binance = load_centralized_market('arbconfig2.txt', 'binance', trade_fee=0.1)
+    for arb_cfg in cfg:
+        arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
+        arb_cfg['buffer'] = 0.001
+
+    kraken = load_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.16)
+    binance = load_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.1)
     cex = {
         'kraken': kraken,
         'binance': binance
@@ -892,16 +930,6 @@ def test_combine_step():
         preferred_stablecoin='USDT'
     )
 
-    with open('config/arbconfig2.txt', 'r') as json_file:
-        cfg = json.load(json_file)
-
-    for d in cfg:
-        d['tkns'] = tuple(d['tkns'])
-        d['tkn_ids'] = tuple(d['tkn_ids'])
-        d['order_book'] = tuple(d['order_book'])
-
-    for arb_cfg in cfg:
-        arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
 
     arb_swaps = get_arb_swaps_simple(dex, cex, cfg)
     asset_map = {
