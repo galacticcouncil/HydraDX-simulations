@@ -1,14 +1,14 @@
 import copy
 from datetime import timedelta
-
+import json
 from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap
-from hydradx.model.amm.arbitrage_agent import get_arb_swaps_simple, execute_arb, get_arb_swaps
+    process_next_swap, get_arb_swaps_simple, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, load_centralized_market
 
 
 def test_calculate_profit():
@@ -655,7 +655,7 @@ def test_get_arb_swaps_simple_with_buffer(
         hdxdot_amts: list,
         hdxusd_price_mult: float,
         hdxusd_amts: list,
-        buffer_ls: float
+        buffer_ls: list
 ):
     tokens = {
         'USDT': {
@@ -736,7 +736,10 @@ def test_get_arb_swaps_simple_with_buffer(
         ('HDX', 'DOT'): hdx_dot_order_book_obj
     }
 
-    cfg = [{"tkn_pair": k, "exchange": "exchange_name", "order_book": k, "buffer": buffer_ls[i]} for i, k in enumerate(order_book)]
+    cfg = [
+        {"tkn_pair": k, "exchange": "exchange_name", "order_book": k, "buffer": buffer_ls[i]}
+        for i, k in enumerate(order_book)
+    ]
 
     cex = CentralizedMarket(
         order_book=order_book,
@@ -868,3 +871,97 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
+
+
+def test_combine_step():
+    # asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(path='./archive/')
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=True)
+
+    kraken = load_centralized_market('arbconfig2.txt', 'kraken', trade_fee=0.16)
+    binance = load_centralized_market('arbconfig2.txt', 'binance', trade_fee=0.1)
+    cex = {
+        'kraken': kraken,
+        'binance': binance
+    }
+    dex = OmnipoolState(
+        tokens=tokens,
+        lrna_fee={asset: fees[asset]['protocol_fee'] for asset in asset_list},
+        asset_fee={asset: fees[asset]['asset_fee'] for asset in asset_list},
+        preferred_stablecoin='USDT'
+    )
+
+    with open('config/arbconfig2.txt', 'r') as json_file:
+        cfg = json.load(json_file)
+
+    for d in cfg:
+        d['tkns'] = tuple(d['tkns'])
+        d['tkn_ids'] = tuple(d['tkn_ids'])
+        d['order_book'] = tuple(d['order_book'])
+
+    for arb_cfg in cfg:
+        arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
+
+    arb_swaps = get_arb_swaps_simple(dex, cex, cfg)
+    asset_map = {
+        'WETH': 'ETH',
+        'XETH': 'ETH',
+        'XXBT': 'BTC',
+        'WBTC': 'BTC',
+        'ZUSD': 'USD',
+        'USDT': 'USD',
+        'USDC': 'USD',
+        'DAI': 'USD',
+        'USDT001': 'USD',
+        'DAI001': 'USD',
+        'WETH001': 'ETH',
+        'WBTC001': 'BTC',
+        'iBTC': 'BTC',
+        'XBT': 'BTC'
+    }
+    initial_agent = Agent(
+        holdings={
+            tkn: 10000000000
+            for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
+        }
+    )
+    test_dex, test_kraken, test_binance, test_agent = dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+    execute_arb(test_dex, {'kraken': test_kraken, 'binance': test_binance}, test_agent, arb_swaps)
+    profit = calculate_profit(initial_agent, test_agent, asset_map)
+    profit_total = test_binance.value_assets(profit, asset_map)
+    print('profit: ', profit_total)
+
+    combine_dex, combine_kraken, combine_binance, combine_agent = \
+        dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+    combined_swaps = combine_swaps(
+        combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, arb_swaps, asset_map
+    )
+    execute_arb(combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, combined_swaps)
+    combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
+    combined_profit_total = combine_binance.value_assets(combined_profit, asset_map)
+
+    # see if iterating on that can get any extra profit
+    iter_dex, iter_kraken, iter_binance, iter_agent = dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+    arb_swaps = get_arb_swaps(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg)
+    itered_swaps = combine_swaps(
+        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map
+    )
+    execute_arb(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, itered_swaps)
+    iter_profit = calculate_profit(initial_agent, iter_agent, asset_map)
+    iter_profit_total = iter_binance.value_assets(iter_profit, asset_map)
+
+    for tkn in profit:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            raise AssertionError('Loss detected.')
+
+    for tkn in combined_profit:
+        if combined_profit[tkn] < -1e-10:
+            raise AssertionError('Loss detected.')
+
+    if profit_total > combined_profit_total:
+        raise AssertionError('Loss detected.')
+    else:
+        print(f"extra profit obtained: {combined_profit_total - profit_total}")
+        if iter_profit_total > combined_profit_total:
+            print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
+        else:
+            print('Iteration did not improve profit.')
