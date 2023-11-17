@@ -333,7 +333,7 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def load_centralized_market(config, exchange_name, trade_fee: float) -> CentralizedMarket:
+def get_centralized_market(config, exchange_name, trade_fee: float) -> CentralizedMarket:
 
     order_books = {}
     for arb_cfg in config:
