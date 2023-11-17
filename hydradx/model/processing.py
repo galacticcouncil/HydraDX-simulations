@@ -333,18 +333,13 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def load_centralized_market(config_filename, exchange_name, trade_fee: float) -> CentralizedMarket:
-    with open('config/' + config_filename, 'r') as json_file:
-        cfg = json.load(json_file)
-
-    for d in cfg:
-        d['tkns'] = tuple(d['tkns'])
-        d['tkn_ids'] = tuple(d['tkn_ids'])
-        d['order_book'] = tuple(d['order_book'])
+def load_centralized_market(config, exchange_name, trade_fee: float) -> CentralizedMarket:
 
     order_books = {}
-
-    for arb_cfg in cfg:
+    for arb_cfg in config:
+        arb_cfg['tkns'] = tuple(arb_cfg['tkns'])
+        arb_cfg['tkn_ids'] = tuple(arb_cfg['tkn_ids'])
+        arb_cfg['order_book'] = tuple(arb_cfg['order_book'])
         tkn_pair = arb_cfg['order_book']
         exchange = arb_cfg['exchange']
         if tkn_pair not in order_books:
