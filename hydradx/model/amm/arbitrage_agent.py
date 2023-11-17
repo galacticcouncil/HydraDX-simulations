@@ -432,8 +432,6 @@ def combine_swaps(
     if 'dex' in all_swaps[0]:
         all_swaps = flatten_swaps(all_swaps)
 
-    print(all_swaps)
-
     for ex_name, ex in exchanges.items():
 
         test_agent = agent.copy()
