@@ -143,7 +143,7 @@ def get_arb_opps(op_state, cex_dict, config):
 
 def flatten_swaps(swaps):
     return [
-        {'exchange': 'omnipool', **trade['dex']}
+        {'exchange': 'dex', **trade['dex']}
         if key == 'dex' else
         {'exchange': trade['exchange'], **trade['cex']}
         for trade in swaps for key in trade if key in ['dex', 'cex']
@@ -380,7 +380,7 @@ def calculate_arb_amount_ask(
 
 def execute_arb(dex, cex_dict, agent, all_swaps):
     exchanges = {
-        'omnipool': dex,
+        'dex': dex,
         **{ex_name: ex for (ex_name, ex) in cex_dict.items()}
     }
     if 'dex' in all_swaps[0]:
@@ -426,7 +426,7 @@ def combine_swaps(
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
     exchanges = {**{ex_name: ex for (ex_name, ex) in cex.items()}, 'dex': dex}
     ref_exchange: CentralizedMarket = exchanges['binance']
-    net_swaps = {'dex': {}, 'cex': {}}
+    net_swaps = {}
     return_swaps = []
 
     if 'dex' in all_swaps[0]:
