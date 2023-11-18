@@ -333,7 +333,7 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def get_centralized_market(config, exchange_name, trade_fee: float) -> CentralizedMarket:
+def get_centralized_market(config, exchange_name, trade_fee: float, archive: bool) -> CentralizedMarket:
 
     order_books = {}
     for arb_cfg in config:
@@ -345,9 +345,9 @@ def get_centralized_market(config, exchange_name, trade_fee: float) -> Centraliz
         if tkn_pair not in order_books:
             if exchange == exchange_name:
                 if exchange_name == 'kraken':
-                    order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=True)
+                    order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=archive)
                 elif exchange_name == 'binance':
-                    order_books[tkn_pair] = get_binance_orderbook(tkn_pair, archive=True)
+                    order_books[tkn_pair] = get_binance_orderbook(tkn_pair, archive=archive)
                 else:
                     raise ValueError(f"Exchange {exchange_name} not supported")
 
