@@ -917,8 +917,8 @@ def test_combine_step():
         arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
         arb_cfg['buffer'] = 0.001
 
-    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016)
-    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001)
+    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
     cex = {
         'kraken': kraken,
         'binance': binance
