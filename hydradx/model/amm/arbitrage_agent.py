@@ -453,7 +453,6 @@ def combine_swaps(
     ref_exchange: CentralizedMarket = exchanges['binance']
     net_swaps = {}
     return_swaps = []
-    test_agent = agent.copy()
 
     if len(all_swaps) == 0:
         return all_swaps
@@ -462,7 +461,7 @@ def combine_swaps(
 
     for ex_name, ex in exchanges.items():
 
-        temp_agent = test_agent.copy()
+        test_agent = agent.copy()
         test_ex = ex.copy()
         default_swaps = list(filter(lambda s: s['exchange'] == ex_name, all_swaps))
 
@@ -470,16 +469,16 @@ def combine_swaps(
             tkn_sell = swap['sell_asset']
             tkn_buy = swap['buy_asset']
             if swap['trade'] == 'buy':
-                test_ex.swap(temp_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
+                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
             else:
-                test_ex.swap(temp_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
-        net_swaps[ex_name] = {tkn: temp_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
+                test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
+        net_swaps[ex_name] = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
-        default_profit = calculate_profit(test_agent, temp_agent, asset_map=asset_map)
+        default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
         default_profit_usd = ref_exchange.value_assets(default_profit, asset_map)
 
         test_ex = ex.copy()
-        start_agent = test_agent.copy()
+        test_agent = agent.copy()
         optimized_swaps = []
 
         buy_tkns = {tkn: 0 for tkn in ex.asset_list}
@@ -629,15 +628,18 @@ def combine_swaps(
                                 })
                                 break
 
-        optimized_profit = calculate_profit(start_agent, test_agent, asset_map=asset_map)
+        optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
         optimized_profit_usd = ref_exchange.value_assets(optimized_profit, asset_map)
         if optimized_profit_usd < default_profit_usd:
             return_swaps += default_swaps
         else:
             return_swaps += optimized_swaps
-
-    optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-    if min(optimized_profit.values()) < 0:
+    # make absolutely sure nothing went below 0
+    test_agent = agent.copy()
+    test_dex = dex.copy()
+    test_cex = {ex_name: ex.copy() for ex_name, ex in cex.items()}
+    execute_arb(test_dex, test_cex, test_agent, return_swaps)
+    test_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
+    if min(test_profit.values()) < 0:
         return all_swaps
-
     return return_swaps
