@@ -95,6 +95,98 @@ def process_next_swap(text_dex, test_agent, test_cex, tkn_pair, ob_tkn_pair, buf
     return swap
 
 
+def process_next_swap_inventory(text_dex, dex_agent, test_cex, cex_agent, tkn_pair, ob_tkn_pair, buffer, max_liquidity_dex, max_liquidity_cex, iters):
+    bids, asks = test_cex.order_book[ob_tkn_pair].bids, test_cex.order_book[ob_tkn_pair].asks
+    tkn = tkn_pair[0]
+    numeraire = tkn_pair[1]
+    cex_fee = test_cex.trade_fee
+    dex_slippage_tolerance = buffer/2
+    cex_slippage_tolerance = buffer/2
+
+    tkn_lrna_fee = text_dex.lrna_fee[tkn].compute(tkn=tkn)
+    numeraire_lrna_fee = text_dex.lrna_fee[numeraire].compute(tkn=numeraire)
+    tkn_asset_fee = text_dex.asset_fee[tkn].compute(tkn=tkn)
+    numeraire_asset_fee = text_dex.asset_fee[numeraire].compute(tkn=numeraire)
+
+    op_spot = OmnipoolState.price(text_dex, tkn, numeraire)
+    buy_spot = op_spot / ((1 - numeraire_lrna_fee) * (1 - tkn_asset_fee))
+    sell_spot = op_spot * (1 - tkn_lrna_fee) * (1 - numeraire_asset_fee)
+    swap = {}
+
+    if bids and buy_spot < bids[0][0] * (1 - cex_fee - buffer):  # tkn is coming out of pool, numeraire going into pool
+        bid = bids[0]
+        max_liq_tkn = max_liquidity_cex[tkn] if tkn in max_liquidity_cex else float('inf')
+        max_liq_num = max_liquidity_dex[numeraire] if numeraire in max_liquidity_dex else float('inf')
+        amt = calculate_arb_amount_bid(text_dex, tkn, numeraire, bid, cex_fee, buffer, min_amt=1e-6,
+                                       max_liq_tkn=max_liq_tkn, max_liq_num=max_liq_num, precision=1e-10,
+                                       max_iters=iters)
+
+        if amt != 0:
+            init_amt = dex_agent.holdings[numeraire]
+            text_dex.swap(dex_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+            amt_in = init_amt - dex_agent.holdings[numeraire]
+            test_cex.swap(cex_agent, tkn_sell=ob_tkn_pair[0], tkn_buy=ob_tkn_pair[1], sell_quantity=amt)
+            op_spot = OmnipoolState.price(text_dex, tkn, numeraire)
+            swap = {'dex': {'trade': 'buy',
+                                      'buy_asset': tkn,
+                                      'sell_asset': numeraire,
+                                      'price': bid[0],
+                                      'amount': amt,
+                                      'max_sell': amt_in * (1 + dex_slippage_tolerance)
+                                      },
+                              'cex': {'trade': 'sell',
+                                      'buy_asset': ob_tkn_pair[1],
+                                      'sell_asset': ob_tkn_pair[0],
+                                      'price': bid[0] * (1 - cex_slippage_tolerance),
+                                      'amount': amt
+                                      }}
+            if tkn in max_liquidity_cex:
+                max_liquidity_cex[tkn] -= amt
+            if numeraire in max_liquidity_cex:
+                max_liquidity_cex[numeraire] += amt_in
+            if tkn in max_liquidity_dex:
+                max_liquidity_dex[tkn] += amt
+            if numeraire in max_liquidity_dex:
+                max_liquidity_dex[numeraire] -= amt_in
+
+    elif asks and sell_spot > asks[0][0] * (1 + cex_fee + buffer):
+        ask = asks[0]
+        max_liq_tkn = max_liquidity_dex[tkn] if tkn in max_liquidity_dex else float('inf')
+        max_liq_num = max_liquidity_cex[numeraire] if numeraire in max_liquidity_cex else float('inf')
+        amt = calculate_arb_amount_ask(text_dex, tkn, numeraire, ask, cex_fee, buffer, min_amt=1e-6,
+                                       max_liq_tkn=max_liq_tkn, max_liq_num=max_liq_num, precision=1e-10,
+                                       max_iters=iters)
+        if amt != 0:
+            init_amt = dex_agent.holdings[numeraire]
+            text_dex.swap(dex_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+            amt_out = dex_agent.holdings[numeraire] - init_amt
+            test_cex.swap(cex_agent, tkn_sell=ob_tkn_pair[1], tkn_buy=ob_tkn_pair[0], buy_quantity=amt)
+            op_spot = OmnipoolState.price(text_dex, tkn, numeraire)
+
+            swap = {'dex': {'trade': 'sell',
+                                      'buy_asset': numeraire,
+                                      'sell_asset': tkn,
+                                      'price': ask[0],
+                                      'amount': amt,
+                                      'min_buy': amt_out * (1 - dex_slippage_tolerance)},
+                              'cex': {'trade': 'buy',
+                                      'buy_asset': ob_tkn_pair[0],
+                                      'sell_asset': ob_tkn_pair[1],
+                                      'price': ask[0] * (1 + cex_slippage_tolerance),
+                                      'amount': amt
+                                      }}
+            if tkn in max_liquidity_cex:
+                max_liquidity_cex[tkn] += amt
+            if numeraire in max_liquidity_cex:
+                max_liquidity_cex[numeraire] -= amt_out
+            if tkn in max_liquidity_dex:
+                max_liquidity_dex[tkn] -= amt
+            if numeraire in max_liquidity_dex:
+                max_liquidity_dex[numeraire] += amt_out
+
+    return swap
+
+
 def get_arb_opps(op_state, cex_dict, config):
     arb_opps = []
 
@@ -177,6 +269,57 @@ def get_arb_swaps(op_state, cex_dict, config, max_liquidity=None, iters=20):
         swap = process_next_swap(state,
                                  test_agent,
                                  test_cex_dict[arb_cfg['exchange']],
+                                 arb_cfg['tkn_pair'],
+                                 arb_cfg['order_book'],
+                                 arb_cfg['buffer'],
+                                 max_liquidity['dex'],
+                                 max_liquidity['cex'][arb_cfg['exchange']],
+                                 iters)
+        if swap:
+            swap['exchange'] = arb_cfg['exchange']
+            all_swaps.append(swap)
+        else:
+            break
+        new_arb_opps = get_arb_opps(state, test_cex_dict, config)
+        if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
+            break
+        arb_opps = new_arb_opps
+
+    return all_swaps
+
+
+def get_arb_swaps_inventory(op_state, cex_dict, agent_dict, config, asset_config, max_liquidity=None, iters=20):
+    arb_opps = get_arb_opps(op_state, cex_dict, config)
+
+    if max_liquidity is None:
+        max_liquidity = {'cex': {exchange: {} for exchange in cex_dict}, 'dex': {}}
+
+    init_amt = 1000000000
+    all_swaps = []
+    state = op_state.copy()
+    test_cex_dict = {exchange: cex_dict[exchange].copy() for exchange in cex_dict}
+    holdings = {asset: init_amt for asset in state.asset_list}
+    for ex in test_cex_dict:
+        for asset in test_cex_dict[ex].asset_list:
+            if asset not in holdings:
+                holdings[asset] = init_amt
+    test_agent = Agent(holdings=holdings, unique_id='bot')
+    while arb_opps:
+        arb_cfg = config[arb_opps[0][1]]
+        while not does_max_liquidity_allow_trade(
+                arb_cfg['tkn_pair'],
+                arb_cfg['order_book'],
+                max_liquidity['dex'],
+                max_liquidity['cex'][arb_cfg['exchange']]
+        ):
+            arb_opps.pop(0)
+            if not arb_opps:
+                return all_swaps
+            arb_cfg = config[arb_opps[0][1]]
+        swap = process_next_swap_inventory(state,
+                                 agent_dict['dex'],
+                                 test_cex_dict[arb_cfg['exchange']],
+                                 agent_dict[arb_cfg['exchange']],
                                  arb_cfg['tkn_pair'],
                                  arb_cfg['order_book'],
                                  arb_cfg['buffer'],
