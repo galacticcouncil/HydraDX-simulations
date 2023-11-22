@@ -5,7 +5,7 @@ from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap
+    process_next_swap, get_buffers
 from hydradx.model.amm.arbitrage_agent import get_arb_swaps_simple, execute_arb, get_arb_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -520,6 +520,128 @@ def test_process_next_swap(
                 if test_cex.liquidity[tkn] - cex.liquidity[tkn] != init_max_liquidity['cex'][tkn] - \
                         max_liquidity['cex'][tkn]:
                     raise
+
+
+def test_get_buffers():
+    bids = [[0.9, 1]]
+    asks = [[1.1, 1]]
+    ex1_tkn_pair = ('DOT', 'USDT')
+    ex2_tkn_pair = ('DOT', 'USD')
+    buffer = 0.004
+    execution_risk_buffer = 0.001
+    asset_config1 = {'USDT': 500, 'DOT': 100, 'HDX': 200000}
+    asset_config2 = {'USD': 500, 'DOT': 100, 'HDX': 200000}
+    lrna_fee = 0.0005
+    tkn_lrna_fee = lrna_fee
+    numeraire_lrna_fee = lrna_fee
+    asset_fee = 0.0025
+    tkn_asset_fee = asset_fee
+    numeraire_asset_fee = asset_fee
+    cex_fee = 0.0016
+
+    # all assets insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 10, 'HDX': 10}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, buffer / 2]:
+        raise
+
+    # all assets sufficient
+    agent1_holdings = {'USDT': 1000, 'DOT': 1000, 'HDX': 1000}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # bought asset insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 1000, 'HDX': 1000}
+    # sold asset insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [-lrna_fee - asset_fee, buffer / 2]:
+        raise
+
+    # bought asset at boundary
+    agent1_holdings = {'USDT': 500, 'DOT': 1000, 'HDX': 1000}
+    # sold asset at boundary
+    agent2_holdings = {'USD': 500, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # all assets insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 10, 'HDX': 10}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, buffer / 2]:
+        raise
+
+    # all assets sufficient
+    agent1_holdings = {'USDT': 1000, 'DOT': 1000, 'HDX': 1000}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # bought asset insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 1000, 'HDX': 1000}
+    # sold asset insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, -cex_fee]:
+        raise
+
+    # bought asset at boundary
+    agent1_holdings = {'USDT': 500, 'DOT': 1000, 'HDX': 1000}
+    # sold asset at boundary
+    agent2_holdings = {'USD': 500, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, 0.0005]:
+        raise
 
 
 @given(
