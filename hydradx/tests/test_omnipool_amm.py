@@ -2429,17 +2429,12 @@ def test_trade_manipulation(
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
 
 
-def test_calculate_buy_from_sell():
-    omnipool = oamm.OmnipoolState(
-        tokens={'HDX': {'liquidity': 105084496.90141414, 'LRNA': mpf('21845.412115189029')}, 'DAI': {'liquidity': mpf('351999.04041514907'), 'LRNA': mpf('12392.530980629856')}, 'WBTC': {'liquidity': 0.04374934, 'LRNA': 50.601798806111}, 'WETH': {'liquidity': mpf('298.61378484369175'), 'LRNA': mpf('22190.956824254714')}, 'DOT': {'liquidity': 395065.0905081596, 'LRNA': 70016.0975356499}, 'ASTR': {'liquidity': 4179926.5143579226, 'LRNA': 10129.972378939132}, 'USDT': {'liquidity': 2337702.154388, 'LRNA': 81604.09174801815}, 'iBTC': {'liquidity': 26.40010622, 'LRNA': 34606.685351551605}, 'ZTG': {'liquidity': 3342363.514628371, 'LRNA': 4259.712546263024}, 'CFG': {'liquidity': 558477.3865852563, 'LRNA': 9957.82239223428}, 'BNC': {'liquidity': 714088.4467206022, 'LRNA': 6747.35274402192}, 'vDOT': {'liquidity': 101074.5141752639, 'LRNA': 21652.030726406738}, 'GLMR': {'liquidity': 609607.7538571042, 'LRNA': 5839.577068162894}, 'INTR': {'liquidity': 12709711.287548447, 'LRNA': 9007.213901804105}, 'DAI001': {'liquidity': 37585.53464434876, 'LRNA': 1407.281258338137}, 'WBTC001': {'liquidity': 31.55639488, 'LRNA': 41187.40262813065}, 'WETH001': {'liquidity': 992.1378594480628, 'LRNA': 73534.78121224766}},
-        preferred_stablecoin='USDT',  # list(tokens.keys())[1],  # 'USDT',
-        asset_fee={'HDX': 0.0025, 'DAI': 0.0025, 'WBTC': 0.0025, 'WETH': 0.0025, 'DOT': 0.003905, 'ASTR': 0.002504, 'USDT': 0.0025, 'iBTC': 0.0025, 'ZTG': 0.0025, 'CFG': 0.003744, 'BNC': 0.0025, 'vDOT': 0.0026650000000000003, 'GLMR': 0.0025, 'INTR': 0.0025, 'DAI001': 0.0025, 'WBTC001': 0.0025, 'WETH001': 0.0025},
-        lrna_fee={'HDX': 0.0005, 'DAI': 0.0007199999999999999, 'WBTC': 0.0005, 'WETH': 0.0005, 'DOT': 0.0005, 'ASTR': 0.0005, 'USDT': 0.000751, 'iBTC': 0.0005, 'ZTG': 0.0005, 'CFG': 0.0005, 'BNC': 0.0005, 'vDOT': 0.0005, 'GLMR': 0.0005, 'INTR': 0.0005, 'DAI001': 0.0005, 'WBTC001': 0.0005, 'WETH001': 0.0005}
-    )
+@given(omnipool_config())
+def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={tkn: 1000000000 for tkn in omnipool.asset_list})
-    sell_quantity = 280.372600567434985450343971404080739362
-    tkn_sell = omnipool.asset_list[0]
-    tkn_buy = omnipool.asset_list[1]
+    sell_quantity = 1
+    tkn_sell = omnipool.asset_list[1]
+    tkn_buy = omnipool.asset_list[2]
     test_state, test_agent = omnipool.copy(), agent.copy()
     buy_quantity = omnipool.calculate_buy_from_sell(
         tkn_sell=tkn_sell,
@@ -2453,10 +2448,10 @@ def test_calculate_buy_from_sell():
         buy_quantity=buy_quantity
     )
     actual_sell_quantity = test_agent.initial_holdings[tkn_sell] - test_agent.holdings[tkn_sell]
-    right_answer = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
-    if buy_quantity != pytest.approx(right_answer):
-        raise AssertionError(f'buy_quantity {buy_quantity} != right_answer {right_answer}')
-    if sell_quantity != pytest.approx(actual_sell_quantity):
+    actual_buy_quantity = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
+    if buy_quantity != pytest.approx(actual_buy_quantity, rel=1e-40):
+        raise AssertionError(f'buy_quantity {buy_quantity} != right_answer {actual_buy_quantity}')
+    if sell_quantity != pytest.approx(actual_sell_quantity, rel=1e-40):
         raise AssertionError(f'sell_quantity {sell_quantity} != actual_sell_quantity {actual_sell_quantity}')
     # buy_quantity_2 = omnipool.calculate_buy_from_sell(
 
