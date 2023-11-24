@@ -184,6 +184,8 @@ class CentralizedMarket(AMM):
                 for ask in self.order_book[(base, quote)].asks:
                     if ask[1] >= buy_tkns_remaining:
                         tkns_sold += buy_tkns_remaining * ask[0]
+                        if tkns_sold > agent.holdings[tkn_sell]:
+                            return self.fail_transaction('Agent does not have enough holdings to execute trade.')
                         ask[1] -= buy_tkns_remaining
                         buy_tkns_remaining = 0
                     else:
@@ -198,6 +200,8 @@ class CentralizedMarket(AMM):
                 for bid in self.order_book[(base, quote)].bids:
                     if bid[0] * bid[1] >= buy_tkns_remaining:
                         tkns_sold += buy_tkns_remaining / bid[0]
+                        if tkns_sold > agent.holdings[tkn_sell]:
+                            return self.fail_transaction('Agent does not have enough holdings to execute trade.')
                         bid[1] -= buy_tkns_remaining / bid[0]
                         buy_tkns_remaining = 0
                     else:
@@ -346,5 +350,6 @@ class CentralizedMarket(AMM):
 CentralizedMarket.copy = lambda self: CentralizedMarket(
     asset_list=[tkn for tkn in self.asset_list],
     order_book={pair: book.copy() for pair, book in self.order_book.items()},
-    trade_fee=self.trade_fee
+    trade_fee=self.trade_fee,
+    unique_id=self.unique_id
 )
