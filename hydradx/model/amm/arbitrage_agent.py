@@ -569,30 +569,31 @@ def combine_swaps(
 
         if sum(buy_tkns.values()) > 0:
             # try and sell everything remaining for USD, then use that to buy the remaining tokens
+            stablecoin = ex.stablecoin if hasattr(ex, 'stablecoin') else 'USD'
             for tkn_sell in sell_tkns:
                 if sell_tkns[tkn_sell] > 0:
                     test_ex.swap(
                         agent=test_agent,
-                        tkn_buy=ex.stablecoin,
+                        tkn_buy=stablecoin,
                         tkn_sell=tkn_sell,
                         sell_quantity=sell_tkns[tkn_sell]
                     )
                     optimized_swaps.append({
                         'exchange': ex_name,
                         'trade': 'sell',
-                        'buy_asset': ex.stablecoin,
+                        'buy_asset': stablecoin,
                         'sell_asset': tkn_sell,
                         'amount': sell_tkns[tkn_sell]
                     })
             for tkn_buy in buy_tkns:
-                if tkn_buy == test_ex.stablecoin:
+                if tkn_buy == stablecoin:
                     continue
                 if buy_tkns[tkn_buy] > 0:
                     test_ex.fail = ''
                     test_ex.swap(
                         agent=test_agent,
                         tkn_buy=tkn_buy,
-                        tkn_sell=test_ex.stablecoin,
+                        tkn_sell=stablecoin,
                         buy_quantity=buy_tkns[tkn_buy]
                     )
                     if not test_ex.fail:
@@ -600,12 +601,12 @@ def combine_swaps(
                             'exchange': ex_name,
                             'trade': 'buy',
                             'buy_asset': tkn_buy,
-                            'sell_asset': ex.stablecoin,
+                            'sell_asset': stablecoin,
                             'amount': buy_tkns[tkn_buy]
                         })
                     else:
                         for intermediate_tkn in ex.asset_list:
-                            if ex.buy_spot(tkn_buy, intermediate_tkn) and ex.buy_spot(intermediate_tkn, ex.stablecoin):
+                            if ex.buy_spot(tkn_buy, intermediate_tkn) and ex.buy_spot(intermediate_tkn, stablecoin):
                                 buy_quantity = test_ex.calculate_sell_from_buy(
                                     tkn_buy=tkn_buy,
                                     tkn_sell=intermediate_tkn,
@@ -614,7 +615,7 @@ def combine_swaps(
                                 test_ex.swap(
                                     agent=test_agent,
                                     tkn_buy=intermediate_tkn,
-                                    tkn_sell=ex.stablecoin,
+                                    tkn_sell=stablecoin,
                                     buy_quantity=ex.calculate_sell_from_buy(
                                         tkn_buy=tkn_buy,
                                         tkn_sell=intermediate_tkn,
@@ -625,7 +626,7 @@ def combine_swaps(
                                     'exchange': ex_name,
                                     'trade': 'buy',
                                     'buy_asset': intermediate_tkn,
-                                    'sell_asset': ex.stablecoin,
+                                    'sell_asset': stablecoin,
                                     'amount': ex.calculate_sell_from_buy(
                                         tkn_buy=tkn_buy,
                                         tkn_sell=intermediate_tkn,
