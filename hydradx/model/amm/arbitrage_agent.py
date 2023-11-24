@@ -408,9 +408,7 @@ def execute_arb(dex, cex_dict, agent, all_swaps):
     }
     if len(all_swaps) == 0:
         return
-    if 'dex' in all_swaps[0]:
-        all_swaps = flatten_swaps(all_swaps)
-    for swap in all_swaps:
+    for swap in (flatten_swaps(all_swaps) if 'dex' in all_swaps[0] else all_swaps):
         tkn_buy = swap['buy_asset']
         tkn_sell = swap['sell_asset']
         ex = exchanges[swap['exchange']]
@@ -446,6 +444,7 @@ def combine_swaps(
         agent: Agent,
         all_swaps: list[dict],
         asset_map: dict[str, str],
+        max_liquidity: dict[str, dict[str, float]] = None
 ):
     # take the list of swaps and try to get the same result more efficiently
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
@@ -473,6 +472,14 @@ def combine_swaps(
             else:
                 test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
         net_swaps[ex_name] = {tkn: test_agent.holdings[tkn] - agent.holdings[tkn] for tkn in ex.asset_list}
+        max_liquidity_ex = (
+            max_liquidity[ex_name] if ex_name in max_liquidity
+            else max_liquidity['cex'][ex_name]
+        )
+        for tkn in ex.asset_list:
+            if net_swaps[ex_name][tkn] > max_liquidity_ex[tkn]:
+                er = 1
+
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
         default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
         default_profit_usd = ref_exchange.value_assets(default_profit, asset_map)
@@ -520,7 +527,7 @@ def combine_swaps(
                     max_buy = test_ex.calculate_buy_from_sell(
                         tkn_sell=tkn_sell,
                         tkn_buy=tkn_buy,
-                        sell_quantity=sell_quantity
+                        sell_quantity=min(sell_quantity, max_liquidity_ex[tkn_sell])
                     )
                     if max_buy <= 0:
                         continue
@@ -535,11 +542,9 @@ def combine_swaps(
                             'amount': max_buy
                         })
                         buy_tkns[tkn_buy] -= test_agent.holdings[tkn_buy] - previous_tkn_buy
-                        sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                     else:
                         # buy enough to satisfy buy_quantity
                         test_ex.swap(test_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_tkns[tkn_buy])
-                        sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
                         optimized_swaps.append({
                             'exchange': ex_name,
                             'trade': 'buy',
@@ -548,6 +553,11 @@ def combine_swaps(
                             'amount': buy_tkns[tkn_buy]
                         })
                         buy_tkns[tkn_buy] = 0
+
+                    sell_tkns[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
+                    max_liquidity_ex[tkn_sell] -= previous_tkn_sell - test_agent.holdings[tkn_sell]
+                    max_liquidity_ex[tkn_buy] += test_agent.holdings[tkn_buy] - previous_tkn_buy
+                    if buy_tkns[tkn_buy] <= 0:
                         break
 
         if sum(buy_tkns.values()) > 0:
@@ -568,12 +578,14 @@ def combine_swaps(
                         'amount': sell_tkns[tkn_sell]
                     })
             for tkn_buy in buy_tkns:
+                if tkn_buy == test_ex.stablecoin:
+                    continue
                 if buy_tkns[tkn_buy] > 0:
                     test_ex.fail = ''
                     test_ex.swap(
                         agent=test_agent,
                         tkn_buy=tkn_buy,
-                        tkn_sell=ex.stablecoin,
+                        tkn_sell=test_ex.stablecoin,
                         buy_quantity=buy_tkns[tkn_buy]
                     )
                     if not test_ex.fail:
