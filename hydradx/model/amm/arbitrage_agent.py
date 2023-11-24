@@ -4,7 +4,9 @@ from hydradx.model.amm.centralized_market import CentralizedMarket
 
 
 # note that this function mutates state, test_agent, test_cex, and max_liquidity
-def process_next_swap(text_dex, test_agent, test_cex, tkn_pair, ob_tkn_pair, buffer, max_liquidity_dex, max_liquidity_cex, iters):
+def process_next_swap(
+        text_dex, test_agent, test_cex, tkn_pair, ob_tkn_pair, buffer, max_liquidity_dex, max_liquidity_cex, iters
+):
     bids, asks = test_cex.order_book[ob_tkn_pair].bids, test_cex.order_book[ob_tkn_pair].asks
     tkn = tkn_pair[0]
     numeraire = tkn_pair[1]
@@ -299,10 +301,11 @@ def calculate_arb_amount_bid(
         elif buy_spot < cex_price:
             if agent.holdings[numeraire] - test_agent.holdings[numeraire] > max_liq_num:
                 # best trade will involve trading max_liquidity, so can be calculated as a sell
-                test_agent = agent.copy()
-                test_state = state.copy()
-                test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, sell_quantity=max_liq_num)
-                return test_agent.holdings[tkn] - agent.holdings[tkn]
+                # test_agent = agent.copy()
+                # test_state = state.copy()
+                # test_state.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, sell_quantity=max_liq_num)
+                # return test_agent.holdings[tkn] - agent.holdings[tkn]
+                amt_high = amt
             else:
                 amt_low = amt
                 best_buy_spot = buy_spot
@@ -377,10 +380,11 @@ def calculate_arb_amount_ask(
         elif sell_spot > cex_price:
             if test_agent.holdings[numeraire] - agent.holdings[numeraire] > max_liq_num:
                 # best trade will involve trading max_liquidity, so can be calculated as a sell
-                test_agent = agent.copy()
-                test_state = state.copy()
-                test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, buy_quantity=max_liq_num)
-                return agent.holdings[tkn] - test_agent.holdings[tkn]
+                # test_agent = agent.copy()
+                # test_state = state.copy()
+                # test_state.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, buy_quantity=max_liq_num)
+                # return agent.holdings[tkn] - test_agent.holdings[tkn]
+                amt_high = amt
             else:
                 amt_low = amt
                 best_sell_spot = sell_spot
@@ -475,10 +479,7 @@ def combine_swaps(
         max_liquidity_ex = (
             max_liquidity[ex_name] if ex_name in max_liquidity
             else max_liquidity['cex'][ex_name]
-        )
-        for tkn in ex.asset_list:
-            if net_swaps[ex_name][tkn] > max_liquidity_ex[tkn]:
-                er = 1
+        ) if max_liquidity else {tkn: float('inf') for tkn in ex.asset_list}
 
         # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
         default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
