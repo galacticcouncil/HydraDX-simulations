@@ -468,6 +468,12 @@ def combine_swaps(
         test_ex = ex.copy()
         default_swaps = list(filter(lambda s: s['exchange'] == ex_name, all_swaps))
 
+        # vvv With this uncommented, it will still recover most of the available gains
+        #
+        # if ex_name != 'dex':
+        #     return_swaps += default_swaps
+        #     continue
+
         for swap in default_swaps:
             tkn_sell = swap['sell_asset']
             tkn_buy = swap['buy_asset']
