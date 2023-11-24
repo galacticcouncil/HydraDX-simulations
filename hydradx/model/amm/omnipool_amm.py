@@ -30,6 +30,7 @@ class OmnipoolState(AMM):
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
                  lrna_mint_pct: float = 0.0,
+                 unique_id: str = 'omnipool'
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -138,6 +139,8 @@ class OmnipoolState(AMM):
             self.last_lrna_fee = {tkn: last_lrna_fee[tkn] if tkn in last_lrna_fee else 0 for tkn in self.asset_list}
         else:
             self.last_lrna_fee = {tkn: 0 for tkn in self.asset_list}
+
+        self.unique_id = unique_id
 
     def __setattr__(self, key, value):
         # if key is a fee, make sure it's a dict[str: FeeMechanism]
