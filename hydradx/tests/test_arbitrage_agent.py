@@ -465,15 +465,16 @@ def test_process_next_swap(
     test_agent = agent.copy()
     test_cex = cex.copy()
     buffer = 0.0
-    init_max_liquidity = {'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
-                          'cex': {'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
-                                  'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
-                                  }}
+    init_max_liquidity = {
+        'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+        'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+        'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
+    }
     max_liquidity = copy.deepcopy(init_max_liquidity)
     iters = 20
     tkn_pair = ('DOT', 'USDT')
 
-    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity['dex'], max_liquidity['cex']['kraken'], iters)
+    swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity['dex'], max_liquidity['kraken'], iters)
     if swap:
         cex_swap, dex_swap = swap['cex'], swap['dex']
         dex_spot = op_state.price(op_state, 'DOT', 'USDT')
@@ -877,7 +878,7 @@ def test_get_arb_swaps(
 
 
 def test_combine_step():
-    return
+
     cfg = [
         {"tkns": ("HDX", "USDT"), "tkn_ids": [0, 10], "exchange": "kraken", "order_book": ("HDX", "USD")},
         {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "kraken", "order_book": ("DOT", "USDT")},
@@ -912,39 +913,42 @@ def test_combine_step():
         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
     ]
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-    #
-    # for arb_cfg in cfg:
-    #     arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
-    #     arb_cfg['buffer'] = 0.001
-    #
-    # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    # cex = {
-    #     'kraken': kraken,
-    #     'binance': binance
-    # }
-    # uncomment above to test with live data
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
 
-    cex = {}
-    for exchange in ('kraken', 'binance'):
-        cex[exchange] = CentralizedMarket(
-            order_book=get_orderbooks_from_file("archive/")[exchange],
-            unique_id=exchange,
-            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-        )
-    kraken = cex['kraken']
-    binance = cex['binance']
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+
+    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
+    cex = {
+        'kraken': kraken,
+        'binance': binance
+    }
+    # uncomment above to test with live data, below for archived data
+    #
+    # asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
+    #
+    # cex = {}
+    # for exchange in ('kraken', 'binance'):
+    #     cex[exchange] = CentralizedMarket(
+    #         order_book=get_orderbooks_from_file("archive/")[exchange],
+    #         unique_id=exchange,
+    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+    #     )
+    # kraken = cex['kraken']
+    # binance = cex['binance']
+
+    # get arb cfg
+    for arb_cfg in cfg:
+        arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
+        arb_cfg['buffer'] = 0.001
 
     dex = OmnipoolState(
         tokens=tokens,
         lrna_fee={asset: fees[asset]['protocol_fee'] for asset in asset_list},
         asset_fee={asset: fees[asset]['asset_fee'] for asset in asset_list},
-        preferred_stablecoin='USDT'
+        preferred_stablecoin='USDT',
+        unique_id='dex'
     )
 
-    arb_swaps = get_arb_swaps_simple(dex, cex, cfg)
     asset_map = {
         'WETH': 'ETH',
         'XETH': 'ETH',
@@ -961,13 +965,33 @@ def test_combine_step():
         'iBTC': 'BTC',
         'XBT': 'BTC'
     }
+    exchanges_per_tkn = {
+        tkn: sum(1 if tkn in exchange.asset_list else 0 for exchange in (dex, kraken, binance))
+        for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
+    }
     initial_agent = Agent(
         holdings={
-            tkn: 10000000000
+            tkn: 100 * exchanges_per_tkn[tkn]
+            / (
+                (binance.buy_spot(tkn, 'USD') or kraken.buy_spot(tkn, 'USD') or dex.buy_spot(tkn, 'USD')) or 1
+            )
             for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
         }
     )
-    test_dex, test_kraken, test_binance, test_agent = dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+    max_liquidity = {
+        'dex': {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings},
+        'cex': {
+            ex.unique_id:
+            {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings}
+            for ex in (binance, kraken)
+        }
+    }
+    arb_swaps = get_arb_swaps(
+        dex, cex, cfg, max_liquidity=max_liquidity
+    )
+
+    test_dex, test_kraken, test_binance, test_agent = \
+        dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
     execute_arb(test_dex, {'kraken': test_kraken, 'binance': test_binance}, test_agent, arb_swaps)
     profit = calculate_profit(initial_agent, test_agent, asset_map)
     profit_total = test_binance.value_assets(profit, asset_map)
@@ -976,7 +1000,12 @@ def test_combine_step():
     combine_dex, combine_kraken, combine_binance, combine_agent = \
         dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
     combined_swaps = combine_swaps(
-        combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, arb_swaps, asset_map
+        dex=combine_dex,
+        cex={'kraken': combine_kraken, 'binance': combine_binance},
+        agent=combine_agent,
+        all_swaps=arb_swaps,
+        asset_map=asset_map,
+        max_liquidity=max_liquidity
     )
     execute_arb(combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, combined_swaps)
     combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
@@ -986,9 +1015,20 @@ def test_combine_step():
     iter_dex, iter_kraken, iter_binance, iter_agent = (
         combine_dex.copy(), combine_kraken.copy(), combine_binance.copy(), combine_agent.copy()
     )
-    arb_swaps = get_arb_swaps(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg)
+    max_liquidity = {
+        'dex': {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings},
+        'cex': {
+            ex.unique_id:
+            {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings}
+            for ex in (binance, kraken)
+        }
+    }
+    arb_swaps = get_arb_swaps(
+        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg, max_liquidity=max_liquidity
+    )
     itered_swaps = combine_swaps(
-        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map
+        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map,
+        max_liquidity=max_liquidity
     )
     execute_arb(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, itered_swaps)
     iter_profit = calculate_profit(initial_agent, iter_agent, asset_map)
@@ -1005,7 +1045,10 @@ def test_combine_step():
     if profit_total > combined_profit_total:
         raise AssertionError('Loss detected.')
     else:
-        print(f"extra profit obtained: {combined_profit_total - profit_total}")
+        print(
+            f"extra profit obtained: {combined_profit_total - profit_total}"
+            f" ({(combined_profit_total - profit_total) / profit_total * 100}%)"
+        )
         if iter_profit_total > combined_profit_total:
             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
         else:
