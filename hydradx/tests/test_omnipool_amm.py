@@ -64,6 +64,25 @@ def test_swap_lrna_delta_Ri_respects_invariant(d: oamm.OmnipoolState, delta_qi: 
     assert oamm.asset_invariant(d2, i) == pytest.approx(oamm.asset_invariant(d, i))
 
 
+@given(omnipool_config())
+def test_sell_accuracy(initial_state):
+    # Test that the sell function is exactly accurate
+    initial_agent = Agent(
+        holdings=initial_state.liquidity.copy()
+    )
+    tkn_sell = initial_state.asset_list[0]
+    tkn_buy = initial_state.asset_list[1]
+    sell_quantity = initial_state.liquidity[tkn_sell] / 10
+    swap_state, swap_agent = oamm.simulate_swap(
+        initial_state, initial_agent,
+        tkn_buy, tkn_sell,
+        sell_quantity=sell_quantity
+    )
+    asset_sold = initial_agent.holdings[tkn_sell] - swap_agent.holdings[tkn_sell]
+    if asset_sold != pytest.approx(sell_quantity, rel=1e40):
+        raise AssertionError('Asset sold is wrong.')
+
+
 @given(omnipool_config(asset_fee=0, lrna_fee=0))
 def test_weights(initial_state: oamm.OmnipoolState):
     old_state = initial_state
