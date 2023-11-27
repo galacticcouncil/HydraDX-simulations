@@ -913,28 +913,28 @@ def test_combine_step():
         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
     ]
-
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-
-    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    cex = {
-        'kraken': kraken,
-        'binance': binance
-    }
+    #
+    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+    #
+    # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+    # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
+    # cex = {
+    #     'kraken': kraken,
+    #     'binance': binance
+    # }
     # uncomment above to test with live data, below for archived data
     #
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
-    #
-    # cex = {}
-    # for exchange in ('kraken', 'binance'):
-    #     cex[exchange] = CentralizedMarket(
-    #         order_book=get_orderbooks_from_file("archive/")[exchange],
-    #         unique_id=exchange,
-    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-    #     )
-    # kraken = cex['kraken']
-    # binance = cex['binance']
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
+
+    cex = {}
+    for exchange in ('kraken', 'binance'):
+        cex[exchange] = CentralizedMarket(
+            order_book=get_orderbooks_from_file("archive/")[exchange],
+            unique_id=exchange,
+            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+        )
+    kraken = cex['kraken']
+    binance = cex['binance']
 
     # get arb cfg
     for arb_cfg in cfg:
