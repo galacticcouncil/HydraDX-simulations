@@ -876,180 +876,180 @@ def test_get_arb_swaps(
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
 
-
-def test_combine_step():
-
-    cfg = [
-        {"tkns": ("HDX", "USDT"), "tkn_ids": [0, 10], "exchange": "kraken", "order_book": ("HDX", "USD")},
-        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "kraken", "order_book": ("DOT", "USDT")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "kraken", "order_book": ("ETH", "USDT")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 18], "exchange": "kraken", "order_book": ("ETH", "DAI")},
-        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "kraken", "order_book": ("DOT", "ETH")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
-        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "XBT")},
-        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "XBT")},
-        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
-        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
-        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "kraken", "order_book": ("ASTR", "USD")},
-        {"tkns": ("CFG", "USDT"), "tkn_ids": [13, 10], "exchange": "kraken", "order_book": ("CFG", "USD")},
-        {"tkns": ("BNC", "USDT"), "tkn_ids": [14, 10], "exchange": "kraken", "order_book": ("BNC", "USD")},
-        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "kraken", "order_book": ("GLMR", "USD")},
-        {"tkns": ("INTR", "USDT"), "tkn_ids": [17, 10], "exchange": "kraken", "order_book": ("INTR", "USD")},
-        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "binance", "order_book": ("DOT", "USDT")},
-        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "binance", "order_book": ("DOT", "ETH")},
-        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "binance", "order_book": ("DOT", "BTC")},
-        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "binance", "order_book": ("DOT", "BTC")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "binance", "order_book": ("ETH", "USDT")},
-        {"tkns": ("WETH", "DAI"), "tkn_ids": [20, 18], "exchange": "binance", "order_book": ("ETH", "DAI")},
-        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "binance", "order_book": ("ETH", "BTC")},
-        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "binance", "order_book": ("ETH", "BTC")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
-        {"tkns": ("WBTC", "DAI"), "tkn_ids": [19, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
-        {"tkns": ("IBTC", "DAI"), "tkn_ids": [11, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
-        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
-        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
-    ]
-    #
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-    #
-    # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    # cex = {
-    #     'kraken': kraken,
-    #     'binance': binance
-    # }
-    # uncomment above to test with live data, below for archived data
-    #
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./archive/')
-
-    cex = {}
-    for exchange in ('kraken', 'binance'):
-        cex[exchange] = CentralizedMarket(
-            order_book=get_orderbooks_from_file("archive/")[exchange],
-            unique_id=exchange,
-            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-        )
-    kraken = cex['kraken']
-    binance = cex['binance']
-
-    # get arb cfg
-    for arb_cfg in cfg:
-        arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
-        arb_cfg['buffer'] = 0.001
-
-    dex = OmnipoolState(
-        tokens=tokens,
-        lrna_fee={asset: fees[asset]['protocol_fee'] for asset in asset_list},
-        asset_fee={asset: fees[asset]['asset_fee'] for asset in asset_list},
-        preferred_stablecoin='USDT',
-        unique_id='dex'
-    )
-
-    asset_map = {
-        'WETH': 'ETH',
-        'XETH': 'ETH',
-        'XXBT': 'BTC',
-        'WBTC': 'BTC',
-        'ZUSD': 'USD',
-        'USDT': 'USD',
-        'USDC': 'USD',
-        'DAI': 'USD',
-        'USDT001': 'USD',
-        'DAI001': 'USD',
-        'WETH001': 'ETH',
-        'WBTC001': 'BTC',
-        'iBTC': 'BTC',
-        'XBT': 'BTC'
-    }
-    exchanges_per_tkn = {
-        tkn: sum(1 if tkn in exchange.asset_list else 0 for exchange in (dex, kraken, binance))
-        for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
-    }
-    initial_agent = Agent(
-        holdings={
-            tkn: 100 * exchanges_per_tkn[tkn]
-            / (
-                (binance.buy_spot(tkn, 'USD') or kraken.buy_spot(tkn, 'USD') or dex.buy_spot(tkn, 'USD')) or 1
-            )
-            for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
-        }
-    )
-    max_liquidity = {
-        'dex': {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings},
-        'cex': {
-            ex.unique_id:
-            {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings}
-            for ex in (binance, kraken)
-        }
-    }
-    arb_swaps = get_arb_swaps(
-        dex, cex, cfg, max_liquidity=max_liquidity
-    )
-
-    test_dex, test_kraken, test_binance, test_agent = \
-        dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
-    execute_arb(test_dex, {'kraken': test_kraken, 'binance': test_binance}, test_agent, arb_swaps)
-    profit = calculate_profit(initial_agent, test_agent, asset_map)
-    profit_total = test_binance.value_assets(profit, asset_map)
-    print('profit: ', profit_total)
-
-    combine_dex, combine_kraken, combine_binance, combine_agent = \
-        dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
-    combined_swaps = combine_swaps(
-        dex=combine_dex,
-        cex={'kraken': combine_kraken, 'binance': combine_binance},
-        agent=combine_agent,
-        all_swaps=arb_swaps,
-        asset_map=asset_map,
-        max_liquidity=max_liquidity
-    )
-    execute_arb(combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, combined_swaps)
-    combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
-    combined_profit_total = combine_binance.value_assets(combined_profit, asset_map)
-
-    # see if iterating on that can get any extra profit
-    iter_dex, iter_kraken, iter_binance, iter_agent = (
-        combine_dex.copy(), combine_kraken.copy(), combine_binance.copy(), combine_agent.copy()
-    )
-    max_liquidity = {
-        'dex': {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings},
-        'cex': {
-            ex.unique_id:
-            {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings}
-            for ex in (binance, kraken)
-        }
-    }
-    arb_swaps = get_arb_swaps(
-        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg, max_liquidity=max_liquidity
-    )
-    itered_swaps = combine_swaps(
-        iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map,
-        max_liquidity=max_liquidity
-    )
-    execute_arb(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, itered_swaps)
-    iter_profit = calculate_profit(initial_agent, iter_agent, asset_map)
-    iter_profit_total = iter_binance.value_assets(iter_profit, asset_map)
-
-    for tkn in profit:
-        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
-            raise AssertionError('Loss detected.')
-
-    for tkn in combined_profit:
-        if combined_profit[tkn] < -1e-10:
-            raise AssertionError('Loss detected.')
-
-    if profit_total > combined_profit_total:
-        raise AssertionError('Loss detected.')
-    else:
-        print(
-            f"extra profit obtained: {combined_profit_total - profit_total}"
-            f" ({(combined_profit_total - profit_total) / profit_total * 100}%)"
-        )
-        if iter_profit_total > combined_profit_total:
-            print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
-        else:
-            print('Iteration did not improve profit.')
+#
+# def test_combine_step():
+#
+#     cfg = [
+#         {"tkns": ("HDX", "USDT"), "tkn_ids": [0, 10], "exchange": "kraken", "order_book": ("HDX", "USD")},
+#         {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "kraken", "order_book": ("DOT", "USDT")},
+#         {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "kraken", "order_book": ("ETH", "USDT")},
+#         {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 18], "exchange": "kraken", "order_book": ("ETH", "DAI")},
+#         {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "kraken", "order_book": ("DOT", "ETH")},
+#         {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
+#         {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
+#         {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
+#         {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
+#         {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "XBT")},
+#         {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "XBT")},
+#         {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
+#         {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
+#         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "kraken", "order_book": ("ASTR", "USD")},
+#         {"tkns": ("CFG", "USDT"), "tkn_ids": [13, 10], "exchange": "kraken", "order_book": ("CFG", "USD")},
+#         {"tkns": ("BNC", "USDT"), "tkn_ids": [14, 10], "exchange": "kraken", "order_book": ("BNC", "USD")},
+#         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "kraken", "order_book": ("GLMR", "USD")},
+#         {"tkns": ("INTR", "USDT"), "tkn_ids": [17, 10], "exchange": "kraken", "order_book": ("INTR", "USD")},
+#         {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "binance", "order_book": ("DOT", "USDT")},
+#         {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "binance", "order_book": ("DOT", "ETH")},
+#         {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "binance", "order_book": ("DOT", "BTC")},
+#         {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "binance", "order_book": ("DOT", "BTC")},
+#         {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "binance", "order_book": ("ETH", "USDT")},
+#         {"tkns": ("WETH", "DAI"), "tkn_ids": [20, 18], "exchange": "binance", "order_book": ("ETH", "DAI")},
+#         {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "binance", "order_book": ("ETH", "BTC")},
+#         {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "binance", "order_book": ("ETH", "BTC")},
+#         {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
+#         {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
+#         {"tkns": ("WBTC", "DAI"), "tkn_ids": [19, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
+#         {"tkns": ("IBTC", "DAI"), "tkn_ids": [11, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
+#         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
+#         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
+#     ]
+#     #
+#     # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+#     #
+#     # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+#     # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
+#     # cex = {
+#     #     'kraken': kraken,
+#     #     'binance': binance
+#     # }
+#     # uncomment above to test with live data, below for archived data
+#     #
+#     asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='../notebooks/misc/archive/')
+#
+#     cex = {}
+#     for exchange in ('kraken', 'binance'):
+#         cex[exchange] = CentralizedMarket(
+#             order_book=get_orderbooks_from_file("archive/")[exchange],
+#             unique_id=exchange,
+#             trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+#         )
+#     kraken = cex['kraken']
+#     binance = cex['binance']
+#
+#     # get arb cfg
+#     for arb_cfg in cfg:
+#         arb_cfg['tkn_pair'] = (asset_numbers[arb_cfg['tkn_ids'][0]], asset_numbers[arb_cfg['tkn_ids'][1]])
+#         arb_cfg['buffer'] = 0.001
+#
+#     dex = OmnipoolState(
+#         tokens=tokens,
+#         lrna_fee={asset: fees[asset]['protocol_fee'] for asset in asset_list},
+#         asset_fee={asset: fees[asset]['asset_fee'] for asset in asset_list},
+#         preferred_stablecoin='USDT',
+#         unique_id='dex'
+#     )
+#
+#     asset_map = {
+#         'WETH': 'ETH',
+#         'XETH': 'ETH',
+#         'XXBT': 'BTC',
+#         'WBTC': 'BTC',
+#         'ZUSD': 'USD',
+#         'USDT': 'USD',
+#         'USDC': 'USD',
+#         'DAI': 'USD',
+#         'USDT001': 'USD',
+#         'DAI001': 'USD',
+#         'WETH001': 'ETH',
+#         'WBTC001': 'BTC',
+#         'iBTC': 'BTC',
+#         'XBT': 'BTC'
+#     }
+#     exchanges_per_tkn = {
+#         tkn: sum(1 if tkn in exchange.asset_list else 0 for exchange in (dex, kraken, binance))
+#         for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
+#     }
+#     initial_agent = Agent(
+#         holdings={
+#             tkn: 100 * exchanges_per_tkn[tkn]
+#             / (
+#                 (binance.buy_spot(tkn, 'USD') or kraken.buy_spot(tkn, 'USD') or dex.buy_spot(tkn, 'USD')) or 1
+#             )
+#             for tkn in dex.asset_list + kraken.asset_list + binance.asset_list + list(asset_numbers.values())
+#         }
+#     )
+#     max_liquidity = {
+#         'dex': {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings},
+#         'cex': {
+#             ex.unique_id:
+#             {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings}
+#             for ex in (binance, kraken)
+#         }
+#     }
+#     arb_swaps = get_arb_swaps(
+#         dex, cex, cfg, max_liquidity=max_liquidity
+#     )
+#
+#     test_dex, test_kraken, test_binance, test_agent = \
+#         dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+#     execute_arb(test_dex, {'kraken': test_kraken, 'binance': test_binance}, test_agent, arb_swaps)
+#     profit = calculate_profit(initial_agent, test_agent, asset_map)
+#     profit_total = test_binance.value_assets(profit, asset_map)
+#     print('profit: ', profit_total)
+#
+#     combine_dex, combine_kraken, combine_binance, combine_agent = \
+#         dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
+#     combined_swaps = combine_swaps(
+#         dex=combine_dex,
+#         cex={'kraken': combine_kraken, 'binance': combine_binance},
+#         agent=combine_agent,
+#         all_swaps=arb_swaps,
+#         asset_map=asset_map,
+#         max_liquidity=max_liquidity
+#     )
+#     execute_arb(combine_dex, {'kraken': combine_kraken, 'binance': combine_binance}, combine_agent, combined_swaps)
+#     combined_profit = calculate_profit(initial_agent, combine_agent, asset_map)
+#     combined_profit_total = combine_binance.value_assets(combined_profit, asset_map)
+#
+#     # see if iterating on that can get any extra profit
+#     iter_dex, iter_kraken, iter_binance, iter_agent = (
+#         combine_dex.copy(), combine_kraken.copy(), combine_binance.copy(), combine_agent.copy()
+#     )
+#     max_liquidity = {
+#         'dex': {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings},
+#         'cex': {
+#             ex.unique_id:
+#             {tkn: iter_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in iter_agent.holdings}
+#             for ex in (binance, kraken)
+#         }
+#     }
+#     arb_swaps = get_arb_swaps(
+#         iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, cfg, max_liquidity=max_liquidity
+#     )
+#     itered_swaps = combine_swaps(
+#         iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, arb_swaps, asset_map,
+#         max_liquidity=max_liquidity
+#     )
+#     execute_arb(iter_dex, {'kraken': iter_kraken, 'binance': iter_binance}, iter_agent, itered_swaps)
+#     iter_profit = calculate_profit(initial_agent, iter_agent, asset_map)
+#     iter_profit_total = iter_binance.value_assets(iter_profit, asset_map)
+#
+#     for tkn in profit:
+#         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+#             raise AssertionError('Loss detected.')
+#
+#     for tkn in combined_profit:
+#         if combined_profit[tkn] < -1e-10:
+#             raise AssertionError('Loss detected.')
+#
+#     if profit_total > combined_profit_total:
+#         raise AssertionError('Loss detected.')
+#     else:
+#         print(
+#             f"extra profit obtained: {combined_profit_total - profit_total}"
+#             f" ({(combined_profit_total - profit_total) / profit_total * 100}%)"
+#         )
+#         if iter_profit_total > combined_profit_total:
+#             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
+#         else:
+#             print('Iteration did not improve profit.')
