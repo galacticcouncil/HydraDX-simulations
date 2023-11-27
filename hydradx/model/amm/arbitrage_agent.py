@@ -307,6 +307,44 @@ def get_arb_opps(op_state, cex_dict, config):
     return arb_opps
 
 
+def get_arb_opps_inventory(op_state, cex_dict, config):
+    arb_opps = []
+
+    for i, arb_cfg in enumerate(config):
+        tkn_pair = arb_cfg['tkn_pair']
+        ob_tkn_pair = arb_cfg['order_book']
+        exchange = arb_cfg['exchange']
+        pair_order_book = cex_dict[exchange].order_book[ob_tkn_pair]
+        cex_fee = cex_dict[exchange].trade_fee
+
+        dex_spot_price = OmnipoolState.price(op_state, tkn_pair[0], tkn_pair[1])
+
+        if len(pair_order_book.bids) > 0:
+            bid_price = pair_order_book.bids[0][0]
+            cex_sell_price = bid_price * (1 - cex_fee)
+
+            numeraire_lrna_fee = op_state.lrna_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+            tkn_asset_fee = op_state.asset_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            dex_buy_price = dex_spot_price / ((1 - tkn_asset_fee) * (1 - numeraire_lrna_fee))
+
+            if dex_buy_price < cex_sell_price:  # buy from DEX, sell to CEX
+                arb_opps.append(((cex_sell_price - dex_buy_price) / dex_buy_price, i))
+
+        if len(pair_order_book.asks) > 0:
+            ask_price = pair_order_book.asks[0][0]
+            cex_buy_price = ask_price * (1 + cex_fee)
+
+            numeraire_asset_fee = op_state.asset_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
+            tkn_lrna_fee = op_state.lrna_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            dex_sell_price = dex_spot_price * (1 - numeraire_asset_fee) * (1 - tkn_lrna_fee)
+
+            if dex_sell_price > cex_buy_price:  # buy from CEX, sell to DEX
+                arb_opps.append(((dex_sell_price - cex_buy_price) / cex_buy_price, i))
+
+    arb_opps.sort(key=lambda x: x[0], reverse=True)
+    return arb_opps
+
+
 def does_max_liquidity_allow_trade(dex_tkn_pair, cex_tkn_pair, max_liquidity_dex, max_liquidity_cex):
     if dex_tkn_pair[0] in max_liquidity_dex and max_liquidity_dex[dex_tkn_pair[0]] <= 0:
         return False
@@ -370,7 +408,7 @@ def get_arb_swaps(op_state, cex_dict, config, max_liquidity=None, iters=20):
 
 
 def get_arb_swaps_inventory(op_state, cex_dict, agent_dict, config, asset_config, max_liquidity=None, iters=20):
-    arb_opps = get_arb_opps(op_state, cex_dict, config)
+    arb_opps = get_arb_opps_inventory(op_state, cex_dict, config)
 
     if max_liquidity is None:
         max_liquidity = {'cex': {exchange: {} for exchange in cex_dict}, 'dex': {}}
@@ -384,7 +422,6 @@ def get_arb_swaps_inventory(op_state, cex_dict, agent_dict, config, asset_config
         for asset in test_cex_dict[ex].asset_list:
             if asset not in holdings:
                 holdings[asset] = init_amt
-    test_agent = Agent(holdings=holdings, unique_id='bot')
     while arb_opps:
         arb_cfg = config[arb_opps[0][1]]
         while not does_max_liquidity_allow_trade(
@@ -414,7 +451,7 @@ def get_arb_swaps_inventory(op_state, cex_dict, agent_dict, config, asset_config
             all_swaps.append(swap)
         else:
             break
-        new_arb_opps = get_arb_opps(state, test_cex_dict, config)
+        new_arb_opps = get_arb_opps_inventory(state, test_cex_dict, config)
         if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
             break
         arb_opps = new_arb_opps

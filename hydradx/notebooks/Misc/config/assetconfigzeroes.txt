@@ -1,0 +1,9 @@
+{"kraken":
+    {"USD": 0, "USDT": 0, "DAI": 0, "DOT": 0, "BTC": 0, "ETH": 0, "HDX": 0, "ASTR": 0,
+     "CFG": 0, "INTR": 0, "BNC": 0, "GLMR": 0},
+     "binance":
+        {"USD": 0, "USDT": 0, "DAI": 0, "DOT": 0, "BTC": 0, "ETH": 0, "HDX": 0, "ASTR": 0,
+         "GLMR": 0},
+"omnipool": {"USDT": 0, "DAI": 0, "DOT": 0, "iBTC": 0, "WBTC": 0, "WETH": 0, "HDX": 0, "ASTR": 0,
+     "CFG": 0, "INTR": 0, "BNC": 0, "GLMR": 0, "DAI001": 0, "WBTC001": 0, "WETH001": 0}
+}
