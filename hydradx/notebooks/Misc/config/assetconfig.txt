@@ -5,5 +5,5 @@
         {"USD": 500, "USDT": 500, "DAI": 500, "DOT": 100, "BTC": 0.01, "ETH": 0.3, "HDX": 100000, "ASTR": 1000,
          "GLMR": 300},
 "omnipool": {"USDT": 500, "DAI": 500, "DOT": 100, "iBTC": 0.01, "WBTC": 0.01, "WETH": 0.3, "HDX": 100000, "ASTR": 1000,
-     "CFG": 100, "INTR": 3000, "BNC": 300, "GLMR": 300}
+     "CFG": 100, "INTR": 3000, "BNC": 300, "GLMR": 300, "DAI001": 500, "WBTC001": 0.01, "WETH001": 0.3}
 }

@@ -5,10 +5,11 @@ from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap, get_buffers
+    process_next_swap, get_buffers, apply_dex_buffer
 from hydradx.model.amm.arbitrage_agent import get_arb_swaps_simple, execute_arb, get_arb_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+import pytest
 
 
 def test_calculate_profit():
@@ -992,3 +993,22 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
+
+
+@given(
+    dex_buffer=st.floats(min_value=-.0031, max_value=.005)
+)
+def test_apply_dex_buffer(dex_buffer):
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    asset_fee_adj, lrna_fee_adj = apply_dex_buffer(asset_fee, lrna_fee, dex_buffer)
+
+    if asset_fee_adj < 0 or lrna_fee_adj < 0:
+        raise
+
+    if asset_fee + lrna_fee + dex_buffer != pytest.approx(asset_fee_adj + lrna_fee_adj):
+        if lrna_fee_adj + asset_fee_adj != 0:
+            raise
+
+    if lrna_fee != lrna_fee_adj and asset_fee_adj != 0:
+        raise
