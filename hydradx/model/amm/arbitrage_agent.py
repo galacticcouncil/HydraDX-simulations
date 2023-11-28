@@ -161,6 +161,8 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
     bids, asks = test_cex.order_book[ob_tkn_pair].bids, test_cex.order_book[ob_tkn_pair].asks
     tkn = tkn_pair[0]
     numeraire = tkn_pair[1]
+    ob_tkn = ob_tkn_pair[0]
+    ob_numeraire = ob_tkn_pair[1]
     cex_fee = test_cex.trade_fee
 
     execution_risk_buffer = 0.001
@@ -196,8 +198,12 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
 
     if bids and buy_spot < bids[0][0] * (1 - cex_fee):  # tkn is coming out of omnipool, numeraire going into omnipool
         bid = bids[0]
-        max_liq_tkn = max_liquidity_cex[tkn] if tkn in max_liquidity_cex else float('inf')
-        max_liq_num = max_liquidity_dex[numeraire] if numeraire in max_liquidity_dex else float('inf')
+        max_liq_tkn = cex_agent.holdings[ob_tkn]
+        if ob_tkn in max_liquidity_cex:
+            max_liq_tkn = max(max_liq_tkn, max_liquidity_cex[ob_tkn])
+        max_liq_num = dex_agent.holdings[numeraire]
+        if numeraire in max_liquidity_dex:
+            max_liq_num = max(max_liq_num, max_liquidity_dex[numeraire])
         amt = calculate_arb_amount_bid(test_dex, tkn, numeraire, bid, cex_fee, dex_buffer, cex_buffer, min_amt=1e-6,
                                        max_liq_tkn=max_liq_tkn, max_liq_num=max_liq_num, precision=1e-10,
                                        max_iters=iters)
@@ -232,8 +238,12 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
 
     elif asks and sell_spot > asks[0][0] * (1 + cex_fee):
         ask = asks[0]
-        max_liq_tkn = max_liquidity_dex[tkn] if tkn in max_liquidity_dex else float('inf')
-        max_liq_num = max_liquidity_cex[numeraire] if numeraire in max_liquidity_cex else float('inf')
+        max_liq_tkn = dex_agent.holdings[tkn]
+        if tkn in max_liquidity_dex:
+            max_liq_tkn = max(max_liq_tkn, max_liquidity_dex[tkn])
+        max_liq_num = cex_agent.holdings[ob_numeraire]
+        if ob_numeraire in max_liquidity_cex:
+            max_liq_num = max(max_liq_num, max_liquidity_cex[ob_numeraire])
         amt = calculate_arb_amount_ask(test_dex, tkn, numeraire, ask, cex_fee, dex_buffer, cex_buffer, min_amt=1e-6,
                                        max_liq_tkn=max_liq_tkn, max_liq_num=max_liq_num, precision=1e-10,
                                        max_iters=iters)
