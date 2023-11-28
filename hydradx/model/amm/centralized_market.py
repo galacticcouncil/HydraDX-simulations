@@ -131,7 +131,7 @@ class CentralizedMarket(AMM):
         if (base, quote) not in self.order_book:
             if (quote, base) in self.order_book:
                 base, quote = quote, base
-            if (base, quote) not in self.order_book:
+            else:
                 return self.fail_transaction('Order book not found.')
 
         remove_bids = 0
