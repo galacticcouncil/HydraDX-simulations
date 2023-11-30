@@ -1,6 +1,6 @@
 import copy
 from datetime import timedelta
-import json
+import os
 from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
@@ -924,7 +924,10 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
     #
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./data/input/')
+    path = './data/input/'
+    if not os.path.exists(path):
+        path = 'tests/data/input/'
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path)
 
     cex = {}
     for exchange in ('kraken', 'binance'):
