@@ -924,7 +924,7 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
     #
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='../notebooks/misc/data/input/')
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path='./data/input/')
 
     cex = {}
     for exchange in ('kraken', 'binance'):
