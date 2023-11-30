@@ -924,15 +924,15 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
     #
-    path = './data/input/'
-    if not os.path.exists(path):
-        path = 'hydradx/tests/data/input/'
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path)
+    input_path = './data/input/'
+    if not os.path.exists(input_path):
+        input_path = 'hydradx/tests/data/input/'
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
 
     cex = {}
     for exchange in ('kraken', 'binance'):
         cex[exchange] = CentralizedMarket(
-            order_book=get_orderbooks_from_file("archive/")[exchange],
+            order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
             unique_id=exchange,
             trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
         )
