@@ -926,7 +926,7 @@ def test_combine_step():
     #
     path = './data/input/'
     if not os.path.exists(path):
-        path = 'tests/data/input/'
+        path = 'hydradx/tests/data/input/'
     asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(path)
 
     cex = {}
