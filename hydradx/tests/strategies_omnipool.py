@@ -101,7 +101,7 @@ def omnipool_reasonable_config(
 
 
 @st.composite
-def assets_config(draw, token_count: int = 0) -> dict:
+def assets_config(draw, token_count: int = 0):
     token_count = token_count or draw(asset_number_strategy)
     usd_price_lrna = draw(asset_price_strategy)
     return_dict = {
@@ -110,14 +110,14 @@ def assets_config(draw, token_count: int = 0) -> dict:
             'LRNA': mpf(draw(asset_quantity_strategy))
         },
         'USD': {
-            'liquidity': draw(asset_quantity_strategy),
-            'LRNA_price': usd_price_lrna
+            'liquidity': mpf(draw(asset_quantity_strategy)),
+            'LRNA_price': mpf(usd_price_lrna)
         }
     }
     return_dict.update({
         ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
-            'liquidity': draw(asset_quantity_strategy),
-            'LRNA': draw(asset_quantity_strategy)
+            'liquidity': mpf(draw(asset_quantity_strategy)),
+            'LRNA': mpf(draw(asset_quantity_strategy))
         } for _ in range(token_count - 2)
     })
     return return_dict
