@@ -885,14 +885,14 @@ def test_combine_step():
         {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "kraken", "order_book": ("ETH", "USDT")},
         {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 18], "exchange": "kraken", "order_book": ("ETH", "DAI")},
         {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "kraken", "order_book": ("DOT", "ETH")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("XBT", "USDT")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("XBT", "DAI")},
-        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "XBT")},
-        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "XBT")},
-        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
-        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("XETH", "XXBT")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("BTC", "USDT")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("BTC", "USDT")},
+        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("BTC", "DAI")},
+        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("BTC", "DAI")},
+        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "BTC")},
+        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "BTC")},
+        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("ETH", "BTC")},
+        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("ETH", "BTC")},
         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "kraken", "order_book": ("ASTR", "USD")},
         {"tkns": ("CFG", "USDT"), "tkn_ids": [13, 10], "exchange": "kraken", "order_book": ("CFG", "USD")},
         {"tkns": ("BNC", "USDT"), "tkn_ids": [14, 10], "exchange": "kraken", "order_book": ("BNC", "USD")},
@@ -913,6 +913,7 @@ def test_combine_step():
         {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
         {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
     ]
+
     #
     # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
     #
@@ -924,9 +925,9 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
     #
-    input_path = './data/input/'
+    input_path = './data/'
     if not os.path.exists(input_path):
-        input_path = 'hydradx/tests/data/input/'
+        input_path = 'hydradx/tests/data/'
     asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
 
     cex = {}
@@ -974,7 +975,7 @@ def test_combine_step():
     }
     initial_agent = Agent(
         holdings={
-            tkn: 100 * exchanges_per_tkn[tkn]
+            tkn: 1000000 * exchanges_per_tkn[tkn]
             / (
                 (binance.buy_spot(tkn, 'USD') or kraken.buy_spot(tkn, 'USD') or dex.buy_spot(tkn, 'USD')) or 1
             )
@@ -998,7 +999,8 @@ def test_combine_step():
     execute_arb(test_dex, {'kraken': test_kraken, 'binance': test_binance}, test_agent, arb_swaps)
     profit = calculate_profit(initial_agent, test_agent, asset_map)
     profit_total = test_binance.value_assets(profit, asset_map)
-    print('profit: ', profit_total)
+    print('profit: ', profit)
+    print('total: ', profit_total)
 
     combine_dex, combine_kraken, combine_binance, combine_agent = \
         dex.copy(), kraken.copy(), binance.copy(), initial_agent.copy()
@@ -1049,7 +1051,7 @@ def test_combine_step():
         raise AssertionError('Loss detected.')
     else:
         print(
-            f"extra profit obtained: {combined_profit_total - profit_total}"
+            f"extra profit obtained by combining swaps: {combined_profit_total - profit_total}"
             f" ({(combined_profit_total - profit_total) / profit_total * 100}%)"
         )
         if iter_profit_total > combined_profit_total:
