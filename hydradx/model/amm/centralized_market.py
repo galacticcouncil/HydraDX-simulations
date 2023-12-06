@@ -104,6 +104,26 @@ class CentralizedMarket(AMM):
         self.trade_fee = trade_fee
         self.unique_id = unique_id or 'CentralizedMarket'
 
+    def buy_limit(self, tkn_buy: str, tkn_sell: str):
+        # return the amount of tkn_buy that can be bought within the first item in the order book
+        # todo: consider fees
+        if (tkn_buy, tkn_sell) in self.order_book:
+            return self.order_book[(tkn_buy, tkn_sell)].asks[0][0]
+        elif (tkn_sell, tkn_buy) in self.order_book:
+            return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * self.order_book[(tkn_sell, tkn_buy)].bids[0][1]
+        else:
+            return 0
+
+    def sell_limit(self, tkn_buy: str, tkn_sell: str):
+        # return the amount of tkn_sell that can be sold within the first item in the order book
+        # todo: consider fees
+        if (tkn_buy, tkn_sell) in self.order_book:
+            return self.order_book[(tkn_buy, tkn_sell)].bids[0][0] * self.order_book[(tkn_buy, tkn_sell)].bids[0][1]
+        elif (tkn_sell, tkn_buy) in self.order_book:
+            return self.order_book[(tkn_sell, tkn_buy)].asks[0][0]
+        else:
+            return 0
+
     def swap(
         self,
         agent: Agent,
