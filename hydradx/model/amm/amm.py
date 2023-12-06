@@ -46,6 +46,18 @@ class AMM:
     def price(state, tkn: str, denomination: str = '') -> float:
         return 0
 
+    def buy_spot(self, tkn: str, numeraire: str):
+        return 0
+
+    def sell_spot(self, tkn: str, numeraire: str):
+        return 0
+
+    def buy_limit(self, tkn_buy, tkn_sell):
+        return 0
+
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return 0
+
     def swap(
         self,
         agent: Agent,
