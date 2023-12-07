@@ -335,26 +335,30 @@ class OmnipoolState(AMM):
         return -delta_Rj
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, tkn_sell_is_numeraire: bool = False):
-        numeraire = tkn_sell if tkn_sell_is_numeraire else tkn_buy
         if tkn_buy not in self.asset_list:
             return 0
         elif tkn_sell not in self.asset_list:
             return 0
-        return (
-            price(self, tkn_buy, numeraire)
-            / (1 - self.lrna_fee[tkn_sell].compute()) / (1 - self.asset_fee[tkn_buy].compute())
-        )
+        if tkn_sell_is_numeraire:
+            spot_price = price(self, tkn_buy, tkn_sell)
+            spot_price /= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
+        else:
+            spot_price = price(self, tkn_sell, tkn_buy)
+            spot_price *= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
+        return spot_price
 
     def sell_spot(self, tkn_buy: str, tkn_sell: str, tkn_buy_is_numeraire: bool = False):
-        numeraire = tkn_buy if tkn_buy_is_numeraire else tkn_sell
         if tkn_buy not in self.asset_list:
             return 0
         elif tkn_sell not in self.asset_list:
             return 0
-        return (
-            price(self, tkn_buy, numeraire)
-            * (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
-        )
+        if tkn_buy_is_numeraire:
+            spot_price = price(self, tkn_sell, tkn_buy)
+            spot_price *= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
+        else:
+            spot_price = price(self, tkn_buy, tkn_sell)
+            spot_price /= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
+        return spot_price
 
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found
