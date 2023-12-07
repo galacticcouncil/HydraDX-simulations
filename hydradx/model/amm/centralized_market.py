@@ -317,23 +317,36 @@ class CentralizedMarket(AMM):
     def copy(self):
         return copy.deepcopy(self)
 
-    def buy_spot(self, tkn: str, numeraire: str = 'USD') -> float:
-        if tkn == numeraire:
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, tkn_sell_is_numeraire: bool = False) -> float:
+        if tkn_buy == tkn_sell:
             return 1
-        elif (tkn, numeraire) in self.order_book:
-            return self.order_book[(tkn, numeraire)].asks[0][0] * (1 + self.trade_fee)
-        elif (numeraire, tkn) in self.order_book:
-            return 1 / self.order_book[(numeraire, tkn)].bids[0][0] * (1 + self.trade_fee)
+        elif (tkn_buy, tkn_sell) in self.order_book:
+            if tkn_sell_is_numeraire:
+                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 + self.trade_fee)
+            else:
+                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 + self.trade_fee)
+
+        elif (tkn_sell, tkn_buy) in self.order_book:
+            if tkn_sell_is_numeraire:
+                return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 + self.trade_fee)
+            else:
+                return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] / (1 + self.trade_fee)
         else:
             return 0
 
-    def sell_spot(self, tkn: str, numeraire: str = 'USD') -> float:
-        if tkn == numeraire:
+    def sell_spot(self, tkn_buy: str, tkn_sell: str, tkn_buy_is_numeraire: bool = False) -> float:
+        if tkn_buy == tkn_sell:
             return 1
-        elif (tkn, numeraire) in self.order_book:
-            return self.order_book[(tkn, numeraire)].asks[0][0] * (1 - self.trade_fee)
-        elif (numeraire, tkn) in self.order_book:
-            return 1 / self.order_book[(numeraire, tkn)].bids[0][0] * (1 - self.trade_fee)
+        elif (tkn_buy, tkn_sell) in self.order_book:
+            if tkn_buy_is_numeraire:
+                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 - self.trade_fee)
+            else:
+                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 - self.trade_fee)
+        elif (tkn_sell, tkn_buy) in self.order_book:
+            if tkn_buy_is_numeraire:
+                return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] / (1 - self.trade_fee)
+            else:
+                return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 - self.trade_fee)
         else:
             return 0
 
