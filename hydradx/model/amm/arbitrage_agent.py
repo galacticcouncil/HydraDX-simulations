@@ -111,7 +111,7 @@ def get_buffers(bids, asks, ex1_agent_holdings, ex2_agent_holdings, ex1_tkn_pair
         buy_flag = False
         dex_fee = numeraire_asset_fee + tkn_lrna_fee
     else:
-        raise
+        return None, None
 
     class location(Enum):
         low = 0
