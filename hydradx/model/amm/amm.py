@@ -88,6 +88,9 @@ class AMM:
         self.fail = error
         return self
 
+    def value_assets(self, assets: dict[str: float], **kwargs) -> float:
+        return 0
+
     def __setattr__(self, key, value):
         if hasattr(self, key):
             if isinstance(self.__getattribute__(key), FeeMechanism):
