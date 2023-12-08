@@ -1,6 +1,4 @@
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.centralized_market import CentralizedMarket
 from hydradx.model.amm.amm import AMM
 
 
@@ -134,12 +132,7 @@ def get_arb_opps(exchanges, config):
 
 
 def flatten_swaps(swaps):
-    return [
-        {'exchange': 'dex', **trade['dex']}
-        if key == 'dex' else
-        {'exchange': trade['exchange'], **trade['cex']}
-        for trade in swaps for key in trade if key in ['dex', 'cex']
-    ]
+    return [{'exchange': exchange, **trade[exchange]} for trade in swaps for exchange in trade]
 
 
 def does_max_liquidity_allow_trade(tkn_pairs, max_liquidity):
@@ -193,39 +186,6 @@ def get_arb_swaps(
         if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
             break
         arb_opps = new_arb_opps
-
-    return all_swaps
-
-
-def get_arb_swaps_simple(op_state, cex_dict, config, max_liquidity=None, iters=20):
-    if max_liquidity is None:
-        max_liquidity = {'cex': {exchange: {} for exchange in cex_dict}, 'dex': {}}
-
-    init_amt = 1000000000
-    all_swaps = []
-    state = op_state.copy()
-    test_cex_dict = {exchange: cex_dict[exchange].copy() for exchange in cex_dict}
-    holdings = {asset: init_amt for asset in state.asset_list}
-    for ex in test_cex_dict:
-        for asset in test_cex_dict[ex].asset_list:
-            if asset not in holdings:
-                holdings[asset] = init_amt
-    test_agent = Agent(holdings=holdings, unique_id='bot')
-    for arb_cfg in config:
-        swap = None
-        while swap != {}:
-            swap = process_next_swap(state,
-                                     test_agent,
-                                     test_cex_dict[arb_cfg['exchange']],
-                                     arb_cfg['tkn_pair'],
-                                     arb_cfg['order_book'],
-                                     arb_cfg['buffer'],
-                                     max_liquidity['dex'],
-                                     max_liquidity['cex'][arb_cfg['exchange']],
-                                     iters)
-            if swap:
-                swap['exchange'] = arb_cfg['exchange']
-                all_swaps.append(swap)
 
     return all_swaps
 
@@ -312,14 +272,10 @@ def calculate_arb_amount(
         return amt_low
 
 
-def execute_arb(dex, cex_dict, agent, all_swaps):
-    exchanges = {
-        'dex': dex,
-        **{ex_name: ex for (ex_name, ex) in cex_dict.items()}
-    }
+def execute_arb(exchanges: dict[str: AMM], agent: Agent, all_swaps: list[dict]):
     if len(all_swaps) == 0:
         return
-    for swap in (flatten_swaps(all_swaps) if 'dex' in all_swaps[0] else all_swaps):
+    for swap in (flatten_swaps(all_swaps) if len(all_swaps[0].keys()) == 2 else all_swaps):
         tkn_buy = swap['buy_asset']
         tkn_sell = swap['sell_asset']
         ex = exchanges[swap['exchange']]
@@ -327,7 +283,6 @@ def execute_arb(dex, cex_dict, agent, all_swaps):
         if swap['trade'] == 'buy':
             ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=swap['amount'])
         elif swap['trade'] == 'sell':
-            # omnipool leg
             ex.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=swap['amount'])
         else:
             raise ValueError('Incorrect trade type.')
@@ -350,17 +305,15 @@ def calculate_profit(init_agent, agent, asset_map=None):
 
 
 def combine_swaps(
-        dex: OmnipoolState,
-        cex: dict[str, CentralizedMarket],
+        exchanges: dict[str, AMM],
         agent: Agent,
         all_swaps: list[dict],
         asset_map: dict[str, str],
-        max_liquidity: dict[str, dict[str, float]] = None
+        max_liquidity: dict[str, dict[str, float]] = None,
+        reference_prices: dict[str, float] = None
 ):
     # take the list of swaps and try to get the same result more efficiently
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
-    exchanges = {**{ex_name: ex for (ex_name, ex) in cex.items()}, 'dex': dex}
-    ref_exchange: CentralizedMarket = exchanges['binance']
     net_swaps = {}
     return_swaps = []
 
@@ -374,12 +327,6 @@ def combine_swaps(
         test_agent = agent.copy()
         test_ex = ex.copy()
         default_swaps = list(filter(lambda s: s['exchange'] == ex_name, all_swaps))
-
-        # vvv With this uncommented, it will still recover most of the available gains
-        #
-        # if ex_name != 'dex':
-        #     return_swaps += default_swaps
-        #     continue
 
         for swap in default_swaps:
             tkn_sell = swap['sell_asset']
@@ -405,7 +352,10 @@ def combine_swaps(
         buy_tkns = {tkn: 0 for tkn in ex.asset_list}
         buy_tkns.update({
             tkn: quantity for tkn, quantity in
-            sorted(filter(lambda x: x[1] > 0, net_swaps[ex_name].items()), key=lambda x: x[1] * ex.buy_spot(x[0]))
+            sorted(
+                filter(lambda x: x[1] > 0, net_swaps[ex_name].items()),
+                key=lambda x: ex.value_assets({x[0]: x[1]}, asset_map=asset_map)
+            )
         })
 
         sell_tkns = {
@@ -563,9 +513,8 @@ def combine_swaps(
             return_swaps += optimized_swaps
     # make absolutely sure nothing went below 0
     test_agent = agent.copy()
-    test_dex = dex.copy()
-    test_cex = {ex_name: ex.copy() for ex_name, ex in cex.items()}
-    execute_arb(test_dex, test_cex, test_agent, return_swaps)
+    test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
+    execute_arb(exchanges, test_agent, return_swaps)
     test_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
     if min(test_profit.values()) < 0:
         return all_swaps
