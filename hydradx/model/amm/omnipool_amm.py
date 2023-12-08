@@ -1061,6 +1061,8 @@ class OmnipoolState(AMM):
     def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
         # assets is a dict of token: quantity
         # returns the value of the assets in USD
+        if equivalency_map is None:
+            equivalency_map = {}
         usd_synonyms = ['USD']
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
