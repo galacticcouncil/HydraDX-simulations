@@ -12,6 +12,7 @@ from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_f
     get_orderbooks_from_file  # , get_stableswap_data, get_unique_name
 from hydradx.model.amm.arbitrage_agent_general import get_arb_swaps as get_arb_swaps_general, \
     execute_arb as execute_arb_general, flatten_swaps as flatten_swaps_general
+from mpmath import mp, mpf
 
 
 def test_calculate_profit():
@@ -1075,7 +1076,7 @@ def test_generalized_arb():
                     asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
                 ),
                 ('HDX', 'DOT'): OrderBook(
-                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
+                    bids=[[0.099909, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
                     asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
                 )
             },
@@ -1093,7 +1094,7 @@ def test_generalized_arb():
                     asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
                 ),
                 ('HDX', 'DOT'): OrderBook(
-                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
+                    bids=[[0.09991, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
                     asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
                 )
             },
@@ -1108,11 +1109,11 @@ def test_generalized_arb():
                 },
                 'DOT': {
                     'liquidity': 350000,
-                    'LRNA': 1456248
+                    'LRNA': 350000
                 },
                 'HDX': {
                     'liquidity': 100000000,
-                    'LRNA': 9000000
+                    'LRNA': 9910000
                 }
             },
             lrna_fee=0.0005,
@@ -1122,28 +1123,28 @@ def test_generalized_arb():
         )
     }
     config = [
-        {"exchanges": {"kraken": ("HDX", "USD"), "omnipool": ("HDX", "USDT")}, "buffer": 0.001},
-        {"exchanges": {"binance": ("HDX", "USDT"), "omnipool": ("HDX", "USDT")}, "buffer": 0.001},
-        {"exchanges": {"kraken": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.001},
-        {"exchanges": {"binance": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.001},
-        {"exchanges": {"kraken": ("DOT", "USD"), "omnipool": ("DOT", "USDT")}, "buffer": 0.001},
-        {"exchanges": {"binance": ("DOT", "USDT"), "omnipool": ("DOT", "USDT")}, "buffer": 0.001},
+        {"exchanges": {"kraken": ("HDX", "USD"), "omnipool": ("HDX", "USDT")}, "buffer": 0.00},
+        {"exchanges": {"binance": ("HDX", "USDT"), "omnipool": ("HDX", "USDT")}, "buffer": 0.00},
+        {"exchanges": {"kraken": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.00},
+        {"exchanges": {"binance": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.00},
+        {"exchanges": {"kraken": ("DOT", "USD"), "omnipool": ("DOT", "USDT")}, "buffer": 0.00},
+        {"exchanges": {"binance": ("DOT", "USDT"), "omnipool": ("DOT", "USDT")}, "buffer": 0.00},
     ]
     print(
         f"Kraken HDX/USDT buy price: "
         f"{exchanges['kraken'].buy_spot(tkn_buy='USDT', tkn_sell='HDX')}"
     )
     print(f"Omnipool HDX/USDT sell price: {exchanges['omnipool'].sell_spot(tkn_sell='HDX', tkn_buy='USDT')}")
+    max_liquidity = {
+        'omnipool': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
+        'kraken': {'HDX': 100000, 'USD': 100000, 'DOT': 100000},
+        'binance': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000}
+    }
     arb_swaps_general = get_arb_swaps_general(
         exchanges={ex_name: ex.copy() for ex_name, ex in exchanges.items()},
         config=config,
-        max_liquidity={
-            'omnipool': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
-            'kraken': {'HDX': 100000, 'USD': 100000, 'DOT': 100000},
-            'binance': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000}
-        }
+        max_liquidity=max_liquidity
     )
-    print(f"Arb detected: {arb_swaps_general}")
     agent = Agent(
         holdings={
             'HDX': 200000,
@@ -1152,14 +1153,15 @@ def test_generalized_arb():
             'DOT': 200000
         }
     )
+    general_arb_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
     execute_arb_general(
-        exchanges={ex_name: ex.copy() for ex_name, ex in exchanges.items()},
+        exchanges=general_arb_exchanges,
         agent=agent,
         all_swaps=arb_swaps_general
     )
     agent_profit = calculate_profit(Agent(holdings=agent.initial_holdings), agent)
     print(agent_profit)
-    print(f"Agent profit: {exchanges['binance'].value_assets(agent_profit, equivalency_map={'USD': 'USDT'})}")
+    print(f"Agent profit: {exchanges['binance'].value_assets(agent_profit, equivalency_map={'USDT': 'USD'})}")
 
     # try with the original agent for comparison
     original_agent = Agent(
@@ -1174,24 +1176,25 @@ def test_generalized_arb():
         op_state=exchanges['omnipool'],
         cex_dict={'kraken': exchanges['kraken'], 'binance': exchanges['binance']},
         config=[
-            {"tkn_pair": ('HDX', 'USDT'), "exchange": "kraken", "order_book": ("HDX", "USD"), "buffer": 0.001},
-            {"tkn_pair": ('HDX', 'USDT'), "exchange": "binance", "order_book": ("HDX", "USDT"), "buffer": 0.001},
-            {"tkn_pair": ('HDX', 'DOT'), "exchange": "kraken", "order_book": ("HDX", "DOT"), "buffer": 0.001},
-            {"tkn_pair": ('HDX', 'DOT'), "exchange": "binance", "order_book": ("HDX", "DOT"), "buffer": 0.001},
-            {"tkn_pair": ('DOT', 'USDT'), "exchange": "kraken", "order_book": ("DOT", "USD"), "buffer": 0.001},
-            {"tkn_pair": ('DOT', 'USDT'), "exchange": "binance", "order_book": ("DOT", "USDT"), "buffer": 0.001},
+            {"tkn_pair": ('HDX', 'USDT'), "exchange": "kraken", "order_book": ("HDX", "USD"), "buffer": 0.00},
+            {"tkn_pair": ('HDX', 'USDT'), "exchange": "binance", "order_book": ("HDX", "USDT"), "buffer": 0.00},
+            {"tkn_pair": ('HDX', 'DOT'), "exchange": "kraken", "order_book": ("HDX", "DOT"), "buffer": 0.00},
+            {"tkn_pair": ('HDX', 'DOT'), "exchange": "binance", "order_book": ("HDX", "DOT"), "buffer": 0.00},
+            {"tkn_pair": ('DOT', 'USDT'), "exchange": "kraken", "order_book": ("DOT", "USD"), "buffer": 0.00},
+            {"tkn_pair": ('DOT', 'USDT'), "exchange": "binance", "order_book": ("DOT", "USDT"), "buffer": 0.00},
         ],
         max_liquidity={
             'dex': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
             'cex': {
-                'kraken': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
+                'kraken': {'HDX': 100000, 'USD': 100000, 'DOT': 100000},
                 'binance': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000}
             }
         }
     )
+    original_arb_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
     execute_arb(
-        dex=exchanges['omnipool'],
-        cex_dict={'kraken': exchanges['kraken'], 'binance': exchanges['binance']},
+        dex=original_arb_exchanges['omnipool'],
+        cex_dict={'kraken': original_arb_exchanges['kraken'], 'binance': original_arb_exchanges['binance']},
         agent=original_agent,
         all_swaps=arb_swaps
     )
@@ -1199,12 +1202,12 @@ def test_generalized_arb():
     print(original_agent_profit)
     print(
         f"Original agent profit:"
-        f" {exchanges['binance'].value_assets(original_agent_profit, equivalency_map={'USD': 'USDT'})}"
+        f" {exchanges['binance'].value_assets(original_agent_profit, equivalency_map={'USDT': 'USD'})}"
     )
     print('-------generalized swaps:-------')
-    for swap in flatten_swaps_general(arb_swaps_general):
-        print(swap)
+    for i, swap in enumerate(flatten_swaps_general(arb_swaps_general)):
+        print(i, swap)
     print('-------original swaps:-------')
-    for swap in flatten_swaps(arb_swaps):
-        print(swap)
-
+    for i, swap in enumerate(flatten_swaps(arb_swaps)):
+        print(i, swap)
+    print('done.')
