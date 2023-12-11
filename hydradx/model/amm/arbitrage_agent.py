@@ -36,7 +36,12 @@ def process_next_swap(
             init_amt = test_agent.holdings[numeraire]
             text_dex.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
             amt_in = init_amt - test_agent.holdings[numeraire]
+            mid_agent = test_agent.copy()
             test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[0], tkn_buy=ob_tkn_pair[1], sell_quantity=amt)
+            amt_diff = {
+                tkn: test_agent.holdings[tkn] - mid_agent.holdings[tkn]
+                for tkn in test_agent.holdings
+            }
             swap = {
                 'dex': {
                     'trade': 'buy',
@@ -57,7 +62,7 @@ def process_next_swap(
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] -= amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] += amt_in
+                max_liquidity_cex[numeraire] += amt_diff[numeraire]
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] += amt
             if numeraire in max_liquidity_dex:
@@ -74,7 +79,12 @@ def process_next_swap(
             init_amt = test_agent.holdings[numeraire]
             text_dex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
             amt_out = test_agent.holdings[numeraire] - init_amt
+            mid_agent = test_agent.copy()
             test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[1], tkn_buy=ob_tkn_pair[0], buy_quantity=amt)
+            amt_diff = {
+                tkn: test_agent.holdings[tkn] - mid_agent.holdings[tkn]
+                for tkn in test_agent.holdings
+            }
             swap = {
                 'dex': {
                     'trade': 'sell',
@@ -94,7 +104,7 @@ def process_next_swap(
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] += amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] -= amt_out
+                max_liquidity_cex[numeraire] += amt_diff[numeraire]
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] -= amt
             if numeraire in max_liquidity_dex:
