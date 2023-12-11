@@ -5,11 +5,13 @@ from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap, get_arb_swaps_simple, execute_arb, get_arb_swaps, combine_swaps
+    process_next_swap, execute_arb, get_arb_swaps, get_arb_swaps_simple, combine_swaps, flatten_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
 from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market, \
-    get_orderbooks_from_file
+    get_orderbooks_from_file  # , get_stableswap_data, get_unique_name
+from hydradx.model.amm.arbitrage_agent_general import get_arb_swaps as get_arb_swaps_general, \
+    execute_arb as execute_arb_general, flatten_swaps as flatten_swaps_general
 
 
 def test_calculate_profit():
@@ -880,38 +882,38 @@ def test_get_arb_swaps(
 def test_combine_step():
 
     cfg = [
-        {"tkns": ("HDX", "USDT"), "tkn_ids": [0, 10], "exchange": "kraken", "order_book": ("HDX", "USD")},
-        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "kraken", "order_book": ("DOT", "USDT")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "kraken", "order_book": ("ETH", "USDT")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 18], "exchange": "kraken", "order_book": ("ETH", "DAI")},
-        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "kraken", "order_book": ("DOT", "ETH")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "kraken", "order_book": ("BTC", "USDT")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "kraken", "order_book": ("BTC", "USDT")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 18], "exchange": "kraken", "order_book": ("BTC", "DAI")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 18], "exchange": "kraken", "order_book": ("BTC", "DAI")},
-        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "kraken", "order_book": ("DOT", "BTC")},
-        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "kraken", "order_book": ("DOT", "BTC")},
-        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "kraken", "order_book": ("ETH", "BTC")},
-        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "kraken", "order_book": ("ETH", "BTC")},
-        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "kraken", "order_book": ("ASTR", "USD")},
-        {"tkns": ("CFG", "USDT"), "tkn_ids": [13, 10], "exchange": "kraken", "order_book": ("CFG", "USD")},
-        {"tkns": ("BNC", "USDT"), "tkn_ids": [14, 10], "exchange": "kraken", "order_book": ("BNC", "USD")},
-        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "kraken", "order_book": ("GLMR", "USD")},
-        {"tkns": ("INTR", "USDT"), "tkn_ids": [17, 10], "exchange": "kraken", "order_book": ("INTR", "USD")},
-        {"tkns": ("DOT", "USDT"), "tkn_ids": [5, 10], "exchange": "binance", "order_book": ("DOT", "USDT")},
-        {"tkns": ("DOT", "WETH"), "tkn_ids": [5, 20], "exchange": "binance", "order_book": ("DOT", "ETH")},
-        {"tkns": ("DOT", "WBTC"), "tkn_ids": [5, 19], "exchange": "binance", "order_book": ("DOT", "BTC")},
-        {"tkns": ("DOT", "IBTC"), "tkn_ids": [5, 11], "exchange": "binance", "order_book": ("DOT", "BTC")},
-        {"tkns": ("WETH", "USDT"), "tkn_ids": [20, 10], "exchange": "binance", "order_book": ("ETH", "USDT")},
-        {"tkns": ("WETH", "DAI"), "tkn_ids": [20, 18], "exchange": "binance", "order_book": ("ETH", "DAI")},
-        {"tkns": ("WETH", "WBTC"), "tkn_ids": [20, 19], "exchange": "binance", "order_book": ("ETH", "BTC")},
-        {"tkns": ("WETH", "IBTC"), "tkn_ids": [20, 11], "exchange": "binance", "order_book": ("ETH", "BTC")},
-        {"tkns": ("WBTC", "USDT"), "tkn_ids": [19, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
-        {"tkns": ("IBTC", "USDT"), "tkn_ids": [11, 10], "exchange": "binance", "order_book": ("BTC", "USDT")},
-        {"tkns": ("WBTC", "DAI"), "tkn_ids": [19, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
-        {"tkns": ("IBTC", "DAI"), "tkn_ids": [11, 18], "exchange": "binance", "order_book": ("BTC", "DAI")},
-        {"tkns": ("ASTR", "USDT"), "tkn_ids": [9, 10], "exchange": "binance", "order_book": ("ASTR", "USDT")},
-        {"tkns": ("GLMR", "USDT"), "tkn_ids": [16, 10], "exchange": "binance", "order_book": ("GLMR", "USDT")}
+        {"tkn_ids": (0, 10), "exchange": "kraken", "order_book": ("HDX", "USD")},
+        {"tkn_ids": (5, 10), "exchange": "kraken", "order_book": ("DOT", "USDT")},
+        {"tkn_ids": (20, 10), "exchange": "kraken", "order_book": ("ETH", "USDT")},
+        {"tkn_ids": (20, 18), "exchange": "kraken", "order_book": ("ETH", "DAI")},
+        {"tkn_ids": (5, 20), "exchange": "kraken", "order_book": ("DOT", "ETH")},
+        {"tkn_ids": (19, 10), "exchange": "kraken", "order_book": ("BTC", "USDT")},
+        {"tkn_ids": (11, 10), "exchange": "kraken", "order_book": ("BTC", "USDT")},
+        {"tkn_ids": (19, 18), "exchange": "kraken", "order_book": ("BTC", "DAI")},
+        {"tkn_ids": (11, 18), "exchange": "kraken", "order_book": ("BTC", "DAI")},
+        {"tkn_ids": (5, 19), "exchange": "kraken", "order_book": ("DOT", "BTC")},
+        {"tkn_ids": (5, 11), "exchange": "kraken", "order_book": ("DOT", "BTC")},
+        {"tkn_ids": (20, 19), "exchange": "kraken", "order_book": ("ETH", "BTC")},
+        {"tkn_ids": (20, 11), "exchange": "kraken", "order_book": ("ETH", "BTC")},
+        {"tkn_ids": (9, 10), "exchange": "kraken", "order_book": ("ASTR", "USD")},
+        {"tkn_ids": (13, 10), "exchange": "kraken", "order_book": ("CFG", "USD")},
+        {"tkn_ids": (14, 10), "exchange": "kraken", "order_book": ("BNC", "USD")},
+        {"tkn_ids": (16, 10), "exchange": "kraken", "order_book": ("GLMR", "USD")},
+        {"tkn_ids": (17, 10), "exchange": "kraken", "order_book": ("INTR", "USD")},
+        {"tkn_ids": (5, 10), "exchange": "binance", "order_book": ("DOT", "USDT")},
+        {"tkn_ids": (5, 20), "exchange": "binance", "order_book": ("DOT", "ETH")},
+        {"tkn_ids": (5, 19), "exchange": "binance", "order_book": ("DOT", "BTC")},
+        {"tkn_ids": (5, 11), "exchange": "binance", "order_book": ("DOT", "BTC")},
+        {"tkn_ids": (20, 10), "exchange": "binance", "order_book": ("ETH", "USDT")},
+        {"tkn_ids": (20, 18), "exchange": "binance", "order_book": ("ETH", "DAI")},
+        {"tkn_ids": (20, 19), "exchange": "binance", "order_book": ("ETH", "BTC")},
+        {"tkn_ids": (20, 11), "exchange": "binance", "order_book": ("ETH", "BTC")},
+        {"tkn_ids": (19, 10), "exchange": "binance", "order_book": ("BTC", "USDT")},
+        {"tkn_ids": (11, 10), "exchange": "binance", "order_book": ("BTC", "USDT")},
+        {"tkn_ids": (19, 18), "exchange": "binance", "order_book": ("BTC", "DAI")},
+        {"tkn_ids": (11, 18), "exchange": "binance", "order_book": ("BTC", "DAI")},
+        {"tkn_ids": (9, 10), "exchange": "binance", "order_book": ("ASTR", "USDT")},
+        {"tkn_ids": (16, 10), "exchange": "binance", "order_book": ("GLMR", "USDT")}
     ]
 
     #
@@ -1058,3 +1060,151 @@ def test_combine_step():
             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
         else:
             print('Iteration did not improve profit.')
+
+
+def test_generalized_arb():
+    exchanges = {
+        'kraken': CentralizedMarket(
+            order_book={
+                ('DOT', 'USD'): OrderBook(
+                    bids=[[0.999, 10000], [0.99, 10000], [0.9, 10000], [0.8, 10000]],
+                    asks=[[1.001, 10000], [1.01, 10000], [1.1, 10000], [1.2, 10000]]
+                ),
+                ('HDX', 'USD'): OrderBook(
+                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.085, 10000], [0.08, 10000]],
+                    asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
+                ),
+                ('HDX', 'DOT'): OrderBook(
+                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
+                    asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
+                )
+            },
+            unique_id='kraken',
+            trade_fee=0.0016
+        ),
+        'binance': CentralizedMarket(
+            order_book={
+                ('DOT', 'USDT'): OrderBook(
+                    bids=[[0.999, 10000], [0.99, 10000], [0.9, 10000], [0.8, 10000]],
+                    asks=[[1.001, 10000], [1.01, 10000], [1.1, 10000], [1.2, 10000]]
+                ),
+                ('HDX', 'USDT'): OrderBook(
+                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.085, 10000], [0.08, 10000]],
+                    asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
+                ),
+                ('HDX', 'DOT'): OrderBook(
+                    bids=[[0.0999, 10000], [0.099, 10000], [0.09, 10000], [0.08, 10000]],
+                    asks=[[0.1001, 10000], [0.101, 10000], [0.11, 10000], [0.12, 10000]]
+                )
+            },
+            unique_id='binance',
+            trade_fee=0.001
+        ),
+        'omnipool': OmnipoolState(
+            tokens={
+                'USDT': {
+                    'liquidity': 2062772,
+                    'LRNA': 2062772
+                },
+                'DOT': {
+                    'liquidity': 350000,
+                    'LRNA': 1456248
+                },
+                'HDX': {
+                    'liquidity': 100000000,
+                    'LRNA': 9000000
+                }
+            },
+            lrna_fee=0.0005,
+            asset_fee=0.0025,
+            preferred_stablecoin='USDT',
+            unique_id='omnipool'
+        )
+    }
+    config = [
+        {"exchanges": {"kraken": ("HDX", "USD"), "omnipool": ("HDX", "USDT")}, "buffer": 0.001},
+        {"exchanges": {"binance": ("HDX", "USDT"), "omnipool": ("HDX", "USDT")}, "buffer": 0.001},
+        {"exchanges": {"kraken": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.001},
+        {"exchanges": {"binance": ("HDX", "DOT"), "omnipool": ("HDX", "DOT")}, "buffer": 0.001},
+        {"exchanges": {"kraken": ("DOT", "USD"), "omnipool": ("DOT", "USDT")}, "buffer": 0.001},
+        {"exchanges": {"binance": ("DOT", "USDT"), "omnipool": ("DOT", "USDT")}, "buffer": 0.001},
+    ]
+    print(
+        f"Kraken HDX/USDT buy price: "
+        f"{exchanges['kraken'].buy_spot(tkn_buy='USDT', tkn_sell='HDX')}"
+    )
+    print(f"Omnipool HDX/USDT sell price: {exchanges['omnipool'].sell_spot(tkn_sell='HDX', tkn_buy='USDT')}")
+    arb_swaps_general = get_arb_swaps_general(
+        exchanges={ex_name: ex.copy() for ex_name, ex in exchanges.items()},
+        config=config,
+        max_liquidity={
+            'omnipool': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
+            'kraken': {'HDX': 100000, 'USD': 100000, 'DOT': 100000},
+            'binance': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000}
+        }
+    )
+    print(f"Arb detected: {arb_swaps_general}")
+    agent = Agent(
+        holdings={
+            'HDX': 200000,
+            'USDT': 200000,
+            'USD': 200000,
+            'DOT': 200000
+        }
+    )
+    execute_arb_general(
+        exchanges={ex_name: ex.copy() for ex_name, ex in exchanges.items()},
+        agent=agent,
+        all_swaps=arb_swaps_general
+    )
+    agent_profit = calculate_profit(Agent(holdings=agent.initial_holdings), agent)
+    print(agent_profit)
+    print(f"Agent profit: {exchanges['binance'].value_assets(agent_profit, equivalency_map={'USD': 'USDT'})}")
+
+    # try with the original agent for comparison
+    original_agent = Agent(
+        holdings={
+            'HDX': 200000,
+            'USDT': 200000,
+            'USD': 200000,
+            'DOT': 200000
+        }
+    )
+    arb_swaps = get_arb_swaps(
+        op_state=exchanges['omnipool'],
+        cex_dict={'kraken': exchanges['kraken'], 'binance': exchanges['binance']},
+        config=[
+            {"tkn_pair": ('HDX', 'USDT'), "exchange": "kraken", "order_book": ("HDX", "USD"), "buffer": 0.001},
+            {"tkn_pair": ('HDX', 'USDT'), "exchange": "binance", "order_book": ("HDX", "USDT"), "buffer": 0.001},
+            {"tkn_pair": ('HDX', 'DOT'), "exchange": "kraken", "order_book": ("HDX", "DOT"), "buffer": 0.001},
+            {"tkn_pair": ('HDX', 'DOT'), "exchange": "binance", "order_book": ("HDX", "DOT"), "buffer": 0.001},
+            {"tkn_pair": ('DOT', 'USDT'), "exchange": "kraken", "order_book": ("DOT", "USD"), "buffer": 0.001},
+            {"tkn_pair": ('DOT', 'USDT'), "exchange": "binance", "order_book": ("DOT", "USDT"), "buffer": 0.001},
+        ],
+        max_liquidity={
+            'dex': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
+            'cex': {
+                'kraken': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000},
+                'binance': {'HDX': 100000, 'USDT': 100000, 'DOT': 100000}
+            }
+        }
+    )
+    execute_arb(
+        dex=exchanges['omnipool'],
+        cex_dict={'kraken': exchanges['kraken'], 'binance': exchanges['binance']},
+        agent=original_agent,
+        all_swaps=arb_swaps
+    )
+    original_agent_profit = calculate_profit(Agent(holdings=original_agent.initial_holdings), original_agent)
+    print(original_agent_profit)
+    print(
+        f"Original agent profit:"
+        f" {exchanges['binance'].value_assets(original_agent_profit, equivalency_map={'USD': 'USDT'})}"
+    )
+    print('-------generalized swaps:-------')
+    for swap in flatten_swaps_general(arb_swaps_general):
+        print(swap)
+    print('-------original swaps:-------')
+    for swap in flatten_swaps(arb_swaps):
+        print(swap)
+
