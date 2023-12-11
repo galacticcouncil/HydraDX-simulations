@@ -1,5 +1,6 @@
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.amm import AMM
+from hydradx.model.amm.centralized_market import CentralizedMarket
 
 
 # note that this function mutates exchanges, agents, and max_liquidity
@@ -219,25 +220,29 @@ def calculate_arb_amount(
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
     amt_high = min(
-        max_liquidity_buy[buy_ex_tkn_pair[1]] if buy_ex_tkn_pair[1] in max_liquidity_buy else float('inf'),
-        max_liquidity_sell[sell_ex_tkn_pair[0]] if sell_ex_tkn_pair[0] in max_liquidity_sell else float('inf'),
+        # max_liquidity_buy[buy_ex_tkn_pair[1]] if buy_ex_tkn_pair[1] in max_liquidity_buy else float('inf'),
+        # max_liquidity_sell[sell_ex_tkn_pair[0]] if sell_ex_tkn_pair[0] in max_liquidity_sell else float('inf'),
         buy_ex.buy_limit(tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1]),
         sell_ex.sell_limit(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1])
     )
     amt = amt_high
+
     i = 0
     best_buy_price = buy_price
     while sell_price - best_buy_price > precision:
         test_ex_buy = buy_ex.copy()
         test_ex_sell = sell_ex.copy()
-        buy_price = test_ex_buy.buy_spot(tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1])
-        sell_price = test_ex_sell.sell_spot(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1]) * (1 - buffer)
-        test_ex_sell.swap(
-            test_agent, tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1], sell_quantity=amt
-        )
-        test_ex_buy.swap(
-            test_agent, tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], buy_quantity=amt
-        )
+        if not isinstance(test_ex_buy, CentralizedMarket):
+            test_ex_buy.swap(
+                test_agent, tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], buy_quantity=amt
+            )
+            buy_price = test_ex_buy.buy_spot(buy_ex_tkn_pair[0], buy_ex_tkn_pair[1])
+        if not isinstance(test_ex_sell, CentralizedMarket):
+            test_ex_sell.swap(
+                test_agent, tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1], sell_quantity=amt
+            )
+            sell_price = test_ex_sell.sell_spot(sell_ex_tkn_pair[0], sell_ex_tkn_pair[1]) * (1 - buffer)
+
         if test_ex_buy.fail or test_ex_sell.fail or buy_price > sell_price:
             amt_high = amt
         else:
@@ -247,9 +252,7 @@ def calculate_arb_amount(
         if amt_high == amt_low:  # full amount can be traded
             break
 
-        # only want to update amt if there will be another iteration
-        if sell_price - best_buy_price > precision:
-            amt = amt_low + (amt_high - amt_low) / 2
+        amt = amt_low + (amt_high - amt_low) / 2
 
         i += 1
         if max_iters is not None and i >= max_iters:
@@ -264,7 +267,9 @@ def calculate_arb_amount(
 def execute_arb(exchanges: dict[str: AMM], agent: Agent, all_swaps: list[dict]):
     if len(all_swaps) == 0:
         return
-    for swap in (flatten_swaps(all_swaps) if len(all_swaps[0].keys()) == 2 else all_swaps):
+    for i, swap in enumerate((flatten_swaps(all_swaps) if len(all_swaps[0].keys()) == 2 else all_swaps)):
+        if i == 29:
+            er = 1
         tkn_buy = swap['buy_asset']
         tkn_sell = swap['sell_asset']
         ex = exchanges[swap['exchange']]
