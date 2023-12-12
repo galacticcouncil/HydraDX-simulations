@@ -1,6 +1,7 @@
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.amm import AMM
 from hydradx.model.amm.centralized_market import CentralizedMarket
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 
 # note that this function mutates exchanges, agents, and max_liquidity
@@ -18,14 +19,20 @@ def process_next_swap(
 
     # all denominated in tkn_pair[1]
     buy_price = {
-        ex_name: exchanges[ex_name].buy_spot(
+        **{ex_name: exchanges[ex_name].buy_spot(
             tkn_buy=tkn_pairs[ex_name][0], tkn_sell=tkn_pairs[ex_name][1]
-        ) for ex_name in exchange_names
+        ) for ex_name in exchange_names},
+        'feeless': {ex_name: exchanges[ex_name].buy_spot(
+            tkn_buy=tkn_pairs[ex_name][0], tkn_sell=tkn_pairs[ex_name][1], fee=0
+        ) for ex_name in exchange_names}
     }
     sell_price = {
-        ex_name: exchanges[ex_name].sell_spot(
+        **{ex_name: exchanges[ex_name].sell_spot(
             tkn_buy=tkn_pairs[ex_name][1], tkn_sell=tkn_pairs[ex_name][0]
-        ) for ex_name in exchange_names
+        ) for ex_name in exchange_names},
+        'feeless': {ex_name: exchanges[ex_name].sell_spot(
+            tkn_buy=tkn_pairs[ex_name][0], tkn_sell=tkn_pairs[ex_name][1], fee=0
+        ) for ex_name in exchange_names}
     }
     swap = {}
 
@@ -78,17 +85,29 @@ def process_next_swap(
                     'trade': 'buy',
                     'buy_asset': tkn_pairs[buy_ex][0],
                     'sell_asset': tkn_pairs[buy_ex][1],
-                    'price': buy_price[buy_ex],
+                    'price': (
+                            buy_price[buy_ex] * (1 + slippage_tolerance[buy_ex])
+                            if isinstance(exchanges[buy_ex], CentralizedMarket) else None
+                    ),
                     'amount': amt,
-                    'max_sell': amt_in[buy_ex] * (1 + slippage_tolerance[buy_ex])
+                    'max_sell': (
+                            amt_in[buy_ex] * (1 + slippage_tolerance[buy_ex])
+                            if isinstance(exchanges[buy_ex], OmnipoolState) else None
+                    )
                 },
                 sell_ex: {
                     'trade': 'sell',
                     'buy_asset': tkn_pairs[sell_ex][1],
                     'sell_asset': tkn_pairs[sell_ex][0],
-                    'price': sell_price[sell_ex] * (1 - slippage_tolerance[sell_ex]),
+                    'price': (
+                            sell_price[sell_ex] * (1 - slippage_tolerance[sell_ex])
+                            if isinstance(exchanges[sell_ex], CentralizedMarket) else None
+                    ),
                     'amount': amt,
-                    'min_buy': amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])
+                    'min_buy': (
+                            amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])
+                            if isinstance(exchanges[sell_ex], OmnipoolState) else None
+                    )
                 }
             }
             if tkn_pairs[buy_ex][1] in max_liquidity[buy_ex]:
