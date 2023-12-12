@@ -8,7 +8,8 @@ mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap, combine_swaps
+    process_next_swap, combine_swaps, get_buffers, process_next_swap_inventory, get_arb_swaps_inventory, \
+    apply_dex_buffer
 from hydradx.model.amm.arbitrage_agent import get_arb_swaps_simple, execute_arb, get_arb_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
