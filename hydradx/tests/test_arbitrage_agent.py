@@ -1,7 +1,10 @@
 import copy
 from datetime import timedelta
 import os
+import pytest
 from hypothesis import given, strategies as st, settings, Phase
+from mpmath import mp, mpf
+mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
@@ -459,7 +462,8 @@ def test_process_next_swap(
         trade_fee=cex_fee
     )
 
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    holdings = {'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}
+    agent = Agent(holdings=holdings, unique_id='bot')
 
     test_state = op_state.copy()
     test_agent = agent.copy()
@@ -475,7 +479,25 @@ def test_process_next_swap(
     tkn_pair = ('DOT', 'USDT')
 
     swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity['dex'], max_liquidity['kraken'], iters)
+
     if swap:
+
+        diff_dex = {
+            'DOT': test_state.liquidity['DOT'] - op_state.liquidity['DOT'],
+            'USDT': test_state.liquidity['USDT'] - op_state.liquidity['USDT']
+        }
+
+        diff_agent = {
+            'DOT': test_agent.holdings['DOT'] - agent.holdings['DOT'],
+            'USDT': test_agent.holdings['USDT'] - agent.holdings['USDT']
+        }
+
+        diff_cex = {
+            'DOT': -diff_agent['DOT'] - diff_dex['DOT'],
+            'USDT': -diff_agent['USDT'] - diff_dex['USDT'],
+            'HDX': 0
+        }
+
         cex_swap, dex_swap = swap['cex'], swap['dex']
         dex_spot = op_state.price(op_state, 'DOT', 'USDT')
         if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
@@ -501,11 +523,9 @@ def test_process_next_swap(
         swap['exchange'] = 'exchange_name'
 
         arb_swaps = [swap]
-
-        initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+        holdings = {'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}
+        initial_agent = Agent(holdings=holdings, unique_id='bot')
         agent = initial_agent.copy()
-
-        execute_arb(op_state, {'exchange_name': cex}, agent, arb_swaps)
 
         profit = calculate_profit(initial_agent, agent)
         for tkn in profit:
@@ -513,14 +533,12 @@ def test_process_next_swap(
                 raise
 
         for tkn in op_state.asset_list:
-            if tkn in max_liquidity:
-                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != init_max_liquidity['dex'][tkn] - \
-                        max_liquidity['dex'][tkn]:
+            if tkn in max_liquidity['dex']:
+                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != pytest.approx(init_max_liquidity['dex'][tkn] - max_liquidity['dex'][tkn], 1e-10):
                     raise
         for tkn in cex.asset_list:
-            if tkn in max_liquidity:
-                if test_cex.liquidity[tkn] - cex.liquidity[tkn] != init_max_liquidity['cex'][tkn] - \
-                        max_liquidity['cex'][tkn]:
+            if tkn in max_liquidity['kraken']:
+                if diff_cex[tkn] != pytest.approx(init_max_liquidity['kraken'][tkn] - max_liquidity['kraken'][tkn], 1e-10):
                     raise
 
 
