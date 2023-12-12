@@ -7,7 +7,7 @@ import os
 from hydradxapi import HydraDX
 import time
 
-from .amm.centralized_market import OrderBook
+from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, AMM, value_assets
 
 cash_out = GlobalState.cash_out
@@ -242,7 +242,9 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if archive:
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
         ts = time.time()
         with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
@@ -253,7 +255,9 @@ def get_binance_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.binance.com/api/v3/depth?symbol=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if archive:
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
         ts = time.time()
         with open(f'./archive/binance_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
             json.dump(y, output_file)
@@ -329,14 +333,28 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-# def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
-#     price_data = []
-#     with open(input_path + input_filename, newline='') as input_file:
-#         fieldnames = ['timestamp', 'price']
-#         reader = DictReader(input_file, fieldnames=fieldnames)
-#         next(reader)  # skip header
-#         for row in reader:
-#             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-#
-#     price_data.sort(key=lambda x: x.timestamp)
-#     return price_data
+def get_centralized_market(config, exchange_name, trade_fee: float, archive: bool) -> CentralizedMarket:
+
+    order_books = {}
+    for arb_cfg in config:
+        arb_cfg['tkns'] = tuple(arb_cfg['tkns'])
+        arb_cfg['tkn_ids'] = tuple(arb_cfg['tkn_ids'])
+        arb_cfg['order_book'] = tuple(arb_cfg['order_book'])
+        tkn_pair = arb_cfg['order_book']
+        exchange = arb_cfg['exchange']
+        if tkn_pair not in order_books:
+            if exchange == exchange_name:
+                if exchange_name == 'kraken':
+                    order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=archive)
+                elif exchange_name == 'binance':
+                    order_books[tkn_pair] = get_binance_orderbook(tkn_pair, archive=archive)
+                else:
+                    raise ValueError(f"Exchange {exchange_name} not supported")
+
+    return CentralizedMarket(
+        unique_id=exchange_name,
+        order_book=order_books,
+        trade_fee=trade_fee
+    )
+
+
