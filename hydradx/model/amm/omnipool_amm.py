@@ -334,25 +334,41 @@ class OmnipoolState(AMM):
         delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         return -delta_Rj
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str):
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
+        if fee is None:
+            fee = {
+                'lrna': self.lrna_fee[tkn_sell].compute(),
+                'asset': self.asset_fee[tkn_buy].compute()
+            }
+        elif isinstance(fee, float):
+            fee = {
+                'lrna': fee,
+                'asset': fee
+            }
         if tkn_buy not in self.asset_list:
             return 0
         elif tkn_sell not in self.asset_list:
             return 0
         else:
-            spot_price = price(self, tkn_buy, tkn_sell)
-            spot_price /= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
-        return spot_price
+            return price(self, tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str):
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
+        if fee is None:
+            fee = {
+                'lrna': self.lrna_fee[tkn_sell].compute(),
+                'asset': self.asset_fee[tkn_buy].compute()
+            }
+        elif isinstance(fee, float):
+            fee = {
+                'lrna': fee,
+                'asset': fee
+            }
         if tkn_buy not in self.asset_list:
             return 0
         elif tkn_sell not in self.asset_list:
             return 0
         else:
-            spot_price = price(self, tkn_sell, tkn_buy)
-            spot_price *= (1 - self.lrna_fee[tkn_sell].compute()) * (1 - self.asset_fee[tkn_buy].compute())
-        return spot_price
+            return price(self, tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
 
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found

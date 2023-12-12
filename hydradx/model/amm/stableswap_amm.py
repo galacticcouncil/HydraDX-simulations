@@ -133,21 +133,21 @@ class StableSwapPoolState(AMM):
             return 1
         return self.price_at_balance(balances, self.d, i)
 
-    def sell_spot(self, tkn_buy: str, tkn_sell, tkn_buy_is_numeraire: bool = False):
+    def sell_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        elif tkn_buy_is_numeraire:
-            return self.price(tkn_sell, tkn_buy) * (1 - self.trade_fee)
         else:
-            return self.price(tkn_buy, tkn_sell) / (1 - self.trade_fee)
+            return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
-    def buy_spot(self, tkn_buy: str, tkn_sell, tkn_sell_is_numeraire: bool = False):
+    def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        elif tkn_sell_is_numeraire:
-            return self.price(tkn_buy, tkn_sell) / (1 - self.trade_fee)
         else:
-            return self.price(tkn_sell, tkn_buy) * (1 - self.trade_fee)
+            return self.price(tkn_sell, tkn_buy) * (1 - fee)
 
     def price(self, tkn, denomination: str = ''):
         """
