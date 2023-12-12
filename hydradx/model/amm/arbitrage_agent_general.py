@@ -10,6 +10,7 @@ def process_next_swap(
         swap_config: dict,
         agents: dict[str: Agent],
         max_liquidity: dict[str: [dict[str: float]]],
+        precision: float = 1e-10,
         max_iters: int = 50
 ):
     buffer = swap_config['buffer']
@@ -31,7 +32,7 @@ def process_next_swap(
             tkn_buy=tkn_pairs[ex_name][1], tkn_sell=tkn_pairs[ex_name][0]
         ) for ex_name in exchange_names},
         'feeless': {ex_name: exchanges[ex_name].sell_spot(
-            tkn_buy=tkn_pairs[ex_name][0], tkn_sell=tkn_pairs[ex_name][1], fee=0
+            tkn_buy=tkn_pairs[ex_name][1], tkn_sell=tkn_pairs[ex_name][0], fee=0
         ) for ex_name in exchange_names}
     }
     swap = {}
@@ -50,7 +51,7 @@ def process_next_swap(
             buffer=buffer, min_amt=1e-6,
             max_liquidity_buy=max_liquidity[buy_ex],
             max_liquidity_sell=max_liquidity[sell_ex],
-            precision=1e-10,
+            precision=precision,
             max_iters=max_iters
         )
 
@@ -86,7 +87,7 @@ def process_next_swap(
                     'buy_asset': tkn_pairs[buy_ex][0],
                     'sell_asset': tkn_pairs[buy_ex][1],
                     'price': (
-                            buy_price[buy_ex] * (1 + slippage_tolerance[buy_ex])
+                            buy_price['feeless'][buy_ex] * (1 + slippage_tolerance[buy_ex])
                             if isinstance(exchanges[buy_ex], CentralizedMarket) else None
                     ),
                     'amount': amt,
@@ -100,7 +101,7 @@ def process_next_swap(
                     'buy_asset': tkn_pairs[sell_ex][1],
                     'sell_asset': tkn_pairs[sell_ex][0],
                     'price': (
-                            sell_price[sell_ex] * (1 - slippage_tolerance[sell_ex])
+                            sell_price['feeless'][sell_ex] * (1 - slippage_tolerance[sell_ex])
                             if isinstance(exchanges[sell_ex], CentralizedMarket) else None
                     ),
                     'amount': amt,
@@ -166,7 +167,8 @@ def get_arb_swaps(
         exchanges: dict[str: AMM],
         config: list[dict],
         max_liquidity: dict[str: dict[str: float]] = None,
-        max_iters: int = 20
+        max_iters: int = 20,
+        precision: float = 1e-10
 ):
     arb_opps = get_arb_opps(exchanges, config)
 
@@ -191,7 +193,8 @@ def get_arb_swaps(
             swap_config=arb_cfg,
             agents=test_agents,
             max_liquidity=max_liquidity,
-            max_iters=max_iters
+            max_iters=max_iters,
+            precision=precision
         )
         if swap:
             all_swaps.append(swap)
@@ -239,16 +242,15 @@ def calculate_arb_amount(
     # we use binary search to find the amount that can be swapped
     amt_low = min_amt
     amt_high = min(
-        # max_liquidity_buy[buy_ex_tkn_pair[1]] if buy_ex_tkn_pair[1] in max_liquidity_buy else float('inf'),
-        # max_liquidity_sell[sell_ex_tkn_pair[0]] if sell_ex_tkn_pair[0] in max_liquidity_sell else float('inf'),
+        max_liquidity_buy[buy_ex_tkn_pair[1]] if buy_ex_tkn_pair[1] in max_liquidity_buy else float('inf'),
+        max_liquidity_sell[sell_ex_tkn_pair[0]] if sell_ex_tkn_pair[0] in max_liquidity_sell else float('inf'),
         buy_ex.buy_limit(tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1]),
         sell_ex.sell_limit(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1])
     )
     amt = amt_high
 
     i = 0
-    best_buy_price = buy_price
-    while sell_price - best_buy_price > precision:
+    while abs(1 - buy_price / sell_price) > precision:
         test_ex_buy = buy_ex.copy()
         test_ex_sell = sell_ex.copy()
         if not isinstance(test_ex_buy, CentralizedMarket):
@@ -266,7 +268,6 @@ def calculate_arb_amount(
             amt_high = amt
         else:
             amt_low = amt
-            best_buy_price = buy_price
 
         if amt_high == amt_low:  # full amount can be traded
             break
@@ -322,7 +323,8 @@ def combine_swaps(
         agent: Agent,
         all_swaps: list[dict],
         asset_map: dict[str, str],
-        max_liquidity: dict[str, dict[str, float]] = None
+        max_liquidity: dict[str, dict[str, float]] = None,
+        ref_exchange: AMM = None
 ):
     # take the list of swaps and try to get the same result more efficiently
     # in particular, make sure to buy *at least* as much of each asset as the net from the original list
@@ -353,9 +355,8 @@ def combine_swaps(
             else max_liquidity['cex'][ex_name]
         ) if max_liquidity else {tkn: float('inf') for tkn in ex.asset_list}
 
-        # actual_swaps = {tkn: 0 for tkn in ex.asset_list}
         default_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        default_profit_usd = ref_exchange.value_assets(default_profit, asset_map)
+        default_profit_usd = ref_exchange.value_assets(assets=default_profit, equivalency_map=asset_map)
 
         test_ex = ex.copy()
         test_agent = agent.copy()
@@ -518,7 +519,7 @@ def combine_swaps(
                                 break
 
         optimized_profit = calculate_profit(agent, test_agent, asset_map=asset_map)
-        optimized_profit_usd = ref_exchange.value_assets(optimized_profit, asset_map)
+        optimized_profit_usd = ref_exchange.value_assets(assets=optimized_profit, equivalency_map=asset_map)
         if optimized_profit_usd < default_profit_usd:
             return_swaps += default_swaps
         else:
