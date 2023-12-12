@@ -5,14 +5,93 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 
 
 # note that this function mutates exchanges, agents, and max_liquidity
+def get_arb_opps(
+        exchanges: dict[str: AMM],
+        config: list[dict],
+        max_liquidity: dict[str: dict[str: float]]
+):
+    """
+    Look through provided dictionary of exchanges and find the best arbitrage opportunities.
+    """
+    arb_opps = []
+
+    for i, arb_cfg in enumerate(config):
+        exchange_names = list(arb_cfg['exchanges'].keys())
+        ex_1: AMM = exchanges[exchange_names[0]]
+        ex_2: AMM = exchanges[exchange_names[1]]
+
+        tkn_pair_1 = arb_cfg['exchanges'][exchange_names[0]]
+        tkn_pair_2 = arb_cfg['exchanges'][exchange_names[1]]
+
+        if max_liquidity[exchange_names[0]][tkn_pair_1[1]] > 0 and max_liquidity[exchange_names[1]][tkn_pair_2[0]] > 0:
+            ex_1_sell_price = ex_1.sell_spot(tkn_buy=tkn_pair_1[0], tkn_sell=tkn_pair_1[1])
+            ex_1_buy_price = ex_1.buy_spot(tkn_sell=tkn_pair_1[0], tkn_buy=tkn_pair_1[1])
+
+            if ex_1_sell_price > 0:
+                ex_2_buy_spot = ex_2.buy_spot(tkn_sell=tkn_pair_2[0], tkn_buy=tkn_pair_2[1])
+                if ex_2_buy_spot < ex_1_buy_price:  # buy from ex2, sell to ex1
+                    arb_opps.append(((ex_1_sell_price - ex_2_buy_spot) / ex_2_buy_spot, i))
+
+            if ex_1_buy_price > 0:
+                ex_2_sell_price = ex_2.sell_spot(tkn_buy=tkn_pair_2[0], tkn_sell=tkn_pair_2[1])
+                if ex_2_sell_price > ex_1_buy_price:  # buy from ex1, sell to ex2
+                    arb_opps.append(((ex_2_sell_price - ex_1_buy_price) / ex_1_buy_price, i))
+
+    arb_opps.sort(key=lambda x: x[0], reverse=True)
+    return arb_opps
+
+
+def get_arb_swaps(
+        exchanges: dict[str: AMM],
+        config: list[dict],
+        max_liquidity: dict[str: dict[str: float]] = None,
+        max_iters: int = 10,
+        precision: float = 1e-10
+):
+    """
+    return a list of swaps that can be executed to take advantage of the best arbitrage opportunities
+    """
+    if max_liquidity is None:
+        max_liquidity = {ex_name: {tkn: float('inf') for tkn in ex.asset_list} for ex_name, ex in exchanges.items}
+
+    arb_opps = get_arb_opps(exchanges, config, max_liquidity)
+    all_swaps = []
+    test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
+    test_agents = {ex_name: Agent(holdings=max_liquidity[ex_name].copy()) for ex_name in exchanges}
+    while arb_opps:
+        arb_cfg = config[arb_opps[0][1]]
+        swap = process_next_swap(
+            exchanges=test_exchanges,
+            swap_config=arb_cfg,
+            agents=test_agents,
+            max_liquidity=max_liquidity,
+            max_iters=max_iters,
+            precision=precision
+        )
+        if swap:
+            all_swaps.append(swap)
+        else:
+            break
+        new_arb_opps = get_arb_opps(test_exchanges, config, max_liquidity)
+        if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
+            break
+        arb_opps = new_arb_opps
+
+    return all_swaps
+
+
 def process_next_swap(
         exchanges: dict[str: AMM],
         swap_config: dict,
         agents: dict[str: Agent],
         max_liquidity: dict[str: [dict[str: float]]],
         precision: float = 1e-10,
-        max_iters: int = 50
+        max_iters: int = 10
 ):
+    """
+    Calculate what the appropriate size of the swap should be, and execute it on the virtual exchanges
+    and virtual agents to keep track of the results.
+    """
     buffer = swap_config['buffer']
     exchange_names = list(swap_config['exchanges'].keys())
     tkn_pairs = swap_config['exchanges']
@@ -122,92 +201,6 @@ def process_next_swap(
     return swap
 
 
-def get_arb_opps(exchanges, config):
-    arb_opps = []
-
-    for i, arb_cfg in enumerate(config):
-        exchange_names = list(arb_cfg['exchanges'].keys())
-        ex_1: AMM = exchanges[exchange_names[0]]
-        ex_2: AMM = exchanges[exchange_names[1]]
-
-        tkn_pair_1 = arb_cfg['exchanges'][exchange_names[0]]
-        tkn_pair_2 = arb_cfg['exchanges'][exchange_names[1]]
-
-        ex_1_sell_price = ex_1.sell_spot(tkn_buy=tkn_pair_1[0], tkn_sell=tkn_pair_1[1])
-        ex_1_buy_price = ex_1.buy_spot(tkn_sell=tkn_pair_1[0], tkn_buy=tkn_pair_1[1])
-
-        if ex_1_sell_price > 0:
-            ex_2_buy_spot = ex_2.buy_spot(tkn_sell=tkn_pair_2[0], tkn_buy=tkn_pair_2[1])
-            if ex_2_buy_spot < ex_1_buy_price:  # buy from ex2, sell to ex1
-                arb_opps.append(((ex_1_sell_price - ex_2_buy_spot) / ex_2_buy_spot, i))
-
-        if ex_1_buy_price > 0:
-            ex_2_sell_price = ex_2.sell_spot(tkn_buy=tkn_pair_2[0], tkn_sell=tkn_pair_2[1])
-            if ex_2_sell_price > ex_1_buy_price:  # buy from CEX, sell to DEX
-                arb_opps.append(((ex_2_sell_price - ex_1_buy_price) / ex_1_buy_price, i))
-
-    arb_opps.sort(key=lambda x: x[0], reverse=True)
-    return arb_opps
-
-
-def flatten_swaps(swaps):
-    return [{'exchange': exchange, **trade[exchange]} for trade in swaps for exchange in trade]
-
-
-def does_max_liquidity_allow_trade(tkn_pairs, max_liquidity):
-    for ex_name in max_liquidity:
-        if ex_name in tkn_pairs:
-            for tkn in tkn_pairs[ex_name]:
-                if tkn in max_liquidity[ex_name] and max_liquidity[ex_name][tkn] <= 0:
-                    return False
-    return True
-
-
-def get_arb_swaps(
-        exchanges: dict[str: AMM],
-        config: list[dict],
-        max_liquidity: dict[str: dict[str: float]] = None,
-        max_iters: int = 20,
-        precision: float = 1e-10
-):
-    arb_opps = get_arb_opps(exchanges, config)
-
-    if max_liquidity is None:
-        max_liquidity = {ex_name: {} for ex_name in exchanges}
-
-    all_swaps = []
-    test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
-    test_agents = {ex_name: Agent(holdings=max_liquidity[ex_name].copy()) for ex_name in exchanges}
-    while arb_opps:
-        arb_cfg = config[arb_opps[0][1]]
-        while not does_max_liquidity_allow_trade(
-            tkn_pairs=arb_cfg['exchanges'],
-            max_liquidity=max_liquidity
-        ):
-            arb_opps.pop(0)
-            if not arb_opps:
-                return all_swaps
-            arb_cfg = config[arb_opps[0][1]]
-        swap = process_next_swap(
-            exchanges=test_exchanges,
-            swap_config=arb_cfg,
-            agents=test_agents,
-            max_liquidity=max_liquidity,
-            max_iters=max_iters,
-            precision=precision
-        )
-        if swap:
-            all_swaps.append(swap)
-        else:
-            break
-        new_arb_opps = get_arb_opps(test_exchanges, config)
-        if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
-            break
-        arb_opps = new_arb_opps
-
-    return all_swaps
-
-
 def calculate_arb_amount(
         buy_ex: AMM,
         sell_ex: AMM,
@@ -217,13 +210,15 @@ def calculate_arb_amount(
         min_amt: float = 1e-18,
         max_liquidity_sell: dict[str, float] = None,
         max_liquidity_buy: dict[str, float] = None,
-        precision: float = 1e-15,
-        max_iters: int = None
+        precision: float = 0,
+        max_iters: int = 10
 ) -> float:
     if min_amt < 1e-18:
         return 0
-
-    # we will buy buy_ex_tkn_pair[0] on buy_ex and sell sell_ex_tkn_pair[0] it on sell_ex
+    """
+    For a given token pair, calculate the optimum allowable trade size.
+    """
+    # we will buy buy_ex_tkn_pair[0] on buy_ex and sell sell_ex_tkn_pair[0] on sell_ex
     test_agent = Agent(holdings={tkn: float('inf') for tkn in buy_ex_tkn_pair + sell_ex_tkn_pair})
     test_ex_buy = buy_ex.copy()
     test_ex_sell = sell_ex.copy()
@@ -248,7 +243,6 @@ def calculate_arb_amount(
         sell_ex.sell_limit(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1])
     )
     amt = amt_high
-
     i = 0
     while abs(1 - buy_price / sell_price) > precision:
         test_ex_buy = buy_ex.copy()
@@ -284,12 +278,17 @@ def calculate_arb_amount(
         return amt_low
 
 
+def flatten_swaps(swaps):
+    """
+    Take a list of swap pairs and flatten it into a list of individual swaps.
+    """
+    return [{'exchange': exchange, **trade[exchange]} for trade in swaps for exchange in trade]
+
+
 def execute_arb(exchanges: dict[str: AMM], agent: Agent, all_swaps: list[dict]):
     if len(all_swaps) == 0:
         return
     for i, swap in enumerate((flatten_swaps(all_swaps) if len(all_swaps[0].keys()) == 2 else all_swaps)):
-        if i == 29:
-            er = 1
         tkn_buy = swap['buy_asset']
         tkn_sell = swap['sell_asset']
         ex = exchanges[swap['exchange']]
@@ -326,8 +325,10 @@ def combine_swaps(
         max_liquidity: dict[str, dict[str, float]] = None,
         ref_exchange: AMM = None
 ):
-    # take the list of swaps and try to get the same result more efficiently
-    # in particular, make sure to buy *at least* as much of each asset as the net from the original list
+    """
+    take the list of swaps and try to get the same result more efficiently
+    in particular, make sure to buy *at least* as much of each asset as the net from the original list
+    """
     net_swaps = {}
     return_swaps = []
 
