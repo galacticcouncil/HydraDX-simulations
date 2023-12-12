@@ -340,7 +340,7 @@ class OmnipoolState(AMM):
                 'lrna': self.lrna_fee[tkn_sell].compute(),
                 'asset': self.asset_fee[tkn_buy].compute()
             }
-        elif isinstance(fee, float):
+        elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
                 'asset': fee
@@ -358,7 +358,7 @@ class OmnipoolState(AMM):
                 'lrna': self.lrna_fee[tkn_sell].compute(),
                 'asset': self.asset_fee[tkn_buy].compute()
             }
-        elif isinstance(fee, float):
+        elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
                 'asset': fee
