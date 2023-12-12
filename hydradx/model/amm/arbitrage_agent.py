@@ -35,13 +35,10 @@ def process_next_swap(
         if amt != 0:
             init_amt = test_agent.holdings[numeraire]
             text_dex.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-            amt_in = init_amt - test_agent.holdings[numeraire]
-            mid_agent = test_agent.copy()
+            numeraire_holding = test_agent.holdings[numeraire]
+            amt_in = init_amt - numeraire_holding
             test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[0], tkn_buy=ob_tkn_pair[1], sell_quantity=amt)
-            amt_diff = {
-                tkn: test_agent.holdings[tkn] - mid_agent.holdings[tkn]
-                for tkn in test_agent.holdings
-            }
+            numeraire_diff = test_agent.holdings[numeraire] - numeraire_holding
             swap = {
                 'dex': {
                     'trade': 'buy',
@@ -62,7 +59,7 @@ def process_next_swap(
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] -= amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] += amt_diff[numeraire]
+                max_liquidity_cex[numeraire] += numeraire_diff
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] += amt
             if numeraire in max_liquidity_dex:
@@ -78,13 +75,10 @@ def process_next_swap(
         if amt != 0:
             init_amt = test_agent.holdings[numeraire]
             text_dex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-            amt_out = test_agent.holdings[numeraire] - init_amt
-            mid_agent = test_agent.copy()
+            numeraire_holding = test_agent.holdings[numeraire]
+            amt_out = numeraire_holding - init_amt
             test_cex.swap(test_agent, tkn_sell=ob_tkn_pair[1], tkn_buy=ob_tkn_pair[0], buy_quantity=amt)
-            amt_diff = {
-                tkn: test_agent.holdings[tkn] - mid_agent.holdings[tkn]
-                for tkn in test_agent.holdings
-            }
+            numeraire_diff = test_agent.holdings[numeraire] - numeraire_holding
             swap = {
                 'dex': {
                     'trade': 'sell',
@@ -104,7 +98,7 @@ def process_next_swap(
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] += amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] += amt_diff[numeraire]
+                max_liquidity_cex[numeraire] += numeraire_diff
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] -= amt
             if numeraire in max_liquidity_dex:
