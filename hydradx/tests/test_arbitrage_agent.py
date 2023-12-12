@@ -534,11 +534,11 @@ def test_process_next_swap(
 
         for tkn in op_state.asset_list:
             if tkn in max_liquidity['dex']:
-                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != pytest.approx(init_max_liquidity['dex'][tkn] - max_liquidity['dex'][tkn], 1e-6):
+                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != pytest.approx(init_max_liquidity['dex'][tkn] - max_liquidity['dex'][tkn], 1e-10):
                     raise
         for tkn in cex.asset_list:
             if tkn in max_liquidity['kraken']:
-                if diff_cex[tkn] != pytest.approx(init_max_liquidity['kraken'][tkn] - max_liquidity['kraken'][tkn], 1e-6):
+                if diff_cex[tkn] != pytest.approx(init_max_liquidity['kraken'][tkn] - max_liquidity['kraken'][tkn], 1e-10):
                     raise
 
 
