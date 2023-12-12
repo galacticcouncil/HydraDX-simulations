@@ -124,26 +124,27 @@ def test_add_liquidity(initial_state: oamm.OmnipoolState):
     for i in initial_state.asset_list:
         initial_state.weight_cap[i] = min(initial_state.lrna[i] / initial_state.lrna_total * 1.1, 1)
 
-    # calculate what should be the maximum allowable liquidity provision
-    max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
-                   * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
-                  / oamm.lrna_price(old_state, i))
+    if old_state.weight_cap[i] < 1:
+        # calculate what should be the maximum allowable liquidity provision
+        max_amount = ((old_state.weight_cap[i] / (1 - old_state.weight_cap[i])
+                       * old_state.lrna_total - old_state.lrna[i] / (1 - old_state.weight_cap[i]))
+                      / oamm.lrna_price(old_state, i))
 
-    if max_amount < 0:
-        raise AssertionError('This calculation makes no sense.')  # but actually, it works :)
+        if max_amount < 0:
+            raise AssertionError('This calculation makes no sense.')  # but actually, it works :)
 
-    # make sure agent has enough funds
-    old_agent.holdings[i] = max_amount * 2
-    # eliminate general tvl cap, so we can test just the weight cap
-    old_state.tvl_cap = float('inf')
+        # make sure agent has enough funds
+        old_agent.holdings[i] = max_amount * 2
+        # eliminate general tvl cap, so we can test just the weight cap
+        old_state.tvl_cap = float('inf')
 
-    # try one just above and just below the maximum allowable amount
-    illegal_state, illegal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 1.0000001, i)
-    if not illegal_state.fail:
-        raise AssertionError(f'illegal transaction passed against weight limit in {i}')
-    legal_state, legal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 0.9999999, i)
-    if legal_state.fail:
-        raise AssertionError(f'legal transaction failed against weight limit in {i} ({new_state.fail})')
+        # try one just above and just below the maximum allowable amount
+        illegal_state, illegal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 1.0000001, i)
+        if not illegal_state.fail:
+            raise AssertionError(f'illegal transaction passed against weight limit in {i}')
+        legal_state, legal_agents = oamm.simulate_add_liquidity(old_state, old_agent, max_amount * 0.9999999, i)
+        if legal_state.fail:
+            raise AssertionError(f'legal transaction failed against weight limit in {i} ({new_state.fail})')
 
 
 @settings(max_examples=1)
