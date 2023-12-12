@@ -593,7 +593,7 @@ def test_amplification_change_exploit():  # (end_amp):
     amplification=st.integers(min_value=1, max_value=10000),
     trade_fee=st.floats(min_value=0, max_value=0.1)
 )
-def test_sell_spot(
+def test_buy_sell_spot(
         liquidity_stepdown: int,
         assets_number: int,
         amplification: int,
@@ -608,72 +608,24 @@ def test_sell_spot(
         amplification=amplification,
         trade_fee=trade_fee
     )
-    tkn_sell = initial_state.asset_list[0]
-    tkn_buy = initial_state.asset_list[1]
-    initial_agent = Agent(
-        holdings={tkn: 1000 for tkn in initial_state.asset_list}
-    )
-    sell_quantity = 0.001
-    sell_state = initial_state.copy()
-    sell_agent = initial_agent.copy()
-    sell_spot_1 = initial_state.sell_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell, tkn_buy_is_numeraire=False)
-    sell_spot_2 = initial_state.sell_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell, tkn_buy_is_numeraire=True)
-    sell_state.swap(
-        agent=sell_agent,
-        tkn_sell=tkn_sell,
-        tkn_buy=tkn_buy,
-        sell_quantity=sell_quantity
-    )
-    buy_quantity = sell_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]
-    ex_price_1 = sell_quantity / buy_quantity
-    ex_price_2 = buy_quantity / sell_quantity
-    if sell_spot_1 != pytest.approx(ex_price_1):
-        raise AssertionError('Sell spot price incorrect.')
-    if sell_spot_2 != pytest.approx(ex_price_2):
-        raise AssertionError('Sell spot price incorrect.')
-
-
-@given(
-    liquidity_stepdown=st.integers(min_value=-1000000, max_value=1000000),
-    assets_number=st.integers(min_value=2, max_value=4),
-    amplification=st.integers(min_value=1, max_value=10000),
-    trade_fee=st.floats(min_value=0, max_value=0.1)
-)
-def test_buy_spot(
-        liquidity_stepdown: int,
-        assets_number: int,
-        amplification: int,
-        trade_fee: float
-):
-    base_liquidity = mpf(10000000)
-    initial_state = StableSwapPoolState(
-        tokens={
-            tkn: base_liquidity + liquidity_stepdown * n
-            for n, tkn in enumerate(['R' + str(n) for n in range(1, assets_number + 1)])
-        },
-        amplification=amplification,
-        trade_fee=trade_fee
-    )
-    tkn_sell = initial_state.asset_list[0]
-    tkn_buy = initial_state.asset_list[1]
-    initial_agent = Agent(
-        holdings={tkn: 1000 for tkn in initial_state.asset_list}
-    )
+    tkn_sell = 'R1'
+    tkn_buy = 'R2'
+    agent = Agent(holdings={tkn: mpf(1000) for tkn in initial_state.asset_list})
+    test_state, test_agent = initial_state.copy(), agent.copy()
     buy_quantity = 0.001
-    buy_state = initial_state.copy()
-    buy_agent = initial_agent.copy()
-    buy_spot_1 = initial_state.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell, tkn_sell_is_numeraire=False)
-    buy_spot_2 = initial_state.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell, tkn_sell_is_numeraire=True)
-    buy_state.swap(
-        agent=buy_agent,
+    r1_per_r2 = initial_state.buy_spot(tkn_buy='R2', tkn_sell='R1')
+    r2_per_r1 = initial_state.sell_spot(tkn_sell='R1', tkn_buy='R2')
+    test_state.swap(
+        agent=test_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity
     )
-    sell_quantity = initial_agent.holdings[tkn_sell] - buy_agent.holdings[tkn_sell]
-    ex_price_1 = buy_quantity / sell_quantity
-    ex_price_2 = sell_quantity / buy_quantity
-    if buy_spot_1 != pytest.approx(ex_price_1):
-        raise AssertionError('Buy spot price incorrect.')
-    if buy_spot_2 != pytest.approx(ex_price_2):
-        raise AssertionError('Buy spot price incorrect.')
+    actual_sell_quantity = test_agent.initial_holdings[tkn_sell] - test_agent.holdings[tkn_sell]
+    actual_buy_quantity = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
+    ex_price_r1 = actual_sell_quantity / actual_buy_quantity
+    ex_price_r2 = actual_buy_quantity / actual_sell_quantity
+    if r2_per_r1 != pytest.approx(ex_price_r1):
+        raise AssertionError(f'Sell spot R1 ({r2_per_r1}) != execution price ({ex_price_r1}).')
+    if r1_per_r2 != pytest.approx(ex_price_r2):
+        raise AssertionError(f'Buy spot R2 ({r1_per_r2}) != execution price ({ex_price_r2}).')
