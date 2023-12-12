@@ -108,6 +108,11 @@ class AMM:
                     return
         super().__setattr__(key, value)
 
+    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
+        pass
+
+    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
+        pass
 
 def basic_fee(f: float = 0) -> FeeMechanism:
     def fee_function(
