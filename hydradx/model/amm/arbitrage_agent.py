@@ -222,7 +222,9 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
             init_amt = dex_agent.holdings[numeraire]
             test_dex.swap(dex_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
             amt_in = init_amt - dex_agent.holdings[numeraire]
+            init_numeraire = cex_agent.holdings[numeraire]
             test_cex.swap(cex_agent, tkn_sell=ob_tkn_pair[0], tkn_buy=ob_tkn_pair[1], sell_quantity=amt)
+            diff_numeraire = cex_agent.holdings[numeraire] - init_numeraire
             op_spot = OmnipoolState.price(test_dex, tkn, numeraire)
             swap = {'dex': {'trade': 'buy',
                             'buy_asset': tkn,
@@ -240,7 +242,7 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] -= amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] += amt_in
+                max_liquidity_cex[numeraire] += diff_numeraire
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] += amt
             if numeraire in max_liquidity_dex:
@@ -261,7 +263,10 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
             init_amt = dex_agent.holdings[numeraire]
             test_dex.swap(dex_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
             amt_out = dex_agent.holdings[numeraire] - init_amt
+            init_numeraire = cex_agent.holdings[numeraire]
             test_cex.swap(cex_agent, tkn_sell=ob_tkn_pair[1], tkn_buy=ob_tkn_pair[0], buy_quantity=amt)
+            diff_numeraire = cex_agent.holdings[numeraire] - init_numeraire
+
             op_spot = OmnipoolState.price(test_dex, tkn, numeraire)
 
             swap = {'dex': {'trade': 'sell',
@@ -279,7 +284,7 @@ def process_next_swap_inventory(test_dex, dex_agent, test_cex, cex_agent, tkn_pa
             if tkn in max_liquidity_cex:
                 max_liquidity_cex[tkn] += amt
             if numeraire in max_liquidity_cex:
-                max_liquidity_cex[numeraire] -= amt_out
+                max_liquidity_cex[numeraire] += diff_numeraire
             if tkn in max_liquidity_dex:
                 max_liquidity_dex[tkn] -= amt
             if numeraire in max_liquidity_dex:

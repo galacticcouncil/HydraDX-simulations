@@ -645,17 +645,17 @@ def test_process_next_swap_inventory(
         trade_fee=cex_fee
     )
 
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    initial_agent = Agent(holdings={'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}, unique_id='bot')
 
     test_state = op_state.copy()
-    dex_agent = agent.copy()
+    dex_agent = initial_agent.copy()
     test_cex = cex.copy()
-    cex_agent = agent.copy()
+    cex_agent = initial_agent.copy()
     buffer = 0.0
     init_max_liquidity = {'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
-                          'cex': {'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
-                                  'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
-                                  }}
+                          'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+                          'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
+                                  }
     max_liquidity = copy.deepcopy(init_max_liquidity)
     iters = 20
     tkn_pair = ('DOT', 'USDT')
@@ -668,7 +668,7 @@ def test_process_next_swap_inventory(
 
     swap = process_next_swap_inventory(test_state, dex_agent, test_cex, cex_agent, tkn_pair, tkn_pair, buffer,
                                        asset_config_omnipool, asset_config_kraken, max_liquidity['dex'],
-                                       max_liquidity['cex']['kraken'], iters)
+                                       max_liquidity['kraken'], iters)
     if swap:
         cex_swap, dex_swap = swap['cex'], swap['dex']
         dex_spot = op_state.price(op_state, 'DOT', 'USDT')
@@ -694,27 +694,24 @@ def test_process_next_swap_inventory(
 
         swap['exchange'] = 'exchange_name'
 
-        arb_swaps = [swap]
+        profit_dex = calculate_profit(initial_agent, dex_agent)
+        profit_cex = calculate_profit(initial_agent, cex_agent)
 
-        initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
-        agent = initial_agent.copy()
-
-        execute_arb(op_state, {'exchange_name': cex}, agent, arb_swaps)
-
-        profit = calculate_profit(initial_agent, agent)
-        for tkn in profit:
-            if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+        for tkn in profit_dex:
+            if (profit_dex[tkn] + profit_cex[tkn]) / initial_agent.holdings[tkn] < -1e-10:
                 raise
 
         for tkn in op_state.asset_list:
-            if tkn in max_liquidity:
-                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != init_max_liquidity['dex'][tkn] - \
-                        max_liquidity['dex'][tkn]:
+            if tkn in max_liquidity['dex']:
+                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != pytest.approx(init_max_liquidity['dex'][tkn] - max_liquidity['dex'][tkn], 1e-10):
                     raise
         for tkn in cex.asset_list:
-            if tkn in max_liquidity:
-                if test_cex.liquidity[tkn] - cex.liquidity[tkn] != init_max_liquidity['cex'][tkn] - \
-                        max_liquidity['cex'][tkn]:
+            if tkn in max_liquidity['kraken']:
+                if profit_cex[tkn] != pytest.approx(max_liquidity['kraken'][tkn] - init_max_liquidity['kraken'][tkn], 1e-10):
+                    raise
+        for tkn in op_state.asset_list:
+            if tkn in max_liquidity['kraken']:
+                if profit_dex[tkn] != pytest.approx(max_liquidity['dex'][tkn] - init_max_liquidity['dex'][tkn], 1e-10):
                     raise
 
 
