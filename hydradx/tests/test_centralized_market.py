@@ -414,3 +414,62 @@ def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
         raise AssertionError('sell spot gave incorrect price')
     if eth_per_dai != pytest.approx(ex_price_dai):
         raise AssertionError('sell spot gave incorrect price')
+
+
+@given(
+    order_book_strategy(book_depth=100, price_points=2),
+)
+def test_buy_sell_limit(order_book: OrderBook):
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): order_book
+        },
+    )
+    test_buy_agent = initial_agent.copy()
+    test_buy_cex = initial_cex.copy()
+    test_buy_cex.swap(
+        tkn_buy='DAI',
+        tkn_sell='ETH',
+        buy_quantity=test_buy_cex.buy_limit(tkn_buy='DAI', tkn_sell='ETH'),
+        agent=test_buy_agent
+    )
+    test_buy_cex.swap(
+        tkn_buy='ETH',
+        tkn_sell='DAI',
+        buy_quantity=test_buy_cex.buy_limit(tkn_buy='ETH', tkn_sell='DAI'),
+        agent=test_buy_agent
+    )
+    # this should exactly exhaust the first price point (or at least almost)
+    if (
+            len(test_buy_cex.order_book[('ETH', 'DAI')].bids) != 1
+            and test_buy_cex.order_book[('ETH', 'DAI')].bids[0][1] > 1e-10
+    ):
+        raise AssertionError('quote, base buy limit not correct')
+    if len(test_buy_cex.order_book[('ETH', 'DAI')].asks) != 1 or (
+            test_buy_cex.order_book[('ETH', 'DAI')].asks[0][1] != initial_cex.order_book[('ETH', 'DAI')].asks[1][1]
+    ):
+        raise AssertionError('base, quote buy limit not correct')
+    test_sell_cex = initial_cex.copy()
+    test_sell_agent = initial_agent.copy()
+    test_sell_cex.swap(
+        tkn_sell='DAI',
+        tkn_buy='ETH',
+        sell_quantity=test_sell_cex.sell_limit(tkn_sell='DAI', tkn_buy='ETH'),
+        agent=test_sell_agent
+    )
+    test_sell_cex.swap(
+        tkn_sell='ETH',
+        tkn_buy='DAI',
+        sell_quantity=test_sell_cex.sell_limit(tkn_sell='ETH', tkn_buy='DAI'),
+        agent=test_sell_agent
+    )
+    # this should exactly exhaust the first price point (or at least almost)
+    if (
+            len(test_sell_cex.order_book[('ETH', 'DAI')].asks) != 1
+            and test_sell_cex.order_book[('ETH', 'DAI')].asks[0][1] > 1e-10
+    ):
+        raise AssertionError('quote, base sell limit not correct')
+    if len(test_sell_cex.order_book[('ETH', 'DAI')].bids) != 1 or (
+            test_sell_cex.order_book[('ETH', 'DAI')].bids[0][1] != initial_cex.order_book[('ETH', 'DAI')].bids[1][1]
+    ):
+        raise AssertionError('base, quote sell limit not correct')
