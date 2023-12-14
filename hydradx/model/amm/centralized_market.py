@@ -118,9 +118,9 @@ class CentralizedMarket(AMM):
         # return the amount of tkn_sell that can be sold within the first item in the order book
         # todo: consider fees
         if (tkn_buy, tkn_sell) in self.order_book:
-            return self.order_book[(tkn_buy, tkn_sell)].bids[0][1] * self.order_book[(tkn_buy, tkn_sell)].bids[0][0]
+            return self.order_book[(tkn_buy, tkn_sell)].asks[0][1] * self.order_book[(tkn_buy, tkn_sell)].asks[0][0]
         elif (tkn_sell, tkn_buy) in self.order_book:
-            return self.order_book[(tkn_sell, tkn_buy)].asks[0][1]
+            return self.order_book[(tkn_sell, tkn_buy)].bids[0][1]
         else:
             return 0
 
@@ -325,12 +325,12 @@ class CentralizedMarket(AMM):
             return 1
         elif (tkn_buy, tkn_sell) in self.order_book:
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
-                return float('inf')
+                return 0
             else:
                 return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 - fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
-                return float('inf')
+                return 0
             else:
                 return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 + fee)
         else:
