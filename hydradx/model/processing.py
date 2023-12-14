@@ -8,7 +8,7 @@ from hydradxapi import HydraDX
 import time
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
-from .amm.global_state import GlobalState, AMM, value_assets
+from .amm.global_state import GlobalState, value_assets
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -327,6 +327,7 @@ def get_omnipool_data_from_file(path: str):
             elif filename.split('_')[2] == 'assetmap':
                 with open(path + filename, newline='') as json_file:
                     asset_map_str = json.load(json_file)
+                    print(asset_map_str)
                     asset_map = {int(k): v for k, v in asset_map_str.items()}
 
     asset_list = list(asset_map.values())
@@ -358,3 +359,24 @@ def get_centralized_market(config, exchange_name, trade_fee: float, archive: boo
     )
 
 
+def convert_config(cfg: list[dict]) -> list[dict]:
+    """
+    Convert the config from the format used in the UI to the format used in the backend.
+    """
+
+    asset_map = {
+        100: '4-Pool', 0: 'HDX', 10: 'USDT', 4: 'WETH', 20: 'WETH001', 16: 'GLMR', 11: 'iBTC', 14: 'BNC', 19: 'WBTC',
+        15: 'vDOT', 2: 'DAI', 13: 'CFG', 5: 'DOT', 18: 'DAI001', 12: 'ZTG', 3: 'WBTC001', 17: 'INTR', 9: 'ASTR'
+    }
+    # asset_map = get_omnipool_data("wss://rpc.hydradx.cloud")[1]
+
+    return [
+        {
+            'exchanges': {
+                'omnipool': tuple(asset_map[tkn_id] for tkn_id in cfg_item['tkn_ids']),
+                cfg_item['exchange']: cfg_item['order_book']
+            },
+            'buffer': cfg_item['buffer']
+        }
+        for cfg_item in cfg
+    ]
