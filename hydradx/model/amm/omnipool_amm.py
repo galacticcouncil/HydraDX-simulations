@@ -1073,7 +1073,7 @@ class OmnipoolState(AMM):
         # returns the value of the assets in USD
         if equivalency_map is None:
             equivalency_map = {}
-        usd_synonyms = ['USD']
+        usd_synonyms = [self.stablecoin]
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
                 usd_synonyms.append(eq)
