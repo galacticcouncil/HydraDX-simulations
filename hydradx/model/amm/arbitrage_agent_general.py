@@ -137,8 +137,8 @@ def process_next_swap(
             buy_ex=exchanges[buy_ex], sell_ex=exchanges[sell_ex],
             buy_ex_tkn_pair=tkn_pairs[buy_ex], sell_ex_tkn_pair=tkn_pairs[sell_ex],
             buffer=buffer, min_amt=1e-6,
-            max_liquidity_buy=max_liquidity[buy_ex],
-            max_liquidity_sell=max_liquidity[sell_ex],
+            buy_ex_max_sell=max_liquidity[buy_ex][tkn_pairs[buy_ex][0]],
+            sell_ex_max_sell=max_liquidity[sell_ex][tkn_pairs[sell_ex][0]],
             precision=precision,
             max_iters=max_iters
         )
@@ -216,10 +216,10 @@ def calculate_arb_amount(
         buy_ex_tkn_pair: tuple[str, str],
         buffer: float = 0.0,
         min_amt: float = 1e-18,
-        max_liquidity_sell: dict[str, float] = None,
-        max_liquidity_buy: dict[str, float] = None,
+        sell_ex_max_sell: float = None,
+        buy_ex_max_sell: float = None,
         precision: float = 0,
-        max_iters: int = 10
+        max_iters: int = 20
 ) -> float:
     if min_amt < 1e-18:
         return 0
@@ -243,13 +243,16 @@ def calculate_arb_amount(
         return 0
 
     # we use binary search to find the amount that can be swapped
+    buy_ex_max_sell = buy_ex_max_sell if buy_ex_max_sell is not None else float('inf')
+    max_buy = buy_ex.calculate_buy_from_sell(
+        tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], sell_quantity=buy_ex_max_sell
+    )
     amt_low = min_amt
     amt_high = min(
-        max_liquidity_sell[sell_ex_tkn_pair[0]] if sell_ex_tkn_pair[0] in max_liquidity_sell else float('inf'),
+        sell_ex_max_sell if sell_ex_max_sell is not None else float('inf'),
         buy_ex.buy_limit(tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1]),
         sell_ex.sell_limit(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1])
     )
-    max_buy = max_liquidity_buy[buy_ex_tkn_pair[1]] if buy_ex_tkn_pair[1] in max_liquidity_buy else float('inf')
     amt = amt_high
     i = 0
     while abs(1 - buy_price / sell_price) > precision:
@@ -266,11 +269,7 @@ def calculate_arb_amount(
             )
             sell_price = test_ex_sell.sell_spot(sell_ex_tkn_pair[0], sell_ex_tkn_pair[1]) * (1 - buffer)
 
-        if test_ex_buy.fail or test_ex_sell.fail or buy_price > sell_price:
-            amt_high = amt
-        elif test_ex_buy.calculate_sell_from_buy(
-                tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], buy_quantity=amt
-        ) > max_buy:
+        if test_ex_buy.fail or test_ex_sell.fail or buy_price > sell_price or amt > max_buy:
             amt_high = amt
         else:
             amt_low = amt
