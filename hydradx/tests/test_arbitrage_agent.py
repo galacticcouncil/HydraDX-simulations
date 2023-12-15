@@ -1,6 +1,6 @@
 import copy
 from datetime import timedelta
-import os
+import os, json
 import pytest
 from hypothesis import given, strategies as st, settings, Phase
 from mpmath import mp, mpf
@@ -524,14 +524,9 @@ def test_process_next_swap(
 
         swap['exchange'] = 'exchange_name'
 
-        arb_swaps = [swap]
-        holdings = {'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}
-        initial_agent = Agent(holdings=holdings, unique_id='bot')
-        agent = initial_agent.copy()
-
-        profit = calculate_profit(initial_agent, agent)
+        profit = calculate_profit(agent, test_agent)
         for tkn in profit:
-            if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            if profit[tkn] < 0:
                 raise
 
         for tkn in op_state.asset_list:
@@ -1516,3 +1511,73 @@ def test_combine_step():
             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
         else:
             print('Iteration did not improve profit.')
+
+
+def test_get_arb_swaps_output():
+
+    prefix = './'
+    if not os.path.exists(prefix + "data"):
+        prefix = 'hydradx/tests/'
+
+    asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(prefix + "data/")
+
+    arb_file = "arbconfig2.txt"
+    with open(prefix + 'config/' + arb_file, 'r') as json_file:
+        cfg = json.load(json_file)
+
+    for d in cfg:
+        d['tkns'] = tuple(d['tkns'])
+        d['tkn_ids'] = tuple(d['tkn_ids'])
+        d['order_book'] = tuple(d['order_book'])
+
+    order_book_assets = {}
+
+    ob_objs = get_orderbooks_from_file(prefix + "data/")
+
+    for arb_cfg in cfg:
+        tkn_pair = arb_cfg['order_book']
+        exchange = arb_cfg['exchange']
+        for tkn in tkn_pair:
+            if exchange not in order_book_assets:
+                order_book_assets[exchange] = []
+            if tkn not in order_book_assets[exchange]:
+                order_book_assets[exchange].append(tkn)
+
+        arb_cfg['tkn_pair'] = (asset_map[arb_cfg['tkn_ids'][0]], asset_map[arb_cfg['tkn_ids'][1]])
+
+    cex_fees = {
+        'kraken': 0.0016,
+        'binance': 0.0010
+    }
+
+    lrna_fee = {asset: fees[asset]['protocol_fee'] for asset in asset_list}
+    asset_fee = {asset: fees[asset]['asset_fee'] for asset in asset_list}
+
+    cex_dict = {}
+    for exchange in ob_objs:
+        cex_dict[exchange] = CentralizedMarket(
+            order_book=ob_objs[exchange],
+            asset_list=order_book_assets[exchange],
+            trade_fee=cex_fees[exchange]
+        )
+
+    op_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    liq_file = "liqconfig.txt"
+    with open(prefix + 'config/' + liq_file, 'r') as json_file:
+        max_liquidity = json.load(json_file)
+
+    all_swaps = get_arb_swaps(op_state, cex_dict, cfg, max_liquidity=max_liquidity)
+
+    # with open(f'./output/arb_swaps.json', 'w') as output_file:
+    #     json.dump(all_swaps, output_file)
+
+    with open(prefix + 'output/arb_swaps.json', 'r') as output_file:
+        loaded_swaps = json.load(output_file)
+
+    assert all_swaps == loaded_swaps
