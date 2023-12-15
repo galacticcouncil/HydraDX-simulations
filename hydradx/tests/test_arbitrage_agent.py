@@ -522,14 +522,9 @@ def test_process_next_swap(
 
         swap['exchange'] = 'exchange_name'
 
-        arb_swaps = [swap]
-        holdings = {'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}
-        initial_agent = Agent(holdings=holdings, unique_id='bot')
-        agent = initial_agent.copy()
-
-        profit = calculate_profit(initial_agent, agent)
+        profit = calculate_profit(agent, test_agent)
         for tkn in profit:
-            if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            if profit[tkn] < 0:
                 raise
 
         for tkn in op_state.asset_list:
