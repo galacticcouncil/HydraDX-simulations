@@ -8,7 +8,9 @@ mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
-    process_next_swap, get_arb_swaps_simple, execute_arb, get_arb_swaps, combine_swaps
+    process_next_swap, combine_swaps, get_buffers, process_next_swap_inventory, get_arb_swaps_inventory, \
+    apply_dex_buffer
+from hydradx.model.amm.arbitrage_agent import get_arb_swaps_simple, execute_arb, get_arb_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market, \
@@ -545,6 +547,299 @@ def test_process_next_swap(
     hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
     hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
 )
+def test_process_next_swap_inventory(
+        dotusd_price_mult: float,
+        dot_amts: list,
+        hdxdot_price_mult: float,
+        hdxdot_amts: list,
+        hdxusd_price_mult: float,
+        hdxusd_amts: list
+):
+    tokens = {
+        'USDT': {
+            'liquidity': 2062772,
+            'LRNA': 2062772
+        },
+        'DOT': {
+            'liquidity': 350000,
+            'LRNA': 1456248
+        },
+        'HDX': {
+            'liquidity': 108000000,
+            'LRNA': 494896
+        }
+    }
+
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    cex_fee = 0.0016
+
+    op_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot_adj = dotusd_spot * dotusd_price_mult
+
+    dot_usdt_order_book = {
+        'bids': [{'price': dotusd_spot_adj * 0.999, 'amount': dot_amts[0]},
+                 {'price': dotusd_spot_adj * 0.99, 'amount': dot_amts[1]},
+                 {'price': dotusd_spot_adj * 0.9, 'amount': dot_amts[2]},
+                 {'price': dotusd_spot_adj * 0.8, 'amount': dot_amts[3]}],
+        'asks': [{'price': dotusd_spot_adj * 1.001, 'amount': dot_amts[4]},
+                 {'price': dotusd_spot_adj * 1.01, 'amount': dot_amts[5]},
+                 {'price': dotusd_spot_adj * 1.1, 'amount': dot_amts[6]},
+                 {'price': dotusd_spot_adj * 1.2, 'amount': dot_amts[7]}]
+    }
+
+    dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
+
+    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
+
+    hdx_usdt_order_book = {
+        'bids': [{'price': hdxusd_spot_adj * 0.999, 'amount': hdxusd_amts[0]},
+                 {'price': hdxusd_spot_adj * 0.99, 'amount': hdxusd_amts[1]},
+                 {'price': hdxusd_spot_adj * 0.9, 'amount': hdxusd_amts[2]},
+                 {'price': hdxusd_spot_adj * 0.8, 'amount': hdxusd_amts[3]}],
+        'asks': [{'price': hdxusd_spot_adj * 1.001, 'amount': hdxusd_amts[4]},
+                 {'price': hdxusd_spot_adj * 1.01, 'amount': hdxusd_amts[5]},
+                 {'price': hdxusd_spot_adj * 1.1, 'amount': hdxusd_amts[6]},
+                 {'price': hdxusd_spot_adj * 1.2, 'amount': hdxusd_amts[7]}]
+    }
+
+    hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
+
+    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
+
+    hdx_dot_order_book = {
+        'bids': [{'price': hdxdot_spot_adj * 0.99, 'amount': hdxdot_amts[0]},
+                 {'price': hdxdot_spot_adj * 0.9, 'amount': hdxdot_amts[1]}],
+        'asks': [{'price': hdxdot_spot_adj * 1.01, 'amount': hdxdot_amts[2]},
+                 {'price': hdxdot_spot_adj * 1.1, 'amount': hdxdot_amts[3]}]
+    }
+
+    hdx_dot_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_dot_order_book['bids']],
+                                       [[ask['price'], ask['amount']] for ask in hdx_dot_order_book['asks']])
+
+    order_book = {
+        ('DOT', 'USDT'): dot_usdt_order_book_obj,
+        ('HDX', 'USDT'): hdx_usdt_order_book_obj,
+        ('HDX', 'DOT'): hdx_dot_order_book_obj
+    }
+
+    cex = CentralizedMarket(
+        order_book=order_book,
+        asset_list=['USDT', 'DOT', 'HDX'],
+        trade_fee=cex_fee
+    )
+
+    initial_agent = Agent(holdings={'USDT': mpf(1000000000), 'DOT': mpf(1000000000), 'HDX': mpf(1000000000)}, unique_id='bot')
+
+    test_state = op_state.copy()
+    dex_agent = initial_agent.copy()
+    test_cex = cex.copy()
+    cex_agent = initial_agent.copy()
+    buffer = 0.0
+    init_max_liquidity = {'dex': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+                          'kraken': {'USDT': 1000, 'DOT': 100, 'HDX': 100000},
+                          'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
+                                  }
+    max_liquidity = copy.deepcopy(init_max_liquidity)
+    iters = 20
+    tkn_pair = ('DOT', 'USDT')
+
+    asset_config_omnipool = {"USDT": 500, "DAI": 500, "DOT": 100, "iBTC": 0.01, "WBTC": 0.01, "WETH": 0.3, "HDX": 100000,
+                             "ASTR": 1000, "CFG": 100, "INTR": 3000, "BNC": 300, "GLMR": 300, "DAI001": 500, "WBTC001": 0.01,
+                             "WETH001": 0.3}
+    asset_config_kraken = {"USD": 500, "USDT": 500, "DAI": 500, "DOT": 100, "BTC": 0.01, "ETH": 0.3, "HDX": 100000,
+                           "ASTR": 1000, "GLMR": 300}
+
+    swap = process_next_swap_inventory(test_state, dex_agent, test_cex, cex_agent, tkn_pair, tkn_pair, buffer,
+                                       asset_config_omnipool, asset_config_kraken, max_liquidity['dex'],
+                                       max_liquidity['kraken'], iters)
+    if swap:
+        cex_swap, dex_swap = swap['cex'], swap['dex']
+        dex_spot = op_state.price(op_state, 'DOT', 'USDT')
+        if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
+            raise  # check that trades match
+        cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
+        if dex_swap['trade'] == 'sell':
+            dex_numeraire_amt = dex_swap['min_buy']
+            if dex_numeraire_amt < cex_numeraire_amt:  # check profitability
+                raise
+            if dex_swap['min_buy'] / dex_swap['amount'] > dex_spot:  # check dex slippage direction
+                raise
+            if cex_swap['price'] < dex_swap['price']:  # check cex slippage direction
+                raise
+        elif dex_swap['trade'] == 'buy':
+            dex_numeraire_amt = dex_swap['max_sell']
+            if dex_numeraire_amt > cex_numeraire_amt:  # check profitability
+                raise
+            if dex_swap['max_sell'] / dex_swap['amount'] < dex_spot:  # check dex slippage direction
+                raise
+            if cex_swap['price'] > dex_swap['price']:  # check cex slippage direction
+                raise
+
+        swap['exchange'] = 'exchange_name'
+
+        profit_dex = calculate_profit(initial_agent, dex_agent)
+        profit_cex = calculate_profit(initial_agent, cex_agent)
+
+        for tkn in profit_dex:
+            if (profit_dex[tkn] + profit_cex[tkn]) / initial_agent.holdings[tkn] < -1e-10:
+                raise
+
+        for tkn in op_state.asset_list:
+            if tkn in max_liquidity['dex']:
+                if test_state.liquidity[tkn] - op_state.liquidity[tkn] != pytest.approx(init_max_liquidity['dex'][tkn] - max_liquidity['dex'][tkn], 1e-10):
+                    raise
+        for tkn in cex.asset_list:
+            if tkn in max_liquidity['kraken']:
+                if profit_cex[tkn] != pytest.approx(max_liquidity['kraken'][tkn] - init_max_liquidity['kraken'][tkn], 1e-10):
+                    raise
+        for tkn in op_state.asset_list:
+            if tkn in max_liquidity['kraken']:
+                if profit_dex[tkn] != pytest.approx(max_liquidity['dex'][tkn] - init_max_liquidity['dex'][tkn], 1e-10):
+                    raise
+
+
+def test_get_buffers():
+    bids = [[0.9, 1]]
+    asks = [[1.1, 1]]
+    ex1_tkn_pair = ('DOT', 'USDT')
+    ex2_tkn_pair = ('DOT', 'USD')
+    buffer = 0.004
+    execution_risk_buffer = 0.001
+    asset_config1 = {'USDT': 500, 'DOT': 100, 'HDX': 200000}
+    asset_config2 = {'USD': 500, 'DOT': 100, 'HDX': 200000}
+    lrna_fee = 0.0005
+    tkn_lrna_fee = lrna_fee
+    numeraire_lrna_fee = lrna_fee
+    asset_fee = 0.0025
+    tkn_asset_fee = asset_fee
+    numeraire_asset_fee = asset_fee
+    cex_fee = 0.0016
+
+    # all assets insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 10, 'HDX': 10}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, buffer / 2]:
+        raise
+
+    # all assets sufficient
+    agent1_holdings = {'USDT': 1000, 'DOT': 1000, 'HDX': 1000}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # bought asset insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 1000, 'HDX': 1000}
+    # sold asset insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [-lrna_fee - asset_fee, buffer / 2]:
+        raise
+
+    # bought asset at boundary
+    agent1_holdings = {'USDT': 500, 'DOT': 1000, 'HDX': 1000}
+    # sold asset at boundary
+    agent2_holdings = {'USD': 500, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 1.2
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # all assets insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 10, 'HDX': 10}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, buffer / 2]:
+        raise
+
+    # all assets sufficient
+    agent1_holdings = {'USDT': 1000, 'DOT': 1000, 'HDX': 1000}
+    # all assets insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 10, 'HDX': 10}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [0.0005, buffer / 2]:
+        raise
+
+    # bought asset insufficient
+    agent1_holdings = {'USDT': 10, 'DOT': 1000, 'HDX': 1000}
+    # sold asset insufficient
+    agent2_holdings = {'USD': 10, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, -cex_fee]:
+        raise
+
+    # bought asset at boundary
+    agent1_holdings = {'USDT': 500, 'DOT': 1000, 'HDX': 1000}
+    # sold asset at boundary
+    agent2_holdings = {'USD': 500, 'DOT': 1000, 'HDX': 1000}
+    op_spot = 0.8
+
+    buffers = get_buffers(bids, asks, agent1_holdings, agent2_holdings, ex1_tkn_pair, ex2_tkn_pair, buffer,
+                         execution_risk_buffer, asset_config1, asset_config2, tkn_lrna_fee, numeraire_lrna_fee,
+                          tkn_asset_fee, numeraire_asset_fee, cex_fee, op_spot)
+
+    if buffers != [buffer / 2, 0.0005]:
+        raise
+
+
+@given(
+    dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    hdxdot_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
+    hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+)
 def test_get_arb_swaps_simple(
         dotusd_price_mult: float,
         dot_amts: list,
@@ -888,6 +1183,151 @@ def test_get_arb_swaps(
     for tkn in profit:
         if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
             raise
+
+
+@given(
+    dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    hdxdot_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
+    hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
+    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+)
+def test_get_arb_swaps_inventory(
+        dotusd_price_mult: float,
+        dot_amts: list,
+        hdxdot_price_mult: float,
+        hdxdot_amts: list,
+        hdxusd_price_mult: float,
+        hdxusd_amts: list
+):
+    tokens = {
+        'USDT': {
+            'liquidity': 2062772,
+            'LRNA': 2062772
+        },
+        'DOT': {
+            'liquidity': 350000,
+            'LRNA': 1456248
+        },
+        'HDX': {
+            'liquidity': 108000000,
+            'LRNA': 494896
+        }
+    }
+
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    cex_fee = 0.0016
+
+    op_state = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USDT',
+    )
+
+    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot_adj = dotusd_spot * dotusd_price_mult
+
+    dot_usdt_order_book = {
+        'bids': [{'price': dotusd_spot_adj * 0.999, 'amount': dot_amts[0]},
+                 {'price': dotusd_spot_adj * 0.99, 'amount': dot_amts[1]},
+                 {'price': dotusd_spot_adj * 0.9, 'amount': dot_amts[2]},
+                 {'price': dotusd_spot_adj * 0.8, 'amount': dot_amts[3]}],
+        'asks': [{'price': dotusd_spot_adj * 1.001, 'amount': dot_amts[4]},
+                 {'price': dotusd_spot_adj * 1.01, 'amount': dot_amts[5]},
+                 {'price': dotusd_spot_adj * 1.1, 'amount': dot_amts[6]},
+                 {'price': dotusd_spot_adj * 1.2, 'amount': dot_amts[7]}]
+    }
+
+    dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
+
+    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
+
+    hdx_usdt_order_book = {
+        'bids': [{'price': hdxusd_spot_adj * 0.999, 'amount': hdxusd_amts[0]},
+                 {'price': hdxusd_spot_adj * 0.99, 'amount': hdxusd_amts[1]},
+                 {'price': hdxusd_spot_adj * 0.9, 'amount': hdxusd_amts[2]},
+                 {'price': hdxusd_spot_adj * 0.8, 'amount': hdxusd_amts[3]}],
+        'asks': [{'price': hdxusd_spot_adj * 1.001, 'amount': hdxusd_amts[4]},
+                 {'price': hdxusd_spot_adj * 1.01, 'amount': hdxusd_amts[5]},
+                 {'price': hdxusd_spot_adj * 1.1, 'amount': hdxusd_amts[6]},
+                 {'price': hdxusd_spot_adj * 1.2, 'amount': hdxusd_amts[7]}]
+    }
+
+    hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
+                                        [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
+
+    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
+
+    hdx_dot_order_book = {
+        'bids': [{'price': hdxdot_spot_adj * 0.99, 'amount': hdxdot_amts[0]},
+                 {'price': hdxdot_spot_adj * 0.9, 'amount': hdxdot_amts[1]}],
+        'asks': [{'price': hdxdot_spot_adj * 1.01, 'amount': hdxdot_amts[2]},
+                 {'price': hdxdot_spot_adj * 1.1, 'amount': hdxdot_amts[3]}]
+    }
+
+    hdx_dot_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_dot_order_book['bids']],
+                                       [[ask['price'], ask['amount']] for ask in hdx_dot_order_book['asks']])
+
+    order_book = {
+        ('DOT', 'USDT'): dot_usdt_order_book_obj,
+        ('HDX', 'USDT'): hdx_usdt_order_book_obj,
+        ('HDX', 'DOT'): hdx_dot_order_book_obj
+    }
+
+    cex = CentralizedMarket(
+        order_book=order_book,
+        asset_list=['USDT', 'DOT', 'HDX'],
+        trade_fee=cex_fee
+    )
+
+    omnipool_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    cex_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    agent_dict = {'omnipool': omnipool_agent, 'exchange_name': cex_agent}
+
+    asset_config_omnipool = {"USDT": 500, "DAI": 500, "DOT": 100, "iBTC": 0.01, "WBTC": 0.01, "WETH": 0.3, "HDX": 100000,
+                             "ASTR": 1000, "CFG": 100, "INTR": 3000, "BNC": 300, "GLMR": 300, "DAI001": 500, "WBTC001": 0.01,
+                             "WETH001": 0.3}
+    asset_config_kraken = {"USD": 500, "USDT": 500, "DAI": 500, "DOT": 100, "BTC": 0.01, "ETH": 0.3, "HDX": 100000,
+                           "ASTR": 1000, "GLMR": 300}
+
+    asset_config = {"omnipool": asset_config_omnipool, "exchange_name": asset_config_kraken}
+
+    cfg = [{"tkn_pair": k, "exchange": "exchange_name", "order_book": k, "buffer": 0.0} for k in order_book]
+    arb_swaps = get_arb_swaps_inventory(op_state, {"exchange_name": cex}, agent_dict, cfg, asset_config)
+    initial_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    agent = initial_agent.copy()
+
+    execute_arb(op_state, {"exchange_name": cex}, agent, arb_swaps)
+
+    profit = calculate_profit(initial_agent, agent)
+    for tkn in profit:
+        if profit[tkn] / initial_agent.holdings[tkn] < -1e-10:
+            raise
+
+
+@given(
+    dex_buffer=st.floats(min_value=-.0031, max_value=.005)
+)
+def test_apply_dex_buffer(dex_buffer):
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    asset_fee_adj, lrna_fee_adj = apply_dex_buffer(asset_fee, lrna_fee, dex_buffer)
+
+    if asset_fee_adj < 0 or lrna_fee_adj < 0:
+        raise
+
+    if asset_fee + lrna_fee + dex_buffer != pytest.approx(asset_fee_adj + lrna_fee_adj):
+        if lrna_fee_adj + asset_fee_adj != 0:
+            raise
+
+    if lrna_fee != lrna_fee_adj and asset_fee_adj != 0:
+        raise
 
 
 def test_combine_step():
