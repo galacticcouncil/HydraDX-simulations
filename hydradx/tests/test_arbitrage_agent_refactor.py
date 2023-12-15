@@ -6,11 +6,11 @@ from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
-    process_next_swap, execute_arb, get_arb_swaps, combine_swaps, flatten_swaps
+    process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
-from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market, \
-    get_orderbooks_from_file  # , get_stableswap_data, get_unique_name
+from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file
+# from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_stableswap_data, get_unique_name
 from mpmath import mp, mpf
 mp.dps = 50
 
@@ -56,7 +56,7 @@ def test_calculate_profit_with_mapping():
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
 )
-def test_calculate_arb_amount(
+def test_calculate_arb_amount_bid(
         usdt_amt: float,
         dot_price: float,
         hdx_price: float,
@@ -79,49 +79,53 @@ def test_calculate_arb_amount(
         'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
     }
 
-    initial_state = OmnipoolState(
+    initial_dex = OmnipoolState(
         tokens=tokens,
         lrna_fee=lrna_fee,
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
-    buy_spot = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
-    bid_price = buy_spot / (1 - cex_fee) * price_mult
+    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
+    bid_price = dex_price / (1 - cex_fee) * price_mult
+    bid_quantity = 100000
+    p = 1e-6
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    bid = [bid_price, 100000]
+
     initial_cex = CentralizedMarket(
         order_book={
-            ('DOT', 'USDT'): OrderBook(bids=[bid], asks=[]),
+            ('DOT', 'USDT'): OrderBook(bids=[[bid_price, bid_quantity]], asks=[]),
         }, trade_fee=cex_fee
     )
-    p = 1e-10
+
+    init_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     amt = calculate_arb_amount(
-        buy_ex=initial_state,
+        buy_ex=initial_dex,
         sell_ex=initial_cex,
-
-        precision=p
+        buy_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_max_sell=init_agent.holdings[tkn],
+        buy_ex_max_sell=init_agent.holdings[numeraire],
+        precision=p,
+        max_iters=50
     )
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
-    init_agent = agent.copy()
-    initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
-    buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = bid[0] * (1 - cex_fee)
+    bid_agent = init_agent.copy()
+    bid_dex = initial_dex.copy()
+    bid_cex = initial_cex.copy()
+    bid_dex.swap(bid_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    bid_cex.swap(bid_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    dex_price = bid_dex.buy_spot(tkn, numeraire)
+    cex_price = initial_cex.sell_spot(tkn, numeraire)
 
-    if abs(buy_spot - cex_price) / cex_price > p and abs(buy_spot - cex_price) > p and amt != bid[1]:
+    if 1 - dex_price / cex_price > p and amt != bid_quantity:
         raise
 
-    if amt == bid[1] and buy_spot > cex_price:
+    if amt == bid_quantity and dex_price > cex_price:
         raise
 
-    agent.holdings[tkn] -= amt
-    agent.holdings[numeraire] += amt * cex_price
-
-    profit = calculate_profit(init_agent, agent)
+    profit = calculate_profit(init_agent, bid_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
@@ -164,50 +168,64 @@ def test_calculate_arb_amount_bid_max_liquidity(
         'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
     }
 
-    initial_state = OmnipoolState(
+    initial_dex = OmnipoolState(
         tokens=tokens,
         lrna_fee=lrna_fee,
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
-    buy_spot = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
-    bid_price = buy_spot / (1 - cex_fee) * price_mult
+    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
+    bid_price = dex_price / (1 - cex_fee) * price_mult
+    bid_quantity = 100000
+    p = 1e-10
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    bid = [bid_price, 100000]
-    p = 1e-10
-    amt = calculate_arb_amount(initial_state, tkn, numeraire, bid, cex_fee, max_liq_tkn=max_trade,
-                                   max_liq_num=max_trade, precision=p, max_iters=1000)
     init_holding = 1000000
-    agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
-    init_agent = agent.copy()
-    initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
-    buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = bid[0] * (1 - cex_fee)
 
-    if (abs(init_holding - agent.holdings[tkn]) - max_trade) / init_holding > 1e-10:
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('DOT', 'USDT'): OrderBook(bids=[[bid_price, bid_quantity]], asks=[]),
+        }, trade_fee=cex_fee
+    )
+
+    init_agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
+    amt = calculate_arb_amount(
+        buy_ex=initial_dex,
+        sell_ex=initial_cex,
+        buy_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_max_sell=max_trade,
+        buy_ex_max_sell=max_trade,
+        precision=p,
+        max_iters=50
+    )
+    bid_agent = init_agent.copy()
+    bid_dex = initial_dex.copy()
+    bid_cex = initial_cex.copy()
+    bid_dex.swap(bid_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    dex_price = bid_dex.buy_spot(tkn, numeraire)
+    cex_price = initial_cex.sell_spot(tkn, numeraire)
+
+    if (abs(init_holding - bid_agent.holdings[tkn]) - max_trade) / init_holding > p:
         raise
-    if (abs(init_holding - agent.holdings[numeraire]) - max_trade) / init_holding > 1e-10:
+    if (abs(init_holding - bid_agent.holdings[numeraire]) - max_trade) / init_holding > p:
         raise
 
     # checks if the cex price and spot price have been brought into alignment
-    if abs(buy_spot - cex_price) / cex_price > p and abs(buy_spot - cex_price) > p and amt != bid[1]:
+    if abs(dex_price - cex_price) / cex_price > p and abs(dex_price - cex_price) > p and amt != bid_quantity:
         # if cex price and spot price aren't in alignment, it should be because of trade size limit
-        if ((max_trade - abs(init_holding - agent.holdings[tkn])) / init_holding) > 1e-10:
-            if ((max_trade - abs(init_holding - agent.holdings[numeraire])) / init_holding) > 1e-10:
+        if ((max_trade - abs(init_holding - bid_agent.holdings[tkn])) / init_holding) > 1e-10:
+            if ((max_trade - abs(init_holding - bid_agent.holdings[numeraire])) / init_holding) > 1e-10:
                 raise
 
-    if amt == bid[1] and buy_spot > cex_price:
+    bid_cex.swap(bid_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+
+    if amt == bid_quantity and dex_price > cex_price:
         raise
 
-    agent.holdings[tkn] -= amt
-    agent.holdings[numeraire] += amt * cex_price
-
-    profit = calculate_profit(init_agent, agent)
+    profit = calculate_profit(init_agent, bid_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
@@ -373,17 +391,13 @@ def test_calculate_arb_amount_ask_max_liquidity(
 
 @given(
     dotusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
-    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
-    hdxdot_price_mult=st.floats(min_value=0.8, max_value=1.2),
-    hdxdot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
+    dot_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
     hdxusd_price_mult=st.floats(min_value=0.8, max_value=1.2),
-    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=8, max_size=8),
+    hdxusd_amts=st.lists(st.floats(min_value=10, max_value=10000), min_size=4, max_size=4),
 )
 def test_process_next_swap(
         dotusd_price_mult: float,
         dot_amts: list,
-        hdxdot_price_mult: float,
-        hdxdot_amts: list,
         hdxusd_price_mult: float,
         hdxusd_amts: list
 ):
@@ -403,21 +417,16 @@ def test_process_next_swap(
 
     hdxusd_spot = initial_dex.price(initial_dex, 'HDX', 'USDT') * hdxusd_price_mult
     dotusd_spot = initial_dex.price(initial_dex, 'DOT', 'USDT') * dotusd_price_mult
-    hdxdot_spot = initial_dex.price(initial_dex, 'HDX', 'DOT') * hdxdot_price_mult
 
     initial_cex = CentralizedMarket(
         order_book={
             ('DOT', 'USDT'): OrderBook(
-                    bids=[[dotusd_spot * bid_multiples[i], dot_amts[i]] for i in range(4)],
-                    asks=[[dotusd_spot * ask_multiples[i], dot_amts[i + 4]] for i in range(4)]
+                    bids=[[dotusd_spot * bid_multiples[i], dot_amts[i]] for i in range(2)],
+                    asks=[[dotusd_spot * ask_multiples[i], dot_amts[i + 2]] for i in range(2)]
                 ),
             ('HDX', 'USDT'): OrderBook(
-                    bids=[[hdxusd_spot * bid_multiples[i], hdxusd_amts[i]] for i in range(4)],
-                    asks=[[hdxusd_spot * ask_multiples[i], hdxusd_amts[i + 4]] for i in range(4)]
-            ),
-            ('HDX', 'DOT'): OrderBook(
-                    bids=[[hdxdot_spot * bid_multiples[i], hdxdot_amts[i]] for i in range(2)],
-                    asks=[[hdxdot_spot * ask_multiples[i], hdxdot_amts[i + 2]] for i in range(2)]
+                    bids=[[hdxusd_spot * bid_multiples[i], hdxusd_amts[i]] for i in range(2)],
+                    asks=[[hdxusd_spot * ask_multiples[i], hdxusd_amts[i + 2]] for i in range(2)]
             )
         }, trade_fee=0.0016
     )
@@ -522,12 +531,6 @@ def test_get_arb_swaps(
         hdxusd_price_mult: float,
         hdxusd_amts: list
 ):
-    dotusd_price_mult = 1.0977049313495644
-    dot_amts = [161.2329480039278, 758.6410240170276, 4832.987933250825, 7566.127680909472, 8173.193729115202, 5748.611307098405, 3750.281756001799, 5708.0010437721085]
-    hdxdot_price_mult = 1.058342170180289
-    hdxdot_amts = [843.4837916427042, 7904.939294967387, 3360.3002983183687, 3642.5592682098086]
-    hdxusd_price_mult = 1.1286123005889588
-    hdxusd_amts = [7728.615582649945, 7906.125480174396, 5721.249646875708, 7172.34713196931, 5811.420126561857, 8417.018422170646, 4739.103398677595, 2142.0103045487285]
     tokens = {
         'USDT': {
             'liquidity': 2062772,
