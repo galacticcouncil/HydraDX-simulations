@@ -274,7 +274,7 @@ def calculate_arb_amount(
             amt_low = amt
             if amt_low == amt_high:  # full amount can be traded
                 break
-            elif abs(1 - buy_price / sell_price) > precision:
+            elif abs(1 - buy_price / sell_price) <= precision:
                 break  # close enough!
 
         amt = amt_low + (amt_high - amt_low) / 2
