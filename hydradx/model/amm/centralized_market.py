@@ -164,19 +164,20 @@ class CentralizedMarket(AMM):
                 for bid in self.order_book[(base, quote)].bids:
                     if bid[1] >= sell_tkns_remaining:
                         # this bid can fill the entire remaining order
-                        tkns_bought += bid[0] * sell_tkns_remaining
+                        tkns_bought += bid[0] * sell_tkns_remaining * (1 - self.trade_fee)
                         bid[1] -= sell_tkns_remaining
                         sell_tkns_remaining = 0
                     else:
                         # this bid can partially fill the order
-                        tkns_bought += bid[1] * bid[0]
+                        tkns_bought += bid[1] * bid[0] * (1 - self.trade_fee)
                         sell_tkns_remaining -= bid[1]
                         bid[1] = 0
                     if bid[1] == 0:
                         remove_bids += 1
                     if sell_tkns_remaining <= 0:
                         break
-            else:
+            elif tkn_sell == quote:
+                sell_tkns_remaining *= (1 - self.trade_fee)
                 for ask in self.order_book[(base, quote)].asks:
                     if ask[0] * ask[1] >= sell_tkns_remaining:
                         tkns_bought += sell_tkns_remaining / ask[0]
@@ -192,7 +193,7 @@ class CentralizedMarket(AMM):
                         break
 
             agent.holdings[tkn_sell] -= sell_quantity - sell_tkns_remaining
-            agent.holdings[tkn_buy] += tkns_bought * (1 - self.trade_fee)
+            agent.holdings[tkn_buy] += tkns_bought
 
         elif buy_quantity > 0:
             buy_tkns_remaining = buy_quantity
@@ -201,20 +202,21 @@ class CentralizedMarket(AMM):
             if tkn_buy == base:
                 for ask in self.order_book[(base, quote)].asks:
                     if ask[1] >= buy_tkns_remaining:
-                        tkns_sold += buy_tkns_remaining * ask[0]
+                        tkns_sold += buy_tkns_remaining * ask[0] * (1 + self.trade_fee)
                         if tkns_sold > agent.holdings[tkn_sell]:
                             return self.fail_transaction('Agent does not have enough holdings to execute trade.')
                         ask[1] -= buy_tkns_remaining
                         buy_tkns_remaining = 0
                     else:
-                        tkns_sold += ask[0] * ask[1]
+                        tkns_sold += ask[0] * ask[1] * (1 + self.trade_fee)
                         buy_tkns_remaining -= ask[1]
                         ask[1] = 0
                     if ask[1] == 0:
                         remove_asks += 1
                     if buy_tkns_remaining <= 0:
                         break
-            else:
+            elif tkn_buy == quote:
+                buy_tkns_remaining /= (1 - self.trade_fee)
                 for bid in self.order_book[(base, quote)].bids:
                     if bid[0] * bid[1] >= buy_tkns_remaining:
                         tkns_sold += buy_tkns_remaining / bid[0]
@@ -232,7 +234,7 @@ class CentralizedMarket(AMM):
                         break
 
             agent.holdings[tkn_buy] += buy_quantity - buy_tkns_remaining
-            agent.holdings[tkn_sell] -= tkns_sold * (1 + self.trade_fee)
+            agent.holdings[tkn_sell] -= tkns_sold
 
         # remove these afterward, so we don't mess up the iteration
         self.order_book[(base, quote)].bids = self.order_book[(base, quote)].bids[remove_bids:]
@@ -253,16 +255,18 @@ class CentralizedMarket(AMM):
                 return 0
 
         if tkn_buy == base:
+
             for ask in self.order_book[(base, quote)].asks:
                 if ask[1] >= buy_tkns_remaining:
-                    tkns_sold += buy_tkns_remaining * ask[0]
+                    tkns_sold += buy_tkns_remaining * ask[0] * (1 + self.trade_fee)
                     buy_tkns_remaining = 0
                 else:
-                    tkns_sold += ask[0] * ask[1]
+                    tkns_sold += ask[0] * ask[1] * (1 + self.trade_fee)
                     buy_tkns_remaining -= ask[1]
                 if buy_tkns_remaining <= 0:
                     break
-        else:
+        elif tkn_buy == quote:
+            buy_tkns_remaining /= (1 - self.trade_fee)
             for bid in self.order_book[(base, quote)].bids:
                 if bid[0] * bid[1] >= buy_tkns_remaining:
                     tkns_sold += buy_tkns_remaining / bid[0]
@@ -272,7 +276,7 @@ class CentralizedMarket(AMM):
                     buy_tkns_remaining -= bid[0] * bid[1]
                 if buy_tkns_remaining <= 0:
                     break
-        return tkns_sold * (1 + self.trade_fee)
+        return tkns_sold
 
     def calculate_buy_from_sell(self, tkn_sell, tkn_buy, sell_quantity):
         # given a sell order, calculate how much of tkn_buy would be bought
@@ -290,15 +294,16 @@ class CentralizedMarket(AMM):
             for bid in self.order_book[(base, quote)].bids:
                 if bid[1] >= sell_tkns_remaining:
                     # this bid can fill the entire remaining order
-                    tkns_bought += bid[0] * sell_tkns_remaining
+                    tkns_bought += bid[0] * sell_tkns_remaining * (1 - self.trade_fee)
                     sell_tkns_remaining = 0
                 else:
                     # this bid can partially fill the order
-                    tkns_bought += bid[1] * bid[0]
+                    tkns_bought += bid[1] * bid[0] * (1 - self.trade_fee)
                     sell_tkns_remaining -= bid[1]
                 if sell_tkns_remaining <= 0:
                     break
-        else:
+        elif tkn_sell == quote:
+            sell_tkns_remaining *= (1 - self.trade_fee)
             for ask in self.order_book[(base, quote)].asks:
                 if ask[0] * ask[1] >= sell_tkns_remaining:
                     tkns_bought += sell_tkns_remaining / ask[0]
@@ -308,7 +313,7 @@ class CentralizedMarket(AMM):
                     sell_tkns_remaining -= ask[1] * ask[0]
                 if sell_tkns_remaining <= 0:
                     break
-        return tkns_bought * (1 - self.trade_fee)
+        return tkns_bought
 
     def fail_transaction(self, error: str, **kwargs):
         self.fail = error
@@ -332,7 +337,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
             else:
-                return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 + fee)
+                return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] / (1 - fee)
         else:
             return 0
 
@@ -351,7 +356,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
             else:
-                return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] / (1 + fee)
+                return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 - fee)
         else:
             return 0
 
