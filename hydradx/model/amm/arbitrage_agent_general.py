@@ -219,7 +219,7 @@ def calculate_arb_amount(
         sell_ex_max_sell: float = None,
         buy_ex_max_sell: float = None,
         precision: float = 0,
-        max_iters: int = 20
+        max_iters: int = 50
 ) -> float:
     if min_amt < 1e-18:
         return 0
@@ -254,8 +254,7 @@ def calculate_arb_amount(
         sell_ex.sell_limit(tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1])
     )
     amt = amt_high
-    i = 0
-    while abs(1 - buy_price / sell_price) > precision:
+    for i in range(max_iters):
         test_ex_buy = buy_ex.copy()
         test_ex_sell = sell_ex.copy()
         if not isinstance(test_ex_buy, CentralizedMarket):
@@ -275,11 +274,10 @@ def calculate_arb_amount(
             amt_low = amt
             if amt_low == amt_high:  # full amount can be traded
                 break
-        amt = amt_low + (amt_high - amt_low) / 2
+            elif abs(1 - buy_price / sell_price) > precision:
+                break  # close enough!
 
-        i += 1
-        if max_iters is not None and i >= max_iters:
-            break
+        amt = amt_low + (amt_high - amt_low) / 2
 
     if amt_low == min_amt:
         return 0
