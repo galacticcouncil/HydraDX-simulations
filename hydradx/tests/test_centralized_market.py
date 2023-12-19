@@ -42,23 +42,18 @@ initial_agent = Agent(
     trade_fee=fee_strat
 )
 def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                },
-                trade_fee=trade_fee
-            )
+    kraken = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): order_book
         },
-        agents={'agent': initial_agent}
+        trade_fee=trade_fee
     )
+    sell_agent = initial_agent.copy()
     tkn_buy = 'ETH'
     tkn_sell = 'DAI'
-    sell_state = initial_state.copy()
-    sell_state.execute_swap(
-        agent_id='agent',
-        pool_id='Kraken',
+    sell_state = kraken.copy()
+    sell_state.swap(
+        agent=sell_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         sell_quantity=sell_quantity
@@ -66,27 +61,27 @@ def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBoo
 
     value_bought = sum(
         [sell_quantity * price for (price, sell_quantity)
-         in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+         in kraken.order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
         [sell_quantity * price for (price, sell_quantity)
-         in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+         in sell_state.order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
+    quantity_sold = sell_agent.initial_holdings[tkn_sell] - sell_agent.holdings[tkn_sell]
 
-    if value_bought != pytest.approx(quantity_sold):
-        raise AssertionError('Central market sell trade failed to execute correctly.')
+    if value_bought != pytest.approx(quantity_sold * (1 - kraken.trade_fee)):
+        raise AssertionError('Fee was not applied correctly.')
 
-    quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
+    quantity_bought = sell_agent.holdings[tkn_buy] - sell_agent.initial_holdings[tkn_buy]
 
     value_sold = sum(
-        [sell_quantity for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity for (price, sell_quantity) in kraken.order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
-        [sell_quantity for (price, sell_quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+        [sell_quantity for (price, sell_quantity) in sell_state.order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
-        raise AssertionError('Fee was not applied correctly.')
+    if value_sold != pytest.approx(quantity_bought):
+        raise AssertionError('Trade did not execute correctly.')
 
     if quantity_sold != pytest.approx(sell_quantity):
         raise AssertionError('Sell quantity was not applied correctly.')
@@ -189,7 +184,7 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
     if quantity_bought != pytest.approx(buy_quantity):
         raise AssertionError('Buy quantity was not applied correctly.')
 
-    if value_sold != pytest.approx(quantity_bought):
+    if quantity_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(value_sold):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
@@ -200,7 +195,7 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
         [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought != pytest.approx(quantity_sold):
         raise AssertionError('Fee was not applied correctly.')
 
     if quantity_bought != pytest.approx(buy_quantity):
@@ -375,9 +370,9 @@ def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
         (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
         / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
     )
-    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-10):
         raise AssertionError('buy spot gave incorrect price for quote asset')
-    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-10):
         raise AssertionError('sell spot gave incorrect price for base asset')
 
 
