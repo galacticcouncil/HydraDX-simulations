@@ -233,7 +233,7 @@ class OmnipoolState(AMM):
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
-        return self.liquidity[tkn_sell]
+        return float('inf')
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):
         return self.liquidity[tkn_buy]
