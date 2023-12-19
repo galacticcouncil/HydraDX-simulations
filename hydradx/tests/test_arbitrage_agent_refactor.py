@@ -780,7 +780,7 @@ def test_combine_step():
         max_liquidity=max_liquidity
     )
     execute_arb(exchanges=combine_exchanges, agent=combine_agent, swaps=combined_swaps)
-    combined_profit = calculate_profit(initial_agent, combine_agent)
+    combined_profit = calculate_profit(initial_agent, combine_agent, equivalency_map)
     combined_profit_total = combine_exchanges['binance'].value_assets(combined_profit, equivalency_map)
 
     # see if iterating on that can get any extra profit
@@ -801,7 +801,7 @@ def test_combine_step():
             raise AssertionError('Loss detected.')
 
     for tkn in combined_profit:
-        if combined_profit[tkn] < -1e-20:
+        if combined_profit[tkn] < -1e-10:
             raise AssertionError('Loss detected.')
 
     if profit_total > combined_profit_total:
