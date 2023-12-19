@@ -89,7 +89,7 @@ def test_calculate_arb_amount_bid(
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = dex_price / (1 - cex_fee) * price_mult
     bid_quantity = 100000
-    p = 1e-6
+    p = 1e-10
 
     tkn = 'DOT'
     numeraire = 'USDT'
@@ -100,7 +100,7 @@ def test_calculate_arb_amount_bid(
         }, trade_fee=cex_fee
     )
 
-    init_agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
+    init_agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000, 'HDX': 1000000}, unique_id='bot')
     amt = calculate_arb_amount(
         buy_ex=initial_dex,
         sell_ex=initial_cex,
@@ -109,14 +109,14 @@ def test_calculate_arb_amount_bid(
         sell_ex_max_sell=init_agent.holdings[tkn],
         buy_ex_max_sell=init_agent.holdings[numeraire],
         precision=p,
-        max_iters=50
+        max_iters=100
     )
-    bid_agent = init_agent.copy()
-    bid_dex = initial_dex.copy()
-    bid_cex = initial_cex.copy()
-    bid_dex.swap(bid_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    bid_cex.swap(bid_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-    dex_price = bid_dex.buy_spot(tkn, numeraire)
+    test_agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000})
+    test_dex = initial_dex.copy()
+    test_cex = initial_cex.copy()
+    test_dex.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    test_cex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    dex_price = test_dex.buy_spot(tkn, numeraire)
     cex_price = initial_cex.sell_spot(tkn, numeraire)
 
     if 1 - dex_price / cex_price > p and amt != bid_quantity:
@@ -125,7 +125,7 @@ def test_calculate_arb_amount_bid(
     if amt == bid_quantity and dex_price > cex_price:
         raise
 
-    profit = calculate_profit(init_agent, bid_agent)
+    profit = calculate_profit(init_agent, test_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
@@ -138,7 +138,7 @@ def test_calculate_arb_amount_bid(
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=1.1, max_value=10.0),
+    price_mult=st.floats(min_value=1.01, max_value=10.0),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -201,31 +201,31 @@ def test_calculate_arb_amount_bid_max_liquidity(
         precision=p,
         max_iters=50
     )
-    bid_agent = init_agent.copy()
-    bid_dex = initial_dex.copy()
-    bid_cex = initial_cex.copy()
-    bid_dex.swap(bid_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    dex_price = bid_dex.buy_spot(tkn, numeraire)
+    test_agent = init_agent.copy()
+    test_dex = initial_dex.copy()
+    test_cex = initial_cex.copy()
+    test_dex.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    dex_price = test_dex.buy_spot(tkn, numeraire)
     cex_price = initial_cex.sell_spot(tkn, numeraire)
 
-    if (abs(init_holding - bid_agent.holdings[tkn]) - max_trade) / init_holding > p:
+    if abs(init_holding - test_agent.holdings[tkn]) / max_trade - 1 > p:
         raise
-    if (abs(init_holding - bid_agent.holdings[numeraire]) - max_trade) / init_holding > p:
+    if abs(init_holding - test_agent.holdings[numeraire]) / max_trade - 1 > p:
         raise
 
     # checks if the cex price and spot price have been brought into alignment
     if abs(dex_price - cex_price) / cex_price > p and abs(dex_price - cex_price) > p and amt != bid_quantity:
         # if cex price and spot price aren't in alignment, it should be because of trade size limit
-        if ((max_trade - abs(init_holding - bid_agent.holdings[tkn])) / init_holding) > 1e-10:
-            if ((max_trade - abs(init_holding - bid_agent.holdings[numeraire])) / init_holding) > 1e-10:
+        if ((max_trade - abs(init_holding - test_agent.holdings[tkn])) / init_holding) > 1e-10:
+            if ((max_trade - abs(init_holding - test_agent.holdings[numeraire])) / init_holding) > 1e-10:
                 raise
 
-    bid_cex.swap(bid_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    test_cex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
 
     if amt == bid_quantity and dex_price > cex_price:
         raise
 
-    profit = calculate_profit(init_agent, bid_agent)
+    profit = calculate_profit(init_agent, test_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
@@ -238,7 +238,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=0.1, max_value=0.95),
+    price_mult=st.floats(min_value=0.1, max_value=0.99),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -261,44 +261,57 @@ def test_calculate_arb_amount_ask(
     hdx_amt = hdx_lrna / hdx_price
 
     tokens = {
-        'USDT': {'liquidity': usdt_amt, 'LRNA': usdt_amt},
-        'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
-        'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
+        'USDT': {'liquidity': mpf(usdt_amt), 'LRNA': mpf(usdt_amt)},
+        'DOT': {'liquidity': mpf(dot_amt), 'LRNA': mpf(dot_lrna)},
+        'HDX': {'liquidity': mpf(hdx_amt), 'LRNA': mpf(hdx_lrna)}
     }
 
-    initial_state = OmnipoolState(
+    initial_dex = OmnipoolState(
         tokens=tokens,
         lrna_fee=lrna_fee,
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
-    sell_spot = orig_price * ((1 - lrna_fee) * (1 - asset_fee))
-    ask_price = sell_spot * (1 - cex_fee) * price_mult
+    sell_spot = initial_dex.sell_spot('DOT', 'USDT') / ((1 - lrna_fee) * (1 - asset_fee))
+    ask_price = sell_spot / (1 - cex_fee) * price_mult
+    ask_quantity = 10000
+    p = 1e-10
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    ask = [ask_price, 100000]
-    p = 1e-10
-    amt = calculate_arb_amount(initial_state, tkn, numeraire, ask, cex_fee, precision=p, max_iters=1000)
-    agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
-    init_agent = agent.copy()
-    initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
-    sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = ask[0] * (1 + cex_fee)
 
-    if abs(sell_spot - cex_price) / cex_price > p and abs(sell_spot - cex_price) > p and amt != ask[1]:
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('DOT', 'USDT'): OrderBook(bids=[], asks=[[mpf(ask_price), ask_quantity]]),
+        }, trade_fee=cex_fee
+    )
+
+    init_agent = Agent(holdings={'USDT': 10000000, 'DOT': 10000000, 'HDX': 10000000}, unique_id='bot')
+    amt = calculate_arb_amount(
+        buy_ex=initial_cex,
+        sell_ex=initial_dex,
+        buy_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_max_sell=init_agent.holdings[tkn],
+        buy_ex_max_sell=init_agent.holdings[numeraire],
+        precision=p,
+        max_iters=50
+    )
+    test_agent = init_agent.copy()
+    test_dex = initial_dex.copy()
+    test_cex = initial_cex.copy()
+    test_dex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    test_cex.swap(test_agent, tkn_sell=numeraire, tkn_buy=tkn, buy_quantity=amt)
+    dex_price = test_dex.sell_spot(tkn, numeraire)
+    cex_price = initial_cex.buy_spot(tkn, numeraire)
+
+    if abs(1 - cex_price / dex_price) > p and amt != ask_quantity:
         raise
 
-    if amt == ask[1] and cex_price > sell_spot:
+    if amt == ask_quantity and cex_price > dex_price:
         raise
 
-    agent.holdings[tkn] += amt
-    agent.holdings[numeraire] -= amt * cex_price
-
-    profit = calculate_profit(init_agent, agent)
+    profit = calculate_profit(init_agent, test_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
@@ -341,50 +354,64 @@ def test_calculate_arb_amount_ask_max_liquidity(
         'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna}
     }
 
-    initial_state = OmnipoolState(
+    initial_dex = OmnipoolState(
         tokens=tokens,
         lrna_fee=lrna_fee,
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
-    sell_spot = orig_price * ((1 - lrna_fee) * (1 - asset_fee))
+    sell_spot = initial_dex.sell_spot('DOT', 'USDT')
     ask_price = sell_spot * (1 - cex_fee) * price_mult
+    ask_quantity = 100000
+    p = 1e-10
 
     tkn = 'DOT'
     numeraire = 'USDT'
-    ask = [ask_price, 100000]
-    p = 1e-10
-    amt = calculate_arb_amount(initial_state, tkn, numeraire, ask, cex_fee, max_liq_tkn=max_trade,
-                                   max_liq_num=max_trade, precision=p, max_iters=1000)
     init_holding = 1000000
-    agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
-    init_agent = agent.copy()
-    initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
-    sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
-    cex_price = ask[0] * (1 + cex_fee)
 
-    if (abs(init_holding - agent.holdings[tkn]) - max_trade) / init_holding > 1e-10:
-        raise
-    if (abs(init_holding - agent.holdings[numeraire]) - max_trade) / init_holding > 1e-10:
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('DOT', 'USDT'): OrderBook(bids=[], asks=[[ask_price, ask_quantity]]),
+        }, trade_fee=cex_fee
+    )
+
+    init_agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
+    amt = calculate_arb_amount(
+        buy_ex=initial_cex,
+        sell_ex=initial_dex,
+        buy_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_tkn_pair=(tkn, numeraire),
+        sell_ex_max_sell=max_trade,
+        buy_ex_max_sell=max_trade,
+        precision=p,
+        max_iters=50
+    )
+    test_agent = init_agent.copy()
+    test_dex = initial_dex.copy()
+    test_cex = initial_cex.copy()
+    test_dex.swap(test_agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
+    dex_price = test_dex.sell_spot(tkn, numeraire)
+    cex_price = initial_cex.buy_spot(tkn, numeraire)
+
+    if abs(init_holding - test_agent.holdings[tkn]) / max_trade - 1 > p:
         raise
 
-    # checks if the cex price and spot price have been brought into alignment
-    if abs(sell_spot - cex_price) / cex_price > p and abs(sell_spot - cex_price) > p and amt != ask[1]:
+    # check if the cex price and spot price have been brought into alignment
+    if abs(dex_price - cex_price) / cex_price > p and abs(dex_price - cex_price) > p and amt != ask_quantity:
         # if cex price and spot price aren't in alignment, it should be because of trade size limit
-        if ((max_trade - abs(init_holding - agent.holdings[tkn])) / init_holding) > 1e-10:
-            if ((max_trade - abs(init_holding - agent.holdings[numeraire])) / init_holding) > 1e-10:
+        if ((max_trade - abs(init_holding - test_agent.holdings[tkn])) / init_holding) > 1e-10:
+            if ((max_trade - abs(init_holding - test_agent.holdings[numeraire])) / init_holding) > 1e-10:
                 raise
 
-    if amt == ask[1] and cex_price > sell_spot:
+    mid_holding = test_agent.holdings[numeraire]
+    test_cex.swap(test_agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
+    if abs(mid_holding - test_agent.holdings[numeraire]) / max_trade - 1 > p:
         raise
 
-    agent.holdings[tkn] += amt
-    agent.holdings[numeraire] -= amt * cex_price
+    if amt == ask_quantity and dex_price < cex_price:
+        raise
 
-    profit = calculate_profit(init_agent, agent)
+    profit = calculate_profit(init_agent, test_agent)
     for tkn in profit:
         assert profit[tkn] >= 0
 
