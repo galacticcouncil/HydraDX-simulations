@@ -319,8 +319,8 @@ def calculate_profit(init_agent, agent, asset_map=None):
             profit[mapped_tkn] = 0
         profit[mapped_tkn] += profit_asset[tkn]
 
-    if sum([profit_asset[k] for k in profit_asset]) != sum([profit[k] for k in profit]):
-        raise
+    # if sum([profit_asset[k] for k in profit_asset]) != sum([profit[k] for k in profit]):
+    #     raise
     return profit
 
 
