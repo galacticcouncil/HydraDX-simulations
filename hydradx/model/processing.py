@@ -365,8 +365,21 @@ def convert_config(cfg: list[dict]) -> list[dict]:
     """
 
     asset_map = {
-        100: '4-Pool', 0: 'HDX', 10: 'USDT', 4: 'WETH', 20: 'WETH001', 16: 'GLMR', 11: 'iBTC', 14: 'BNC', 19: 'WBTC',
-        15: 'vDOT', 2: 'DAI', 13: 'CFG', 5: 'DOT', 18: 'DAI001', 12: 'ZTG', 3: 'WBTC001', 17: 'INTR', 9: 'ASTR'
+        100: '4-Pool',
+        0: 'HDX',
+        10: 'USDT',
+        20: 'WETH',
+        16: 'GLMR',
+        11: 'iBTC',
+        14: 'BNC',
+        19: 'WBTC',
+        15: 'vDOT',
+        13: 'CFG',
+        5: 'DOT',
+        8: 'PHA',
+        12: 'ZTG',
+        17: 'INTR',
+        9: 'ASTR'
     }
     # asset_map = get_omnipool_data("wss://rpc.hydradx.cloud")[1]
 
