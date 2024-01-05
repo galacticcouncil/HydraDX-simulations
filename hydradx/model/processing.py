@@ -327,7 +327,7 @@ def get_omnipool_data_from_file(path: str):
             elif filename.split('_')[2] == 'assetmap':
                 with open(path + filename, newline='') as json_file:
                     asset_map_str = json.load(json_file)
-                    print(asset_map_str)
+                    # print(asset_map_str)
                     asset_map = {int(k): v for k, v in asset_map_str.items()}
 
     asset_list = list(asset_map.values())
