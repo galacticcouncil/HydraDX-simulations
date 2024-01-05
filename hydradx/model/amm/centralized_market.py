@@ -332,7 +332,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
                 return 0
             else:
-                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 - fee)
+                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 + fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
@@ -351,7 +351,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
                 return 0
             else:
-                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 - fee)
+                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 + fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
