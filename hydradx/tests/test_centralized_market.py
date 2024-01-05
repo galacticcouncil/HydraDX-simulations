@@ -335,7 +335,7 @@ def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
 def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
     cex = CentralizedMarket(
         order_book={
-            ('ETH', 'DAI'): order_book
+            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
         },
         trade_fee=trade_fee
     )
@@ -382,6 +382,70 @@ def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
     test_cex.swap(
         tkn_sell='DAI',
         tkn_buy='ETH',
+        sell_quantity=1,
+        agent=test_agent
+    )
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+    )
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+
+
+def test_buy_base_price():
+    trade_fee = 0.5
+    cex = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
+        },
+        trade_fee=trade_fee
+    )
+    test_cex = cex.copy()
+    test_agent = initial_agent.copy()
+    eth_per_dai = cex.sell_spot(tkn_sell='DAI', tkn_buy='ETH')
+    dai_per_eth = cex.buy_spot(tkn_buy='ETH', tkn_sell='DAI')
+    test_cex.swap(
+        tkn_buy='ETH',
+        tkn_sell='DAI',
+        buy_quantity=1,
+        agent=test_agent
+    )
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+    )
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+        raise AssertionError('buy spot gave incorrect price')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+
+
+def test_sell_base_price():
+    trade_fee = 0.5
+    cex = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
+        },
+        trade_fee=trade_fee
+    )
+    test_cex = cex.copy()
+    test_agent = initial_agent.copy()
+    eth_per_dai = cex.buy_spot(tkn_sell='ETH', tkn_buy='DAI')
+    dai_per_eth = cex.sell_spot(tkn_buy='DAI', tkn_sell='ETH')
+    test_cex.swap(
+        tkn_sell='ETH',
+        tkn_buy='DAI',
         sell_quantity=1,
         agent=test_agent
     )
