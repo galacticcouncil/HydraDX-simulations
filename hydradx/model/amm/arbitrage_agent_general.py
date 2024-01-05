@@ -58,8 +58,9 @@ def get_arb_swaps(
     all_swaps = []
     test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
     test_agents = {ex_name: Agent(holdings=max_liquidity[ex_name].copy()) for ex_name in exchanges}
+    arbs_index = 0
     while arb_opps:
-        arb_cfg = config[arb_opps[0][1]]
+        arb_cfg = config[arb_opps[arbs_index][1]]
         swap = process_next_swap(
             exchanges=test_exchanges,
             swap_config=arb_cfg,
@@ -68,13 +69,15 @@ def get_arb_swaps(
             max_iters=max_iters,
             precision=precision
         )
-        for exchange in test_exchanges.values():
-            if exchange.fail:
+        for ex_name in arb_cfg['exchanges'].keys():
+            if exchanges[ex_name].fail:
                 raise AssertionError('max liquidity exceeded?')
         if swap:
             all_swaps.append(swap)
-        else:
-            break
+        elif len(arb_opps) > arbs_index + 1:
+            arbs_index += 1
+            continue
+        arbs_index = 0
         new_arb_opps = get_arb_opps(test_exchanges, config, max_liquidity)
         if arb_opps and new_arb_opps and arb_opps[0][0] == new_arb_opps[0][0]:
             break
@@ -123,7 +126,6 @@ def process_next_swap(
             tkn_buy=tkn_pairs[ex_name][1], tkn_sell=tkn_pairs[ex_name][0], fee=0
         ) for ex_name in exchange_names}
     }
-    swap = {}
 
     buy_ex, sell_ex = None, None
     for ex_name, other_ex in (exchange_names, reversed(exchange_names)):
@@ -132,80 +134,76 @@ def process_next_swap(
             sell_ex = other_ex
             break
 
-    if buy_ex and sell_ex:
-        amt = calculate_arb_amount(
-            buy_ex=exchanges[buy_ex], sell_ex=exchanges[sell_ex],
-            buy_ex_tkn_pair=tkn_pairs[buy_ex], sell_ex_tkn_pair=tkn_pairs[sell_ex],
-            buffer=buffer, min_amt=1e-6,
-            buy_ex_max_sell=max_liquidity[buy_ex][tkn_pairs[buy_ex][0]],
-            sell_ex_max_sell=max_liquidity[sell_ex][tkn_pairs[sell_ex][0]],
-            precision=precision,
-            max_iters=max_iters
-        )
+    if not (buy_ex and sell_ex):
+        return {}
 
-        if amt != 0:
-            init_amt = {
-                buy_ex: agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
-                sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]]
-            }
-            exchanges[buy_ex].swap(
-                agent=agents[buy_ex],
-                tkn_buy=tkn_pairs[buy_ex][0],
-                tkn_sell=tkn_pairs[buy_ex][1],
-                buy_quantity=amt
-            )
-            exchanges[sell_ex].swap(
-                agent=agents[sell_ex],
-                tkn_buy=tkn_pairs[sell_ex][1],
-                tkn_sell=tkn_pairs[sell_ex][0],
-                sell_quantity=amt
-            )
-            amt_in = {
-                buy_ex: init_amt[buy_ex] - agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
-                sell_ex: amt
-            }
-            amt_out = {
-                buy_ex: amt,
-                sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]] - init_amt[sell_ex]
-            }
-            swap = {
-                buy_ex: {
-                    'trade': 'buy',
-                    'buy_asset': tkn_pairs[buy_ex][0],
-                    'sell_asset': tkn_pairs[buy_ex][1],
-                    'price': (
-                            buy_price['feeless'][buy_ex] * (1 + slippage_tolerance[buy_ex])
-                            if isinstance(exchanges[buy_ex], CentralizedMarket) else None
-                    ),
-                    'amount': amt,
-                    'max_sell': (
-                            amt_in[buy_ex] * (1 + slippage_tolerance[buy_ex])
-                            if isinstance(exchanges[buy_ex], OmnipoolState) else None
-                    )
-                },
-                sell_ex: {
-                    'trade': 'sell',
-                    'buy_asset': tkn_pairs[sell_ex][1],
-                    'sell_asset': tkn_pairs[sell_ex][0],
-                    'price': (
-                            sell_price['feeless'][sell_ex] * (1 - slippage_tolerance[sell_ex])
-                            if isinstance(exchanges[sell_ex], CentralizedMarket) else None
-                    ),
-                    'amount': amt,
-                    'min_buy': (
-                            amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])
-                            if isinstance(exchanges[sell_ex], OmnipoolState) else None
-                    )
-                }
-            }
-            if tkn_pairs[buy_ex][1] in max_liquidity[buy_ex]:
-                max_liquidity[buy_ex][tkn_pairs[buy_ex][1]] -= amt_in[buy_ex]
-            if tkn_pairs[buy_ex][0] in max_liquidity[buy_ex]:
-                max_liquidity[buy_ex][tkn_pairs[buy_ex][0]] += amt_out[buy_ex]
-            if tkn_pairs[sell_ex][0] in max_liquidity[sell_ex]:
-                max_liquidity[sell_ex][tkn_pairs[sell_ex][0]] -= amt_in[sell_ex]
-            if tkn_pairs[sell_ex][1] in max_liquidity[sell_ex]:
-                max_liquidity[sell_ex][tkn_pairs[sell_ex][1]] += amt_out[sell_ex]
+    amt = calculate_arb_amount(
+        buy_ex=exchanges[buy_ex], sell_ex=exchanges[sell_ex],
+        buy_ex_tkn_pair=tkn_pairs[buy_ex], sell_ex_tkn_pair=tkn_pairs[sell_ex],
+        buffer=buffer, min_amt=1e-6,
+        buy_ex_max_sell=max_liquidity[buy_ex][tkn_pairs[buy_ex][0]],
+        sell_ex_max_sell=max_liquidity[sell_ex][tkn_pairs[sell_ex][0]],
+        precision=precision,
+        max_iters=max_iters
+    )
+
+    if amt == 0:
+        return ()
+
+    init_amt = {
+        buy_ex: agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
+        sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]]
+    }
+    exchanges[buy_ex].swap(
+        agent=agents[buy_ex],
+        tkn_buy=tkn_pairs[buy_ex][0],
+        tkn_sell=tkn_pairs[buy_ex][1],
+        buy_quantity=amt
+    )
+    exchanges[sell_ex].swap(
+        agent=agents[sell_ex],
+        tkn_buy=tkn_pairs[sell_ex][1],
+        tkn_sell=tkn_pairs[sell_ex][0],
+        sell_quantity=amt
+    )
+    amt_in = {
+        buy_ex: init_amt[buy_ex] - agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
+        sell_ex: amt
+    }
+    amt_out = {
+        buy_ex: amt,
+        sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]] - init_amt[sell_ex]
+    }
+    if tkn_pairs[buy_ex][1] in max_liquidity[buy_ex]:
+        max_liquidity[buy_ex][tkn_pairs[buy_ex][1]] -= amt_in[buy_ex]
+    if tkn_pairs[buy_ex][0] in max_liquidity[buy_ex]:
+        max_liquidity[buy_ex][tkn_pairs[buy_ex][0]] += amt_out[buy_ex]
+    if tkn_pairs[sell_ex][0] in max_liquidity[sell_ex]:
+        max_liquidity[sell_ex][tkn_pairs[sell_ex][0]] -= amt_in[sell_ex]
+    if tkn_pairs[sell_ex][1] in max_liquidity[sell_ex]:
+        max_liquidity[sell_ex][tkn_pairs[sell_ex][1]] += amt_out[sell_ex]
+    swap = {
+        buy_ex: {
+            'trade': 'buy',
+            'buy_asset': tkn_pairs[buy_ex][0],
+            'sell_asset': tkn_pairs[buy_ex][1],
+            'amount': amt,
+        },
+        sell_ex: {
+            'trade': 'sell',
+            'buy_asset': tkn_pairs[sell_ex][1],
+            'sell_asset': tkn_pairs[sell_ex][0],
+            'amount': amt,
+        }
+    }
+    if isinstance(exchanges[buy_ex], CentralizedMarket):
+        swap[buy_ex].update({'price': buy_price['feeless'][buy_ex] * (1 + slippage_tolerance[buy_ex])})
+    else:
+        swap[buy_ex].update({'max_sell': amt_in[buy_ex] * (1 + slippage_tolerance[buy_ex])})
+    if isinstance(exchanges[sell_ex], CentralizedMarket):
+        swap[sell_ex].update({'price': sell_price['feeless'][sell_ex] * (1 - slippage_tolerance[sell_ex])})
+    else:
+        swap[sell_ex].update({'min_buy': amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])})
     return swap
 
 
@@ -222,7 +220,7 @@ def calculate_arb_amount(
         max_iters: int = 50
 ) -> float:
     if min_amt < 1e-18:
-        return 0
+        min_amt = 1e-18
     """
     For a given token pair, calculate the optimum allowable trade size.
     """
