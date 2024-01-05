@@ -623,8 +623,8 @@ def test_buy_sell_spot(
     )
     actual_sell_quantity = test_agent.initial_holdings[tkn_sell] - test_agent.holdings[tkn_sell]
     actual_buy_quantity = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
-    ex_price_r1 = actual_sell_quantity / actual_buy_quantity
-    ex_price_r2 = actual_buy_quantity / actual_sell_quantity
+    ex_price_r1 = actual_buy_quantity / actual_sell_quantity
+    ex_price_r2 = actual_sell_quantity / actual_buy_quantity
     if r2_per_r1 != pytest.approx(ex_price_r1):
         raise AssertionError(f'Sell spot R1 ({r2_per_r1}) != execution price ({ex_price_r1}).')
     if r1_per_r2 != pytest.approx(ex_price_r2):
