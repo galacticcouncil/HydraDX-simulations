@@ -174,10 +174,7 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
-    if quantity_bought != pytest.approx(buy_quantity):
-        raise AssertionError('Buy quantity was not applied correctly.')
-
-    if quantity_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(value_sold):
+    if quantity_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(value_sold, rel=1e-20):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
@@ -188,10 +185,10 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
         [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
-    if value_bought != pytest.approx(quantity_sold):
+    if value_bought != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_bought != pytest.approx(buy_quantity):
+    if quantity_bought != pytest.approx(buy_quantity, rel=1e-20):
         raise AssertionError('Buy quantity was not applied correctly.')
 
 
@@ -225,16 +222,13 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
-    if quantity_bought != pytest.approx(buy_quantity):
-        raise AssertionError('Buy quantity was not applied correctly.')
-
     value_sold = sum(
         [buy_quantity for (price, buy_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
         [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    if value_sold != pytest.approx(quantity_bought):
+    if value_sold != pytest.approx(quantity_bought, rel=1e-20):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     value_bought = sum(
@@ -247,10 +241,10 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_bought != pytest.approx(buy_quantity):
+    if quantity_bought != pytest.approx(buy_quantity, rel=1e-20):
         raise AssertionError('Buy quantity was not applied correctly.')
 
         
