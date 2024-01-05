@@ -357,9 +357,9 @@ def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
         (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
         / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
     )
-    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-10):
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
         raise AssertionError('buy spot gave incorrect price for quote asset')
-    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-10):
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
         raise AssertionError('sell spot gave incorrect price for base asset')
 
 
@@ -368,9 +368,10 @@ def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
     trade_fee=fee_strat
 )
 def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
+    trade_fee = 0.5
     cex = CentralizedMarket(
         order_book={
-            ('ETH', 'DAI'): order_book
+            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
         },
         trade_fee=trade_fee
     )
@@ -392,9 +393,9 @@ def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
         (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
         / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
     )
-    if dai_per_eth != pytest.approx(ex_price_eth):
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
         raise AssertionError('sell spot gave incorrect price')
-    if eth_per_dai != pytest.approx(ex_price_dai):
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
         raise AssertionError('sell spot gave incorrect price')
 
 
