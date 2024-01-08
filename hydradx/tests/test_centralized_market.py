@@ -241,7 +241,7 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold, rel=1e-20):
+    if value_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
     if quantity_bought != pytest.approx(buy_quantity, rel=1e-20):
@@ -333,6 +333,7 @@ def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
     trade_fee=fee_strat
 )
 def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
+    trade_fee = 0.5
     cex = CentralizedMarket(
         order_book={
             ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),

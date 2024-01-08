@@ -202,13 +202,13 @@ class CentralizedMarket(AMM):
             if tkn_buy == base:
                 for ask in self.order_book[(base, quote)].asks:
                     if ask[1] >= buy_tkns_remaining:
-                        tkns_sold += buy_tkns_remaining * ask[0] * (1 + self.trade_fee)
+                        tkns_sold += buy_tkns_remaining * ask[0] / (1 - self.trade_fee)
                         if tkns_sold > agent.holdings[tkn_sell]:
                             return self.fail_transaction('Agent does not have enough holdings to execute trade.')
                         ask[1] -= buy_tkns_remaining
                         buy_tkns_remaining = 0
                     else:
-                        tkns_sold += ask[0] * ask[1] * (1 + self.trade_fee)
+                        tkns_sold += ask[0] * ask[1] / (1 - self.trade_fee)
                         buy_tkns_remaining -= ask[1]
                         ask[1] = 0
                     if ask[1] == 0:
@@ -258,10 +258,10 @@ class CentralizedMarket(AMM):
 
             for ask in self.order_book[(base, quote)].asks:
                 if ask[1] >= buy_tkns_remaining:
-                    tkns_sold += buy_tkns_remaining * ask[0] * (1 + self.trade_fee)
+                    tkns_sold += buy_tkns_remaining * ask[0] / (1 - self.trade_fee)
                     buy_tkns_remaining = 0
                 else:
-                    tkns_sold += ask[0] * ask[1] * (1 + self.trade_fee)
+                    tkns_sold += ask[0] * ask[1] / (1 - self.trade_fee)
                     buy_tkns_remaining -= ask[1]
                 if buy_tkns_remaining <= 0:
                     break
@@ -332,7 +332,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
                 return 0
             else:
-                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 + fee)
+                return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 - fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
@@ -351,7 +351,7 @@ class CentralizedMarket(AMM):
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
                 return 0
             else:
-                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 + fee)
+                return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 - fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
                 return 0
