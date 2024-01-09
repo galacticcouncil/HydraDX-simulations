@@ -807,6 +807,9 @@ def test_combine_step():
     if profit_total > combined_profit_total:
         raise AssertionError('Loss detected.')
     else:
+        print()
+        print(f"Profit without combining: {profit_total}")
+        print(f"Profit after combining: {combined_profit_total}")
         print(
             f"extra profit obtained by combining swaps: {combined_profit_total - profit_total}"
             f" ({(combined_profit_total - profit_total) / profit_total * 100}%)"
