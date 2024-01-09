@@ -87,7 +87,7 @@ def test_calculate_arb_amount_bid(
     )
     orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
-    bid_price = dex_price / (1 - cex_fee) * price_mult
+    bid_price = dex_price * (1 + cex_fee) * price_mult
     bid_quantity = 100000
     p = 1e-10
 
