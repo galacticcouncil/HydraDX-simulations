@@ -333,11 +333,8 @@ def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
     trade_fee=fee_strat
 )
 def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
-    trade_fee = 0.5
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
-        },
+        order_book={('ETH', 'DAI'): order_book},
         trade_fee=trade_fee
     )
     test_cex = cex.copy()
@@ -369,11 +366,8 @@ def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
     trade_fee=fee_strat
 )
 def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
-    trade_fee = 0.5
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
-        },
+        order_book={('ETH', 'DAI'): order_book},
         trade_fee=trade_fee
     )
     test_cex = cex.copy()
@@ -400,12 +394,13 @@ def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
         raise AssertionError('sell spot gave incorrect price')
 
 
-def test_buy_base_price():
-    trade_fee = 0.5
+@given(
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
+)
+def test_buy_base_price(order_book: OrderBook, trade_fee: float):
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
-        },
+        order_book={('ETH', 'DAI'): order_book},
         trade_fee=trade_fee
     )
     test_cex = cex.copy()
@@ -432,12 +427,13 @@ def test_buy_base_price():
         raise AssertionError('sell spot gave incorrect price')
 
 
-def test_sell_base_price():
-    trade_fee = 0.5
+@given(
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
+)
+def test_sell_base_price(order_book: OrderBook,trade_fee: float):
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): OrderBook(bids=[[mpf(1/4), mpf(10000000000)]], asks=[[mpf(4), mpf(10000000000)]]),
-        },
+        order_book={('ETH', 'DAI'): order_book},
         trade_fee=trade_fee
     )
     test_cex = cex.copy()
@@ -465,13 +461,15 @@ def test_sell_base_price():
 
 
 @given(
-    order_book_strategy(book_depth=100, price_points=2),
+    order_book=order_book_strategy(book_depth=100, price_points=2),
+    trade_fee=fee_strat
 )
-def test_buy_sell_limit(order_book: OrderBook):
+def test_buy_sell_limit(order_book: OrderBook, trade_fee: float):
     initial_cex = CentralizedMarket(
         order_book={
             ('ETH', 'DAI'): order_book
         },
+        trade_fee=trade_fee
     )
     test_buy_agent = initial_agent.copy()
     test_buy_cex = initial_cex.copy()
@@ -487,10 +485,9 @@ def test_buy_sell_limit(order_book: OrderBook):
         buy_quantity=test_buy_cex.buy_limit(tkn_buy='ETH', tkn_sell='DAI'),
         agent=test_buy_agent
     )
-    # this should exactly exhaust the first price point (or at least almost)
-    if (
-            len(test_buy_cex.order_book[('ETH', 'DAI')].bids) != 1
-            and test_buy_cex.order_book[('ETH', 'DAI')].bids[0][1] > 1e-10
+    # this should exactly exhaust the first price point
+    if len(test_buy_cex.order_book[('ETH', 'DAI')].bids) != 1 or (
+            test_buy_cex.order_book[('ETH', 'DAI')].asks[0][1] != initial_cex.order_book[('ETH', 'DAI')].asks[1][1]
     ):
         raise AssertionError('quote, base buy limit not correct')
     if len(test_buy_cex.order_book[('ETH', 'DAI')].asks) != 1 or (
@@ -514,7 +511,7 @@ def test_buy_sell_limit(order_book: OrderBook):
     # this should exactly exhaust the first price point (or at least almost)
     if (
             len(test_sell_cex.order_book[('ETH', 'DAI')].asks) != 1
-            and test_sell_cex.order_book[('ETH', 'DAI')].asks[0][1] > 1e-10
+            and test_sell_cex.order_book[('ETH', 'DAI')].asks[0][1] > 1e-20
     ):
         raise AssertionError('quote, base sell limit not correct')
     if len(test_sell_cex.order_book[('ETH', 'DAI')].bids) != 1 or (
