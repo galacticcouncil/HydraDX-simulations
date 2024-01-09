@@ -33,9 +33,11 @@ def get_arb_opps(
                     arb_opps.append(((ex_1_sell_price - ex_2_buy_price) / ex_2_buy_price, i))
 
             if ex_1_buy_price:
-                ex_2_sell_price = ex_2.sell_spot(tkn_pair_2[1], tkn_pair_2[0]) * (1 - arb_cfg['buffer'])
-                if ex_2_sell_price and ex_2_sell_price > ex_1_buy_price:  # buy from ex1, sell to ex2
-                    arb_opps.append(((ex_2_sell_price - ex_1_buy_price) / ex_1_buy_price, i))
+                ex_2_sell_price = ex_2.sell_spot(tkn_pair_2[1], tkn_pair_2[0])
+                if ex_2_sell_price:
+                    ex_2_sell_price *= (1 - arb_cfg['buffer'])
+                    if ex_2_sell_price > ex_1_buy_price: # buy from ex1, sell to ex2
+                        arb_opps.append(((ex_2_sell_price - ex_1_buy_price) / ex_1_buy_price, i))
 
     arb_opps.sort(key=lambda x: x[0], reverse=True)
     return arb_opps
@@ -51,8 +53,8 @@ def get_arb_swaps(
     """
     return a list of swaps that can be executed to take advantage of the best arbitrage opportunities
     """
-    if max_liquidity is None:
-        max_liquidity = {ex_name: {tkn: float('inf') for tkn in ex.asset_list} for ex_name, ex in exchanges.items()}
+    if not max_liquidity:
+        max_liquidity = {ex_name: {tkn: 1000000000 for tkn in ex.asset_list} for ex_name, ex in exchanges.items()}
 
     arb_opps = get_arb_opps(exchanges, config, max_liquidity)
     all_swaps = []
@@ -397,7 +399,7 @@ def combine_swaps(
                             x: test_ex.sell_spot(x, tkn_buy)
                             or (
                                    test_ex.buy_spot(tkn_buy, x)
-                                   if test_ex.buy_spot(tkn_buy, x) > 0 else 0
+                                   if test_ex.buy_spot(tkn_buy, x) else 0
                                )
                             for x in sell_tkns
                         }.items()
