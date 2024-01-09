@@ -116,9 +116,12 @@ class CentralizedMarket(AMM):
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
         # return the amount of tkn_sell that can be sold within the first item in the order book
-        # todo: consider fees
         if (tkn_buy, tkn_sell) in self.order_book:
-            return self.order_book[(tkn_buy, tkn_sell)].asks[0][1] * self.order_book[(tkn_buy, tkn_sell)].asks[0][0]
+            return (
+                    self.order_book[(tkn_buy, tkn_sell)].asks[0][1]
+                    * self.order_book[(tkn_buy, tkn_sell)].asks[0][0]
+                    / (1 - self.trade_fee)
+            )
         elif (tkn_sell, tkn_buy) in self.order_book:
             return self.order_book[(tkn_sell, tkn_buy)].bids[0][1]
         else:
