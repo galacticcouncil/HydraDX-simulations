@@ -106,7 +106,6 @@ class CentralizedMarket(AMM):
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):
         # return the amount of tkn_buy that can be bought within the first item in the order book
-        # todo: consider fees
         if (tkn_buy, tkn_sell) in self.order_book:
             return self.order_book[(tkn_buy, tkn_sell)].asks[0][1]
         elif (tkn_sell, tkn_buy) in self.order_book:
@@ -326,42 +325,42 @@ class CentralizedMarket(AMM):
         return copy.deepcopy(self)
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
-        # the question here is, how much tkn_sell will one tkn_buy cost?
+        # denominated in tkn_sell
         if fee is None:
             fee = self.trade_fee
         if tkn_buy == tkn_sell:
             return 1
         elif (tkn_buy, tkn_sell) in self.order_book:
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
-                return 0
+                return None
             else:
                 return self.order_book[(tkn_buy, tkn_sell)].asks[0][0] / (1 - fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
-                return 0
+                return None
             else:
                 return 1 / self.order_book[(tkn_sell, tkn_buy)].bids[0][0] / (1 - fee)
         else:
-            return 0
+            return None
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None) -> float:
-        # the question here is: how much tkn_buy can you get for one tkn_sell?
+        # denominated in tkn_buy
         if fee is None:
             fee = self.trade_fee
         if tkn_buy == tkn_sell:
             return 1
         elif (tkn_buy, tkn_sell) in self.order_book:
             if len(self.order_book[(tkn_buy, tkn_sell)].asks) == 0:
-                return 0
+                return None
             else:
                 return 1 / self.order_book[(tkn_buy, tkn_sell)].asks[0][0] * (1 - fee)
         elif (tkn_sell, tkn_buy) in self.order_book:
             if len(self.order_book[(tkn_sell, tkn_buy)].bids) == 0:
-                return 0
+                return None
             else:
                 return self.order_book[(tkn_sell, tkn_buy)].bids[0][0] * (1 - fee)
         else:
-            return 0
+            return None
 
     def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
         # assets is a dict of token: quantity
@@ -381,7 +380,7 @@ class CentralizedMarket(AMM):
             tkn_value = 0
             for usd in usd_synonyms:
                 for eq in equivalents:
-                    if self.buy_spot(eq, usd) > 0:
+                    if self.buy_spot(eq, usd):
                         tkn_value += assets[tkn] * (self.buy_spot(eq, usd) + self.sell_spot(eq, usd)) / 2
                         break
                 if tkn_value != 0:
