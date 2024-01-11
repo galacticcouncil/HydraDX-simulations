@@ -10,6 +10,7 @@ from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculat
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 # from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_stableswap_data, get_unique_name
 from mpmath import mp, mpf
 mp.dps = 50
@@ -475,7 +476,6 @@ def test_process_next_swap(
 
     swap = process_next_swap(
         exchanges={'dex': test_dex, 'cex': test_cex},
-        agents={'dex': test_agent_dex, 'cex': test_agent_cex},
         max_liquidity=max_liquidity,
         swap_config={'exchanges': {'dex': tkn_pair, 'cex': tkn_pair}, 'buffer': buffer},
         max_iters=20
@@ -488,16 +488,16 @@ def test_process_next_swap(
             'USDT': test_dex.liquidity['USDT'] - initial_dex.liquidity['USDT']
         }
 
-        diff_agent = {
-            'DOT': (test_agent_dex.holdings['DOT'] - initial_agent_dex.holdings['DOT']
-                    + test_agent_cex.holdings['DOT'] - initial_agent_cex.holdings['DOT']),
-            'USDT': (test_agent_dex.holdings['USDT'] - initial_agent_dex.holdings['USDT']
-                     + test_agent_cex.holdings['USDT'] - initial_agent_cex.holdings['USDT'])
+        diff_max = {
+            'DOT': (max_liquidity['dex']['DOT'] - init_max_liquidity['dex']['DOT']
+                    + max_liquidity['cex']['DOT'] - init_max_liquidity['cex']['DOT']),
+            'USDT': (max_liquidity['dex']['USDT'] - init_max_liquidity['dex']['USDT']
+                     + max_liquidity['cex']['USDT'] - init_max_liquidity['cex']['USDT'])
         }
 
         diff_cex = {
-            'DOT': -diff_agent['DOT'] - diff_dex['DOT'],
-            'USDT': -diff_agent['USDT'] - diff_dex['USDT'],
+            'DOT': -diff_max['DOT'] - diff_dex['DOT'],
+            'USDT': -diff_max['USDT'] - diff_dex['USDT'],
             'HDX': 0
         }
 
