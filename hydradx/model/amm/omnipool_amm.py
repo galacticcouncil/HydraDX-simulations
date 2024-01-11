@@ -175,14 +175,14 @@ class OmnipoolState(AMM):
             liquidity: float,
             lrna: float,
             shares: float,
-            protocol_shares: float,
+            protocol_shares: float = 0,
             weight_cap: float = 1
     ):
         self.asset_list.append(tkn)
         self.liquidity[tkn] = liquidity
         self.lrna[tkn] = lrna
         self.shares[tkn] = shares
-        self.protocol_shares[tkn] = protocol_shares
+        self.protocol_shares[tkn] = protocol_shares or shares
         self.weight_cap[tkn] = weight_cap
         if hasattr(self, 'asset_fee'):
             self.asset_fee[tkn] = basic_fee(self.default_asset_fee).assign(self, tkn)
@@ -232,6 +232,12 @@ class OmnipoolState(AMM):
         # base this just on the LRNA/USD exchange rate in the pool
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
+    def sell_limit(self, tkn_buy: str, tkn_sell: str):
+        return float('inf')
+
+    def buy_limit(self, tkn_buy: str, tkn_sell: str):
+        return self.liquidity[tkn_buy]
+
     def copy(self):
         copy_state = copy.deepcopy(self)
         copy_state.fail = ''
@@ -253,6 +259,7 @@ class OmnipoolState(AMM):
             f'Omnipool: {self.unique_id}\n'
             f'********************************\n'
             f'tvl cap: {self.tvl_cap}\n'
+            f'LRNA imbalance: {self.lrna_imbalance}\n'
             f'lrna fee:\n\n'
             f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n\n'
             f'asset fee:\n\n'
@@ -277,7 +284,8 @@ class OmnipoolState(AMM):
                 [repr(pool) for pool in self.sub_pools.values()]
             ]
         ) + '\n)\n' + f'oracles: (\n' + '\n\n'.join([
-            f'    name: {name}\n    length: {oracle.length}' for name, oracle in self.oracles.items()
+            f'    name: {name}\n    length: {oracle.length}\n'
+            for name, oracle in self.oracles.items()
         ]) + f'\n)\n\nerror message: {self.fail or "None"}'
 
     def calculate_sell_from_buy(
@@ -326,29 +334,41 @@ class OmnipoolState(AMM):
         delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         return -delta_Rj
 
-    def buy_spot(self, tkn: str, numeraire: str = ''):
-        if tkn not in self.asset_list:
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
+        if fee is None:
+            fee = {
+                'lrna': self.lrna_fee[tkn_sell].compute(),
+                'asset': self.asset_fee[tkn_buy].compute()
+            }
+        elif not isinstance(fee, dict):
+            fee = {
+                'lrna': fee,
+                'asset': fee
+            }
+        if tkn_buy not in self.asset_list:
             return 0
-        elif numeraire not in self.asset_list:
+        elif tkn_sell not in self.asset_list:
             return 0
-        elif numeraire == '':
-            numeraire = self.stablecoin
-        return (
-            price(self, tkn, numeraire)
-            / (1 - self.lrna_fee[numeraire].compute()) / (1 - self.asset_fee[tkn].compute())
-        )
+        else:
+            return price(self, tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
 
-    def sell_spot(self, tkn: str, numeraire: str = ''):
-        if tkn not in self.asset_list:
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
+        if fee is None:
+            fee = {
+                'lrna': self.lrna_fee[tkn_sell].compute(),
+                'asset': self.asset_fee[tkn_buy].compute()
+            }
+        elif not isinstance(fee, dict):
+            fee = {
+                'lrna': fee,
+                'asset': fee
+            }
+        if tkn_buy not in self.asset_list:
             return 0
-        elif numeraire not in self.asset_list:
+        elif tkn_sell not in self.asset_list:
             return 0
-        elif numeraire == '':
-            numeraire = self.stablecoin
-        return (
-            price(self, tkn, numeraire)
-            * (1 - self.lrna_fee[numeraire].compute()) * (1 - self.asset_fee[tkn].compute())
-        )
+        else:
+            return price(self, tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
 
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found
@@ -1051,7 +1071,9 @@ class OmnipoolState(AMM):
     def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
         # assets is a dict of token: quantity
         # returns the value of the assets in USD
-        usd_synonyms = ['USD']
+        if equivalency_map is None:
+            equivalency_map = {}
+        usd_synonyms = [self.stablecoin]
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
                 usd_synonyms.append(eq)

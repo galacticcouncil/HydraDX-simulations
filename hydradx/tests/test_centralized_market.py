@@ -18,11 +18,11 @@ def order_book_strategy(draw, base_price: float = 0, book_depth: float = 0, pric
     book_depth = book_depth or draw(st.integers(min_value=1, max_value=1000))
     return OrderBook(
         bids=[
-            [base_price - i * base_price * price_increment, book_depth / price_points]
+            [mpf(base_price - i * base_price * price_increment), mpf(book_depth / price_points)]
             for i in range(1, price_points + 1)
         ],
         asks=[
-            [base_price + i * base_price * price_increment, book_depth / price_points]
+            [mpf(base_price + i * base_price * price_increment), mpf(book_depth / price_points)]
             for i in range(1, price_points + 1)
         ]
     )
@@ -42,23 +42,18 @@ initial_agent = Agent(
     trade_fee=fee_strat
 )
 def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                },
-                trade_fee=trade_fee
-            )
+    kraken = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): order_book
         },
-        agents={'agent': initial_agent}
+        trade_fee=trade_fee
     )
+    sell_agent = initial_agent.copy()
     tkn_buy = 'ETH'
     tkn_sell = 'DAI'
-    sell_state = initial_state.copy()
-    sell_state.execute_swap(
-        agent_id='agent',
-        pool_id='Kraken',
+    sell_state = kraken.copy()
+    sell_state.swap(
+        agent=sell_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         sell_quantity=sell_quantity
@@ -66,29 +61,28 @@ def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBoo
 
     value_bought = sum(
         [sell_quantity * price for (price, sell_quantity)
-         in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+         in kraken.order_book[(tkn_buy, tkn_sell)].asks]
     ) - sum(
         [sell_quantity * price for (price, sell_quantity)
-         in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
+         in sell_state.order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - sell_state.agents['agent'].holdings[tkn_sell]
+    quantity_sold = sell_agent.initial_holdings[tkn_sell] - sell_agent.holdings[tkn_sell]
 
-    if value_bought != pytest.approx(quantity_sold):
-        raise AssertionError('Central market sell trade failed to execute correctly.')
-
-    quantity_bought = sell_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
-
-    value_sold = sum(
-        [sell_quantity for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    ) - sum(
-        [sell_quantity for (price, sell_quantity) in sell_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
-    )
-
-    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
+    if value_bought != pytest.approx(quantity_sold * (1 - kraken.trade_fee), rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_sold != pytest.approx(sell_quantity):
+    quantity_bought = sell_agent.holdings[tkn_buy] - sell_agent.initial_holdings[tkn_buy]
+
+    value_sold = sum([
+        kraken.order_book[(tkn_buy, tkn_sell)].asks[i][1] - sell_state.order_book[(tkn_buy, tkn_sell)].asks[i][1]
+        for i in range(len(kraken.order_book[(tkn_buy, tkn_sell)].asks))
+    ])
+
+    if value_sold != pytest.approx(quantity_bought, rel=1e-20):
+        raise AssertionError('Trade did not execute correctly.')
+
+    if quantity_sold != pytest.approx(sell_quantity, rel=1e-20):
         raise AssertionError('Sell quantity was not applied correctly.')
 
 
@@ -98,53 +92,47 @@ def test_sell_quote(sell_quantity: float, trade_fee: float, order_book: OrderBoo
     trade_fee=fee_strat
 )
 def test_sell_base(sell_quantity: float, trade_fee: float, order_book: OrderBook):
-    initial_state = GlobalState(
-        pools={
-            'Kraken': CentralizedMarket(
-                order_book={
-                    ('ETH', 'DAI'): order_book
-                },
-                trade_fee=trade_fee
-            )
+    kraken = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): order_book
         },
-        agents={'agent': initial_agent}
+        trade_fee=trade_fee
     )
+    buy_agent = initial_agent.copy()
     tkn_buy = 'DAI'
     tkn_sell = 'ETH'
-    buy_state = initial_state.copy()
-    buy_state.execute_swap(
-        pool_id='Kraken',
-        agent_id='agent',
+    buy_state = kraken.copy()
+    buy_state.swap(
+        agent=buy_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         sell_quantity=sell_quantity
     )
 
-    quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
+    quantity_sold = buy_agent.initial_holdings[tkn_sell] - buy_agent.holdings[tkn_sell]
 
-    value_bought = sum(
-        [sell_quantity for (price, sell_quantity) in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    ) - sum(
-        [sell_quantity for (price, sell_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
-    )
+    value_bought = sum([
+        kraken.order_book[(tkn_sell, tkn_buy)].bids[i][1] - buy_state.order_book[(tkn_sell, tkn_buy)].bids[i][1]
+        for i in range(len(kraken.order_book[(tkn_sell, tkn_buy)].bids))
+    ])
 
-    if value_bought != pytest.approx(quantity_sold):
+    if value_bought != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Central market sell trade failed to execute correctly.')
 
     value_sold = sum(
         [sell_quantity * price for (price, sell_quantity)
-         in initial_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+         in kraken.order_book[(tkn_sell, tkn_buy)].bids]
     ) - sum(
         [sell_quantity * price for (price, sell_quantity)
-         in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
+         in buy_state.order_book[(tkn_sell, tkn_buy)].bids]
     )
 
-    quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
+    quantity_bought = buy_agent.holdings[tkn_buy] - buy_agent.initial_holdings[tkn_buy]
 
-    if value_sold * (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_bought):
+    if value_sold * (1 - kraken.trade_fee) != pytest.approx(quantity_bought):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_sold != pytest.approx(sell_quantity):
+    if quantity_sold != pytest.approx(sell_quantity, rel=1e20):
         raise AssertionError('Sell quantity was not applied correctly.')
 
 
@@ -186,7 +174,7 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
 
     quantity_bought = buy_state.agents['agent'].holdings[tkn_buy] - initial_state.agents['agent'].holdings[tkn_buy]
 
-    if value_sold != pytest.approx(quantity_bought):
+    if quantity_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(value_sold, rel=1e-20):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
@@ -197,10 +185,10 @@ def test_buy_quote(buy_quantity: float, trade_fee: float, order_book: OrderBook)
         [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_sell, tkn_buy)].bids]
     )
 
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_bought != pytest.approx(buy_quantity):
+    if quantity_bought != pytest.approx(buy_quantity, rel=1e-20):
         raise AssertionError('Buy quantity was not applied correctly.')
 
 
@@ -240,7 +228,7 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
         [buy_quantity for (price, buy_quantity) in buy_state.pools['Kraken'].order_book[(tkn_buy, tkn_sell)].asks]
     )
 
-    if value_sold != pytest.approx(quantity_bought):
+    if value_sold != pytest.approx(quantity_bought, rel=1e-20):
         raise AssertionError('Central market buy trade failed to execute correctly.')
 
     value_bought = sum(
@@ -253,10 +241,10 @@ def test_buy_base(buy_quantity: float, order_book: OrderBook, trade_fee):
 
     quantity_sold = initial_state.agents['agent'].holdings[tkn_sell] - buy_state.agents['agent'].holdings[tkn_sell]
 
-    if value_bought * (1 + initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold):
+    if value_bought / (1 - initial_state.pools['Kraken'].trade_fee) != pytest.approx(quantity_sold, rel=1e-20):
         raise AssertionError('Fee was not applied correctly.')
 
-    if quantity_bought != pytest.approx(buy_quantity):
+    if quantity_bought != pytest.approx(buy_quantity, rel=1e-20):
         raise AssertionError('Buy quantity was not applied correctly.')
 
         
@@ -341,82 +329,192 @@ def test_calculate_buy_from_sell(order_book: OrderBook, sell_quantity: float):
 
 
 @given(
-    order_book=order_book_strategy(book_depth=100, price_points=2)
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
 )
-def test_buy_spot(order_book: OrderBook):
+def test_buy_quote_price(order_book: OrderBook, trade_fee: float):
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): order_book
-        },
+        order_book={('ETH', 'DAI'): order_book},
+        trade_fee=trade_fee
     )
     test_cex = cex.copy()
     test_agent = initial_agent.copy()
-    buy_spot = cex.buy_spot('ETH', 'DAI')
+    eth_per_dai = cex.buy_spot(tkn_buy='DAI', tkn_sell='ETH')
+    dai_per_eth = cex.sell_spot(tkn_sell='ETH', tkn_buy='DAI')
     test_cex.swap(
-        tkn_sell='DAI',
-        tkn_buy='ETH',
-        buy_quantity=1,
-        agent=test_agent
-    )
-    ex_price = (
-            (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
-            / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
-    )
-    if buy_spot != pytest.approx(ex_price):
-        raise AssertionError('buy spot gave incorrect price')
-
-    test_agent = initial_agent.copy()
-    buy_spot = cex.buy_spot('DAI', 'ETH')
-    test_cex.swap(
-        tkn_sell='ETH',
         tkn_buy='DAI',
+        tkn_sell='ETH',
         buy_quantity=1,
         agent=test_agent
     )
-    ex_price = (
-            (test_agent.initial_holdings['ETH'] - test_agent.holdings['ETH'])
-            / (test_agent.holdings['DAI'] - test_agent.initial_holdings['DAI'])
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
     )
-    if buy_spot != pytest.approx(ex_price):
-        raise AssertionError('buy spot gave incorrect price')
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+        raise AssertionError('buy spot gave incorrect price for quote asset')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price for base asset')
 
 
 @given(
-    order_book=order_book_strategy(book_depth=100, price_points=2)
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
 )
-def test_sell_spot(order_book: OrderBook):
+def test_sell_quote_price(order_book: OrderBook, trade_fee: float):
     cex = CentralizedMarket(
-        order_book={
-            ('ETH', 'DAI'): order_book
-        },
+        order_book={('ETH', 'DAI'): order_book},
+        trade_fee=trade_fee
     )
     test_cex = cex.copy()
     test_agent = initial_agent.copy()
-    sell_spot = cex.sell_spot('ETH', 'DAI')
+    eth_per_dai = cex.sell_spot(tkn_sell='DAI', tkn_buy='ETH')
+    dai_per_eth = cex.buy_spot(tkn_buy='ETH', tkn_sell='DAI')
     test_cex.swap(
         tkn_sell='DAI',
         tkn_buy='ETH',
         sell_quantity=1,
         agent=test_agent
     )
-    ex_price = (
-            (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
-            / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
     )
-    if sell_spot != pytest.approx(ex_price):
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
         raise AssertionError('sell spot gave incorrect price')
 
+
+@given(
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
+)
+def test_buy_base_price(order_book: OrderBook, trade_fee: float):
+    cex = CentralizedMarket(
+        order_book={('ETH', 'DAI'): order_book},
+        trade_fee=trade_fee
+    )
+    test_cex = cex.copy()
     test_agent = initial_agent.copy()
-    sell_spot = cex.sell_spot('DAI', 'ETH')
+    eth_per_dai = cex.sell_spot(tkn_sell='DAI', tkn_buy='ETH')
+    dai_per_eth = cex.buy_spot(tkn_buy='ETH', tkn_sell='DAI')
+    test_cex.swap(
+        tkn_buy='ETH',
+        tkn_sell='DAI',
+        buy_quantity=1,
+        agent=test_agent
+    )
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+    )
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
+        raise AssertionError('buy spot gave incorrect price')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+
+
+@given(
+    order_book=order_book_strategy(book_depth=10000, price_points=1),
+    trade_fee=fee_strat
+)
+def test_sell_base_price(order_book: OrderBook,trade_fee: float):
+    cex = CentralizedMarket(
+        order_book={('ETH', 'DAI'): order_book},
+        trade_fee=trade_fee
+    )
+    test_cex = cex.copy()
+    test_agent = initial_agent.copy()
+    eth_per_dai = cex.buy_spot(tkn_sell='ETH', tkn_buy='DAI')
+    dai_per_eth = cex.sell_spot(tkn_buy='DAI', tkn_sell='ETH')
     test_cex.swap(
         tkn_sell='ETH',
         tkn_buy='DAI',
         sell_quantity=1,
         agent=test_agent
     )
-    ex_price = (
-            (test_agent.initial_holdings['ETH'] - test_agent.holdings['ETH'])
-            / (test_agent.holdings['DAI'] - test_agent.initial_holdings['DAI'])
+    ex_price_dai = (
+        (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+        / (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
     )
-    if sell_spot != pytest.approx(ex_price):
+    ex_price_eth = (
+        (test_agent.initial_holdings['DAI'] - test_agent.holdings['DAI'])
+        / (test_agent.holdings['ETH'] - test_agent.initial_holdings['ETH'])
+    )
+    if dai_per_eth != pytest.approx(ex_price_eth, rel=1e-20):
         raise AssertionError('sell spot gave incorrect price')
+    if eth_per_dai != pytest.approx(ex_price_dai, rel=1e-20):
+        raise AssertionError('sell spot gave incorrect price')
+
+
+@given(
+    order_book=order_book_strategy(book_depth=100, price_points=2),
+    trade_fee=fee_strat
+)
+def test_buy_sell_limit(order_book: OrderBook, trade_fee: float):
+    initial_cex = CentralizedMarket(
+        order_book={
+            ('ETH', 'DAI'): order_book
+        },
+        trade_fee=trade_fee
+    )
+    test_buy_agent = initial_agent.copy()
+    test_buy_cex = initial_cex.copy()
+    test_buy_cex.swap(
+        tkn_buy='DAI',
+        tkn_sell='ETH',
+        buy_quantity=test_buy_cex.buy_limit(tkn_buy='DAI', tkn_sell='ETH'),
+        agent=test_buy_agent
+    )
+    test_buy_cex.swap(
+        tkn_buy='ETH',
+        tkn_sell='DAI',
+        buy_quantity=test_buy_cex.buy_limit(tkn_buy='ETH', tkn_sell='DAI'),
+        agent=test_buy_agent
+    )
+    # this should exactly exhaust the first price point
+    if len(test_buy_cex.order_book[('ETH', 'DAI')].bids) != 1 or (
+            test_buy_cex.order_book[('ETH', 'DAI')].asks[0][1] != initial_cex.order_book[('ETH', 'DAI')].asks[1][1]
+    ):
+        raise AssertionError('quote, base buy limit not correct')
+    if len(test_buy_cex.order_book[('ETH', 'DAI')].asks) != 1 or (
+            test_buy_cex.order_book[('ETH', 'DAI')].asks[0][1] != initial_cex.order_book[('ETH', 'DAI')].asks[1][1]
+    ):
+        raise AssertionError('base, quote buy limit not correct')
+    test_sell_cex = initial_cex.copy()
+    test_sell_agent = initial_agent.copy()
+    test_sell_cex.swap(
+        tkn_sell='DAI',
+        tkn_buy='ETH',
+        sell_quantity=test_sell_cex.sell_limit(tkn_sell='DAI', tkn_buy='ETH'),
+        agent=test_sell_agent
+    )
+    test_sell_cex.swap(
+        tkn_sell='ETH',
+        tkn_buy='DAI',
+        sell_quantity=test_sell_cex.sell_limit(tkn_sell='ETH', tkn_buy='DAI'),
+        agent=test_sell_agent
+    )
+    # this should exactly exhaust the first price point (or at least almost)
+    if (
+            len(test_sell_cex.order_book[('ETH', 'DAI')].asks) != 1
+            and test_sell_cex.order_book[('ETH', 'DAI')].asks[0][1] > 1e-20
+    ):
+        raise AssertionError('quote, base sell limit not correct')
+    if len(test_sell_cex.order_book[('ETH', 'DAI')].bids) != 1 or (
+            test_sell_cex.order_book[('ETH', 'DAI')].bids[0][1] != initial_cex.order_book[('ETH', 'DAI')].bids[1][1]
+    ):
+        raise AssertionError('base, quote sell limit not correct')

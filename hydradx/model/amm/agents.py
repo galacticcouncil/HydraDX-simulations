@@ -47,8 +47,14 @@ class Agent:
             ) + ')\n')
 
     def copy(self):
-        copy_self = copy.deepcopy(self)
-        return copy_self
+        # copy_self = Agent(
+        #     holdings={k: v for k, v in self.holdings.items()},
+        #     share_prices={k: v for k, v in self.share_prices.items()},
+        #     delta_r={k: v for k, v in self.delta_r.items()},
+        #     trade_strategy=self.trade_strategy,
+        #     unique_id=self.unique_id
+        # )
+        return copy.deepcopy(self)
 
 
 class AgentArchiveState:
