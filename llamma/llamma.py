@@ -33,6 +33,12 @@ def get_A(p_down, p_up):
 
 
 def solve_quadratic(a, b, c):
+    if a == 0:
+        if b == 0:
+            return None
+        return -c / b
+    if b ** 2 - 4 * a * c < 0:
+        return None
     return (-b + math.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
@@ -44,7 +50,7 @@ def solve_y0(x, y, price, p_up, A):
     return solve_quadratic(a, b, c)
 
 
-def execute_llama_swap(state: LlammaState, dx):
+def execute_llamma_sell(state: LlammaState, dx):
     dy = xyk_out_given_in(state.x, state.y, dx)
     return LlammaState(state.x + dx, state.y + dy, state.p_up, state.p_down, state.oracle_price, state.A, state.y0)
 
