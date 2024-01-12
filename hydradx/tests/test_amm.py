@@ -1,11 +1,11 @@
 import random
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
-from hydradx.model.amm.global_state import GlobalState, fluctuate_prices, swap
+from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
 from hydradx.model import run
@@ -141,12 +141,6 @@ def test_simulation(initial_state: GlobalState):
 
     initial_wealth = initial_state.total_wealth()
     events = run.run(initial_state, time_steps=5, silent=True)
-    events = processing.postprocessing(events, optional_params=[
-        'pool_val', 'holdings_val', 'impermanent_loss', 'trade_volume'
-    ])
-
-    # pu.plot(events, asset='all')
-    # pu.plot(events, agent='Agent1', prop=['holdings', 'holdings_val'])
 
     # property test: is there still the same total wealth held by all pools + agents?
     final_state = events[-1]
@@ -237,30 +231,34 @@ def test_arbitrage_pool_balance(initial_state):
 
 
 @settings(deadline=500)
-@given(global_state_config(
-    external_market={'HDX': 0, 'BSX': 0},  # config function will fill these in with random values
-    pools={
-        'HDX/BSX': ConstantProductPoolState(
-            {
-                'HDX': 0,
-                'BSX': 0
-            },
-            trade_fee=0.1
-        )
-    },
-    agents={
-        'arbitrageur': Agent(
-            holdings={'USD': 10000000000},  # lots
-            trade_strategy=constant_product_arbitrage('HDX/BSX')
-        )
-    },
-    evolve_function=fluctuate_prices(volatility={'HDX': 1, 'BSX': 1})
-))
-def test_arbitrage_profitability(initial_state: GlobalState):
+@given(
+    bsx_balance=st.floats(min_value=1000, max_value=100000),
+    hdx_balance=st.floats(min_value=1000, max_value=100000),
+    hdx_price=st.floats(min_value=0.01, max_value=1000),
+    bsx_price=st.floats(min_value=0.01, max_value=1000)
+)
+def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price):
+    initial_state = GlobalState(
+        pools={
+            'HDX/BSX': ConstantProductPoolState(
+                {
+                    'HDX': hdx_balance,
+                    'BSX': bsx_balance
+                },
+                trade_fee=0.1
+            )
+        },
+        agents={
+            'arbitrageur': Agent(
+                holdings={'USD': 10000000000},  # lots
+                trade_strategy=constant_product_arbitrage('HDX/BSX')
+            )
+        },
+        external_market={'HDX': hdx_price, 'BSX': bsx_price}
+    )
     arb = initial_state.agents['arbitrageur']
     state = initial_state
     for i in range(50):
-        state.evolve()
         prev_holdings = arb.holdings['USD']
         arb.trade_strategy.execute(state, 'arbitrageur')
         if arb.holdings['USD'] < prev_holdings:
@@ -283,7 +281,7 @@ def test_arbitrage_profitability(initial_state: GlobalState):
     }
 ), asset_price_strategy)
 def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
-    initial_state.external_market['Y'] = initial_state.external_market['X'] * target_price
+    initial_state.external_market['Y'] = initial_state.price('X') * target_price
     algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
     recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
 
@@ -346,26 +344,24 @@ def test_buy_fee_derivation(initial_state: GlobalState):
         tkn_sell = asset_path[i+1]
         pool_id = f'{tkn_buy}/{tkn_sell}' if f'{tkn_buy}/{tkn_sell}' in initial_state.pools else f'{tkn_sell}/{tkn_buy}'
         pool_path.append(pool_id)
-        next_feeless_state.append(swap(
-            next_feeless_state[-1],
-            pool_id=pool_id,
-            agent_id='trader',
+        next_feeless_state.append(next_feeless_state[-1].copy())
+        next_feeless_state[-1].pools[pool_id].swap(
+            agent=next_feeless_state[-1].agents['trader'],
             tkn_buy=tkn_buy,
             tkn_sell=tkn_sell,
             buy_quantity=feeless_buy_amount
-        ))
+        )
         feeless_buy_amount = (
             next_feeless_state[-2].agents['trader'].holdings[tkn_sell]
             - next_feeless_state[-1].agents['trader'].holdings[tkn_sell]
         )
-        next_state.append(swap(
-            next_state[-1],
-            pool_id=pool_id,
-            agent_id='trader',
+        next_state.append(next_state[-1].copy())
+        next_state[-1].pools[pool_id].swap(
+            agent=next_state[-1].agents['trader'],
             tkn_buy=tkn_buy,
             tkn_sell=tkn_sell,
             buy_quantity=buy_amount
-        ))
+        )
         buy_amount = (
             next_state[-2].agents['trader'].holdings[tkn_sell]
             - next_state[-1].agents['trader'].holdings[tkn_sell]
@@ -407,26 +403,24 @@ def test_sell_fee_derivation(initial_state: GlobalState):
         tkn_sell = asset_path[i+1]
         pool_id = f'{tkn_buy}/{tkn_sell}' if f'{tkn_buy}/{tkn_sell}' in initial_state.pools else f'{tkn_sell}/{tkn_buy}'
         pool_path.append(pool_id)
-        next_feeless_state.append(swap(
-            next_feeless_state[-1],
-            pool_id=pool_id,
-            agent_id='trader',
+        next_feeless_state.append(next_feeless_state[-1].copy())
+        next_feeless_state[-1].pools[pool_id].swap(
+            agent=next_feeless_state[-1].agents['trader'],
             tkn_buy=tkn_buy,
             tkn_sell=tkn_sell,
             sell_quantity=feeless_sell_amount
-        ))
+        )
         feeless_sell_amount = (
             next_feeless_state[-1].agents['trader'].holdings[tkn_buy]
             - next_feeless_state[-2].agents['trader'].holdings[tkn_buy]
         )
-        next_state.append(swap(
-            next_state[-1],
-            pool_id=pool_id,
-            agent_id='trader',
+        next_state.append(next_state[-1].copy())
+        next_state[-1].pools[pool_id].swap(
+            agent=next_state[-1].agents['trader'],
             tkn_buy=tkn_buy,
             tkn_sell=tkn_sell,
             sell_quantity=sell_amount
-        ))
+        )
         sell_amount = (
             next_state[-1].agents['trader'].holdings[tkn_buy]
             - next_state[-2].agents['trader'].holdings[tkn_buy]

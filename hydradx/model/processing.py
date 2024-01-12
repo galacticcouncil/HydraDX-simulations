@@ -1,12 +1,14 @@
-from csv import DictReader, writer, reader
-from dataclasses import dataclass
+import json
+from csv import reader
 import requests
 from zipfile import ZipFile
 import datetime
 import os
+from hydradxapi import HydraDX
+import time
 
-from .amm.global_state import GlobalState, withdraw_all_liquidity, AMM, value_assets
-# from .amm.agents import Agent
+from .amm.centralized_market import OrderBook, CentralizedMarket
+from .amm.global_state import GlobalState, value_assets
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -52,14 +54,6 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
     if unrecognized_params:
         raise ValueError(f'Unrecognized parameter {unrecognized_params}')
 
-    # a little pre-processing
-    if 'deposit_val' in optional_params:
-        # move the agents' liquidity deposits back into holdings, as something to compare against later
-        for agent_id in initial_state.agents:
-            # do it this convoluted way because we're pretending each agent withdrew their assets alone,
-            # isolated from any effects of the other agents withdrawing *their* assets
-            withdraw_state.agents[agent_id] = withdraw_all_liquidity(initial_state.copy(), agent_id).agents[agent_id]
-
     for step in events:
         state: GlobalState = step
 
@@ -103,7 +97,7 @@ def import_binance_prices(
 ) -> dict[str: list[float]]:
 
     start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), ("%Y-%m-%d")) for i in range(days)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
 
     # find the data folder
     while not os.path.exists("./data"):
@@ -156,7 +150,7 @@ def import_monthly_binance_prices(
     start_mth, start_year = start_month.split(' ')
 
     start_date = datetime.datetime.strptime(start_mth + ' 15 ' + start_year, "%b %d %Y")
-    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), ("%Y-%m")) for i in range(months)]
+    dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i * 30), "%Y-%m") for i in range(months)]
 
     # find the data folder
     while not os.path.exists("./data"):
@@ -199,14 +193,203 @@ def import_monthly_binance_prices(
     return price_data
 
 
-# def import_prices(input_path: str, input_filename: str) -> list[PriceTick]:
-#     price_data = []
-#     with open(input_path + input_filename, newline='') as input_file:
-#         fieldnames = ['timestamp', 'price']
-#         reader = DictReader(input_file, fieldnames=fieldnames)
-#         next(reader)  # skip header
-#         for row in reader:
-#             price_data.append(PriceTick(int(row["timestamp"]), float(row["price"])))
-#
-#     price_data.sort(key=lambda x: x.timestamp)
-#     return price_data
+def convert_kraken_orderbook(x: dict) -> OrderBook:
+    result = x['result']
+    ks = list(result.keys())
+    if len(ks) > 1:
+        raise ValueError('Multiple keys in result')
+    k = ks[0]
+    ob = x['result'][k]
+
+    ob_obj = OrderBook(
+        bids=[[float(bid[0]), float(bid[1])] for bid in ob['bids']],
+        asks=[[float(ask[0]), float(ask[1])] for ask in ob['asks']]
+    )
+    return ob_obj
+
+
+def convert_binance_orderbook(tkn_pair: tuple, x: dict) -> OrderBook:
+    orderbook = x
+
+    ob_obj = OrderBook(
+        bids=[[float(bid[0]), float(bid[1])] for bid in orderbook['bids']],
+        asks=[[float(ask[0]), float(ask[1])] for ask in orderbook['asks']]
+    )
+    return ob_obj
+
+
+def get_orderbooks_from_file(input_path: str) -> dict:
+    file_ls = os.listdir(input_path)
+    ob_dict = {'kraken': {}, 'binance': {}}
+    for filename in file_ls:
+        if filename.startswith('kraken_orderbook'):
+            tkn_pair = tuple(filename.split('_')[2].split('-'))
+            filepath = input_path + filename
+            with open(filepath, newline='') as input_file:
+                y = json.load(input_file)
+                ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(y)
+        elif filename.startswith('binance_orderbook'):
+            tkn_pair = tuple(filename.split('_')[2].split('-'))
+            filepath = input_path + filename
+            with open(filepath, newline='') as input_file:
+                y = json.load(input_file)
+                ob_dict['binance'][tkn_pair] = convert_binance_orderbook(tkn_pair, y)
+
+    return ob_dict
+
+
+def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
+    orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
+    resp = requests.get(orderbook_url)
+    y = resp.json()
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
+        ts = time.time()
+        with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
+            json.dump(y, output_file)
+    return convert_kraken_orderbook(y)
+
+
+def get_binance_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
+    orderbook_url = 'https://api.binance.com/api/v3/depth?symbol=' + tkn_pair[0] + tkn_pair[1]
+    resp = requests.get(orderbook_url)
+    y = resp.json()
+    if 'msg' in y:
+        print(y['msg'])
+    elif archive:
+        ts = time.time()
+        with open(f'./archive/binance_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
+            json.dump(y, output_file)
+    return convert_binance_orderbook(tkn_pair, y)
+
+
+def get_unique_name(ls: list[str], name: str) -> str:
+    if name not in ls:
+        return name
+    else:
+        c = 1
+        while name + str(c).zfill(3) in ls:
+            c += 1
+        return name + str(c).zfill(3)
+
+
+def get_omnipool_data(rpc: str, archive: bool = False):
+    with HydraDX(rpc) as chain:
+
+        asset_list = []
+        fees = {}
+        tokens = {}
+        asset_map = {}
+
+        op_state = chain.api.omnipool.state()
+
+        for asset_id in op_state:
+
+            fee = op_state[asset_id].fees
+            decimals = op_state[asset_id].asset.decimals
+            symbol = op_state[asset_id].asset.symbol
+
+            tkn = get_unique_name(asset_list, symbol)
+            asset_list.append(tkn)
+            asset_map[asset_id] = tkn
+            tokens[tkn] = {
+                'liquidity': op_state[asset_id].reserve / 10 ** decimals,
+                'LRNA': op_state[asset_id].hub_reserve / 10 ** 12
+            }
+            fees[tkn] = {"asset_fee": fee.asset_fee / 100, "protocol_fee": fee.protocol_fee / 100}
+
+    if archive:
+        ts = time.time()
+        with open(f'./archive/omnipool_data_tokens_{ts}.json', 'w') as output_file:
+            json.dump(tokens, output_file)
+        with open(f'./archive/omnipool_data_fees_{ts}.json', 'w') as output_file:
+            json.dump(fees, output_file)
+        with open(f'./archive/omnipool_data_assetmap_{ts}.json', 'w') as output_file:
+            json.dump(asset_map, output_file)
+
+    return asset_list, asset_map, tokens, fees
+
+
+def get_omnipool_data_from_file(path: str):
+    file_ls = os.listdir(path)
+    tokens = {}
+    asset_map = {}
+    fees = {}
+    for filename in file_ls:
+        if filename.startswith('omnipool_data'):
+            if filename.split('_')[2] == 'tokens':
+                with open(path + filename, newline='') as json_file:
+                    tokens = json.load(json_file)
+            elif filename.split('_')[2] == 'fees':
+                with open(path + filename, newline='') as json_file:
+                    fees = json.load(json_file)
+            elif filename.split('_')[2] == 'assetmap':
+                with open(path + filename, newline='') as json_file:
+                    asset_map_str = json.load(json_file)
+                    # print(asset_map_str)
+                    asset_map = {int(k): v for k, v in asset_map_str.items()}
+
+    asset_list = list(asset_map.values())
+    return asset_list, asset_map, tokens, fees
+
+
+def get_centralized_market(config, exchange_name, trade_fee: float, archive: bool) -> CentralizedMarket:
+
+    order_books = {}
+    for arb_cfg in config:
+        arb_cfg['tkns'] = tuple(arb_cfg['tkns'])
+        arb_cfg['tkn_ids'] = tuple(arb_cfg['tkn_ids'])
+        arb_cfg['order_book'] = tuple(arb_cfg['order_book'])
+        tkn_pair = arb_cfg['order_book']
+        exchange = arb_cfg['exchange']
+        if tkn_pair not in order_books:
+            if exchange == exchange_name:
+                if exchange_name == 'kraken':
+                    order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=archive)
+                elif exchange_name == 'binance':
+                    order_books[tkn_pair] = get_binance_orderbook(tkn_pair, archive=archive)
+                else:
+                    raise ValueError(f"Exchange {exchange_name} not supported")
+
+    return CentralizedMarket(
+        unique_id=exchange_name,
+        order_book=order_books,
+        trade_fee=trade_fee
+    )
+
+
+def convert_config(cfg: list[dict]) -> list[dict]:
+    """
+    Convert the config from the format used in the UI to the format used in the backend.
+    """
+
+    asset_map = {
+        100: '4-Pool',
+        0: 'HDX',
+        10: 'USDT',
+        20: 'WETH',
+        16: 'GLMR',
+        11: 'iBTC',
+        14: 'BNC',
+        19: 'WBTC',
+        15: 'vDOT',
+        13: 'CFG',
+        5: 'DOT',
+        8: 'PHA',
+        12: 'ZTG',
+        17: 'INTR',
+        9: 'ASTR'
+    }
+    # asset_map = get_omnipool_data("wss://rpc.hydradx.cloud")[1]
+
+    return [
+        {
+            'exchanges': {
+                'omnipool': tuple(asset_map[tkn_id] for tkn_id in cfg_item['tkn_ids']),
+                cfg_item['exchange']: cfg_item['order_book']
+            },
+            'buffer': cfg_item['buffer']
+        }
+        for cfg_item in cfg
+    ]
