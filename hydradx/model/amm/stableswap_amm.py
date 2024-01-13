@@ -149,6 +149,20 @@ class StableSwapPoolState(AMM):
         else:
             return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_buy]
+
+    def buy_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_buy]
+
+    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
+        reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
+        return (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
+
+    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
+        reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
+        return (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+
     def price(self, tkn, denomination: str = ''):
         """
         return the price of TKN denominated in NUMÉRAIRE
