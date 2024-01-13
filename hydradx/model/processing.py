@@ -242,8 +242,8 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if 'msg' in y:
-        print(y['msg'])
+    if 'error' in y:
+        print(y['error'])
     elif archive:
         ts = time.time()
         with open(f'./archive/kraken_orderbook_{tkn_pair[0]}-{tkn_pair[1]}_{ts}.json', 'w') as output_file:
@@ -334,17 +334,19 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def get_centralized_market(config, exchange_name, trade_fee: float, archive: bool) -> CentralizedMarket:
+def get_centralized_market(
+        config: list,
+        exchange_name: str,
+        trade_fee: float,
+        archive: bool
+) -> CentralizedMarket:
 
     order_books = {}
     for arb_cfg in config:
-        arb_cfg['tkns'] = tuple(arb_cfg['tkns'])
-        arb_cfg['tkn_ids'] = tuple(arb_cfg['tkn_ids'])
-        arb_cfg['order_book'] = tuple(arb_cfg['order_book'])
-        tkn_pair = arb_cfg['order_book']
-        exchange = arb_cfg['exchange']
-        if tkn_pair not in order_books:
-            if exchange == exchange_name:
+        exchanges = arb_cfg['exchanges'].keys()
+        if exchange_name in exchanges:
+            tkn_pair = tuple(arb_cfg['exchanges'][exchange_name])
+            if tkn_pair not in order_books:
                 if exchange_name == 'kraken':
                     order_books[tkn_pair] = get_kraken_orderbook(tkn_pair, archive=archive)
                 elif exchange_name == 'binance':
