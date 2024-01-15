@@ -845,8 +845,8 @@ def test_stableswap_arb():
     # binance = cex['binance']
 
     fourpool = StableSwapPoolState(
-        tokens={'USDT23': 991000, 'USDT10': 11020000,'USDC': 1130000, 'DAI': 1100000},
-        amplification=1,
+        tokens={'USDT23': 991000, 'USDT10': 1020000, 'USDC': 2130000, 'DAI': 1100000},
+        amplification=50,
         trade_fee=0.0005,
     )
 
@@ -892,3 +892,6 @@ def test_stableswap_arb():
             raise AssertionError('Loss detected.')
 
     print (f"Profit: {profit_total}")
+    print("4pool balance:")
+    for tkn in fourpool.asset_list:
+        print(f"{tkn}: {fourpool.liquidity[tkn]} --> {test_exchanges['4pool'].liquidity[tkn]}")
