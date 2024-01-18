@@ -15,4 +15,4 @@ sympy
 mpmath~=1.2.1
 zipp
 requests~=2.27.1
-hydradx-api~=0.2.5
+hydradx-api~=0.2.8
