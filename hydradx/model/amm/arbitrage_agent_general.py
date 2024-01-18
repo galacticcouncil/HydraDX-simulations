@@ -150,7 +150,7 @@ def process_next_swap(
     )
 
     if amt == 0:
-        return ()
+        return {}
 
     init_amt = {
         buy_ex: agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
