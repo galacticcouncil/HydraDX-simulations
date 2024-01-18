@@ -9,6 +9,7 @@ import time
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
+from .amm.stableswap_amm import StableSwapPoolState
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -242,7 +243,7 @@ def get_kraken_orderbook(tkn_pair: tuple, archive: bool = False) -> OrderBook:
     orderbook_url = 'https://api.kraken.com/0/public/Depth?pair=' + tkn_pair[0] + tkn_pair[1]
     resp = requests.get(orderbook_url)
     y = resp.json()
-    if 'error' in y:
+    if 'error' in y and y['error']:
         print(y['error'])
     elif archive:
         ts = time.time()
@@ -274,7 +275,7 @@ def get_unique_name(ls: list[str], name: str) -> str:
         return name + str(c).zfill(3)
 
 
-def get_omnipool_data(rpc: str, archive: bool = False):
+def get_omnipool_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False):
     with HydraDX(rpc) as chain:
 
         asset_list = []
@@ -309,6 +310,50 @@ def get_omnipool_data(rpc: str, archive: bool = False):
             json.dump(asset_map, output_file)
 
     return asset_list, asset_map, tokens, fees
+
+
+def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False) -> StableSwapPoolState:
+    with HydraDX(rpc) as chain:
+        pool_data = chain.api.stableswap.pools()[100]
+        symbols = [asset.symbol for asset in pool_data.assets]
+        repeats = [symbol for symbol in symbols if symbols.count(symbol) > 1]
+        return StableSwapPoolState(
+            tokens = {
+                f"{asset.symbol}{asset.asset_id}" if asset.symbol in repeats else asset.symbol:
+                    int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                for asset in pool_data.assets
+            },
+            amplification=float(pool_data.final_amplification),
+            trade_fee=float(pool_data.fee) / 100
+        )
+
+
+def save_stableswap_data(state: StableSwapPoolState, path: str = './archive/'):
+    ts = time.time()
+    json_state = {
+        'tokens': state.liquidity,
+        'amplification': state.amplification,
+        'precision': state.precision,
+        'trade_fee': state.trade_fee
+    }
+    with open(f'{path}stableswap_data_{ts}.json', 'w') as output_file:
+        json.dump(json_state, output_file)
+
+
+def load_stableswap_data(path: str = './archive/') -> StableSwapPoolState:
+    file_ls = os.listdir(path)
+    for filename in file_ls:
+        # return with the first likely-looking file
+        if filename.startswith('stableswap_data'):
+            with open(path + filename, 'r') as input_file:
+                json_state = json.load(input_file)
+            return StableSwapPoolState(
+                tokens=json_state['tokens'],
+                amplification=json_state['amplification'],
+                precision=json_state['precision'],
+                trade_fee=json_state['trade_fee']
+            )
+    raise FileNotFoundError('No stableswap data found')
 
 
 def get_omnipool_data_from_file(path: str):
