@@ -10,7 +10,7 @@ from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculat
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file
+from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
 from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name
 from mpmath import mp, mpf
 mp.dps = 50
@@ -662,57 +662,56 @@ def test_combine_step():
     cfg = [
         {'exchanges': {'omnipool': ('HDX', 'USDT'), 'kraken': ('HDX', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'USDT'), 'kraken': ('DOT', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'USDT'), 'kraken': ('ETH', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('DOT', 'WETH001'), 'kraken': ('DOT', 'ETH')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'USDT'), 'kraken': ('ETH', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('DOT', 'WETH'), 'kraken': ('DOT', 'ETH')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('WBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('iBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'WBTC'), 'kraken': ('DOT', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'iBTC'), 'kraken': ('DOT', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'WBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'iBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'WBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'iBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('ASTR', 'USDT'), 'kraken': ('ASTR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('CFG', 'USDT'), 'kraken': ('CFG', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('BNC', 'USDT'), 'kraken': ('BNC', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'kraken': ('GLMR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('INTR', 'USDT'), 'kraken': ('INTR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'USDT'), 'binance': ('DOT', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('DOT', 'WETH001'), 'binance': ('DOT', 'ETH')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('DOT', 'WETH'), 'binance': ('DOT', 'ETH')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'WBTC'), 'binance': ('DOT', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'iBTC'), 'binance': ('DOT', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'USDT'), 'binance': ('ETH', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'WBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'iBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'USDT'), 'binance': ('ETH', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'WBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'iBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('WBTC', 'USDT'), 'binance': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('iBTC', 'USDT'), 'binance': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('ASTR', 'USDT'), 'binance': ('ASTR', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'binance': ('GLMR', 'USDT')}, 'buffer': 0.001},
-    ]
+        {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'binance': ('GLMR', 'USDT')}, 'buffer': 0.001}
+     ]
 
-    #
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-    #
-    # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    # cex = {
-    #     'kraken': kraken,
-    #     'binance': binance
-    # }
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+
+    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
+    cex = {
+        'kraken': kraken,
+        'binance': binance
+    }
     # uncomment above to test with live data, below for archived data
     #
-    input_path = './data/'
-    if not os.path.exists(input_path):
-        input_path = 'hydradx/tests/data/'
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
-
-    cex = {}
-    for exchange in ('kraken', 'binance'):
-        cex[exchange] = CentralizedMarket(
-            order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
-            unique_id=exchange,
-            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-        )
-    kraken = cex['kraken']
-    binance = cex['binance']
+    # input_path = './data/'
+    # if not os.path.exists(input_path):
+    #     input_path = 'hydradx/tests/data/'
+    # asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
+    #
+    # cex = {}
+    # for exchange in ('kraken', 'binance'):
+    #     cex[exchange] = CentralizedMarket(
+    #         order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
+    #         unique_id=exchange,
+    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+    #     )
+    # kraken = cex['kraken']
+    # binance = cex['binance']
 
     omnipool = OmnipoolState(
         tokens=tokens,
@@ -723,9 +722,18 @@ def test_combine_step():
     )
 
     equivalency_map = {
+        'WETH': 'ETH',
+        'XETH': 'ETH',
+        'XXBT': 'BTC',
+        'WBTC': 'BTC',
+        'ZUSD': 'USD',
         'USDT': 'USD',
+        'USDT10': 'USD',
+        'USDT23': 'USD',
         'USDC': 'USD',
         'DAI': 'USD',
+        'iBTC': 'BTC',
+        'XBT': 'BTC',
     }
 
     exchanges_per_tkn = {
@@ -812,12 +820,12 @@ def test_combine_step():
 
 def test_stableswap_arb():
     cfg = [
-        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'binance': ('USDC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('USDC', 'USDT23'), 'binance': ('USDC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('USDC', 'USDT10'), 'binance': ('USDC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'binance': ('DAI', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('DAI', 'USDT10'), 'binance': ('DAI', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'kraken': ('USDC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('USDC', 'USDT23'), 'kraken': ('USDC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'kraken': ('DAI', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('USDC', 'USDT10'), 'kraken': ('USDC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'4pool': ('DAI', 'USDT10'), 'kraken': ('DAI', 'USDT')}, 'buffer': 0.001},
     ]
@@ -844,11 +852,13 @@ def test_stableswap_arb():
     # kraken = cex['kraken']
     # binance = cex['binance']
 
-    fourpool = StableSwapPoolState(
-        tokens={'USDT23': 991000, 'USDT10': 1020000, 'USDC': 2130000, 'DAI': 1100000},
-        amplification=50,
-        trade_fee=0.0005,
-    )
+    fourpool = get_stableswap_data()
+    # fourpool = StableSwapPoolState(
+    #     tokens={'USDT23': 991000, 'USDT10': 1020000, 'USDC': 2130000, 'DAI': 1100000},
+    #     amplification=50,
+    #     trade_fee=0.0005,
+    # )
+    # fourpool.amplification = 50
 
     equivalency_map = {
         'USDT': 'USD',
@@ -889,9 +899,10 @@ def test_stableswap_arb():
     profit_total = test_exchanges['binance'].value_assets(profit, equivalency_map)
 
     if profit_total < 0:
-            raise AssertionError('Loss detected.')
+        raise AssertionError('Loss detected.')
 
-    print (f"Profit: {profit_total}")
+    print()
+    print(f"Profit: {profit_total}")
     print("4pool balance:")
     for tkn in fourpool.asset_list:
         print(f"{tkn}: {fourpool.liquidity[tkn]} --> {test_exchanges['4pool'].liquidity[tkn]}")
