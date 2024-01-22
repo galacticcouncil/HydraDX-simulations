@@ -4,6 +4,7 @@ from typing import Callable
 
 from .agents import Agent, AgentArchiveState
 from .amm import AMM
+from .liquidations import CDP, liquidate_cdp
 from .omnipool_amm import OmnipoolState
 
 
@@ -11,10 +12,12 @@ class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
+                 cdps: list[CDP] = None,
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
                  save_data: dict = None,
-                 archive_all: bool = True
+                 archive_all: bool = True,
+                 liquidation_penalty: float = 0.01,
                  ):
         self.external_market = external_market or {}
         if 'USD' not in self.external_market:
@@ -45,6 +48,8 @@ class GlobalState:
         } if save_data else {}
         self.time_step = 0
         self.archive_all = archive_all
+        self.cdps = cdps
+        self.liquidation_penalty = liquidation_penalty
 
     def price(self, tkn: str, numeraire: str = 'USD') -> float:
         if tkn in self.external_market:
@@ -78,10 +83,12 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
+            cdps=[cdp.copy() for cdp in self.cdps] if self.cdps else None,
             external_market=self.external_market.copy(),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
-            archive_all=self.archive_all
+            archive_all=self.archive_all,
+            liquidation_penalty=self.liquidation_penalty
         )
         copy_state.time_step = self.time_step
         return copy_state
@@ -358,3 +365,18 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
         return state
 
     return transform
+
+
+def omnipool_liquidate_cdp(state: GlobalState, cdp: CDP, treasury_agent: Agent, delta_debt: float) -> None:
+    init_cdp_collateral = cdp.collateral_amt
+    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: cdp.collateral_amt})
+    omnipool = state.pools["omnipool"]
+    omnipool.swap(agent, tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset, buy_quantity=delta_debt)
+    final_collat = agent.holdings[cdp.collateral_asset]
+    collateral_amt = min((cdp.collateral_amt - final_collat), cdp.collateral_amt)
+    liquidate_cdp(cdp, agent, delta_debt / (1 + state.liquidation_penalty), collateral_amt)
+
+    # transfer profit to treasury_agent
+    treasury_agent.holdings[cdp.debt_asset] += agent.holdings[cdp.debt_asset] - delta_debt
+    if agent.holdings[cdp.collateral_asset] != init_cdp_collateral:
+        raise
