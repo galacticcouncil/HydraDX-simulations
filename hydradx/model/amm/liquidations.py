@@ -17,7 +17,6 @@ class CDP:
         return CDP(self.debt_asset, self.collateral_asset, self.debt_amt, self.collateral_amt, self.in_liquidation)
 
 
-# price is denominated in the debt asset
 def liquidate_cdp(cdp: CDP, agent: Agent, debt_amt: float, collateral_amt: float) -> None:
     cdp.debt_amt -= debt_amt
     agent.holdings[cdp.debt_asset] -= debt_amt
