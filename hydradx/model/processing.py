@@ -1,5 +1,7 @@
 import json
 from csv import reader
+from typing import List
+
 import requests
 from zipfile import ZipFile
 import datetime
@@ -10,6 +12,7 @@ import time
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.stableswap_amm import StableSwapPoolState
+from .amm.omnipool_amm import OmnipoolState
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -312,48 +315,63 @@ def get_omnipool_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = Fals
     return asset_list, asset_map, tokens, fees
 
 
-def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False) -> StableSwapPoolState:
+def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False) -> list[StableSwapPoolState]:
     with HydraDX(rpc) as chain:
-        pool_data = chain.api.stableswap.pools()[100]
-        symbols = [asset.symbol for asset in pool_data.assets]
-        repeats = [symbol for symbol in symbols if symbols.count(symbol) > 1]
-        return StableSwapPoolState(
-            tokens = {
-                f"{asset.symbol}{asset.asset_id}" if asset.symbol in repeats else asset.symbol:
-                    int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                for asset in pool_data.assets
-            },
-            amplification=float(pool_data.final_amplification),
-            trade_fee=float(pool_data.fee) / 100
-        )
+        pools = []
+        data = chain.api.stableswap.pools()
+        for pool_name, pool_data in {'4-Pool': data[100], '2-Pool': data[101]}.items():
+            symbols = [asset.symbol for asset in pool_data.assets]
+            repeats = [symbol for symbol in symbols if symbols.count(symbol) > 1]
+            pools.append(StableSwapPoolState(
+                tokens = {
+                    f"{asset.symbol}{asset.asset_id}" if asset.symbol in repeats else asset.symbol:
+                        int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                    for asset in pool_data.assets
+                },
+                amplification=float(pool_data.final_amplification),
+                trade_fee=float(pool_data.fee) / 100,
+                unique_id=pool_name
+            ))
+    if archive:
+        for state in pools:
+            save_stableswap_data(state)
+    return pools
 
 
-def save_stableswap_data(state: StableSwapPoolState, path: str = './archive/'):
+def save_stableswap_data(pools: list[StableSwapPoolState], path: str = './archive/'):
     ts = time.time()
-    json_state = {
-        'tokens': state.liquidity,
-        'amplification': state.amplification,
-        'precision': state.precision,
-        'trade_fee': state.trade_fee
-    }
-    with open(f'{path}stableswap_data_{ts}.json', 'w') as output_file:
-        json.dump(json_state, output_file)
+    for state in pools:
+        json_state = {
+            'tokens': state.liquidity,
+            'amplification': state.amplification,
+            'precision': state.precision,
+            'trade_fee': state.trade_fee
+        }
+        with open(f'{path}stableswap_data_{state.unique_id}_{ts}.json', 'w') as output_file:
+            json.dump(json_state, output_file)
 
 
-def load_stableswap_data(path: str = './archive/') -> StableSwapPoolState:
+def load_stableswap_data(path: str = './archive/') -> list[StableSwapPoolState]:
     file_ls = os.listdir(path)
+    pools = []
+    pool_names = ['4-Pool', '2-Pool']
     for filename in file_ls:
         # return with the first likely-looking file
         if filename.startswith('stableswap_data'):
-            with open(path + filename, 'r') as input_file:
-                json_state = json.load(input_file)
-            return StableSwapPoolState(
-                tokens=json_state['tokens'],
-                amplification=json_state['amplification'],
-                precision=json_state['precision'],
-                trade_fee=json_state['trade_fee']
-            )
-    raise FileNotFoundError('No stableswap data found')
+            pool_name = filename.split('_')[2]
+            if pool_name in pool_names:
+                pool_names.remove(pool_name)
+                with open(path + filename, 'r') as input_file:
+                    json_state = json.load(input_file)
+                pools.append(StableSwapPoolState(
+                    tokens=json_state['tokens'],
+                    amplification=json_state['amplification'],
+                    precision=json_state['precision'],
+                    trade_fee=json_state['trade_fee']
+                ))
+        if len(pool_names) == 0:
+            return pools
+    raise FileNotFoundError(f'Stableswap data not found: {pool_names}')
 
 
 def get_omnipool_data_from_file(path: str):
@@ -377,6 +395,102 @@ def get_omnipool_data_from_file(path: str):
 
     asset_list = list(asset_map.values())
     return asset_list, asset_map, tokens, fees
+
+
+def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
+    with HydraDX(rpc) as chain:
+        # get omnipool and subpool data
+        op_state = chain.api.omnipool.state()
+        sub_pools = chain.api.stableswap.pools()
+        # collect assets
+        assets = [(tkn.asset.asset_id, tkn.asset.symbol) for tkn in op_state.values()]
+        sub_pool_assets = [(tkn.asset_id, tkn.symbol) for pool in sub_pools.values() for tkn in pool.assets]
+        # get a unique symbol for each asset
+        symbols = [asset[1] for asset in assets + sub_pool_assets]
+        repeats = set([symbol for symbol in symbols if symbols.count(symbol) > 1])
+        symbol_map = {
+            tkn_id: f"{tkn_name}{tkn_id}" if tkn_name in repeats else tkn_name
+            for tkn_id, tkn_name in assets + sub_pool_assets
+        }
+        omnipool = OmnipoolState(
+            tokens={
+                symbol_map[tkn_id]: {
+                    'liquidity': int(op_state[tkn_id].reserve) / 10 ** op_state[tkn_id].asset.decimals,
+                    'LRNA': int(op_state[tkn_id].hub_reserve) / 10 ** 12
+                }
+                for tkn_id in op_state.keys()  # base_tkn_ids
+            },
+            asset_fee={
+                symbol_map[tkn_id]: op_state[tkn_id].fees.asset_fee / 100 if tkn_id in op_state else 0
+                for tkn_id, tkn in [asset for asset in assets]
+            },
+            lrna_fee={
+                symbol_map[tkn_id]: op_state[tkn_id].fees.protocol_fee / 100 if tkn_id in op_state else 0
+                for tkn_id, tkn in [asset for asset in assets]
+            },
+            preferred_stablecoin='USDT10'
+        )
+        for pool_id, pool_data in sub_pools.items():
+            subpool = StableSwapPoolState(
+                tokens={
+                    symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                    for asset in pool_data.assets
+                },
+                amplification=float(pool_data.final_amplification),
+                trade_fee=float(pool_data.fee) / 100,
+                unique_id=symbol_map[pool_id]
+            )
+            omnipool.sub_pools[subpool.unique_id] = subpool
+
+        return omnipool
+
+
+def save_omnipool(omnipool: OmnipoolState):
+    ts = time.time()
+    with open(f'./archive/omnipool_data_{ts}.json', 'w') as output_file:
+        json.dump(
+        {
+                'liquidity': omnipool.liquidity,
+                'LRNA': omnipool.lrna,
+                'asset_fee': omnipool.asset_fee,
+                'lrna_fee': omnipool.lrna_fee,
+                'sub_pools': [
+                    {
+                        'tokens': pool.liquidity,
+                        'amplification': pool.amplification,
+                        'trade_fee': pool.trade_fee,
+                        'unique_id': pool.unique_id
+                    } for pool in omnipool.sub_pools
+                ]
+            },
+            output_file
+        )
+
+
+def load_omnipool(path: str = './archive/', filename: str = '') -> OmnipoolState:
+    if filename:
+        file_ls = [filename]
+    else:
+        file_ls = list(filter(lambda file: file.startswith('ominpool_data'), os.listdir(path)))
+    for filename in file_ls:
+        with open (path + filename, 'r') as input_file:
+            json_state = json.load(input_file)
+        omnipool = OmnipoolState(
+            tokens=json_state['liquidity'],
+            lrna=json_state['LRNA'],
+            asset_fee=json_state['asset_fee'],
+            lrna_fee=json_state['lrna_fee']
+        )
+        for pool in json_state['sub_pools']:
+            omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
+                tokens=pool['tokens'],
+                amplification=pool['amplification'],
+                trade_fee=pool['trade_fee'],
+                unique_id=pool['unique_id']
+            )
+        return omnipool
+    raise FileNotFoundError(f'Omnipool file not found in {path}.')
+
 
 
 def get_centralized_market(
