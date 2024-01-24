@@ -2,6 +2,8 @@ import pytest
 
 from hydradx.model.amm.liquidations import CDP, liquidate_cdp
 from hydradx.model.amm.agents import Agent
+from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.global_state import find_partial_liquidation_amount
 
 
 def test_liquidate_cdp():
@@ -24,4 +26,42 @@ def test_liquidate_cdp():
     if cdp.debt_amt != pytest.approx(init_debt_amt * (1 - liquidate_pct)):
         raise
     if cdp.collateral_amt != pytest.approx(init_collat_amt * (1 - liquidate_pct)):
+        raise
+
+
+def test_find_partial_liquidation_amount():
+    # find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: float)
+
+    prices = {'DOT': 6, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
+
+    assets = {
+        'DOT': {'usd price': prices['DOT'], 'weight': 0.40},
+        'HDX': {'usd price': prices['HDX'], 'weight': 0.10},
+        'USDT': {'usd price': prices['USDT'], 'weight': 0.30},
+        'WETH': {'usd price': prices['WETH'], 'weight': 0.10},
+        'iBTC': {'usd price': prices['iBTC'], 'weight': 0.10}
+    }
+
+    lrna_price_usd = 35
+    initial_omnipool_tvl = 20000000
+    liquidity = {}
+    lrna = {}
+
+    for tkn, info in assets.items():
+        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
+        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+
+    omnipool = OmnipoolState(
+            tokens={
+                tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
+            },
+            preferred_stablecoin='USDT',
+        )
+
+    cdp = CDP('USDT', 'DOT', 1000, 200, True)
+    penalty = 0.01
+
+    liquidation_amount = find_partial_liquidation_amount(omnipool, cdp, penalty)
+
+    if liquidation_amount != pytest.approx(1000 * (1 + penalty)):
         raise
