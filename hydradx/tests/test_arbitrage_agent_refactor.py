@@ -11,7 +11,7 @@ from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
-from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name
+from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool
 from mpmath import mp, mpf
 mp.dps = 50
 
@@ -816,93 +816,3 @@ def test_combine_step():
             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
         else:
             print('Iteration did not improve profit.')
-
-
-def test_stableswap_arb():
-    cfg = [
-        {'exchanges': {'4pool': ('USDC', 'USDT23'), 'binance': ('USDC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('USDC', 'USDT10'), 'binance': ('USDC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'binance': ('DAI', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('DAI', 'USDT10'), 'binance': ('DAI', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('USDC', 'USDT23'), 'kraken': ('USDC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('DAI', 'USDT23'), 'kraken': ('DAI', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('USDC', 'USDT10'), 'kraken': ('USDC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'4pool': ('DAI', 'USDT10'), 'kraken': ('DAI', 'USDT')}, 'buffer': 0.001},
-    ]
-
-    #
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-    #
-    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    cex = {
-        'kraken': kraken,
-        'binance': binance
-    }
-    # uncomment above to test with live data, below for archived data
-    #
-    # input_path = './data/'
-    # cex = {}
-    # for exchange in ('kraken', 'binance'):
-    #     cex[exchange] = CentralizedMarket(
-    #         order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
-    #         unique_id=exchange,
-    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-    #     )
-    # kraken = cex['kraken']
-    # binance = cex['binance']
-
-    fourpool = get_stableswap_data()
-    # fourpool = StableSwapPoolState(
-    #     tokens={'USDT23': 991000, 'USDT10': 1020000, 'USDC': 2130000, 'DAI': 1100000},
-    #     amplification=50,
-    #     trade_fee=0.0005,
-    # )
-    # fourpool.amplification = 50
-
-    equivalency_map = {
-        'USDT': 'USD',
-        'USDT10': 'USD',
-        'USDT23': 'USD',
-        'USDC': 'USD',
-        'DAI': 'USD',
-    }
-
-    exchanges_per_tkn = {
-        tkn: sum(1 if tkn in exchange.asset_list else 0 for exchange in (fourpool, kraken, binance))
-        for tkn in fourpool.asset_list + kraken.asset_list + binance.asset_list
-    }
-    exchanges = {
-        '4pool': fourpool, **cex
-    }
-    initial_agent = Agent(
-        holdings={
-            tkn: mpf(1000000)
-            for tkn in fourpool.asset_list + kraken.asset_list + binance.asset_list
-        }
-    )
-    max_liquidity = {
-        ex_name: {tkn: initial_agent.holdings[tkn] / exchanges_per_tkn[tkn] for tkn in initial_agent.holdings}
-        for ex_name in exchanges
-    }
-
-    arb_swaps = get_arb_swaps(
-        exchanges=exchanges,
-        config=cfg,
-        max_liquidity=max_liquidity,
-        max_iters=20
-    )
-    test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
-    test_agent_2 = initial_agent.copy()
-    execute_arb(test_exchanges, test_agent_2, arb_swaps)
-    profit = calculate_profit(initial_agent, test_agent_2)
-    profit_total = test_exchanges['binance'].value_assets(profit, equivalency_map)
-
-    if profit_total < 0:
-        raise AssertionError('Loss detected.')
-
-    print()
-    print(f"Profit: {profit_total}")
-    print("4pool balance:")
-    for tkn in fourpool.asset_list:
-        print(f"{tkn}: {fourpool.liquidity[tkn]} --> {test_exchanges['4pool'].liquidity[tkn]}")
