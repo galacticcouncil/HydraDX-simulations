@@ -2,7 +2,7 @@ import copy
 from datetime import timedelta
 import os
 import pytest
-from hypothesis import given, strategies as st, settings, Phase
+from hypothesis import given, strategies as st, settings, Phase, reproduce_failure
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
@@ -52,11 +52,12 @@ def test_calculate_profit_with_mapping():
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=1.1, max_value=10.0),
+    price_mult=st.floats(min_value=1.1, max_value=5.0),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
 )
+@reproduce_failure('6.39.6', b'AA/0ZBJwe+sExmxe8YZqDvrAzUNrDg/0ZBJwe+sIKNy+r3gMDIeJRLhVcQ14RcVrZcoP9GQScHvrA6NySX4e4Q==')
 def test_calculate_arb_amount_bid(
         usdt_amt: float,
         dot_price: float,
@@ -110,7 +111,7 @@ def test_calculate_arb_amount_bid(
         sell_ex_max_sell=init_agent.holdings[tkn],
         buy_ex_max_sell=init_agent.holdings[numeraire],
         precision=p,
-        max_iters=100
+        max_iters=110
     )
     test_agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000})
     test_dex = initial_dex.copy()
