@@ -792,16 +792,16 @@ class OmnipoolState(AMM):
             tkn: {
                 'price': self.lrna[tkn] / self.liquidity[tkn],
                 'old_shares': self.shares[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
-                'omnipool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
-                'subpool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
+                'omnipool_shares': self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
+                'subpool_shares': self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
             } for tkn in tkns_migrate
         }
-        new_sub_pool.shares = sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate])
+        new_sub_pool.shares = sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate])
         self.sub_pools[unique_id] = new_sub_pool
         self.add_token(
             unique_id,
             liquidity=sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
-            shares=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
+            shares=sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
             lrna=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
             protocol_shares=sum([
                 self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] * self.protocol_shares[tkn] / self.shares[tkn]
