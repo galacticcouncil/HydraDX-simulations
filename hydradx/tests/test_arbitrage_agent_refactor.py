@@ -57,7 +57,6 @@ def test_calculate_profit_with_mapping():
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
 )
-@reproduce_failure('6.39.6', b'AA/0ZBJwe+sExmxe8YZqDvrAzUNrDg/0ZBJwe+sIKNy+r3gMDIeJRLhVcQ14RcVrZcoP9GQScHvrA6NySX4e4Q==')
 def test_calculate_arb_amount_bid(
         usdt_amt: float,
         dot_price: float,
