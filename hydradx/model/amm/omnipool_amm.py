@@ -236,7 +236,7 @@ class OmnipoolState(AMM):
         return float('inf')
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):
-        return self.liquidity[tkn_buy]
+        return self.liquidity[tkn_buy] * (1 - self.asset_fee[tkn_buy].compute())
 
     def copy(self):
         copy_state = copy.deepcopy(self)
@@ -299,6 +299,8 @@ class OmnipoolState(AMM):
         """
     
         asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+        if buy_quantity >= self.liquidity[tkn_buy] * (1 - asset_fee):
+            return float('inf')
         # asset_fee = self.last_fee[tkn_buy]
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
@@ -439,6 +441,8 @@ class OmnipoolState(AMM):
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+            if delta_Ri < 0:
+                return self.fail_transaction(f'insufficient LRNA in {tkn_sell}', agent)
             # including both buy_quantity and sell_quantity potentially introduces a 'hack'
             # where you could include both and *not* have them match, but we're not worried about that
             # because this is not a production environment. Just don't do it.
