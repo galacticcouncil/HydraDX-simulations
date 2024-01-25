@@ -688,30 +688,30 @@ def test_combine_step():
         {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'binance': ('GLMR', 'USDT')}, 'buffer': 0.001}
      ]
 
-    asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
-
-    kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
-    binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
-    cex = {
-        'kraken': kraken,
-        'binance': binance
-    }
+    # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
+    #
+    # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
+    # binance = get_centralized_market(config=cfg, exchange_name='binance', trade_fee=0.001, archive=False)
+    # cex = {
+    #     'kraken': kraken,
+    #     'binance': binance
+    # }
     # uncomment above to test with live data, below for archived data
-    #
-    # input_path = './data/'
-    # if not os.path.exists(input_path):
-    #     input_path = 'hydradx/tests/data/'
-    # asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
-    #
-    # cex = {}
-    # for exchange in ('kraken', 'binance'):
-    #     cex[exchange] = CentralizedMarket(
-    #         order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
-    #         unique_id=exchange,
-    #         trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-    #     )
-    # kraken = cex['kraken']
-    # binance = cex['binance']
+
+    input_path = './data/'
+    if not os.path.exists(input_path):
+        input_path = 'hydradx/tests/data/'
+    asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
+
+    cex = {}
+    for exchange in ('kraken', 'binance'):
+        cex[exchange] = CentralizedMarket(
+            order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
+            unique_id=exchange,
+            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+        )
+    kraken = cex['kraken']
+    binance = cex['binance']
 
     omnipool = OmnipoolState(
         tokens=tokens,
