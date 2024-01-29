@@ -2,7 +2,7 @@ import copy
 from datetime import timedelta
 import os
 import pytest
-from hypothesis import given, strategies as st, settings, Phase, reproduce_failure
+from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
@@ -476,7 +476,6 @@ def test_process_next_swap(
 
     swap = process_next_swap(
         exchanges={'dex': test_dex, 'cex': test_cex},
-        agents={'dex': test_agent_dex, 'cex': test_agent_cex},
         max_liquidity=max_liquidity,
         swap_config={'exchanges': {'dex': tkn_pair, 'cex': tkn_pair}, 'buffer': buffer},
         max_iters=20
@@ -489,16 +488,16 @@ def test_process_next_swap(
             'USDT': test_dex.liquidity['USDT'] - initial_dex.liquidity['USDT']
         }
 
-        diff_agent = {
-            'DOT': (test_agent_dex.holdings['DOT'] - initial_agent_dex.holdings['DOT']
-                    + test_agent_cex.holdings['DOT'] - initial_agent_cex.holdings['DOT']),
-            'USDT': (test_agent_dex.holdings['USDT'] - initial_agent_dex.holdings['USDT']
-                     + test_agent_cex.holdings['USDT'] - initial_agent_cex.holdings['USDT'])
+        diff_max = {
+            'DOT': (max_liquidity['dex']['DOT'] - init_max_liquidity['dex']['DOT']
+                    + max_liquidity['cex']['DOT'] - init_max_liquidity['cex']['DOT']),
+            'USDT': (max_liquidity['dex']['USDT'] - init_max_liquidity['dex']['USDT']
+                     + max_liquidity['cex']['USDT'] - init_max_liquidity['cex']['USDT'])
         }
 
         diff_cex = {
-            'DOT': -diff_agent['DOT'] - diff_dex['DOT'],
-            'USDT': -diff_agent['USDT'] - diff_dex['USDT'],
+            'DOT': -diff_max['DOT'] - diff_dex['DOT'],
+            'USDT': -diff_max['USDT'] - diff_dex['USDT'],
             'HDX': 0
         }
 

@@ -64,14 +64,12 @@ def get_arb_swaps(
     arb_opps = get_arb_opps(exchanges, config, max_liquidity)
     all_swaps = []
     test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
-    test_agents = {ex_name: Agent(holdings=max_liquidity[ex_name].copy()) for ex_name in exchanges}
     arbs_index = 0
     while arb_opps:
         arb_cfg = config[arb_opps[arbs_index][1]]
         swap = process_next_swap(
             exchanges=test_exchanges,
             swap_config=arb_cfg,
-            agents=test_agents,
             max_liquidity=max_liquidity,
             max_iters=max_iters,
             precision=precision
@@ -96,7 +94,6 @@ def get_arb_swaps(
 def process_next_swap(
         exchanges: dict[str: AMM],
         swap_config: dict,
-        agents: dict[str: Agent],
         max_liquidity: dict[str: [dict[str: float]]],
         precision: float = 1e-10,
         max_iters: int = 10
@@ -157,30 +154,25 @@ def process_next_swap(
     if amt == 0:
         return {}
 
-    init_amt = {
-        buy_ex: agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
-        sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]]
-    }
-    exchanges[buy_ex].swap(
-        agent=agents[buy_ex],
-        tkn_buy=tkn_pairs[buy_ex][0],
-        tkn_sell=tkn_pairs[buy_ex][1],
-        buy_quantity=amt
-    )
+    trade_agent = Agent(holdings={tkn_pairs[sell_ex][0]: amt})
+    amt_in = {sell_ex: amt}
+    amt_out = {buy_ex: amt}
     exchanges[sell_ex].swap(
-        agent=agents[sell_ex],
+        agent=trade_agent,
         tkn_buy=tkn_pairs[sell_ex][1],
         tkn_sell=tkn_pairs[sell_ex][0],
         sell_quantity=amt
     )
-    amt_in = {
-        buy_ex: init_amt[buy_ex] - agents[buy_ex].holdings[tkn_pairs[buy_ex][1]],
-        sell_ex: amt
-    }
-    amt_out = {
-        buy_ex: amt,
-        sell_ex: agents[sell_ex].holdings[tkn_pairs[sell_ex][1]] - init_amt[sell_ex]
-    }
+    amt_out[sell_ex] = trade_agent.holdings[tkn_pairs[sell_ex][1]]
+    trade_agent.holdings[tkn_pairs[buy_ex][1]], init_amt = (trade_agent.holdings[tkn_pairs[sell_ex][1]], ) * 2
+    exchanges[buy_ex].swap(
+        agent=trade_agent,
+        tkn_buy=tkn_pairs[buy_ex][0],
+        tkn_sell=tkn_pairs[buy_ex][1],
+        buy_quantity=amt
+    )
+    amt_in[buy_ex] = init_amt - trade_agent.holdings[tkn_pairs[buy_ex][1]]
+
     if tkn_pairs[buy_ex][1] in max_liquidity[buy_ex]:
         max_liquidity[buy_ex][tkn_pairs[buy_ex][1]] -= amt_in[buy_ex]
     if tkn_pairs[buy_ex][0] in max_liquidity[buy_ex]:
