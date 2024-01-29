@@ -16,3 +16,4 @@ mpmath~=1.2.1
 zipp
 requests~=2.27.1
 hydradx-api~=0.2.9
+python-dotenv
