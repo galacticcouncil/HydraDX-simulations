@@ -306,7 +306,7 @@ def test_calculate_arb_amount_ask(
     dex_price = test_dex.sell_spot(tkn, numeraire)
     cex_price = initial_cex.buy_spot(tkn, numeraire)
 
-    if abs(1 - cex_price / dex_price) > p and amt != ask_quantity:
+    if 1 - cex_price / dex_price > p and amt != ask_quantity:
         raise
 
     if amt == ask_quantity and cex_price > dex_price:
