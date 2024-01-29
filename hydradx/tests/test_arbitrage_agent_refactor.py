@@ -110,7 +110,7 @@ def test_calculate_arb_amount_bid(
         sell_ex_max_sell=init_agent.holdings[tkn],
         buy_ex_max_sell=init_agent.holdings[numeraire],
         precision=p,
-        max_iters=110
+        max_iters=50
     )
     test_agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000})
     test_dex = initial_dex.copy()
