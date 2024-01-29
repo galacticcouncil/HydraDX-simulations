@@ -236,7 +236,7 @@ class OmnipoolState(AMM):
         return float('inf')
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):
-        return self.liquidity[tkn_buy]
+        return self.liquidity[tkn_buy] * (1 - self.asset_fee[tkn_buy].compute())
 
     def copy(self):
         copy_state = copy.deepcopy(self)
@@ -299,6 +299,8 @@ class OmnipoolState(AMM):
         """
     
         asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=-buy_quantity)
+        if buy_quantity >= self.liquidity[tkn_buy] * (1 - asset_fee):
+            return float('inf')
         # asset_fee = self.last_fee[tkn_buy]
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
@@ -336,10 +338,21 @@ class OmnipoolState(AMM):
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
         if fee is None:
-            fee = {
-                'lrna': self.lrna_fee[tkn_sell].compute(),
-                'asset': self.asset_fee[tkn_buy].compute()
-            }
+            fee = {}
+            if tkn_sell not in self.asset_list:
+                for pool in self.sub_pools.values():
+                    if tkn_sell in pool.asset_list:
+                        fee['lrna'] = pool.trade_fee
+                        break
+            if tkn_buy not in self.asset_list:
+                for pool in self.sub_pools.values():
+                    if tkn_buy in pool.asset_list:
+                        fee['asset'] = pool.trade_fee
+                        break
+            if 'lrna' not in fee:
+                fee['lrna'] = self.lrna_fee[tkn_sell].compute()
+            if 'asset' not in fee:
+                fee['asset'] = self.asset_fee[tkn_buy].compute()
         elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
@@ -354,10 +367,21 @@ class OmnipoolState(AMM):
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
         if fee is None:
-            fee = {
-                'lrna': self.lrna_fee[tkn_sell].compute(),
-                'asset': self.asset_fee[tkn_buy].compute()
-            }
+            fee = {}
+            if tkn_sell not in self.asset_list:
+                for pool in self.sub_pools.values():
+                    if tkn_sell in pool.asset_list:
+                        fee['lrna'] = pool.trade_fee
+                        break
+            if tkn_buy not in self.asset_list:
+                for pool in self.sub_pools.values():
+                    if tkn_buy in pool.asset_list:
+                        fee['asset'] = pool.trade_fee
+                        break
+            if 'lrna' not in fee:
+                fee['lrna'] = self.lrna_fee[tkn_sell].compute()
+            if 'asset' not in fee:
+                fee['asset'] = self.asset_fee[tkn_buy].compute()
         elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
@@ -417,6 +441,8 @@ class OmnipoolState(AMM):
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+            if delta_Ri < 0:
+                return self.fail_transaction(f'insufficient LRNA in {tkn_sell}', agent)
             # including both buy_quantity and sell_quantity potentially introduces a 'hack'
             # where you could include both and *not* have them match, but we're not worried about that
             # because this is not a production environment. Just don't do it.
@@ -753,7 +779,7 @@ class OmnipoolState(AMM):
     def create_sub_pool(
             self,
             tkns_migrate: dict[str: float] or list[str],
-            sub_pool_id: str,
+            unique_id: str,
             amplification: float,
             trade_fee: FeeMechanism or float = 0
     ):
@@ -763,23 +789,23 @@ class OmnipoolState(AMM):
         new_sub_pool = StableSwapPoolState(
             tokens=tkns_migrate,
             amplification=amplification,
-            unique_id=sub_pool_id,
+            unique_id=unique_id,
             trade_fee=trade_fee
         )
         new_sub_pool.conversion_metrics = {
             tkn: {
                 'price': self.lrna[tkn] / self.liquidity[tkn],
                 'old_shares': self.shares[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
-                'omnipool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
-                'subpool_shares': self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
+                'omnipool_shares': self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn],
+                'subpool_shares': self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn]
             } for tkn in tkns_migrate
         }
-        new_sub_pool.shares = sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate])
-        self.sub_pools[sub_pool_id] = new_sub_pool
+        new_sub_pool.shares = sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate])
+        self.sub_pools[unique_id] = new_sub_pool
         self.add_token(
-            sub_pool_id,
-            liquidity=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
-            shares=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
+            unique_id,
+            liquidity=sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
+            shares=sum([self.liquidity[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
             lrna=sum([self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] for tkn in tkns_migrate]),
             protocol_shares=sum([
                 self.lrna[tkn] * tkns_migrate[tkn] / self.liquidity[tkn] * self.protocol_shares[tkn] / self.shares[tkn]
