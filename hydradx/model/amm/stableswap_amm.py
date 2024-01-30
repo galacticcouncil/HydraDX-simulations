@@ -133,12 +133,44 @@ class StableSwapPoolState(AMM):
             return 1
         return self.price_at_balance(balances, self.d, i)
 
+    def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
+        if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
+            return 0
+        else:
+            return self.price(tkn_sell, tkn_buy) * (1 - fee)
+
+    def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
+        if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
+            return 0
+        else:
+            return self.price(tkn_buy, tkn_sell) / (1 - fee)
+
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_buy]
+
+    def buy_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_buy]
+
+    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
+        reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
+        return (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
+
+    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
+        reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
+        return (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+
     def price(self, tkn, denomination: str = ''):
         """
         return the price of TKN denominated in NUMÉRAIRE
         """
         if tkn == denomination:
             return 1
+        if tkn not in self.liquidity or denomination not in self.liquidity:
+            return 0
         i = list(self.liquidity.keys()).index(tkn)
         j = list(self.liquidity.keys()).index(denomination)
         return self.price_at_balance(

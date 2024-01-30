@@ -1,0 +1,10 @@
+[
+    {"exchanges": {"4pool": ["DAI", "USDT23"], "binance": ["DAI", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["USDC", "USDT23"], "binance": ["USDC", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["USDC", "USDT10"], "binance": ["USDC", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["DAI", "USDT10"], "binance": ["DAI", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["DAI", "USDT23"], "kraken": ["DAI", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["USDC", "USDT23"], "kraken": ["USDC", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["USDC", "USDT10"], "kraken": ["USDC", "USDT"]}, "buffer": 0.001},
+    {"exchanges": {"4pool": ["DAI", "USDT10"], "kraken": ["DAI", "USDT"]}, "buffer": 0.001}
+]

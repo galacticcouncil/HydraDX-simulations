@@ -2456,3 +2456,38 @@ def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
         raise AssertionError(f'sell_quantity {sell_quantity} != actual_sell_quantity {actual_sell_quantity}')
     # buy_quantity_2 = omnipool.calculate_buy_from_sell(
 
+
+@given(
+    hdx_lrna=st.floats(min_value=100000000, max_value=1000000000),
+    usd_lrna=st.floats(min_value=100000000, max_value=1000000000),
+    asset_fee=st.floats(min_value=0, max_value=0.01),
+    lrna_fee=st.floats(min_value=0, max_value=0.01)
+)
+def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_fee: float):
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
+            'USD': {'liquidity': mpf(1000000000), 'LRNA': usd_lrna},
+        },
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+    )
+    agent = Agent(holdings={tkn: mpf(1000) for tkn in initial_state.asset_list})
+    test_state, test_agent = initial_state.copy(), agent.copy()
+    buy_quantity = 0.001
+    hdx_per_usd = initial_state.sell_spot(tkn_sell='USD', tkn_buy='HDX')
+    usd_per_hdx = initial_state.buy_spot(tkn_buy='HDX', tkn_sell='USD')
+    test_state.swap(
+        agent=test_agent,
+        tkn_sell='USD',
+        tkn_buy='HDX',
+        buy_quantity=buy_quantity
+    )
+    actual_sell_quantity = test_agent.initial_holdings['USD'] - test_agent.holdings['USD']
+    actual_buy_quantity = test_agent.holdings['HDX'] - test_agent.initial_holdings['HDX']
+    ex_price_hdx = actual_sell_quantity / actual_buy_quantity
+    ex_price_usd = actual_buy_quantity / actual_sell_quantity
+    if usd_per_hdx != pytest.approx(ex_price_hdx):
+        raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
+    if hdx_per_usd != pytest.approx(ex_price_usd):
+        raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')

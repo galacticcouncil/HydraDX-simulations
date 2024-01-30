@@ -46,6 +46,24 @@ class AMM:
     def price(state, tkn: str, denomination: str = '') -> float:
         return 0
 
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
+        """
+        How much tkn_sell will 1 tkn_buy cost?
+        """
+        return 0
+
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None) -> float:
+        """
+        How much tkn_buy can be bought for 1 tkn_sell?
+        """
+        return 0
+
+    def buy_limit(self, tkn_buy, tkn_sell):
+        return 0
+
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return 0
+
     def swap(
         self,
         agent: Agent,
@@ -76,6 +94,9 @@ class AMM:
         self.fail = error
         return self
 
+    def value_assets(self, assets: dict[str: float], **kwargs) -> float:
+        return 0
+
     def __setattr__(self, key, value):
         if hasattr(self, key):
             if isinstance(self.__getattribute__(key), FeeMechanism):
@@ -87,6 +108,11 @@ class AMM:
                     return
         super().__setattr__(key, value)
 
+    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
+        pass
+
+    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
+        pass
 
 def basic_fee(f: float = 0) -> FeeMechanism:
     def fee_function(
