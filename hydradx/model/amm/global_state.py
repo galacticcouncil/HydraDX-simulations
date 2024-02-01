@@ -387,7 +387,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: float) -> float:
+def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: float, iters: float = 20) -> float:
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
 
@@ -402,7 +402,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: 
         return 0
 
     # binary search
-    for i in range(20):
+    for i in range(iters):
 
         temp_state, temp_agent = simulate_swap(omnipool, agent, tkn_buy=debt_asset,
                                                tkn_sell=collateral_asset, buy_quantity=delta_debt)
