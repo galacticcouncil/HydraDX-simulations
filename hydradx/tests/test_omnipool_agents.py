@@ -168,3 +168,38 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     final_state = events[-1]
     if final_state.agents['agent'].holdings['HDX'] != 0 or events[-2].agents['agent'].holdings['HDX'] == 0:
         raise AssertionError('HDX not invested at the right time.')
+
+
+def test_agent_copy():
+    import random
+    init_agent = Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
+    def randomize_object(obj):
+        if type(obj) == dict:
+            return {key: randomize_object(obj[key]) for key in obj}
+        elif type(obj) == list:
+            return [randomize_object(item) for item in obj]
+        elif type(obj) in [int, float]:
+            return random.random() * obj
+        elif type(obj) == str:
+            return obj + str(random.random())
+        elif obj is None:
+            return random.random()
+        else:
+            for prop in obj.__dict__:
+                setattr(obj, prop, randomize_object(getattr(obj, prop)))
+
+    mod_agent = init_agent.copy()
+    randomize_object(mod_agent)
+
+    copy_agent = mod_agent.copy()
+    copy_init_agent = init_agent.copy()
+    for member in copy_agent.__dict__:
+        if (
+                getattr(mod_agent, member) != getattr(copy_agent, member)
+                or getattr(init_agent, member) != getattr(copy_init_agent, member)
+        ):
+            raise AssertionError(f'Copy failed for {member}.\n'
+                                 f'init: {getattr(init_agent, member)}\n'
+                                 f'copy_init: {getattr(copy_init_agent, member)}\n'
+                                 f'mod: {getattr(mod_agent, member)}\n'
+                                 f'copy: {getattr(copy_agent, member)}')
