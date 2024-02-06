@@ -173,16 +173,15 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
 
 
 def test_agent_copy():
-    init_agent = Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
-
-    mod_agent = init_agent.copy()
-    randomize_object(mod_agent)
-    copy_agent = mod_agent.copy()
+    init_agent = randomize_object(
+        Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
+    )
+    copy_agent = init_agent.copy()
 
     for member in copy_agent.__dict__:
         if (
-                getattr(mod_agent, member) != getattr(copy_agent, member)
+                getattr(init_agent, member) != getattr(copy_agent, member)
         ):
             raise AssertionError(f'Copy failed for {member}.\n'
-                                 f'original: {getattr(mod_agent, member)}\n'
+                                 f'original: {getattr(init_agent, member)}\n'
                                  f'copy: {getattr(copy_agent, member)}')
