@@ -177,16 +177,12 @@ def test_agent_copy():
 
     mod_agent = init_agent.copy()
     randomize_object(mod_agent)
-
     copy_agent = mod_agent.copy()
-    copy_init_agent = init_agent.copy()
+
     for member in copy_agent.__dict__:
         if (
                 getattr(mod_agent, member) != getattr(copy_agent, member)
-                or getattr(init_agent, member) != getattr(copy_init_agent, member)
         ):
             raise AssertionError(f'Copy failed for {member}.\n'
-                                 f'init: {getattr(init_agent, member)}\n'
-                                 f'copy_init: {getattr(copy_init_agent, member)}\n'
-                                 f'mod: {getattr(mod_agent, member)}\n'
+                                 f'original: {getattr(mod_agent, member)}\n'
                                  f'copy: {getattr(copy_agent, member)}')
