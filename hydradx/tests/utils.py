@@ -18,3 +18,4 @@ def randomize_object(obj):
     else:
         for prop in obj.__dict__:
             setattr(obj, prop, randomize_object(getattr(obj, prop)))
+        return obj
