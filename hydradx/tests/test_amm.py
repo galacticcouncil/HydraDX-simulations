@@ -265,6 +265,7 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
             raise AssertionError('Arbitrageur lost money :(')
 
 
+@reproduce_failure('6.39.6', b'AXicY2DABIwAABYAAg==')
 @given(global_state_config(
     external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
     pools={

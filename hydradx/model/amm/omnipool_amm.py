@@ -86,6 +86,8 @@ class OmnipoolState(AMM):
         self.fail = ''
         if sub_pools is None:
             self.sub_pools = dict()
+        else:
+            self.sub_pools = sub_pools
         self.update_function = update_function
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
@@ -1166,15 +1168,17 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
-    if tkn not in state.asset_list:
-        return 0
-    elif not denominator:
+    # if tkn not in state.asset_list:
+    #     return 0
+    if not denominator:
         return lrna_price(state, tkn)
-    elif denominator not in state.asset_list:
-        return 0
+    # elif denominator not in state.asset_list:
+    #     return 0
     elif state.liquidity[tkn] == 0:
         return 0
-    return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
+    elif tkn in state.asset_list and denominator in state.asset_list:
+        return lrna_price(state, tkn) / lrna_price(state, denominator)
+        # return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
 def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str):
