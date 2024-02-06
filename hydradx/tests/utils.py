@@ -5,6 +5,8 @@ def randomize_object(obj):
         return {key: randomize_object(obj[key]) for key in obj}
     elif type(obj) == list:
         return [randomize_object(item) for item in obj]
+    elif type(obj) == tuple:
+        return tuple([randomize_object(item) for item in obj])
     elif type(obj) in [int, float]:
         return random.random()
     elif type(obj) == str:
