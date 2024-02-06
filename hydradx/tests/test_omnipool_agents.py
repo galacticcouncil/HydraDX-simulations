@@ -11,6 +11,7 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 from hydradx.model.run import run
+from hydradx.tests.utils import randomize_object
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -20,6 +21,7 @@ asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+
 
 
 @given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), percentage_of_liquidity_strategy)
@@ -173,20 +175,6 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
 def test_agent_copy():
     import random
     init_agent = Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
-    def randomize_object(obj):
-        if type(obj) == dict:
-            return {key: randomize_object(obj[key]) for key in obj}
-        elif type(obj) == list:
-            return [randomize_object(item) for item in obj]
-        elif type(obj) in [int, float]:
-            return random.random() * obj
-        elif type(obj) == str:
-            return obj + str(random.random())
-        elif obj is None:
-            return random.random()
-        else:
-            for prop in obj.__dict__:
-                setattr(obj, prop, randomize_object(getattr(obj, prop)))
 
     mod_agent = init_agent.copy()
     randomize_object(mod_agent)
