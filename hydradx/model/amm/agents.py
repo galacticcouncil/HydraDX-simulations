@@ -23,7 +23,7 @@ class Agent:
         The values of share_prices reflect the price at which those shares were acquired.
         """
         self.holdings = holdings or {}
-        self.initial_holdings = copy.copy(holdings)
+        self.initial_holdings = copy.copy(self.holdings)
         self.share_prices = share_prices or {}
         self.delta_r = delta_r or {}
         self.trade_strategy = trade_strategy
