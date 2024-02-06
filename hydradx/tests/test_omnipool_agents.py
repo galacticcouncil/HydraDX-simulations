@@ -173,7 +173,6 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
 
 
 def test_agent_copy():
-    import random
     init_agent = Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
 
     mod_agent = init_agent.copy()
