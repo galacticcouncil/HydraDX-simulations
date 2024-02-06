@@ -30,7 +30,8 @@ class OmnipoolState(AMM):
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
                  lrna_mint_pct: float = 0.0,
-                 unique_id: str = 'omnipool'
+                 unique_id: str = 'omnipool',
+                 sub_pools: dict = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -51,10 +52,10 @@ class OmnipoolState(AMM):
 
         super().__init__()
 
+
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
-        if preferred_stablecoin not in tokens:
-            raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
+
 
         self.asset_list: list[str] = []
         self.liquidity = {}
@@ -67,8 +68,24 @@ class OmnipoolState(AMM):
         self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
+        self.stablecoin_pool_id = None
+        if preferred_stablecoin not in tokens:
+            if sub_pools is None:
+                raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
+            token_in_subpool = False
+            for subpool_id, subpool in sub_pools.items():
+                if preferred_stablecoin in subpool.asset_list:
+                    token_in_subpool = True
+                    self.stablecoin_pool_id = subpool_id
+                    break
+            if not token_in_subpool:
+                raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
+            if subpool_id not in tokens:
+                raise ValueError(f'{preferred_stablecoin} is preferred stablecoin and is in {subpool_id},'
+                                 f'but {subpool_id} is not included in the Omnipool.')
         self.fail = ''
-        self.sub_pools = dict()  # require sub_pools to be added through create_sub_pool
+        if sub_pools is None:
+            self.sub_pools = dict()
         self.update_function = update_function
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
@@ -1160,19 +1177,24 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
+def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str):
     if tkn == 'LRNA':
         return 1 / state.lrna_price(state, state.stablecoin)
     else:
         return price(state, tkn) / price(state, state.stablecoin)
 
 
-def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
+def lrna_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
-    if state.liquidity[i] == 0:
-        return 0
+    if tkn in state.asset_list:
+        if state.liquidity[tkn] == 0:
+            return 0
+        else:
+            return (state.lrna[tkn] / state.liquidity[tkn]) * (1 - fee)
     else:
-        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
+        for sub_pool_id, sub_pool in state.sub_pools.items():
+            if tkn in sub_pool.asset_list:
+                return lrna_price(state, sub_pool_id) / sub_pool.share_price(tkn)
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:

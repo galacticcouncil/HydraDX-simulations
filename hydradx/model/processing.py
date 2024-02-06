@@ -412,6 +412,20 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
             tkn_id: f"{tkn_name}{tkn_id}" if tkn_name in repeats else tkn_name
             for tkn_id, tkn_name in assets + sub_pool_assets
         }
+
+        sub_pools_dict = {}
+        for pool_id, pool_data in sub_pools.items():
+            subpool = StableSwapPoolState(
+                tokens={
+                    symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                    for asset in pool_data.assets
+                },
+                amplification=float(pool_data.final_amplification),
+                trade_fee=float(pool_data.fee) / 100,
+                unique_id=symbol_map[pool_id]
+            )
+            sub_pools_dict[subpool.unique_id] = subpool
+
         omnipool = OmnipoolState(
             tokens={
                 symbol_map[tkn_id]: {
@@ -428,19 +442,10 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 symbol_map[tkn_id]: op_state[tkn_id].fees.protocol_fee / 100 if tkn_id in op_state else 0
                 for tkn_id, tkn in [asset for asset in assets]
             },
-            preferred_stablecoin='USDT10'
+            preferred_stablecoin='USDT10',
+            sub_pools=sub_pools_dict
         )
-        for pool_id, pool_data in sub_pools.items():
-            subpool = StableSwapPoolState(
-                tokens={
-                    symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                    for asset in pool_data.assets
-                },
-                amplification=float(pool_data.final_amplification),
-                trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id]
-            )
-            omnipool.sub_pools[subpool.unique_id] = subpool
+
 
         return omnipool
 
