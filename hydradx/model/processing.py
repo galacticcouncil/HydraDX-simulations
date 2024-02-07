@@ -443,7 +443,8 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 for tkn_id, tkn in [asset for asset in assets]
             },
             preferred_stablecoin='USDT10',
-            sub_pools=sub_pools_dict
+            sub_pools=sub_pools_dict,
+            preferred_stablecoin_pool_id='2-Pool102'
         )
 
 

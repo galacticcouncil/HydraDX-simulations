@@ -1,7 +1,7 @@
 import random
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings, reproduce_failure
+from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
@@ -265,7 +265,6 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
             raise AssertionError('Arbitrageur lost money :(')
 
 
-@reproduce_failure('6.39.6', b'AXicY2DABIwAABYAAg==')
 @given(global_state_config(
     external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
     pools={
