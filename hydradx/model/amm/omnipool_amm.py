@@ -249,7 +249,7 @@ class OmnipoolState(AMM):
     @property
     def total_value_locked(self):
         # base this just on the LRNA/USD exchange rate in the pool
-        return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
+        return self.lrna_total / lrna_price(self, self.stablecoin)
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
         return float('inf')
@@ -290,7 +290,7 @@ class OmnipoolState(AMM):
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
                     f'    USD price: {prices[tkn]}\n' +
-                    f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
+                    f'    tvl: ${lrna[tkn] / lrna_price(self, self.stablecoin)}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
                     f'    total shares: {self.shares[tkn]}\n'
@@ -1174,9 +1174,9 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
         return lrna_price(state, tkn)
     # elif denominator not in state.asset_list:
     #     return 0
-    elif state.liquidity[tkn] == 0:
+    elif tkn in state.liquidity and state.liquidity[tkn] == 0:
         return 0
-    elif tkn in state.asset_list and denominator in state.asset_list:
+    else:
         return lrna_price(state, tkn) / lrna_price(state, denominator)
         # return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
