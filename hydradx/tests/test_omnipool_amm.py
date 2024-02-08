@@ -2513,9 +2513,10 @@ def test_lrna_price_subpool(usd1_amt, usd2_amt):
         },
         sub_pools=sub_pools_dict,
         preferred_stablecoin='USD1',
+        preferred_stablecoin_pool_id='stablepool'
     )
 
-    lrna_price_of_tkn = lrna_price(state, 'USD1')
+    lrna_price_of_tkn = lrna_price(state, 'USD1', sub_pool_id='stablepool')
     lp_token_price = lrna_price(state, 'stablepool')
     share_price = subpool.share_price('USD1')
     if lrna_price_of_tkn != lp_token_price / share_price:
