@@ -480,6 +480,26 @@ class StableSwapPoolState(AMM):
             fail_overdraft: bool = True
     ):
 
+        delta_tkn = self.calculate_buy_shares(quantity, tkn_add)
+
+        if delta_tkn > agent.holdings[tkn_add]:
+            if fail_overdraft:
+                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
+            else:
+                # instead of failing, just round down
+                delta_tkn = agent.holdings[tkn_add]
+                return self.add_liquidity(agent, delta_tkn, tkn_add)
+
+        self.liquidity[tkn_add] += delta_tkn
+        agent.holdings[tkn_add] -= delta_tkn
+        self.shares += quantity
+        if self.unique_id not in agent.holdings:
+            agent.holdings[self.unique_id] = 0
+        agent.holdings[self.unique_id] += quantity
+        return self
+
+    def calculate_buy_shares(self, quantity: float, tkn_add: str):
+        '''Calculate the quantity of tkn_add to be added to the pool in order to buy a given quantity of shares.'''
         initial_d = self.d
         d1 = initial_d + initial_d * quantity / self.shares
 
@@ -506,22 +526,7 @@ class StableSwapPoolState(AMM):
         dy_0 = y - asset_reserve
         fee_amount = dy - dy_0
         delta_tkn = dy + fee_amount
-
-        if delta_tkn > agent.holdings[tkn_add]:
-            if fail_overdraft:
-                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
-            else:
-                # instead of failing, just round down
-                delta_tkn = agent.holdings[tkn_add]
-                return self.add_liquidity(agent, delta_tkn, tkn_add)
-
-        self.liquidity[tkn_add] += delta_tkn
-        agent.holdings[tkn_add] -= delta_tkn
-        self.shares += quantity
-        if self.unique_id not in agent.holdings:
-            agent.holdings[self.unique_id] = 0
-        agent.holdings[self.unique_id] += quantity
-        return self
+        return delta_tkn
 
     def remove_uniform(
             self,

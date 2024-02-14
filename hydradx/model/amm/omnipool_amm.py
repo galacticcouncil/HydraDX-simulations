@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block, OracleArchiveState
-from .stableswap_amm import StableSwapPoolState
+from .stableswap_amm import StableSwapPoolState, simulate_remove_liquidity as ss_simulate_remove_liquidity
 
 
 class OmnipoolState(AMM):
@@ -425,12 +425,12 @@ class OmnipoolState(AMM):
             buy_quantity: float = 0,
             sell_quantity: float = 0,
             modify_imbalance: bool = True,  # this is a hack to avoid modifying the imbalance for arbitrager LRNA swaps,
-            tkn_buy_subpool_id: str = None,
-            tkn_sell_subpool_id: str = None
             # since those would not actually be executed as LRNA swaps
             # note that we still apply the imbalance modification due to LRNA fee
             # collection, we just don't apply the imbalance modification from
             # the sale of LRNA back to the pool.
+            tkn_buy_subpool_id: str = None,
+            tkn_sell_subpool_id: str = None
     ):
         """
         execute swap in place (modify and return self and agent)
@@ -557,11 +557,16 @@ class OmnipoolState(AMM):
             delta_ra: float = 0,
             delta_qa: float = 0,
             tkn: str = '',
-            modify_imbalance: bool = True
+            modify_imbalance: bool = True,
+            tkn_subpool_id: str = None
     ):
         """
         Execute LRNA swap in place (modify and return)
         """
+
+        if tkn_subpool_id is not None:
+            if delta_qa > 0:  # selling LRNA
+                self.lrna_swap(agent, delta_qa=delta_qa, tkn=tkn_subpool_id, modify_imbalance=modify_imbalance)
     
         if delta_qa < 0:
             asset_fee = self.asset_fee[tkn].compute(
@@ -1234,14 +1239,15 @@ def simulate_swap_lrna(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True
+        modify_imbalance: bool = True,
+        tkn_subpool_id: str = None
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    new_state.lrna_swap(new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
+    new_state.lrna_swap(new_agent, delta_ra, delta_qa, tkn, modify_imbalance, tkn_subpool_id)
     return new_state, new_agent
 
 
@@ -1251,7 +1257,9 @@ def simulate_swap(
         tkn_buy: str,
         tkn_sell: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0
+        sell_quantity: float = 0,
+        tkn_buy_subpool_id: str = None,
+        tkn_sell_subpool_id: str = None
 ) -> tuple[OmnipoolState, Agent]:
     """
     execute swap on a copy of old_state and old_agent, and return the copies
@@ -1265,6 +1273,8 @@ def simulate_swap(
         buy_quantity=buy_quantity,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
+        tkn_buy_subpool_id=tkn_buy_subpool_id,
+        tkn_sell_subpool_id=tkn_sell_subpool_id
     )
     return new_state, new_agent
 
