@@ -14,8 +14,10 @@ class OmnipoolRouter:
         self.omnipool_id = None
         for exchange_id in exchanges:
             if isinstance(exchanges[exchange_id], OmnipoolState):
-                self.omnipool_index = exchange_id
-                break
+                if self.omnipool_id is not None:
+                    raise ValueError('Multiple Omnipools in exchange list')
+                else:
+                    self.omnipool_id = exchange_id
         if self.omnipool_id is None:
             raise ValueError('No Omnipool in exchange list')
 
@@ -38,14 +40,6 @@ class OmnipoolRouter:
             denom_adj = denom_pool_id
 
         return denom_subpool_share_price * omnipool.price(omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
-
-    # def buy_spot(self, tkn_buy: str, tkn_sell: str) -> float:
-    #     """Denominated in tkn_sell"""
-    #     return min([exchange.buy_spot(tkn_buy, tkn_sell) for exchange in self.exchange_list])
-    #
-    # def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None) -> float:
-    #     """Denominated in tkn_buy"""
-    #     return max([exchange.sell_spot(tkn_sell, tkn_buy) for exchange in self.exchange_list])
 
     def buy_limit(self, tkn_buy, tkn_sell=None):
         return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges])
@@ -106,14 +100,3 @@ class OmnipoolRouter:
                 self.exchanges[buy_pool_id].remove_liquidity(agent, share_amt, tkn_buy)
         else:
             raise ValueError('One of buy_quantity or sell_quantity must be zero')
-
-
-    def fail_transaction(self, error: str, agent: Agent):
-        self.fail = error
-        return self
-
-    # def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
-    #     pass
-    #
-    # def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
-    #     pass
