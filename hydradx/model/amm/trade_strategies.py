@@ -499,8 +499,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
             if arb_precision < 2:
-                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
 
                 if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
                     skip_ct += 1
@@ -653,10 +653,10 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
 
         pool = state.pools[pool_id]
         agent = state.agents[agent_id]
-        current_price = oamm.lrna_price(pool, asset_name)
+        current_price = pool.lrna_price(asset_name)
         if current_price <= 0:
             return state
-        usd_price = oamm.lrna_price(pool, pool.stablecoin) / current_price
+        usd_price = pool.lrna_price(pool.stablecoin) / current_price
         if usd_price <= 0:
             return state
         quantity = (
@@ -822,7 +822,7 @@ def price_manipulation_multiple_blocks(
                         (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
                          - omnipool.lrna[self.attack_asset])
                         / (1 - omnipool.weight_cap[self.attack_asset])
-                        / oamm.lrna_price(omnipool, self.trade_asset)
+                        / omnipool.lrna_price(self.trade_asset)
                 ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
 
                 # choose the largest trade size that will be allowed by the per block trade limit
@@ -859,7 +859,7 @@ def price_manipulation_multiple_blocks(
                             (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
                              - omnipool.lrna[self.attack_asset])
                             / (1 - omnipool.weight_cap[self.attack_asset])
-                            / oamm.lrna_price(omnipool, self.attack_asset)
+                            / omnipool.lrna_price(self.attack_asset)
                     ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
                     self.add_liquidity_target = min(
                         agent.holdings[self.attack_asset] / 2,
@@ -923,7 +923,7 @@ def price_manipulation_multiple_blocks(
                 if state.time_step > 85:
                     er = 1
                 if (
-                        oamm.usd_price(omnipool, self.attack_asset) / oamm.usd_price(omnipool, self.trade_asset)
+                        omnipool.usd_price(self.attack_asset) / omnipool.usd_price(self.trade_asset)
                         <= state.external_market[self.attack_asset] / state.external_market[self.trade_asset] * 1.00001
                         or agent.holdings[self.attack_asset] == 0
                 ):
