@@ -253,7 +253,7 @@ class OmnipoolState(AMM):
         lrna_total = round(self.lrna_total, precision)
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
-        prices = {tkn: round(usd_price(self, tkn), precision) for tkn in self.asset_list}
+        prices = {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
         newline = '\n'
         return (
             f'Omnipool: {self.unique_id}\n'
@@ -363,7 +363,7 @@ class OmnipoolState(AMM):
         elif tkn_sell not in self.asset_list:
             return 0
         else:
-            return price(self, tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
+            return self.price(tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
         if fee is None:
@@ -392,7 +392,7 @@ class OmnipoolState(AMM):
         elif tkn_sell not in self.asset_list:
             return 0
         else:
-            return price(self, tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
+            return self.price(tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
 
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found
@@ -905,7 +905,7 @@ class OmnipoolState(AMM):
             # return 0, 0, 0, 0, 0, 0
     
         # determine if they should get some LRNA back as well as the asset they invested
-        piq = lrna_price(self, tkn_remove)
+        piq = self.lrna_price(tkn_remove)
         p0 = agent.share_prices[(self.unique_id, tkn_remove)]
         mult = (piq - p0) / (piq + p0)
     
@@ -952,7 +952,7 @@ class OmnipoolState(AMM):
         if quantity <= 0:
             return self.fail_transaction('Quantity must be non-negative.', agent)
     
-        delta_Q = lrna_price(self, tkn_add) * quantity
+        delta_Q = self.lrna_price(tkn_add) * quantity
         if (self.unique_id, tkn_add) in agent.holdings:
             if agent.holdings[(self.unique_id, tkn_add)] != 0:
                 return self.fail_transaction(f'Agent already has liquidity in pool {tkn_add}.', agent)
@@ -969,7 +969,7 @@ class OmnipoolState(AMM):
                 'Transaction rejected because it would exceed the weight cap in pool[{i}].', agent
             )
     
-        if (self.total_value_locked + quantity * usd_price(self, tkn_add)) > self.tvl_cap:
+        if (self.total_value_locked + quantity * self.usd_price(tkn_add)) > self.tvl_cap:
             return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
     
         # assert quantity > 0, f"delta_R must be positive: {quantity}"
@@ -1009,7 +1009,7 @@ class OmnipoolState(AMM):
         agent.holdings[(self.unique_id, tkn_add)] += shares_added
     
         # L update: LRNA fees to be burned before they will start to accumulate again
-        delta_L = quantity * lrna_price(self, tkn_add) * self.lrna_imbalance / self.lrna_total
+        delta_L = quantity * self.lrna_price(tkn_add) * self.lrna_imbalance / self.lrna_total
         self.lrna_imbalance += delta_L
     
         # LRNA add (mint)
@@ -1021,7 +1021,7 @@ class OmnipoolState(AMM):
     
         # set price at which liquidity was added
         # use the minimum of the oracle price and the current price
-        agent.share_prices[(self.unique_id, tkn_add)] = lrna_price(self, tkn_add)
+        agent.share_prices[(self.unique_id, tkn_add)] = self.lrna_price(tkn_add)
         agent.delta_r[(self.unique_id, tkn_add)] = quantity
     
         # update block
@@ -1115,12 +1115,40 @@ class OmnipoolState(AMM):
             for usd in usd_synonyms:
                 for eq in equivalents:
                     if self.buy_spot(eq, usd) > 0:
-                        tkn_value += assets[tkn] * price(self, eq, usd)
+                        tkn_value += assets[tkn] * self.price(eq, usd)
                         break
                 if tkn_value != 0:
                     break
             value += tkn_value
         return value
+
+    def price(self, tkn: str, denominator: str = '') -> float:
+        """
+        price of an asset i denominated in j, according to current market conditions in the omnipool
+        """
+        if tkn not in self.asset_list:
+            return 0
+        elif not denominator:
+            return self.lrna_price(tkn)
+        elif denominator not in self.asset_list:
+            return 0
+        elif self.liquidity[tkn] == 0:
+            return 0
+        return self.lrna[tkn] / self.liquidity[tkn] / self.lrna[denominator] * self.liquidity[denominator]
+
+    def usd_price(self, tkn):
+        if tkn == 'LRNA':
+            return 1 / self.lrna_price(self.stablecoin)
+        else:
+            return self.price(tkn) / self.price(self.stablecoin)
+
+
+    def lrna_price(self, i: str, fee: float = 0) -> float:
+        """Price of i denominated in LRNA"""
+        if self.liquidity[i] == 0:
+            return 0
+        else:
+            return (self.lrna[i] / self.liquidity[i]) * (1 - fee)
 
 
 class OmnipoolArchiveState:
@@ -1142,54 +1170,6 @@ class OmnipoolArchiveState:
         # record these for analysis later
         self.last_fee = {k: v for (k, v) in state.last_fee.items()}
         self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
-
-
-# Works with OmnipoolState *or* OmnipoolArchiveState
-def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '') -> float:
-    """
-    price of an asset i denominated in j, according to current market conditions in the omnipool
-    """
-    if tkn not in state.asset_list:
-        return 0
-    elif not denominator:
-        return lrna_price(state, tkn)
-    elif denominator not in state.asset_list:
-        return 0
-    elif state.liquidity[tkn] == 0:
-        return 0
-    return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
-
-
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
-    if tkn == 'LRNA':
-        return 1 / state.lrna_price(state, state.stablecoin)
-    else:
-        return price(state, tkn) / price(state, state.stablecoin)
-
-
-def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
-    """Price of i denominated in LRNA"""
-    if state.liquidity[i] == 0:
-        return 0
-    else:
-        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
-
-
-def asset_invariant(state: OmnipoolState, i: str) -> float:
-    """Invariant for specific asset"""
-    return state.liquidity[i] * state.lrna[i]
-
-
-def swap_lrna_delta_Qi(state: OmnipoolState, delta_ri: float, i: str) -> float:
-    return state.lrna[i] * (- delta_ri / (state.liquidity[i] + delta_ri))
-
-
-def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
-    return state.liquidity[i] * (- delta_qi / (state.lrna[i] + delta_qi))
-
-
-def weight_i(state: OmnipoolState, i: str) -> float:
-    return state.lrna[i] / state.lrna_total
 
 
 def simulate_swap_lrna(
@@ -1268,15 +1248,6 @@ def simulate_remove_liquidity(
 
     new_state.remove_liquidity(new_agent, quantity, tkn_remove)
     return new_state, new_agent
-
-
-OmnipoolArchiveState.usd_price = staticmethod(usd_price)
-OmnipoolArchiveState.lrna_price = staticmethod(lrna_price)
-OmnipoolArchiveState.price = staticmethod(price)
-
-OmnipoolState.usd_price = staticmethod(usd_price)
-OmnipoolState.lrna_price = staticmethod(lrna_price)
-OmnipoolState.price = staticmethod(price)
 
 
 # ===============================================================================
