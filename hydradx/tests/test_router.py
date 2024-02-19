@@ -140,3 +140,71 @@ def test_swap_omnipool(assets: list[float], trade_size_mult: float):
             raise ValueError(f"omnipool liquidity {omnipool.liquidity[token]} != {omnipool2.liquidity[token]}")
         if omnipool.lrna[token] != omnipool2.lrna[token]:
             raise ValueError(f"omnipool lrna {omnipool.lrna[token]} != {omnipool2.lrna[token]}")
+
+
+@given(
+    st.lists(asset_quantity_strategy, min_size=16, max_size=16),
+    st.floats(min_value=0.0001, max_value=0.1),
+)
+def test_swap_stableswap(assets: list[float], trade_size_mult: float):
+    tokens = {
+        "HDX": {'liquidity': assets[0], 'LRNA': assets[1]},
+        "USDT": {'liquidity': assets[2], 'LRNA': assets[3]},
+        "DOT": {'liquidity': assets[4], 'LRNA': assets[5]},
+        "stablepool": {'liquidity': assets[6], 'LRNA': assets[7]},
+        "stablepool2": {'liquidity': assets[14], 'LRNA': assets[15]},
+    }
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0025, lrna_fee=0.0005)
+    sp_tokens = {"stable1": assets[8], "stable2": assets[9], "stable3": assets[10]}
+    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0004, unique_id="stablepool")
+    sp_tokens2 = {"stable2": assets[11], "stable3": assets[12], "USDT": assets[13]}
+    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0004, unique_id="stablepool2")
+    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
+    router = OmnipoolRouter(exchanges)
+    omnipool2 = omnipool.copy()
+    stablepool2_copy = stablepool2.copy()
+    agent1 = Agent(holdings={"DOT": 1000000, "USDT": 1000000})
+    agent2 = Agent(holdings={"DOT": 1000000, "USDT": 1000000})
+    trade_size = trade_size_mult * min(assets[4], assets[2])
+
+    buy_quantity = 1000
+
+    # test buy
+    router.swap(agent1, "DOT", "USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2", sell_pool_id="omnipool")
+    # calculate how many shares to buy
+    delta_shares = stablepool2_copy.calculate_withdrawal_shares("USDT", buy_quantity)
+    # buy shares
+    omnipool2.swap(agent2, "stablepool2", "DOT", buy_quantity=delta_shares)
+    # withdraw USDT
+    stablepool2_copy.remove_liquidity(agent2, agent2.holdings["stablepool2"], "USDT")
+
+    for token in omnipool.asset_list:
+        if omnipool.liquidity[token] != omnipool2.liquidity[token]:
+            raise ValueError(f"omnipool liquidity {omnipool.liquidity[token]} != {omnipool2.liquidity[token]}")
+        if omnipool.lrna[token] != omnipool2.lrna[token]:
+            raise ValueError(f"omnipool lrna {omnipool.lrna[token]} != {omnipool2.lrna[token]}")
+    for token in stablepool2.asset_list:
+        if stablepool2.liquidity[token] != stablepool2_copy.liquidity[token]:
+            raise ValueError(f"stablepool2 liquidity {stablepool2.liquidity[token]} != {stablepool2_copy.liquidity[token]}")
+    for token in agent1.holdings:
+        if agent1.holdings[token] != agent2.holdings[token]:
+            raise ValueError(f"agent1 holdings {agent1.holdings[token]} != {agent2.holdings[token]}")
+
+    # test sell
+    router.swap(agent1, "DOT", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="omnipool")
+    # sell DOT for shares
+    omnipool2.swap(agent2, "stablepool2", "DOT", sell_quantity=trade_size)
+    # withdraw USDT
+    stablepool2_copy.remove_liquidity(agent2, agent2.holdings["stablepool2"], "USDT")
+
+    for token in omnipool.asset_list:
+        if omnipool.liquidity[token] != omnipool2.liquidity[token]:
+            raise ValueError(f"omnipool liquidity {omnipool.liquidity[token]} != {omnipool2.liquidity[token]}")
+        if omnipool.lrna[token] != omnipool2.lrna[token]:
+            raise ValueError(f"omnipool lrna {omnipool.lrna[token]} != {omnipool2.lrna[token]}")
+    for token in stablepool2.asset_list:
+        if stablepool2.liquidity[token] != stablepool2_copy.liquidity[token]:
+            raise ValueError(f"stablepool2 liquidity {stablepool2.liquidity[token]} != {stablepool2_copy.liquidity[token]}")
+    for token in agent1.holdings:
+        if agent1.holdings[token] != agent2.holdings[token]:
+            raise ValueError(f"agent1 holdings {agent1.holdings[token]} != {agent2.holdings[token]}")

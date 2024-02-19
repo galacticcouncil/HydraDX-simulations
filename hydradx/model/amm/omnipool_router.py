@@ -81,7 +81,7 @@ class OmnipoolRouter:
         elif sell_quantity and not buy_quantity:
             # add liquidity to sell_pool
             if sell_pool_id != self.omnipool_id:
-                init_amt = agent.holdings[sell_pool_id]
+                init_amt = agent.holdings[sell_pool_id] if sell_pool_id in agent.holdings else 0
                 self.exchanges[sell_pool_id].add_liquidity(agent, sell_quantity, tkn_sell)
                 sell_amt_1 = agent.holdings[sell_pool_id] - init_amt
                 tkn_sell_1 = sell_pool_id
@@ -92,7 +92,7 @@ class OmnipoolRouter:
             if buy_pool_id == self.omnipool_id:
                 self.exchanges[self.omnipool_id].swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell_1, sell_quantity=sell_amt_1)
             else:
-                init_amt = agent.holdings[buy_pool_id]
+                init_amt = agent.holdings[buy_pool_id] if buy_pool_id in agent.holdings else 0
                 self.exchanges[self.omnipool_id].swap(agent, tkn_buy=buy_pool_id, tkn_sell=tkn_sell_1,
                                                       sell_quantity=sell_amt_1)
                 share_amt = agent.holdings[buy_pool_id] - init_amt
