@@ -1,4 +1,4 @@
-import pytest
+import pytest, copy
 from hypothesis import given, strategies as st, assume, settings, Verbosity
 
 from hydradx.model.amm.agents import Agent
@@ -208,3 +208,60 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     for token in agent1.holdings:
         if agent1.holdings[token] != agent2.holdings[token]:
             raise ValueError(f"agent1 holdings {agent1.holdings[token]} != {agent2.holdings[token]}")
+
+
+@given(st.lists(asset_quantity_strategy, min_size=16, max_size=16))
+def test_swap_stableswap2(assets: list[float]):
+    tokens = {
+        "HDX": {'liquidity': assets[0], 'LRNA': assets[1]},
+        "USDT": {'liquidity': assets[2], 'LRNA': assets[3]},
+        "DOT": {'liquidity': assets[4], 'LRNA': assets[5]},
+        "stablepool": {'liquidity': assets[6], 'LRNA': assets[7]},
+        "stablepool2": {'liquidity': assets[14], 'LRNA': assets[15]},
+    }
+
+    buy_tkn = "USDT"
+    sell_tkn = "stable1"
+
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0025, lrna_fee=0.0005)
+    sp_tokens = {"stable1": assets[8], "stable2": assets[9], "stable3": assets[10]}
+    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0100, unique_id="stablepool")
+    sp_tokens2 = {"stable2": assets[11], "stable3": assets[12], "USDT": assets[13]}
+    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
+    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
+    router = OmnipoolRouter(exchanges)
+    init_holdings = {"DOT": 1000000, "USDT": 1000000, "stable1": 1000000}
+    agent1 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
+    trade_size = 1000
+
+    # test buy
+    router.swap(agent1, sell_tkn, buy_tkn, buy_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
+    for tkn in list(agent1.holdings.keys()) + list(init_holdings.keys()):
+        if tkn == buy_tkn:
+            if agent1.holdings[tkn] != pytest.approx(init_holdings[tkn] + trade_size, rel=1e-12):
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn] + trade_size}")
+        elif tkn == sell_tkn:
+            if agent1.holdings[tkn] >= init_holdings[tkn]:
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} >= {init_holdings[tkn]}")
+        else:
+            if tkn not in init_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
+            elif tkn in agent1.holdings and tkn in init_holdings and agent1.holdings[tkn] != init_holdings[tkn]:
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn]}")
+
+    sell_init_holdings = copy.deepcopy(agent1.holdings)
+
+    # test sell
+    router.swap(agent1, "stable1", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
+    for tkn in list(agent1.holdings.keys()) + list(sell_init_holdings.keys()):
+        if tkn == buy_tkn:
+            if agent1.holdings[tkn] <= sell_init_holdings[tkn]:
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} <= {sell_init_holdings[tkn]}")
+        elif tkn == sell_tkn:
+            if agent1.holdings[tkn] + trade_size != sell_init_holdings[tkn]:
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn] + trade_size} != {init_holdings[tkn]}")
+        else:
+            if tkn not in sell_init_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
+            elif tkn in agent1.holdings and tkn in sell_init_holdings and agent1.holdings[tkn] != sell_init_holdings[tkn]:
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {sell_init_holdings[tkn]}")

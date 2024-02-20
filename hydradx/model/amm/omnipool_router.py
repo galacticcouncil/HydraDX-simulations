@@ -70,14 +70,34 @@ class OmnipoolRouter:
         elif buy_quantity and not sell_quantity:
             # need to calculate sell_quantity from buy_quantity
             # calculate LP tokens required to buy buy_quantity of tkn_buy
+            init_buy_pool_shares = 0
             if buy_pool_id != self.omnipool_id:
                 buy_quantity = self.exchanges[buy_pool_id].calculate_withdrawal_shares(tkn_buy, buy_quantity)
+                omnipool_tkn_buy = buy_pool_id
+                init_buy_pool_shares = agent.holdings[buy_pool_id] if buy_pool_id in agent.holdings else 0
+            else:
+                omnipool_tkn_buy = tkn_buy
+
             # calculate LP tokens of sell_pool_id required to buy sufficient buy_pool_id
-            sell_quantity = self.exchanges[sell_pool_id].calculate_sell_from_buy(buy_pool_id, tkn_sell, buy_quantity)
-            # calculate quantity of tkn_sell required to buy sufficient sell_pool_id
-            if sell_pool_id != self.omnipool_id:
-                sell_quantity = self.exchanges[sell_pool_id].calculate_buy_shares(sell_quantity, tkn_sell)
-            self.swap(agent, tkn_sell, tkn_buy, 0, sell_quantity, buy_pool_id, sell_pool_id)
+            if sell_pool_id == self.omnipool_id:
+                self.exchanges[self.omnipool_id].swap(agent, tkn_buy=omnipool_tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_quantity)
+            else:
+                # calculate quantity of tkn_sell required to buy sufficient sell_pool_id
+                sell_quantity1 = self.exchanges[self.omnipool_id].calculate_sell_from_buy(buy_pool_id, sell_pool_id,
+                                                                                         buy_quantity)
+                # buy shares of sell_pool_id, i.e., add liquidity
+                shares_owned = agent.holdings[sell_pool_id] if sell_pool_id in agent.holdings else 0
+                self.exchanges[sell_pool_id].buy_shares(agent, sell_quantity1, tkn_sell)
+                shares_bought = agent.holdings[sell_pool_id] - shares_owned
+
+                # sell shares of sell_pool_id
+                self.exchanges[self.omnipool_id].swap(agent, tkn_buy=omnipool_tkn_buy, tkn_sell=sell_pool_id, sell_quantity=shares_bought)
+
+            if buy_pool_id != self.omnipool_id:
+                # withdraw liquidity from buy_pool_id if necessary
+                buy_pool_shares_bought = agent.holdings[buy_pool_id] - init_buy_pool_shares
+                self.exchanges[buy_pool_id].remove_liquidity(agent, buy_pool_shares_bought, tkn_buy)
+
         elif sell_quantity and not buy_quantity:
             # add liquidity to sell_pool
             if sell_pool_id != self.omnipool_id:
