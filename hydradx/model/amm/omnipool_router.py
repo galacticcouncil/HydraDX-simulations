@@ -25,7 +25,7 @@ class OmnipoolRouter:
         copy_self = copy.deepcopy(self)
         return copy_self
 
-    def price(self, tkn: str, denomination: str, tkn_pool_id: str, denom_pool_id: str) -> float:
+    def price_route(self, tkn: str, denomination: str, tkn_pool_id: str, denom_pool_id: str) -> float:
         omnipool = self.exchanges[self.omnipool_id]
 
         tkn_subpool_share_price = 1
@@ -120,3 +120,48 @@ class OmnipoolRouter:
                 self.exchanges[buy_pool_id].remove_liquidity(agent, share_amt, tkn_buy)
         else:
             raise ValueError('One of buy_quantity or sell_quantity must be zero')
+
+    def find_routes(self, tkn_buy, tkn_sell):
+        '''Finds all possible routes to swap between tkn_buy and tkn_sell'''
+        tkn_buy_pools = [pool_id for pool_id in self.exchanges if tkn_buy in self.exchanges[pool_id].asset_list]
+        tkn_sell_pools = [pool_id for pool_id in self.exchanges if tkn_sell in self.exchanges[pool_id].asset_list]
+
+        if len(tkn_buy_pools) == 0:
+            raise ValueError(f'No pool with {tkn_buy} in asset list')
+        if len(tkn_sell_pools) == 0:
+            raise ValueError(f'No pool with {tkn_sell} in asset list')
+
+        return [(tkn_sell_pool, tkn_buy_pool) for tkn_buy_pool in tkn_buy_pools for tkn_sell_pool in tkn_sell_pools]
+
+    def find_best_route(self, tkn_buy, tkn_sell):
+        '''Finds route to swap between tkn_buy and tkn_sell with lowest spot price'''
+        routes = self.find_routes(tkn_buy, tkn_sell)
+        return sorted(routes, key=lambda x: self.price_route(tkn_buy, tkn_sell, x[1], x[0]))[0]
+
+    def swap(self, agent, tkn_buy, tkn_sell, buy_quantity=0, sell_quantity=0):
+        '''Does swap along whatever route has best spot price'''
+        if not buy_quantity and not sell_quantity:
+            return self
+        route = self.find_best_route(tkn_buy, tkn_sell)
+        return self.swap_route(agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity, route[1], route[0])
+
+    def simulate_swap_route(self,
+        agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0,
+        buy_pool_id: str = None,
+        sell_pool_id: str = None):
+        '''Does swap along specified route, returning new router and agent'''
+        new_state = self.copy()
+        new_agent = agent.copy()
+        new_state.swap_route(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity, buy_pool_id, sell_pool_id)
+        return new_state, new_agent
+
+    def simulate_swap(self, agent, tkn_buy, tkn_sell, buy_quantity=0, sell_quantity=0):
+        '''Does swap along whatever route has best spot price'''
+        new_state = self.copy()
+        new_agent = agent.copy()
+        new_state.swap(new_agent, tkn_buy, tkn_sell, buy_quantity, sell_quantity)
+        return new_state, new_agent

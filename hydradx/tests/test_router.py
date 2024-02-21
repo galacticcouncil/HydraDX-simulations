@@ -10,7 +10,7 @@ asset_quantity_strategy = st.floats(min_value=100000, max_value=10000000)
 
 
 @given(st.lists(asset_quantity_strategy, min_size=11, max_size=11))
-def test_price(assets: list[float]):
+def test_price_route(assets: list[float]):
     tokens = {
         "HDX": {'liquidity': assets[0], 'LRNA': assets[1]},
         "USDT": {'liquidity': assets[2], 'LRNA': assets[3]},
@@ -40,28 +40,28 @@ def test_price(assets: list[float]):
     }
     router = OmnipoolRouter(exchanges)
 
-    router_price_hdx = router.price("HDX", "USDT", "omnipool", "omnipool")
+    router_price_hdx = router.price_route("HDX", "USDT", "omnipool", "omnipool")
     op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
     if router_price_hdx != op_price_hdx:
         raise ValueError(f"router price {router_price_hdx} != omnipool price {op_price_hdx}")
 
-    router_price_lp = router.price("stablepool", "USDT", "omnipool", "omnipool")
+    router_price_lp = router.price_route("stablepool", "USDT", "omnipool", "omnipool")
     op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
     if router_price_lp != op_price_lp:
         raise ValueError(f"router price {router_price_lp} != omnipool price {op_price_lp}")
 
-    router_price_inside_stablepool = router.price("stable1", "stable3", "stablepool", "stablepool")
+    router_price_inside_stablepool = router.price_route("stable1", "stable3", "stablepool", "stablepool")
     sp_price = stablepool.price("stable1", "stable3")
     if router_price_inside_stablepool != pytest.approx(sp_price, rel=1e-15):
         raise ValueError(f"router price {router_price_inside_stablepool} != stablepool price {sp_price}")
 
-    router_price_outside_stablepool = router.price("stable1", "USDT", "stablepool", "omnipool")
+    router_price_outside_stablepool = router.price_route("stable1", "USDT", "stablepool", "omnipool")
     share_price = stablepool.share_price("stable1")
     op_price_share = omnipool.price(omnipool, "stablepool", "USDT")
     if router_price_outside_stablepool != op_price_share / share_price:
         raise ValueError(f"router price {router_price_outside_stablepool} != stablepool price {op_price_share / share_price}")
 
-def test_price_example():
+def test_price_route_example():
     # This test exists to make sure we are not making same mistake in test_price and in the price function
     tokens = {
         "HDX": {'liquidity': 10000000, 'LRNA': 1000000},
@@ -92,7 +92,7 @@ def test_price_example():
     }
     router = OmnipoolRouter(exchanges)
 
-    router_price_outside_stablepool = router.price("DOT", "stable1", "omnipool", "stablepool")
+    router_price_outside_stablepool = router.price_route("DOT", "stable1", "omnipool", "stablepool")
     # if we have the math right, the DOT price denominated in stable1 should be in the ballpark of 10.
     if router_price_outside_stablepool != pytest.approx(10, rel=1e-3):
         raise ValueError(f"router price {router_price_outside_stablepool} is not correct")
@@ -265,3 +265,81 @@ def test_swap_stableswap2(assets: list[float]):
                 raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
             elif tkn in agent1.holdings and tkn in sell_init_holdings and agent1.holdings[tkn] != sell_init_holdings[tkn]:
                 raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {sell_init_holdings[tkn]}")
+
+
+def test_swap():
+    sp_tokens = {"stable1": 400000, "stable3": 400000}
+    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0000, unique_id="stablepool")
+    sp_tokens2 = {"stable2": 300000, "stable3": 300000, "USDT": 400000}  # USDT cheaper in stablepool2
+    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
+
+    tokens = {
+        "HDX": {'liquidity': 10000000, 'LRNA': 1000000},
+        "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
+        "DOT": {'liquidity': 100000, 'LRNA': 1000000},
+        "stablepool": {'liquidity': stablepool.shares, 'LRNA': 1000000},
+        "stablepool2": {'liquidity': stablepool2.shares, 'LRNA': 1000000},
+    }
+
+    buy_tkn = "USDT"
+    sell_tkn = "stable1"
+
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0000, lrna_fee=0.0000)
+    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
+    router = OmnipoolRouter(exchanges)
+    trade_size = 1
+    agent1 = Agent(holdings={sell_tkn: trade_size})
+
+    best_route = router.find_best_route( buy_tkn, sell_tkn)
+    if best_route != ("stablepool", "stablepool2"):
+        raise ValueError(f"best route {best_route} != ('stablepool', 'stablepool2')")
+
+    new_router, new_agent = router.simulate_swap(agent1, buy_tkn, sell_tkn, sell_quantity=trade_size)
+    new_router2, new_agent2 = router.simulate_swap_route(agent1, sell_tkn, buy_tkn, sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
+    for tkn in new_agent.holdings:
+        if new_agent.holdings[tkn] != new_agent2.holdings[tkn]:
+            raise ValueError(f"new_agent holdings {new_agent.holdings[tkn]} != {new_agent2.holdings[tkn]}")
+    for ex_id in new_router.exchanges:
+        ex = new_router.exchanges[ex_id]
+        for tkn in ex.liquidity:
+            if ex.liquidity[tkn] != new_router2.exchanges[ex_id].liquidity[tkn]:
+                raise ValueError(f"ex liquidity {ex.liquidity[tkn]} != {new_router2.exchanges[ex_id].liquidity[tkn]}")
+
+
+def test_swap2():
+    sp_tokens = {"stable1": 400000, "stable3": 400000}
+    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0000, unique_id="stablepool")
+    sp_tokens2 = {"stable2": 300000, "stable3": 300000, "USDT": 200000}  # USDT more expensive in stablepool2
+    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
+
+    tokens = {
+        "HDX": {'liquidity': 10000000, 'LRNA': 1000000},
+        "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
+        "DOT": {'liquidity': 100000, 'LRNA': 1000000},
+        "stablepool": {'liquidity': stablepool.shares, 'LRNA': 1000000},
+        "stablepool2": {'liquidity': stablepool2.shares, 'LRNA': 1000000},
+    }
+
+    buy_tkn = "USDT"
+    sell_tkn = "stable1"
+
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0000, lrna_fee=0.0000)
+    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
+    router = OmnipoolRouter(exchanges)
+    trade_size = 1
+    agent1 = Agent(holdings={sell_tkn: trade_size})
+
+    best_route = router.find_best_route( buy_tkn, sell_tkn)
+    if best_route != ("stablepool", "omnipool"):
+        raise ValueError(f"best route {best_route} != ('stablepool', 'omnipool')")
+
+    new_router, new_agent = router.simulate_swap(agent1, buy_tkn, sell_tkn, sell_quantity=trade_size)
+    new_router2, new_agent2 = router.simulate_swap_route(agent1, sell_tkn, buy_tkn, sell_quantity=trade_size, buy_pool_id="omnipool", sell_pool_id="stablepool")
+    for tkn in new_agent.holdings:
+        if new_agent.holdings[tkn] != new_agent2.holdings[tkn]:
+            raise ValueError(f"new_agent holdings {new_agent.holdings[tkn]} != {new_agent2.holdings[tkn]}")
+    for ex_id in new_router.exchanges:
+        ex = new_router.exchanges[ex_id]
+        for tkn in ex.liquidity:
+            if ex.liquidity[tkn] != new_router2.exchanges[ex_id].liquidity[tkn]:
+                raise ValueError(f"ex liquidity {ex.liquidity[tkn]} != {new_router2.exchanges[ex_id].liquidity[tkn]}")
