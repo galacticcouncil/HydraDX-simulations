@@ -30,7 +30,7 @@ class OmnipoolState(AMM):
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
                  lrna_mint_pct: float = 0.0,
-                 unique_id: str = 'omnipool',
+                 unique_id: str = 'omnipool'
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -53,6 +53,8 @@ class OmnipoolState(AMM):
 
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
+        if preferred_stablecoin not in tokens:
+            raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
 
         self.asset_list: list[str] = []
         self.liquidity = {}
