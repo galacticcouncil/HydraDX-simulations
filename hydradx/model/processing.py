@@ -412,7 +412,6 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
             tkn_id: f"{tkn_name}{tkn_id}" if tkn_name in repeats else tkn_name
             for tkn_id, tkn_name in assets + sub_pool_assets
         }
-
         omnipool = OmnipoolState(
             tokens={
                 symbol_map[tkn_id]: {
@@ -457,10 +456,10 @@ def save_omnipool(omnipool: OmnipoolState):
                 'lrna_fee': omnipool.lrna_fee,
                 'sub_pools': [
                     {
-                        'tokens': omnipool.sub_pools[pool].liquidity,
-                        'amplification': omnipool.sub_pools[pool].amplification,
-                        'trade_fee': omnipool.sub_pools[pool].trade_fee,
-                        'unique_id': omnipool.sub_pools[pool].unique_id
+                        'tokens': pool.liquidity,
+                        'amplification': pool.amplification,
+                        'trade_fee': pool.trade_fee,
+                        'unique_id': pool.unique_id
                     } for pool in omnipool.sub_pools
                 ]
             },
