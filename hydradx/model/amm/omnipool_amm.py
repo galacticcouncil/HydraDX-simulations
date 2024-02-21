@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .amm import AMM, FeeMechanism, basic_fee
 from .oracle import Oracle, Block, OracleArchiveState
-from .stableswap_amm import StableSwapPoolState, simulate_remove_liquidity as ss_simulate_remove_liquidity
+from .stableswap_amm import StableSwapPoolState
 
 
 class OmnipoolState(AMM):
@@ -15,7 +15,6 @@ class OmnipoolState(AMM):
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
                  preferred_stablecoin: str = "USD",
-                 preferred_stablecoin_pool_id: str = None,
                  asset_fee: dict or FeeMechanism or float = None,
                  lrna_fee: dict or FeeMechanism or float = None,
                  oracles: dict[str: int] = None,
@@ -32,7 +31,6 @@ class OmnipoolState(AMM):
                  min_withdrawal_fee: float = 0.0001,
                  lrna_mint_pct: float = 0.0,
                  unique_id: str = 'omnipool',
-                 sub_pools: dict = None,
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -53,10 +51,8 @@ class OmnipoolState(AMM):
 
         super().__init__()
 
-
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
-
 
         self.asset_list: list[str] = []
         self.liquidity = {}
@@ -69,21 +65,8 @@ class OmnipoolState(AMM):
         self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
         self.stablecoin = preferred_stablecoin
-        self.stablecoin_pool_id = preferred_stablecoin_pool_id
-        if preferred_stablecoin not in tokens:
-            if sub_pools is None:
-                raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
-            elif preferred_stablecoin_pool_id is not None:
-                if preferred_stablecoin_pool_id not in sub_pools:
-                    raise ValueError(f'{preferred_stablecoin} is preferred stablecoin and is in {preferred_stablecoin_pool_id},'
-                                     f'but {preferred_stablecoin_pool_id} is not included in the Omnipool.')
-                if preferred_stablecoin_pool_id not in tokens:
-                    raise ValueError(f'{preferred_stablecoin_pool_id} is preferred stablecoin pool, but not included in tokens.')
         self.fail = ''
-        if sub_pools is None:
-            self.sub_pools = dict()
-        else:
-            self.sub_pools = sub_pools
+        self.sub_pools = dict()  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
         self.max_withdrawal_per_block = max_withdrawal_per_block
         self.max_lp_per_block = max_lp_per_block
@@ -245,7 +228,7 @@ class OmnipoolState(AMM):
     @property
     def total_value_locked(self):
         # base this just on the LRNA/USD exchange rate in the pool
-        return self.lrna_total / lrna_price(self, self.stablecoin, sub_pool_id=self.stablecoin_pool_id)
+        return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
         return float('inf')
@@ -286,7 +269,7 @@ class OmnipoolState(AMM):
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
                     f'    USD price: {prices[tkn]}\n' +
-                    f'    tvl: ${lrna[tkn] / lrna_price(self, self.stablecoin, sub_pool_id=self.stablecoin_pool_id)}\n'
+                    f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
                     f'    total shares: {self.shares[tkn]}\n'
@@ -429,8 +412,6 @@ class OmnipoolState(AMM):
             # note that we still apply the imbalance modification due to LRNA fee
             # collection, we just don't apply the imbalance modification from
             # the sale of LRNA back to the pool.
-            tkn_buy_subpool_id: str = None,
-            tkn_sell_subpool_id: str = None
     ):
         """
         execute swap in place (modify and return self and agent)
@@ -439,19 +420,7 @@ class OmnipoolState(AMM):
         old_buy_liquidity = self.liquidity[tkn_buy] if tkn_buy in self.liquidity else 0
         old_sell_liquidity = self.liquidity[tkn_sell] if tkn_sell in self.liquidity else 0
 
-        if tkn_buy_subpool_id is not None or tkn_sell_subpool_id is not None:
-            buy_pool = self.get_sub_pool(tkn=tkn_buy) if tkn_buy_subpool_id is None else tkn_buy_subpool_id
-            sell_pool = self.get_sub_pool(tkn=tkn_sell) if tkn_sell_subpool_id is None else tkn_sell_subpool_id
-            return_val = self.stable_swap(
-                agent=agent,
-                sub_pool_buy_id=buy_pool,
-                sub_pool_sell_id=sell_pool,
-                tkn_sell=tkn_sell, tkn_buy=tkn_buy,
-                buy_quantity=buy_quantity,
-                sell_quantity=sell_quantity
-            )
-
-        elif tkn_buy not in self.asset_list + ['LRNA'] or tkn_sell not in self.asset_list + ['LRNA']:
+        if tkn_buy not in self.asset_list + ['LRNA'] or tkn_sell not in self.asset_list + ['LRNA']:
             # note: this default routing behavior assumes that an asset will only exist in one place in the omnipool
             return_val = self.stable_swap(
                 agent=agent,
@@ -557,16 +526,11 @@ class OmnipoolState(AMM):
             delta_ra: float = 0,
             delta_qa: float = 0,
             tkn: str = '',
-            modify_imbalance: bool = True,
-            tkn_subpool_id: str = None
+            modify_imbalance: bool = True
     ):
         """
         Execute LRNA swap in place (modify and return)
         """
-
-        if tkn_subpool_id is not None:
-            if delta_qa > 0:  # selling LRNA
-                self.lrna_swap(agent, delta_qa=delta_qa, tkn=tkn_subpool_id, modify_imbalance=modify_imbalance)
     
         if delta_qa < 0:
             asset_fee = self.asset_fee[tkn].compute(
@@ -1179,41 +1143,34 @@ class OmnipoolArchiveState:
 
 
 # Works with OmnipoolState *or* OmnipoolArchiveState
-def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '', tkn_pool_id: str = None, denom_pool_id: str = None) -> float:
+def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '') -> float:
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
-    # if tkn not in state.asset_list:
-    #     return 0
-    if not denominator:
+    if tkn not in state.asset_list:
+        return 0
+    elif not denominator:
         return lrna_price(state, tkn)
-    # elif denominator not in state.asset_list:
-    #     return 0
-    elif tkn_pool_id is None and tkn in state.liquidity and state.liquidity[tkn] == 0:
+    elif denominator not in state.asset_list:
         return 0
-    else:
-        return lrna_price(state, tkn, sub_pool_id=tkn_pool_id) / lrna_price(state, denominator, sub_pool_id=denom_pool_id)
-        # return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
+    elif state.liquidity[tkn] == 0:
+        return 0
+    return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str):
+def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
     if tkn == 'LRNA':
-        return 1 / state.lrna_price(state, state.stablecoin, sub_pool_id=state.stablecoin_pool_id)
+        return 1 / state.lrna_price(state, state.stablecoin)
     else:
-        return lrna_price(state, tkn) / lrna_price(state, state.stablecoin, sub_pool_id=state.stablecoin_pool_id)
+        return price(state, tkn) / price(state, state.stablecoin)
 
 
-def lrna_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, fee: float = 0, sub_pool_id = None) -> float:
+def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
-    if sub_pool_id is None and tkn in state.asset_list:
-        if state.liquidity[tkn] == 0:
-            return 0
-        else:
-            return (state.lrna[tkn] / state.liquidity[tkn]) * (1 - fee)
-    elif sub_pool_id is None or sub_pool_id not in state.sub_pools or sub_pool_id not in state.asset_list:
+    if state.liquidity[i] == 0:
         return 0
     else:
-        return lrna_price(state, sub_pool_id, fee) / state.sub_pools[sub_pool_id].share_price(tkn)
+        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
@@ -1239,15 +1196,14 @@ def simulate_swap_lrna(
         delta_ra: float = 0,
         delta_qa: float = 0,
         tkn: str = '',
-        modify_imbalance: bool = True,
-        tkn_subpool_id: str = None
+        modify_imbalance: bool = True
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after LRNA swap"""
 
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    new_state.lrna_swap(new_agent, delta_ra, delta_qa, tkn, modify_imbalance, tkn_subpool_id)
+    new_state.lrna_swap(new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
     return new_state, new_agent
 
 
@@ -1257,9 +1213,7 @@ def simulate_swap(
         tkn_buy: str,
         tkn_sell: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0,
-        tkn_buy_subpool_id: str = None,
-        tkn_sell_subpool_id: str = None
+        sell_quantity: float = 0
 ) -> tuple[OmnipoolState, Agent]:
     """
     execute swap on a copy of old_state and old_agent, and return the copies
@@ -1273,8 +1227,6 @@ def simulate_swap(
         buy_quantity=buy_quantity,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
-        tkn_buy_subpool_id=tkn_buy_subpool_id,
-        tkn_sell_subpool_id=tkn_sell_subpool_id
     )
     return new_state, new_agent
 
