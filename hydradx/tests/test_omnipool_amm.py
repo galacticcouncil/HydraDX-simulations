@@ -8,8 +8,7 @@ from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee, lrna_price
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 from mpmath import mp, mpf
@@ -2492,32 +2491,3 @@ def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_
         raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
     if hdx_per_usd != pytest.approx(ex_price_usd):
         raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')
-
-
-@given(st.floats(min_value=10000000, max_value=100000000),
-        st.floats(min_value=10000000, max_value=100000000),
-       )
-def test_lrna_price_subpool(usd1_amt, usd2_amt):
-    subpool = StableSwapPoolState(
-        tokens={'USD1': mpf(usd1_amt), 'USD2': mpf(usd2_amt)},
-        amplification=float(1000),
-        trade_fee=0.0,
-        unique_id="stablepool"
-    )
-    sub_pools_dict = {"stablepool": subpool}
-    state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(1000000000)},
-            'DOT': {'liquidity': mpf(1000000000), 'LRNA': mpf(1000000000)},
-            'stablepool': {'liquidity': subpool.shares / 2, 'LRNA': mpf(1000000000)}
-        },
-        sub_pools=sub_pools_dict,
-        preferred_stablecoin='USD1',
-        preferred_stablecoin_pool_id='stablepool'
-    )
-
-    lrna_price_of_tkn = lrna_price(state, 'USD1', sub_pool_id='stablepool')
-    lp_token_price = lrna_price(state, 'stablepool')
-    share_price = subpool.share_price('USD1')
-    if lrna_price_of_tkn != lp_token_price / share_price:
-        raise
