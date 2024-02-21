@@ -122,7 +122,7 @@ def test_swap_omnipool(assets: list[float], trade_size_mult: float):
     trade_size = trade_size_mult * min(assets[4], assets[2])
 
     # test buy
-    router.swap(agent1, "DOT", "USDT", buy_quantity=10000, buy_pool_id="omnipool", sell_pool_id="omnipool")
+    router.swap_route(agent1, "DOT", "USDT", buy_quantity=10000, buy_pool_id="omnipool", sell_pool_id="omnipool")
     omnipool2.swap(agent2, "DOT", "USDT", buy_quantity=10000)
 
     for token in omnipool.asset_list:
@@ -132,7 +132,7 @@ def test_swap_omnipool(assets: list[float], trade_size_mult: float):
             raise ValueError(f"omnipool lrna {omnipool.lrna[token]} != {omnipool2.lrna[token]}")
 
     # test sell
-    router.swap(agent1, "DOT", "USDT", sell_quantity=trade_size, buy_pool_id="omnipool", sell_pool_id="omnipool")
+    router.swap_route(agent1, "DOT", "USDT", sell_quantity=trade_size, buy_pool_id="omnipool", sell_pool_id="omnipool")
     omnipool2.swap(agent2, "DOT", "USDT", sell_quantity=trade_size)
 
     for token in omnipool.asset_list:
@@ -170,7 +170,7 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     buy_quantity = 1000
 
     # test buy
-    router.swap(agent1, "DOT", "USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2", sell_pool_id="omnipool")
+    router.swap_route(agent1, "DOT", "USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2", sell_pool_id="omnipool")
     # calculate how many shares to buy
     delta_shares = stablepool2_copy.calculate_withdrawal_shares("USDT", buy_quantity)
     # buy shares
@@ -191,7 +191,7 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
             raise ValueError(f"agent1 holdings {agent1.holdings[token]} != {agent2.holdings[token]}")
 
     # test sell
-    router.swap(agent1, "DOT", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="omnipool")
+    router.swap_route(agent1, "DOT", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="omnipool")
     # sell DOT for shares
     omnipool2.swap(agent2, "stablepool2", "DOT", sell_quantity=trade_size)
     # withdraw USDT
@@ -235,7 +235,7 @@ def test_swap_stableswap2(assets: list[float]):
     trade_size = 1000
 
     # test buy
-    router.swap(agent1, sell_tkn, buy_tkn, buy_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
+    router.swap_route(agent1, sell_tkn, buy_tkn, buy_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
     for tkn in list(agent1.holdings.keys()) + list(init_holdings.keys()):
         if tkn == buy_tkn:
             if agent1.holdings[tkn] != pytest.approx(init_holdings[tkn] + trade_size, rel=1e-12):
@@ -252,7 +252,7 @@ def test_swap_stableswap2(assets: list[float]):
     sell_init_holdings = copy.deepcopy(agent1.holdings)
 
     # test sell
-    router.swap(agent1, "stable1", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
+    router.swap_route(agent1, "stable1", "USDT", sell_quantity=trade_size, buy_pool_id="stablepool2", sell_pool_id="stablepool")
     for tkn in list(agent1.holdings.keys()) + list(sell_init_holdings.keys()):
         if tkn == buy_tkn:
             if agent1.holdings[tkn] <= sell_init_holdings[tkn]:

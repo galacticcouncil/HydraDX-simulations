@@ -47,7 +47,7 @@ class OmnipoolRouter:
     def sell_limit(self, tkn_buy, tkn_sell):
         return float('inf')
 
-    def swap(
+    def swap_route(
         self,
         agent: Agent,
         tkn_sell: str,
