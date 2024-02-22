@@ -554,3 +554,25 @@ def convert_config(cfg: list[dict]) -> list[dict]:
         }
         for cfg_item in cfg
     ]
+
+
+def download_coingecko_prices(tkn: str, start: datetime, end: datetime):
+    d1_unix = str(int(time.mktime(start.timetuple())))
+    d2_unix = str(int(time.mktime(end.timetuple())))
+    url = "https://api.coingecko.com/api/v3/coins/" + tkn + "/market_chart/range?vs_currency=usd&from=" + d1_unix + "&to=" + d2_unix
+    return requests.get(url).json()
+
+
+def save_latest_coingecko_prices(tkn: str, duration: int, path: str = './archive/', buffer=0):
+    now = datetime.datetime.now()
+    d2 = now - datetime.timedelta(seconds=buffer)
+    d1 = d2 - datetime.timedelta(days=duration)
+    data = download_coingecko_prices(tkn, d1, d2)
+    with open(f'{path}{tkn}_{duration}_coingecko_prices.json', 'w') as output_file:
+        json.dump(data, output_file)
+
+
+def import_coingecko_prices(tkn: str, duration, path: str = './archive/'):
+    with open(f'{path}{tkn}_{duration}_coingecko_prices.json', 'r') as input_file:
+        data = json.load(input_file)
+    return data
