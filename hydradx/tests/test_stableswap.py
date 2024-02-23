@@ -629,3 +629,21 @@ def test_buy_sell_spot(
         raise AssertionError(f'Sell spot R1 ({r2_per_r1}) != execution price ({ex_price_r1}).')
     if r1_per_r2 != pytest.approx(ex_price_r2):
         raise AssertionError(f'Buy spot R2 ({r1_per_r2}) != execution price ({ex_price_r2}).')
+
+
+def test_share_prices():
+    tokens = {'USDT': mpf(1000000), 'USDC': mpf(1200000)}
+    pool = StableSwapPoolState(tokens, mpf(100), trade_fee=mpf(0.01))
+    spot = pool.share_price('USDT')
+    add_liq_price = pool.add_liquidity_spot('USDT')
+    if add_liq_price <= spot:
+        raise AssertionError('Add liquidity price should be higher than spot price.')
+    buy_shares_price = pool.buy_shares_spot('USDT')
+    if buy_shares_price <= spot:
+        raise AssertionError('Buy shares price should be higher than spot price.')
+    remove_liq_price = pool.remove_liquidity_spot('USDT')
+    if remove_liq_price >= spot:
+        raise AssertionError('Remove liquidity price should be lower than spot price.')
+    withdraw_asset_price = pool.withdraw_asset_spot('USDT')
+    if withdraw_asset_price >= spot:
+        raise AssertionError('Withdraw asset price should be lower than spot price.')

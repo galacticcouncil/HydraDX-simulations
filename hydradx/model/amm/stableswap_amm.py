@@ -483,9 +483,10 @@ class StableSwapPoolState(AMM):
         '''Calculates spot price of buying shares as shares denominated in liquidity'''
         trade_size = self.shares / 10**7
         share_price = self.share_price(tkn_add)
-        agent = Agent({tkn_add: share_price * trade_size * 2})
+        init_tkn_add = share_price * trade_size * 2
+        agent = Agent({tkn_add: init_tkn_add})
         new_state, new_agent = simulate_buy_shares(self, agent, trade_size, tkn_add)
-        return new_agent.holdings[tkn_add] / trade_size
+        return (init_tkn_add - new_agent.holdings[tkn_add]) / trade_size
 
     def remove_liquidity_spot(self, tkn_remove: str):
         '''Calculates spot price of removing liquidity as shares denominated in liquidity'''
