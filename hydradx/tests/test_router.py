@@ -39,27 +39,35 @@ def test_price_route(assets: list[float]):
         "stablepool": stablepool
     }
     router = OmnipoolRouter(exchanges)
+    op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
+    op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
+    sp_price = stablepool.price("stable1", "stable3")
+    share_price = stablepool.share_price("stable1")
 
     router_price_hdx = router.price_route("HDX", "USDT", "omnipool", "omnipool")
-    op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
     if router_price_hdx != op_price_hdx:
         raise ValueError(f"router price {router_price_hdx} != omnipool price {op_price_hdx}")
 
     router_price_lp = router.price_route("stablepool", "USDT", "omnipool", "omnipool")
-    op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
     if router_price_lp != op_price_lp:
         raise ValueError(f"router price {router_price_lp} != omnipool price {op_price_lp}")
 
     router_price_inside_stablepool = router.price_route("stable1", "stable3", "stablepool", "stablepool")
-    sp_price = stablepool.price("stable1", "stable3")
     if router_price_inside_stablepool != pytest.approx(sp_price, rel=1e-15):
         raise ValueError(f"router price {router_price_inside_stablepool} != stablepool price {sp_price}")
 
     router_price_outside_stablepool = router.price_route("stable1", "USDT", "stablepool", "omnipool")
-    share_price = stablepool.share_price("stable1")
-    op_price_share = omnipool.price(omnipool, "stablepool", "USDT")
-    if router_price_outside_stablepool != op_price_share / share_price:
-        raise ValueError(f"router price {router_price_outside_stablepool} != stablepool price {op_price_share / share_price}")
+    if router_price_outside_stablepool != op_price_lp / share_price:
+        raise ValueError(f"router price {router_price_outside_stablepool} != stablepool price {op_price_lp / share_price}")
+
+    router_price_lp_share = router.price_route("stablepool", "stable1", "omnipool", "stablepool")
+    if router_price_lp_share != share_price:
+        raise ValueError(f"router price {router_price_lp_share} != stablepool price {share_price}")
+
+    router_price_lp_share_reverse = router.price_route("stable1", "stablepool", "stablepool", "omnipool")
+    if router_price_lp_share_reverse != pytest.approx(1 / share_price, rel=1e-12):
+        raise ValueError(f"router price {router_price_lp_share_reverse} != stablepool price {1 / share_price}")
+
 
 def test_price_route_example():
     # This test exists to make sure we are not making same mistake in test_price and in the price function
@@ -343,3 +351,68 @@ def test_swap2():
         for tkn in ex.liquidity:
             if ex.liquidity[tkn] != new_router2.exchanges[ex_id].liquidity[tkn]:
                 raise ValueError(f"ex liquidity {ex.liquidity[tkn]} != {new_router2.exchanges[ex_id].liquidity[tkn]}")
+
+
+def check_agent_holdings_equal(agent1, agent2):
+    for tkn in agent1.holdings:
+        if agent1.holdings[tkn] != agent2.holdings[tkn]:
+            raise ValueError(f"agent holdings {agent1.holdings[tkn]} != {agent2.holdings[tkn]}")
+
+
+def check_liquidity_equal(pool1, pool2):
+    for tkn in pool1.liquidity:
+        if pool1.liquidity[tkn] != pool2.liquidity[tkn]:
+            raise ValueError(f"pool liquidity {pool1.liquidity[tkn]} != {pool2.liquidity[tkn]}")
+
+
+@given(st.lists(asset_quantity_strategy, min_size=16, max_size=16))
+def test_swap_shares(assets: list[float]):
+    tokens = {
+        "HDX": {'liquidity': assets[0], 'LRNA': assets[1]},
+        "USDT": {'liquidity': assets[2], 'LRNA': assets[3]},
+        "DOT": {'liquidity': assets[4], 'LRNA': assets[5]},
+        "stablepool": {'liquidity': assets[6], 'LRNA': assets[7]},
+        "stablepool2": {'liquidity': assets[14], 'LRNA': assets[15]},
+    }
+
+    buy_tkn = "USDT"
+    sell_tkn = "stablepool2"
+    buy_tkn_pool = "stablepool2"
+    sell_tkn_pool = "omnipool"
+
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0025, lrna_fee=0.0005)
+    sp_tokens = {"stable1": assets[8], "stable2": assets[9], "stable3": assets[10]}
+    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0100, unique_id="stablepool")
+    sp_tokens2 = {"stable2": assets[11], "stable3": assets[12], "USDT": assets[13]}
+    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
+    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
+    router = OmnipoolRouter(exchanges)
+    init_holdings = {"stablepool2": 1000000, "USDT": 1000000}
+    agent1 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
+    agent2 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
+    stablepool2_copy = stablepool2.copy()
+    trade_size = 1000
+
+    # test buy tkn
+    router.swap_route(agent1, sell_tkn, buy_tkn, buy_quantity=trade_size, buy_pool_id=buy_tkn_pool, sell_pool_id=sell_tkn_pool)
+    stablepool2_copy.withdraw_asset(agent2, trade_size, "USDT")
+    check_agent_holdings_equal(agent1, agent2)
+    check_liquidity_equal(stablepool2, stablepool2_copy)
+
+    # test sell shares
+    router.swap_route(agent1, sell_tkn, buy_tkn, sell_quantity=trade_size, buy_pool_id=buy_tkn_pool, sell_pool_id=sell_tkn_pool)
+    stablepool2_copy.remove_liquidity(agent2, trade_size, "USDT")
+    check_agent_holdings_equal(agent1, agent2)
+    check_liquidity_equal(stablepool2, stablepool2_copy)
+
+    # test sell tkn
+    router.swap_route(agent1, buy_tkn, sell_tkn, sell_quantity=trade_size, buy_pool_id=sell_tkn_pool, sell_pool_id=buy_tkn_pool)
+    stablepool2_copy.add_liquidity(agent2, trade_size, "USDT")
+    check_agent_holdings_equal(agent1, agent2)
+    check_liquidity_equal(stablepool2, stablepool2_copy)
+
+    # test buy shares
+    router.swap_route(agent1, buy_tkn, sell_tkn, buy_quantity=trade_size, buy_pool_id=sell_tkn_pool, sell_pool_id=buy_tkn_pool)
+    stablepool2_copy.buy_shares(agent2, trade_size, "USDT")
+    check_agent_holdings_equal(agent1, agent2)
+    check_liquidity_equal(stablepool2, stablepool2_copy)
