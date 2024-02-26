@@ -39,6 +39,7 @@ def test_price_route(assets: list[float]):
         "stablepool": stablepool
     }
     router = OmnipoolRouter(exchanges)
+
     op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
     op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
     sp_price = stablepool.price("stable1", "stable3")

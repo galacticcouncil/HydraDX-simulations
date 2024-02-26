@@ -119,7 +119,7 @@ class OmnipoolRouter:
             else:
                 # calculate quantity of tkn_sell required to buy sufficient sell_pool_id
                 sell_quantity1 = self.exchanges[self.omnipool_id].calculate_sell_from_buy(buy_pool_id, sell_pool_id,
-                                                                                         buy_quantity)
+                                                                         buy_quantity)
                 # buy shares of sell_pool_id, i.e., add liquidity
                 shares_owned = agent.holdings[sell_pool_id] if sell_pool_id in agent.holdings else 0
                 self.exchanges[sell_pool_id].buy_shares(agent, sell_quantity1, tkn_sell)
