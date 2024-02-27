@@ -233,11 +233,11 @@ def test_buy_shares(initial_pool: StableSwapPoolState):
     )
 
     if (
-            add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add])
-            or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name])
-            or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add])
-            or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares)
-            or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d())
+            add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add], rel=1e-12)
+            or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name], rel=1e-12)
+            or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add], rel=1e-12)
+            or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares, rel=1e-12)
+            or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d(), rel=1e-12)
     ):
         raise AssertionError("Asset values don't match.")
 
