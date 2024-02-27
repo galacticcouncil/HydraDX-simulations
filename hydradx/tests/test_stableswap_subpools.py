@@ -2,7 +2,7 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given, settings, strategies as st, Phase
+from hypothesis import given, settings, strategies as st
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
