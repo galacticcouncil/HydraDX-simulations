@@ -2,7 +2,7 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings, strategies as st, Phase
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 
@@ -468,6 +468,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Execution price out of bounds.')
 
 
+@settings(phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
 @given(omnipool_config(
     token_count=3,
     sub_pools={'stableswap1': {'trade_fee': 0}, 'stableswap2': {'trade_fee': 0}},
