@@ -14,7 +14,7 @@ class OmnipoolState(AMM):
     def __init__(self,
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
-                 preferred_stablecoin: str = "USD",
+                 preferred_stablecoin: str = None,
                  asset_fee: dict or FeeMechanism or float = None,
                  lrna_fee: dict or FeeMechanism or float = None,
                  oracles: dict[str: int] = None,
@@ -53,7 +53,7 @@ class OmnipoolState(AMM):
 
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
-        if preferred_stablecoin not in tokens:
+        if preferred_stablecoin is not None and preferred_stablecoin not in tokens:
             raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
 
         self.asset_list: list[str] = []
@@ -66,7 +66,10 @@ class OmnipoolState(AMM):
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
-        self.stablecoin = preferred_stablecoin
+        if preferred_stablecoin is None and "USD" in tokens:
+            self.stablecoin = "USD"
+        else:
+            self.stablecoin = preferred_stablecoin
         self.fail = ''
         self.sub_pools = dict()  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
@@ -228,9 +231,14 @@ class OmnipoolState(AMM):
         return sum(self.lrna.values())
 
     @property
-    def total_value_locked(self):
+    def total_value_locked(self, usd_tkn=None):
         # base this just on the LRNA/USD exchange rate in the pool
-        return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
+        if usd_tkn is None:
+            if self.stablecoin is None:
+                raise
+            else:
+                usd_tkn = self.stablecoin
+        return self.liquidity[usd_tkn] * self.lrna_total / self.lrna[usd_tkn]
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
         return float('inf')
@@ -271,7 +279,7 @@ class OmnipoolState(AMM):
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
                     f'    USD price: {prices[tkn]}\n' +
-                    f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
+                    # f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
                     f'    total shares: {self.shares[tkn]}\n'
@@ -1094,12 +1102,17 @@ class OmnipoolState(AMM):
         self.current_block.withdrawals[tkn_remove] += quantity
         return self
 
-    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
+    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None, stablecoin: str = None) -> float:
         # assets is a dict of token: quantity
         # returns the value of the assets in USD
+        if stablecoin is None:
+            if self.stablecoin is None:
+                raise
+            else:
+                stablecoin = self.stablecoin
         if equivalency_map is None:
             equivalency_map = {}
-        usd_synonyms = [self.stablecoin]
+        usd_synonyms = [stablecoin]
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
                 usd_synonyms.append(eq)
@@ -1162,11 +1175,16 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
+def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn, usd_asset=None):
+    if usd_asset is None:
+        if state.stablecoin is None:
+            raise
+        else:
+            usd_asset = state.stablecoin
     if tkn == 'LRNA':
-        return 1 / state.lrna_price(state, state.stablecoin)
+        return 1 / state.lrna_price(state, usd_asset)
     else:
-        return price(state, tkn) / price(state, state.stablecoin)
+        return price(state, tkn) / price(state, usd_asset)
 
 
 def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
