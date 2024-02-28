@@ -1,0 +1,4 @@
+[
+    {"exchanges": {"omnipool": ["DOT", "WETH"], "kraken": ["DOT", "ETH"]}, "buffer": 0.001},
+    {"exchanges": {"omnipool": ["DOT", "WETH"], "binance": ["DOT", "ETH"]}, "buffer": 0.001}
+]
