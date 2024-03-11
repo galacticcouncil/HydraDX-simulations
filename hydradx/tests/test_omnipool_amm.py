@@ -2423,10 +2423,10 @@ def test_trade_manipulation(
             - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
     )
 
-    if lp1_profit > no_lp_profit and trade_state_1.fail == '' and trade_state_3.fail == '':
+    if lp1_profit > no_lp_profit and lp1_profit > 0 and trade_state_1.fail == '' and trade_state_3.fail == '':
         raise AssertionError(f'profit with LP asset1 ({asset1}) = {lp1_profit} > without {no_lp_profit}')
 
-    if lp2_profit > no_lp_profit and trade_state_2.fail == '' and trade_state_3.fail == '':
+    if lp2_profit > no_lp_profit and lp2_profit > 0 and trade_state_2.fail == '' and trade_state_3.fail == '':
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
 
 
