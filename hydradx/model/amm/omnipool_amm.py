@@ -1151,6 +1151,8 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     """
     if tkn not in state.asset_list:
         return 0
+    elif tkn == denominator:
+        return 1
     elif not denominator:
         return lrna_price(state, tkn)
     elif denominator not in state.asset_list:
