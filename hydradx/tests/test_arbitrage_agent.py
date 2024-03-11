@@ -478,7 +478,7 @@ def test_process_next_swap(
         'binance': {'USDT': 1000, 'DOT': 100, 'HDX': 100000}
     }
     max_liquidity = copy.deepcopy(init_max_liquidity)
-    iters = 20
+    iters = 30
     tkn_pair = ('DOT', 'USDT')
 
     swap = process_next_swap(test_state, test_agent, test_cex, tkn_pair, tkn_pair, buffer, max_liquidity['dex'], max_liquidity['kraken'], iters)
