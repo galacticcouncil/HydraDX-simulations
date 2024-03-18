@@ -30,6 +30,24 @@ def test_liquidate_cdp():
         raise
 
 
+def test_liquidate_cdp_fails():
+
+    debt_asset = "USDT"
+    collateral_asset = "DOT"
+    init_debt_amt = 1000
+    init_collat_amt = 200
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt, True)
+    init_debt_holdings = 10000
+    init_collat_holdings = 10000
+    agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
+
+    with pytest.raises(Exception):
+        liquidate_cdp(cdp, agent, init_debt_amt*1.2, init_collat_amt*0.7)
+    with pytest.raises(Exception):
+        liquidate_cdp(cdp, agent, init_debt_amt*0.7, init_collat_amt*1.2)
+    liquidate_cdp(cdp, agent, init_debt_amt * 0.7, init_collat_amt * 0.7)
+
+
 @given(st.floats(min_value=4, max_value=6))
 def test_find_partial_liquidation_amount_full(collat_ratio: float):
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
