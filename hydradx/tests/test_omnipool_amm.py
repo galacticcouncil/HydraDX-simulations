@@ -2505,7 +2505,7 @@ def test_LRNA_price_LRNA():
         preferred_stablecoin='USD'
     )
 
-    lrna_price = initial_state.price(initial_state, 'LRNA', 'USD')
+    lrna_price = initial_state.lrna_price(initial_state, 'LRNA', 'USD')
     if lrna_price != pytest.approx(1, rel=1e-15):
         raise AssertionError(f'lrna_price {price} != 1')
 
