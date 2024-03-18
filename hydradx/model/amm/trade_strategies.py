@@ -1,10 +1,10 @@
 import math
 import copy
-from .global_state import GlobalState, omnipool_liquidate_cdp
+from .global_state import GlobalState
 from .agents import Agent
 from .amm import AMM
 from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState, simulate_swap
+from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
