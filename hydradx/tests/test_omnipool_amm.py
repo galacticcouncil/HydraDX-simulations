@@ -2494,6 +2494,7 @@ def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_
 
 
 def test_LRNA_price_LRNA():
+    '''Test that we can call lrna_price with input LRNA and get 1'''
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
@@ -2505,12 +2506,13 @@ def test_LRNA_price_LRNA():
         preferred_stablecoin='USD'
     )
 
-    lrna_price = initial_state.lrna_price(initial_state, 'LRNA', 'USD')
+    lrna_price = initial_state.lrna_price(initial_state, 'LRNA')
     if lrna_price != pytest.approx(1, rel=1e-15):
         raise AssertionError(f'lrna_price {price} != 1')
 
 
 def test_price_LRNA():
+    '''Tests the price function with LRNA as each input'''
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
@@ -2531,6 +2533,7 @@ def test_price_LRNA():
 
 
 def test_sell_spot_LRNA():
+    '''Tests sell_spot with LRNA as the sell_tkn'''
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
@@ -2548,6 +2551,7 @@ def test_sell_spot_LRNA():
 
 
 def test_buy_spot_LRNA():
+    '''Tests buy_spot with LRNA as the sell_tkn'''
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
@@ -2583,6 +2587,7 @@ def test_value_assets_without_equivalency_map():
 
 
 def test_no_preferred_stablecoin():
+    '''Tests Omnipool initialization, as well as value_assets and usd_price, with no preferred_stablecoin'''
     initial_state = oamm.OmnipoolState(
         tokens={
             'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
