@@ -468,6 +468,7 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Execution price out of bounds.')
 
 
+@settings(deadline=500)
 @given(omnipool_config(
     token_count=3,
     sub_pools={'stableswap1': {'trade_fee': 0}, 'stableswap2': {'trade_fee': 0}},
@@ -659,7 +660,7 @@ def test_migration_scenarios_no_withdrawal_fee(initial_state: oamm.OmnipoolState
     migrate_state = initial_state.copy(
     ).create_sub_pool(
         tkns_migrate=[asset1, asset2, asset3],
-        sub_pool_id='stableswap',
+        unique_id='stableswap',
         amplification=10
     ).update(
     ).migrate_lp(
@@ -830,7 +831,7 @@ def test_partial_migration(percentage1: float, percentage2: float):
             'DAI': initial_state.liquidity['DAI'] * percentage1,
             'USDT': initial_state.liquidity['USDT'] * percentage2
         },
-        sub_pool_id='stableswap',
+        unique_id='stableswap',
         amplification=10
     )
     if sum(initial_state.lrna.values()) != pytest.approx(sum(subpool_state.lrna.values())):

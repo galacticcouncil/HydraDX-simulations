@@ -54,8 +54,13 @@ def get_arb_swaps(
     return a list of swaps that can be executed to take advantage of the best arbitrage opportunities
     """
     if not max_liquidity:
-        max_liquidity = {ex_name: {tkn: 1000000000 for tkn in ex.asset_list} for ex_name, ex in exchanges.items()}
-
+        max_liquidity = {
+            ex_name: {
+                tkn: 1000000000
+                for tkn in [tkn for cfg_line in config if ex_name in cfg_line['exchanges'] for tkn in cfg_line['exchanges'][ex_name]]
+            }
+            for ex_name, ex in exchanges.items()
+        }
     arb_opps = get_arb_opps(exchanges, config, max_liquidity)
     all_swaps = []
     test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
@@ -147,7 +152,7 @@ def process_next_swap(
     )
 
     if amt == 0:
-        return ()
+        return {}
 
     trade_agent = Agent(holdings={tkn_pairs[sell_ex][0]: amt})
     amt_in = {sell_ex: amt}

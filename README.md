@@ -1,6 +1,6 @@
 # README
 
-The main HydraDX cadCAD model can be found in "hydradx".
+The main HydraDX model can be found in "hydradx".
 
 Installation: 
 * Install Python 3.9. Not 3.8, it doesn't support all the features used in this code. Not 3.10, there is a compatibility issue with one of the libraries that you don't want to deal with. Link: https://www.python.org/downloads/release/python-3912/

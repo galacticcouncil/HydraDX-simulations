@@ -11,6 +11,7 @@ from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 from hydradx.model.run import run
+from hydradx.tests.utils import randomize_object
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -20,6 +21,7 @@ asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
+
 
 
 @given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), percentage_of_liquidity_strategy)
@@ -168,3 +170,18 @@ def test_omnipool_LP(omnipool: oamm.OmnipoolState):
     final_state = events[-1]
     if final_state.agents['agent'].holdings['HDX'] != 0 or events[-2].agents['agent'].holdings['HDX'] == 0:
         raise AssertionError('HDX not invested at the right time.')
+
+
+def test_agent_copy():
+    init_agent = randomize_object(
+        Agent(holdings={'HDX': 100, 'USD': 100}, share_prices={'HDX': 1, 'USD': 1})
+    )
+    copy_agent = init_agent.copy()
+
+    for member in copy_agent.__dict__:
+        if (
+                getattr(init_agent, member) != getattr(copy_agent, member)
+        ):
+            raise AssertionError(f'Copy failed for {member}.\n'
+                                 f'original: {getattr(init_agent, member)}\n'
+                                 f'copy: {getattr(copy_agent, member)}')

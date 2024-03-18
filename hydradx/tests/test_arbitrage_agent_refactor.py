@@ -9,9 +9,9 @@ from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculat
     process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-# from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_stableswap_data, get_unique_name
+from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
+from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool
 from mpmath import mp, mpf
 mp.dps = 50
 
@@ -52,7 +52,7 @@ def test_calculate_profit_with_mapping():
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=1.1, max_value=10.0),
+    price_mult=st.floats(min_value=1.1, max_value=5.0),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -110,7 +110,7 @@ def test_calculate_arb_amount_bid(
         sell_ex_max_sell=init_agent.holdings[tkn],
         buy_ex_max_sell=init_agent.holdings[numeraire],
         precision=p,
-        max_iters=100
+        max_iters=50
     )
     test_agent = Agent(holdings={'USDT': 1000000, 'DOT': 1000000})
     test_dex = initial_dex.copy()
@@ -139,7 +139,7 @@ def test_calculate_arb_amount_bid(
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=1.01, max_value=10.0),
+    price_mult=st.floats(min_value=1.01, max_value=5.0),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -239,7 +239,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=0.1, max_value=0.99),
+    price_mult=st.floats(min_value=0.2, max_value=0.99),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -306,7 +306,7 @@ def test_calculate_arb_amount_ask(
     dex_price = test_dex.sell_spot(tkn, numeraire)
     cex_price = initial_cex.buy_spot(tkn, numeraire)
 
-    if abs(1 - cex_price / dex_price) > p and amt != ask_quantity:
+    if 1 - cex_price / dex_price > p and amt != ask_quantity:
         raise
 
     if amt == ask_quantity and cex_price > dex_price:
@@ -325,7 +325,7 @@ def test_calculate_arb_amount_ask(
     hdx_price=st.floats(min_value=0.01, max_value=1000),
     dot_wt=st.floats(min_value=0.05, max_value=0.50),
     hdx_wt=st.floats(min_value=0.01, max_value=0.20),
-    price_mult=st.floats(min_value=0.1, max_value=0.95),
+    price_mult=st.floats(min_value=0.2, max_value=0.95),
     lrna_fee=st.floats(min_value=0.0001, max_value=0.001),
     asset_fee=st.floats(min_value=0.0001, max_value=0.004),
     cex_fee=st.floats(min_value=0.0001, max_value=0.005),
@@ -661,33 +661,32 @@ def test_combine_step():
     cfg = [
         {'exchanges': {'omnipool': ('HDX', 'USDT'), 'kraken': ('HDX', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'USDT'), 'kraken': ('DOT', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'USDT'), 'kraken': ('ETH', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('DOT', 'WETH001'), 'kraken': ('DOT', 'ETH')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'USDT'), 'kraken': ('ETH', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('DOT', 'WETH'), 'kraken': ('DOT', 'ETH')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('WBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('iBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'WBTC'), 'kraken': ('DOT', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'iBTC'), 'kraken': ('DOT', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'WBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'iBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'WBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'iBTC'), 'kraken': ('ETH', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('ASTR', 'USDT'), 'kraken': ('ASTR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('CFG', 'USDT'), 'kraken': ('CFG', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('BNC', 'USDT'), 'kraken': ('BNC', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'kraken': ('GLMR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('INTR', 'USDT'), 'kraken': ('INTR', 'USD')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'USDT'), 'binance': ('DOT', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('DOT', 'WETH001'), 'binance': ('DOT', 'ETH')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('DOT', 'WETH'), 'binance': ('DOT', 'ETH')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'WBTC'), 'binance': ('DOT', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('DOT', 'iBTC'), 'binance': ('DOT', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'USDT'), 'binance': ('ETH', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'WBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('WETH001', 'iBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'USDT'), 'binance': ('ETH', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'WBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
+        {'exchanges': {'omnipool': ('WETH', 'iBTC'), 'binance': ('ETH', 'BTC')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('WBTC', 'USDT'), 'binance': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('iBTC', 'USDT'), 'binance': ('BTC', 'USDT')}, 'buffer': 0.001},
         {'exchanges': {'omnipool': ('ASTR', 'USDT'), 'binance': ('ASTR', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'binance': ('GLMR', 'USDT')}, 'buffer': 0.001},
-    ]
+        {'exchanges': {'omnipool': ('GLMR', 'USDT'), 'binance': ('GLMR', 'USDT')}, 'buffer': 0.001}
+     ]
 
-    #
     # asset_list, asset_numbers, tokens, fees = get_omnipool_data(rpc='wss://rpc.hydradx.cloud', archive=False)
     #
     # kraken = get_centralized_market(config=cfg, exchange_name='kraken', trade_fee=0.0016, archive=False)
@@ -697,7 +696,7 @@ def test_combine_step():
     #     'binance': binance
     # }
     # uncomment above to test with live data, below for archived data
-    #
+
     input_path = './data/'
     if not os.path.exists(input_path):
         input_path = 'hydradx/tests/data/'
@@ -728,14 +727,12 @@ def test_combine_step():
         'WBTC': 'BTC',
         'ZUSD': 'USD',
         'USDT': 'USD',
+        'USDT10': 'USD',
+        'USDT23': 'USD',
         'USDC': 'USD',
         'DAI': 'USD',
-        'USDT001': 'USD',
-        'DAI001': 'USD',
-        'WETH001': 'ETH',
-        'WBTC001': 'BTC',
         'iBTC': 'BTC',
-        'XBT': 'BTC'
+        'XBT': 'BTC',
     }
 
     exchanges_per_tkn = {

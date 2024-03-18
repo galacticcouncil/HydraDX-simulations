@@ -1,7 +1,7 @@
 import random
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings, reproduce_failure
+from hypothesis import given, strategies as st, settings
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
