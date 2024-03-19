@@ -564,8 +564,6 @@ def get_omnipool_balance_history():
     load_dotenv()
     username = os.getenv('SQLPAD_USERNAME')
     password = os.getenv('PASSWORD')
-    print(os.getcwd())
-    print(username, password)
 
     # Encode the username and password in Base64
     credentials = f"{username}:{password}"
