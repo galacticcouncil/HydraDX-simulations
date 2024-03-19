@@ -47,6 +47,27 @@ class OmnipoolRouter:
 
         return denom_subpool_share_price * omnipool.price(omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
 
+    # def buy_price_route(self, tkn_buy: str, tkn_sell: str, tkn_buy_pool_id: str, tkn_sell_pool_id: str) -> float:
+    #     omnipool = self.exchanges[self.omnipool_id]
+    #
+    #     if tkn_sell_pool_id == tkn_buy_pool_id:
+    #         return self.exchanges[tkn_buy_pool_id].buy_spot(tkn_buy, tkn_sell)
+    #
+    #     tkn_subpool_share_price = 1
+    #     denom_subpool_share_price = 1
+    #     tkn_adj = tkn_buy
+    #     denom_adj = tkn_sell
+    #     if tkn_buy_pool_id != self.omnipool_id:
+    #         # tkn_subpool_share_price = self.exchanges[tkn_buy_pool_id].share_price(tkn_buy)
+    #         tkn_subpool_share_price = self.exchanges[tkn_buy_pool_id].withdraw_asset_spot(tkn_buy)
+    #         tkn_adj = tkn_buy_pool_id
+    #     if tkn_sell_pool_id != self.omnipool_id:
+    #         # denom_subpool_share_price = self.exchanges[tkn_sell_pool_id].share_price(tkn_sell)
+    #         denom_subpool_share_price = self.exchanges[tkn_sell_pool_id].buy_shares_spot(tkn_sell)
+    #         denom_adj = tkn_sell_pool_id
+    #
+    #     return denom_subpool_share_price * omnipool.price(omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
+
     def buy_limit(self, tkn_buy, tkn_sell=None):
         return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges])
 
@@ -140,6 +161,7 @@ class OmnipoolRouter:
                 self.exchanges[buy_pool_id].remove_liquidity(agent, share_amt, tkn_buy)
         else:
             raise ValueError('One of buy_quantity or sell_quantity must be zero')
+        return self
 
     def find_routes(self, tkn_buy, tkn_sell):
         '''Finds all possible routes to swap between tkn_buy and tkn_sell'''

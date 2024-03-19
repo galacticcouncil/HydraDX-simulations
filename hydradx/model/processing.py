@@ -429,7 +429,7 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 symbol_map[tkn_id]: op_state[tkn_id].fees.protocol_fee / 100 if tkn_id in op_state else 0
                 for tkn_id, tkn in [asset for asset in assets]
             },
-            preferred_stablecoin='USDT10'
+            # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
             subpool = StableSwapPoolState(
