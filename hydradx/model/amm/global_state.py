@@ -2,12 +2,12 @@ import copy
 import random
 from typing import Callable
 
-from .agents import Agent, AgentArchiveState
+from .agents import Agent
+from .agents import AgentArchiveState
 from .amm import AMM
 from .liquidations import CDP
-from .otc import OTC
 from .omnipool_amm import OmnipoolState, simulate_swap
-from .agents import Agent
+from .otc import OTC
 
 
 class GlobalState:
@@ -174,10 +174,10 @@ class GlobalState:
                     # optimized for omnipool, no copy operations
                     delta_qa, delta_r, delta_q, \
                         delta_s, delta_b, delta_l = self.pools[pool_id].calculate_remove_liquidity(
-                            agent,
-                            agent.holdings[key],
-                            tkn_remove=tkn
-                        )
+                        agent,
+                        agent.holdings[key],
+                        tkn_remove=tkn
+                    )
                     withdraw_holdings[key] = 0
                     withdraw_holdings['LRNA'] += delta_qa
                     withdraw_holdings[tkn] -= delta_r
@@ -442,7 +442,8 @@ def settle_otc_against_omnipool(pool_id: str, agent_id: str):
         for otc in state.otcs:
             sell_to_otc_amt = find_partial_otc_amount(omnipool, otc)
             if sell_to_otc_amt > 0:
-                omnipool_settle_otc(state, otc, agent, sell_to_otc_amt)
+                omnipool = state.pools["omnipool"]
+                omnipool_settle_otc(omnipool, otc, agent, sell_to_otc_amt)
         return state
 
     return transform
@@ -483,18 +484,17 @@ def find_partial_otc_amount(omnipool, otc):
     return buy_amt_down
 
 
-def omnipool_settle_otc(state: GlobalState, otc: OTC, treasury_agent: Agent, sell_to_otc_amt: float) -> None:
-    agent = Agent(holdings={otc.sell_asset: 0, otc.buy_asset: sell_to_otc_amt})
-    omnipool = state.pools["omnipool"]
-    otc.sell(agent, sell_to_otc_amt)
-    omnipool.swap(agent, tkn_buy=otc.buy_asset, tkn_sell=otc.sell_asset, sell_quantity=agent.holdings[otc.sell_asset])
-    treasury_agent.holdings[otc.buy_asset] += agent.holdings[otc.buy_asset] - sell_to_otc_amt
-    if agent.holdings[otc.sell_asset] != 0:
+def omnipool_settle_otc(omnipool: OmnipoolState, otc: OTC, treasury_agent: Agent, sell_to_otc_amt: float) -> None:
+    dummy_agent = Agent(holdings={otc.sell_asset: 0, otc.buy_asset: sell_to_otc_amt})
+    otc.sell(dummy_agent, sell_to_otc_amt)
+    omnipool.swap(dummy_agent, tkn_buy=otc.buy_asset, tkn_sell=otc.sell_asset,
+                  sell_quantity=dummy_agent.holdings[otc.sell_asset])
+    treasury_agent.holdings[otc.buy_asset] += dummy_agent.holdings[otc.buy_asset] - sell_to_otc_amt
+    if dummy_agent.holdings[otc.sell_asset] != 0:
         raise
 
 
 def liquidate_against_omnipool_and_settle_otc(pool_id: str, agent_id: str) -> Callable:
-
     transform_liquidate = liquidate_against_omnipool(pool_id, agent_id)
     transform_otc = settle_otc_against_omnipool(pool_id, agent_id)
 
