@@ -16,13 +16,12 @@ class CDP:
     def copy(self):
         return CDP(self.debt_asset, self.collateral_asset, self.debt_amt, self.collateral_amt, self.in_liquidation)
 
-
-def liquidate_cdp(cdp: CDP, agent: Agent, debt_amt: float, collateral_amt: float) -> None:
-    if debt_amt > cdp.debt_amt or debt_amt > agent.holdings[cdp.debt_asset]:
-        raise
-    if collateral_amt > cdp.collateral_amt:
-        raise
-    cdp.debt_amt -= debt_amt
-    agent.holdings[cdp.debt_asset] -= debt_amt
-    cdp.collateral_amt -= collateral_amt
-    agent.holdings[cdp.collateral_asset] += collateral_amt
+    def liquidate_cdp(self, agent: Agent, debt_amt: float, collateral_amt: float) -> None:
+        if debt_amt > self.debt_amt or debt_amt > agent.holdings[self.debt_asset]:
+            raise
+        if collateral_amt > self.collateral_amt:
+            raise
+        self.debt_amt -= debt_amt
+        agent.holdings[self.debt_asset] -= debt_amt
+        self.collateral_amt -= collateral_amt
+        agent.holdings[self.collateral_asset] += collateral_amt

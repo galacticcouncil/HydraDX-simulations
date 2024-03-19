@@ -4,8 +4,8 @@ from typing import Callable
 
 from .agents import Agent, AgentArchiveState
 from .amm import AMM
-from .liquidations import CDP, liquidate_cdp
-from .otc import OTC, sell_to_otc
+from .liquidations import CDP
+from .otc import OTC
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .agents import Agent
 
@@ -427,7 +427,7 @@ def omnipool_liquidate_cdp(state: GlobalState, cdp: CDP, treasury_agent: Agent, 
     omnipool.swap(agent, tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset, buy_quantity=delta_debt)
     final_collat = agent.holdings[cdp.collateral_asset]
     collateral_amt = min((cdp.collateral_amt - final_collat), cdp.collateral_amt)
-    liquidate_cdp(cdp, agent, delta_debt / (1 + state.liquidation_penalty), collateral_amt)
+    cdp.liquidate_cdp(agent, delta_debt / (1 + state.liquidation_penalty), collateral_amt)
 
     # transfer profit to treasury_agent
     treasury_agent.holdings[cdp.debt_asset] += agent.holdings[cdp.debt_asset]
@@ -486,7 +486,7 @@ def find_partial_otc_amount(omnipool, otc):
 def omnipool_settle_otc(state: GlobalState, otc: OTC, treasury_agent: Agent, sell_to_otc_amt: float) -> None:
     agent = Agent(holdings={otc.sell_asset: 0, otc.buy_asset: sell_to_otc_amt})
     omnipool = state.pools["omnipool"]
-    sell_to_otc(otc, agent, sell_to_otc_amt)
+    otc.sell(agent, sell_to_otc_amt)
     omnipool.swap(agent, tkn_buy=otc.buy_asset, tkn_sell=otc.sell_asset, sell_quantity=agent.holdings[otc.sell_asset])
     treasury_agent.holdings[otc.buy_asset] += agent.holdings[otc.buy_asset] - sell_to_otc_amt
     if agent.holdings[otc.sell_asset] != 0:

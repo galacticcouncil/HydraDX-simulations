@@ -1,7 +1,7 @@
 import pytest
 from hypothesis import given, strategies as st, assume, settings, Verbosity
 
-from hydradx.model.amm.liquidations import CDP, liquidate_cdp
+from hydradx.model.amm.liquidations import CDP
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.global_state import find_partial_liquidation_amount
@@ -19,7 +19,7 @@ def test_liquidate_cdp():
     init_collat_holdings = 10000
     agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
 
-    liquidate_cdp(cdp, agent, init_debt_amt*liquidate_pct, init_collat_amt*liquidate_pct)
+    cdp.liquidate_cdp(agent, init_debt_amt*liquidate_pct, init_collat_amt*liquidate_pct)
     if agent.holdings[collateral_asset] + cdp.collateral_amt != init_collat_holdings + init_collat_amt:
         raise
     if agent.holdings[debt_asset] - cdp.debt_amt != init_debt_holdings - init_debt_amt:
@@ -42,10 +42,10 @@ def test_liquidate_cdp_fails():
     agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
 
     with pytest.raises(Exception):
-        liquidate_cdp(cdp, agent, init_debt_amt*1.2, init_collat_amt*0.7)
+        cdp.liquidate_cdp(agent, init_debt_amt*1.2, init_collat_amt*0.7)
     with pytest.raises(Exception):
-        liquidate_cdp(cdp, agent, init_debt_amt*0.7, init_collat_amt*1.2)
-    liquidate_cdp(cdp, agent, init_debt_amt * 0.7, init_collat_amt * 0.7)
+        cdp.liquidate_cdp(agent, init_debt_amt*0.7, init_collat_amt*1.2)
+    cdp.liquidate_cdp(agent, init_debt_amt * 0.7, init_collat_amt * 0.7)
 
 
 @given(st.floats(min_value=4, max_value=6))
