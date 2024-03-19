@@ -763,6 +763,7 @@ async def query_sqlPad(query: str):
     """
     input: sql query string
     output: result of the query as a list of lists
+    requirement: .env file with SQLPAD_USERNAME and PASSWORD in /model/ folder
     """
 
     load_dotenv()
