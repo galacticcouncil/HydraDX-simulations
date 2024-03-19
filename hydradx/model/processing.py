@@ -761,4 +761,61 @@ def get_omnipool_balance_history():
         print(f'saving omnipool_history_{str(file_number).zfill(2)}')
         save_history_file(all_data, file_number)
 
+async def query_sqlPad(query: str):
+    """
+    input: sql query string
+    output: result of the query as a list of lists
+    """
 
+    load_dotenv()
+    username = os.getenv('SQLPAD_USERNAME')
+    password = "yA2Wwpr-e2YP!5s"  # os.getenv('PASSWORD')
+    credentials = f"{username}:{password}"
+    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+
+    headers = {
+        'Authorization': f'Basic {encoded_credentials}',
+        'Content-Type': 'application/json'  # This is typically required for JSON payloads
+    }
+
+    request = {
+        'connectionId': "4a34594e-efa6-4f6e-a594-655ca20f2881",
+        'batchText': query
+    }
+
+    try:
+        response = requests.post(
+            url='https://sqlpad.play.hydration.cloud/api/batches',
+            headers=headers,
+            data=json.dumps(request)
+        )
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200:
+            data = response.json()
+            batchID = data['statements'][0]['batchId']
+            try:
+                statement = requests.get(
+                    url=f'https://sqlpad.play.hydration.cloud/api/batches/{batchID}/statements',
+                    headers=headers
+                ).json()
+                statementID = statement[0]['id']
+
+                print('waiting for query to finish...')
+                if response.status_code == 200:
+                    data = {'title': 'Not found'}
+                    while 'title' in data and data['title'] == 'Not found':
+                        data = requests.get(
+                            url=f'https://sqlpad.play.hydration.cloud/api/statements/{statementID}/results',
+                            headers=headers
+                        ).json()
+                    return data
+
+            except Exception as e:
+                print(f"There was a problem with your request: {str(e)}")
+        else:
+            print(f"Request failed with status code {response.status_code}")
+            return []
+
+    except Exception as e:
+        print(f"There was a problem with your request: {str(e)}")
