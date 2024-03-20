@@ -439,28 +439,34 @@ def settle_otc_against_omnipool(pool_id: str, agent_id: str):
     def transform(state: GlobalState) -> GlobalState:
         omnipool = state.pools[pool_id]
         agent = state.agents[agent_id]
+        otcs_to_remove = []
         for otc in state.otcs:
-            sell_to_otc_amt = find_partial_otc_amount(omnipool, otc)
-            if sell_to_otc_amt > 0:
+            sell_amt = find_partial_otc_sell_amount(omnipool, otc)
+            if sell_amt > 0:
                 omnipool = state.pools["omnipool"]
-                omnipool_settle_otc(omnipool, otc, agent, sell_to_otc_amt)
+                omnipool_settle_otc(omnipool, otc, agent, sell_amt)
+                if otc.sell_amount == 0:
+                    otcs_to_remove.append(otc)
+        for otc in otcs_to_remove:
+            state.otcs.remove(otc)
+
         return state
 
     return transform
 
 
-def find_partial_otc_amount(omnipool, otc):
+def find_partial_otc_sell_amount(omnipool, otc):
     buy_asset = otc.buy_asset
     sell_asset = otc.sell_asset
-
-    buy_amt = min(otc.buy_amount, omnipool.liquidity[buy_asset] * 0.999) if otc.partially_fillable else otc.buy_amount
-    buy_amt_up = buy_amt
-    buy_amt_down = 0
-    agent = Agent(holdings={otc.buy_asset: 0, otc.sell_asset: 2 * buy_amt_up * otc.price})
 
     # if no arbitrage can happen at spot price, we cannot even partially satisfy the OTC order
     if omnipool.price(omnipool, buy_asset, sell_asset) > otc.price:
         return 0
+
+    sell_amt = otc.sell_amount
+    sell_amt_up = sell_amt
+    sell_amt_down = 0
+    agent = Agent(holdings={buy_asset: 0, sell_asset: sell_amt})
 
     iters = 20
     if not otc.partially_fillable:
@@ -468,30 +474,30 @@ def find_partial_otc_amount(omnipool, otc):
 
     # binary search
     for i in range(iters):
-
         temp_state, temp_agent = simulate_swap(omnipool, agent, tkn_buy=buy_asset,
-                                               tkn_sell=sell_asset, buy_quantity=buy_amt)
-        amt_sold = agent.holdings[sell_asset] - temp_agent.holdings[sell_asset]
-        execution_price = amt_sold / buy_amt if buy_amt != 0 else float('inf')
+                                               tkn_sell=sell_asset, sell_quantity=sell_amt)
+        amt_bought = agent.holdings[buy_asset] - temp_agent.holdings[buy_asset]
+        spot_after = temp_state.buy_spot(buy_asset, sell_asset)
+        # execution_price = amt_sold / buy_amt if buy_amt != 0 else float('inf')
 
-        if execution_price > otc.price or amt_sold == 0:  # trade amount too high
-            buy_amt_up = buy_amt
+        if spot_after > otc.price or amt_bought == 0:  # trade amount too high
+            sell_amt_up = sell_amt
         else:  # trade amt can be executed
-            buy_amt_down = buy_amt
-            if buy_amt == buy_amt_up:
+            sell_amt_down = sell_amt
+            if sell_amt == sell_amt_up:
                 break
-        buy_amt = (buy_amt_up + buy_amt_down) / 2
-    return buy_amt_down
+        sell_amt = (sell_amt_up + sell_amt_down) / 2
+    return sell_amt_down
 
 
-def omnipool_settle_otc(omnipool: OmnipoolState, otc: OTC, treasury_agent: Agent, sell_to_otc_amt: float) -> None:
-    dummy_agent = Agent(holdings={otc.sell_asset: 0, otc.buy_asset: sell_to_otc_amt})
-    otc.sell(dummy_agent, sell_to_otc_amt)
-    omnipool.swap(dummy_agent, tkn_buy=otc.buy_asset, tkn_sell=otc.sell_asset,
-                  sell_quantity=dummy_agent.holdings[otc.sell_asset])
-    treasury_agent.holdings[otc.buy_asset] += dummy_agent.holdings[otc.buy_asset] - sell_to_otc_amt
-    if dummy_agent.holdings[otc.sell_asset] != 0:
-        raise
+def omnipool_settle_otc(omnipool: OmnipoolState, otc: OTC, treasury_agent: Agent, buy_from_otc_amt: float) -> None:
+    # flash mint otc.sell_asset to treasury_agent
+    treasury_agent.holdings[otc.sell_asset] += buy_from_otc_amt
+    omnipool.swap(treasury_agent, tkn_buy=otc.buy_asset, tkn_sell=otc.sell_asset,
+                  sell_quantity=buy_from_otc_amt)
+    otc.buy(treasury_agent, buy_from_otc_amt)
+    # burn assets that were flash minted
+    treasury_agent.holdings[otc.sell_asset] -= buy_from_otc_amt
 
 
 def liquidate_against_omnipool_and_settle_otc(pool_id: str, agent_id: str) -> Callable:
