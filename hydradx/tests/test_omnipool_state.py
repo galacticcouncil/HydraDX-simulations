@@ -319,7 +319,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 def test_save_load():
     omnipool = get_omnipool()
-    save_omnipool(omnipool)
-    omnipool2 = load_omnipool()
+    save_omnipool(omnipool, path="hydradx/tests/archive/")
+    omnipool2 = load_omnipool(path="hydradx/tests/archive/")
     if repr(omnipool2) != repr(omnipool):
         raise AssertionError('Save and load failed')
