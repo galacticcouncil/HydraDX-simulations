@@ -447,9 +447,9 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
         return omnipool
 
 
-def save_omnipool(omnipool: OmnipoolState):
+def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
     ts = time.time()
-    with open(f'./archive/omnipool_savefile_{ts}.json', 'w') as output_file:
+    with open(f'{path}omnipool_savefile_{ts}.json', 'w') as output_file:
         json.dump(
         {
                 'liquidity': omnipool.liquidity,
