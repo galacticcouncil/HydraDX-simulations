@@ -14,6 +14,7 @@ from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.stableswap_amm import StableSwapPoolState
 from .amm.omnipool_amm import OmnipoolState
+from .amm.amm import basic_fee
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -448,20 +449,20 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
 
 def save_omnipool(omnipool: OmnipoolState):
     ts = time.time()
-    with open(f'./archive/omnipool_data_{ts}.json', 'w') as output_file:
+    with open(f'./archive/omnipool_savefile_{ts}.json', 'w') as output_file:
         json.dump(
         {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
-                'asset_fee': omnipool.asset_fee,
-                'lrna_fee': omnipool.lrna_fee,
+                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.asset_fee.items()},
+                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.lrna_fee.items()},
                 'sub_pools': [
                     {
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
                         'unique_id': pool.unique_id
-                    } for pool in omnipool.sub_pools
+                    } for pool in omnipool.sub_pools.values()
                 ]
             },
             output_file
@@ -472,26 +473,31 @@ def load_omnipool(path: str = './archive/', filename: str = '') -> OmnipoolState
     if filename:
         file_ls = [filename]
     else:
-        file_ls = list(filter(lambda file: file.startswith('ominpool_data'), os.listdir(path)))
-    for filename in file_ls:
+        file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
+    for filename in reversed(file_ls):  # by default, load the latest first
         with open (path + filename, 'r') as input_file:
             json_state = json.load(input_file)
+            # pprint(json_state)
         omnipool = OmnipoolState(
-            tokens=json_state['liquidity'],
-            lrna=json_state['LRNA'],
-            asset_fee=json_state['asset_fee'],
-            lrna_fee=json_state['lrna_fee']
+            tokens={
+                tkn: {
+                    'liquidity': json_state['liquidity'][tkn],
+                    'LRNA': json_state['LRNA'][tkn]
+                }
+                for tkn in json_state['liquidity']
+            },
+            asset_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['asset_fee'].items()},
+            lrna_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['lrna_fee'].items()}
         )
         for pool in json_state['sub_pools']:
             omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
                 tokens=pool['tokens'],
                 amplification=pool['amplification'],
-                trade_fee=pool['trade_fee'],
+                trade_fee=float(pool['trade_fee']),
                 unique_id=pool['unique_id']
             )
         return omnipool
     raise FileNotFoundError(f'Omnipool file not found in {path}.')
-
 
 
 def get_centralized_market(
