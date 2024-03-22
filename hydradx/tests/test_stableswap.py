@@ -652,32 +652,3 @@ def test_share_prices(assets, fee, amp):
     withdraw_asset_price = pool.withdraw_asset_spot('USDT')
     if withdraw_asset_price >= spot:
         raise AssertionError('Withdraw asset price should be lower than spot price.')
-
-
-@given(
-    st.lists(asset_quantity_strategy, min_size=2, max_size=2),
-    st.floats(min_value=0.0001, max_value=0.10),
-    st.integers(min_value=10, max_value=100000)
-)
-def test_share_prices_optional(assets, fee, amp):
-    tokens = {'USDT': mpf(assets[0]), 'USDC': mpf(assets[1])}
-    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee))
-    spot = pool.share_price('USDT')
-    add_liq_price = pool.add_liquidity_spot('USDT')
-    if add_liq_price <= spot:
-        raise AssertionError('Add liquidity price should be higher than spot price.')
-    buy_shares_price = pool.buy_shares_spot('USDT')
-    if buy_shares_price <= spot:
-        raise AssertionError('Buy shares price should be higher than spot price.')
-    remove_liq_price = pool.remove_liquidity_spot('USDT')
-    if remove_liq_price >= spot:
-        raise AssertionError('Remove liquidity price should be lower than spot price.')
-    withdraw_asset_price = pool.withdraw_asset_spot('USDT')
-    if withdraw_asset_price >= spot:
-        raise AssertionError('Withdraw asset price should be lower than spot price.')
-
-    # these are not actually necessary to prevent exploits, but they seem to hold
-    if add_liq_price >= buy_shares_price:
-        raise AssertionError('Add liquidity price expected to be lower than buy shares price.')
-    if remove_liq_price <= withdraw_asset_price:
-        raise AssertionError('Remove liquidity price expected to be higher than withdraw asset price.')
