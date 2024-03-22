@@ -14,7 +14,7 @@ class OmnipoolState(AMM):
     def __init__(self,
                  tokens: dict[str: dict],
                  tvl_cap: float = float('inf'),
-                 preferred_stablecoin: str = "USD",
+                 preferred_stablecoin: str = None,
                  asset_fee: dict or FeeMechanism or float = None,
                  lrna_fee: dict or FeeMechanism or float = None,
                  oracles: dict[str: int] = None,
@@ -53,7 +53,7 @@ class OmnipoolState(AMM):
 
         if 'HDX' not in tokens:
             raise ValueError('HDX not included in tokens.')
-        if preferred_stablecoin not in tokens:
+        if preferred_stablecoin is not None and preferred_stablecoin not in tokens:
             raise ValueError(f'{preferred_stablecoin} is preferred stablecoin, but not included in tokens.')
 
         self.asset_list: list[str] = []
@@ -66,7 +66,10 @@ class OmnipoolState(AMM):
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
-        self.stablecoin = preferred_stablecoin
+        if preferred_stablecoin is None and "USD" in tokens:
+            self.stablecoin = "USD"
+        else:
+            self.stablecoin = preferred_stablecoin
         self.fail = ''
         self.sub_pools = dict()  # require sub_pools to be added through create_sub_pool
         self.update_function = update_function
@@ -229,7 +232,8 @@ class OmnipoolState(AMM):
 
     @property
     def total_value_locked(self):
-        # base this just on the LRNA/USD exchange rate in the pool
+        if self.stablecoin is None:
+            raise ValueError('No stablecoin defined')
         return self.liquidity[self.stablecoin] * self.lrna_total / self.lrna[self.stablecoin]
 
     def sell_limit(self, tkn_buy: str, tkn_sell: str):
@@ -271,7 +275,7 @@ class OmnipoolState(AMM):
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
                     f'    USD price: {prices[tkn]}\n' +
-                    f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
+                    # f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
                     f'    total shares: {self.shares[tkn]}\n'
@@ -339,12 +343,16 @@ class OmnipoolState(AMM):
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
         if fee is None:
             fee = {}
-            if tkn_sell not in self.asset_list:
+            if tkn_sell == 'LRNA':
+                fee['lrna'] = 0
+            elif tkn_sell not in self.asset_list:
                 for pool in self.sub_pools.values():
                     if tkn_sell in pool.asset_list:
                         fee['lrna'] = pool.trade_fee
                         break
-            if tkn_buy not in self.asset_list:
+            if tkn_buy == 'LRNA':
+                raise ValueError('cannot buy LRNA from Omnipool')
+            elif tkn_buy not in self.asset_list:
                 for pool in self.sub_pools.values():
                     if tkn_buy in pool.asset_list:
                         fee['asset'] = pool.trade_fee
@@ -360,7 +368,7 @@ class OmnipoolState(AMM):
             }
         if tkn_buy not in self.asset_list:
             return 0
-        elif tkn_sell not in self.asset_list:
+        elif tkn_sell not in self.asset_list + ['LRNA']:
             return 0
         else:
             return price(self, tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
@@ -368,12 +376,16 @@ class OmnipoolState(AMM):
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
         if fee is None:
             fee = {}
-            if tkn_sell not in self.asset_list:
+            if tkn_sell == 'LRNA':
+                fee['lrna'] = 0
+            elif tkn_sell not in self.asset_list:
                 for pool in self.sub_pools.values():
                     if tkn_sell in pool.asset_list:
                         fee['lrna'] = pool.trade_fee
                         break
-            if tkn_buy not in self.asset_list:
+            if tkn_buy == 'LRNA':
+                raise ValueError('cannot buy LRNA from Omnipool')
+            elif tkn_buy not in self.asset_list:
                 for pool in self.sub_pools.values():
                     if tkn_buy in pool.asset_list:
                         fee['asset'] = pool.trade_fee
@@ -389,7 +401,7 @@ class OmnipoolState(AMM):
             }
         if tkn_buy not in self.asset_list:
             return 0
-        elif tkn_sell not in self.asset_list:
+        elif tkn_sell not in self.asset_list + ["LRNA"]:
             return 0
         else:
             return price(self, tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
@@ -968,9 +980,10 @@ class OmnipoolState(AMM):
             return self.fail_transaction(
                 'Transaction rejected because it would exceed the weight cap in pool[{i}].', agent
             )
-    
-        if (self.total_value_locked + quantity * usd_price(self, tkn_add)) > self.tvl_cap:
-            return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
+
+        if self.tvl_cap < float('inf'):
+            if (self.total_value_locked() + quantity * usd_price(self, tkn_add)) > self.tvl_cap:
+                return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
     
         # assert quantity > 0, f"delta_R must be positive: {quantity}"
         if tkn_add not in self.asset_list:
@@ -1094,12 +1107,17 @@ class OmnipoolState(AMM):
         self.current_block.withdrawals[tkn_remove] += quantity
         return self
 
-    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None) -> float:
+    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None, stablecoin: str = None) -> float:
         # assets is a dict of token: quantity
         # returns the value of the assets in USD
+        if stablecoin is None:
+            if self.stablecoin is None:
+                raise ValueError('no stablecoin set or provided as argument')
+            else:
+                stablecoin = self.stablecoin
         if equivalency_map is None:
             equivalency_map = {}
-        usd_synonyms = [self.stablecoin]
+        usd_synonyms = [stablecoin]
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
                 usd_synonyms.append(eq)
@@ -1114,7 +1132,7 @@ class OmnipoolState(AMM):
             tkn_value = 0
             for usd in usd_synonyms:
                 for eq in equivalents:
-                    if self.buy_spot(eq, usd) > 0:
+                    if self.sell_spot(eq, usd) > 0:
                         tkn_value += assets[tkn] * price(self, eq, usd)
                         break
                 if tkn_value != 0:
@@ -1149,32 +1167,41 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
     """
     price of an asset i denominated in j, according to current market conditions in the omnipool
     """
-    if tkn not in state.asset_list:
+    if tkn not in state.asset_list + ['LRNA']:
         return 0
     elif tkn == denominator:
         return 1
-    elif not denominator:
+    elif not denominator or denominator == 'LRNA':
         return lrna_price(state, tkn)
     elif denominator not in state.asset_list:
         return 0
+    elif tkn == 'LRNA':
+        return 1 / lrna_price(state, denominator)
     elif state.liquidity[tkn] == 0:
         return 0
     return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
 
 
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn):
+def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn, usd_asset=None):
+    if usd_asset is None:
+        if state.stablecoin is None:
+            raise ValueError('no stablecoin set or provided as argument')
+        else:
+            usd_asset = state.stablecoin
     if tkn == 'LRNA':
-        return 1 / state.lrna_price(state, state.stablecoin)
+        return 1 / state.lrna_price(state, usd_asset)
     else:
-        return price(state, tkn) / price(state, state.stablecoin)
+        return price(state, tkn) / price(state, usd_asset)
 
 
-def lrna_price(state: OmnipoolState or OmnipoolArchiveState, i: str, fee: float = 0) -> float:
+def lrna_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, fee: float = 0) -> float:
     """Price of i denominated in LRNA"""
-    if state.liquidity[i] == 0:
+    if tkn == "LRNA":
+        return 1
+    elif state.liquidity[tkn] == 0:
         return 0
     else:
-        return (state.lrna[i] / state.liquidity[i]) * (1 - fee)
+        return (state.lrna[tkn] / state.liquidity[tkn]) * (1 - fee)
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
