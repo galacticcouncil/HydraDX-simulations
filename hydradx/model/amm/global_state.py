@@ -407,6 +407,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: 
         temp_state, temp_agent = simulate_swap(omnipool, agent, tkn_buy=debt_asset,
                                                tkn_sell=collateral_asset, buy_quantity=delta_debt)
         collat_sold = agent.holdings[collateral_asset] - temp_agent.holdings[collateral_asset]
+        # we use execution price instead of spot price because liquidating as much as possible is a priority
         execution_price = delta_debt / collat_sold if collat_sold != 0 else float('inf')
 
         if execution_price < (1 + penalty) * (
