@@ -161,6 +161,7 @@ class OmnipoolRouter:
                 self.exchanges[buy_pool_id].remove_liquidity(agent, share_amt, tkn_buy)
         else:
             raise ValueError('One of buy_quantity or sell_quantity must be zero')
+        return self
 
     def find_routes(self, tkn_buy, tkn_sell):
         '''Finds all possible routes to swap between tkn_buy and tkn_sell'''
