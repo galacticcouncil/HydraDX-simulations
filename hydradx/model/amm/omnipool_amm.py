@@ -1112,7 +1112,7 @@ class OmnipoolState(AMM):
         # returns the value of the assets in USD
         if stablecoin is None:
             if self.stablecoin is None:
-                raise
+                raise ValueError('no stablecoin set or provided as argument')
             else:
                 stablecoin = self.stablecoin
         if equivalency_map is None:
@@ -1185,7 +1185,7 @@ def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: s
 def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn, usd_asset=None):
     if usd_asset is None:
         if state.stablecoin is None:
-            raise
+            raise ValueError('no stablecoin set or provided as argument')
         else:
             usd_asset = state.stablecoin
     if tkn == 'LRNA':
