@@ -2627,3 +2627,5 @@ def test_no_preferred_stablecoin():
     usd_p = initial_state.usd_price(initial_state, 'HDX', usd_asset='USD')
     if usd_p != pytest.approx(0.1, rel=1e-15):
         raise AssertionError(f'usd_p {usd_p} is incorrect')
+
+    initial_state.__repr__()
