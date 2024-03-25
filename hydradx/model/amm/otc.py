@@ -36,3 +36,12 @@ class OTC:
         self.sell_amount -= buy_amount
         agent.holdings[self.buy_asset] -= buy_amount / self.price
         agent.holdings[self.sell_asset] += buy_amount
+
+    def validate(self) -> bool:
+        if self.buy_amount < 0 or self.sell_amount < 0:
+            return False
+        if self.price <= 0 or self.price == float('inf'):
+            return False
+        if self.buy_asset == self.sell_asset:
+            return False
+        return True

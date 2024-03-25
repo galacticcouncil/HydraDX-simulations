@@ -25,3 +25,10 @@ class CDP:
         agent.holdings[self.debt_asset] -= debt_amt
         self.collateral_amt -= collateral_amt
         agent.holdings[self.collateral_asset] += collateral_amt
+
+    def validate(self) -> bool:
+        if self.debt_amt < 0 or self.collateral_amt < 0:
+            return False
+        if self.debt_asset == self.collateral_asset:
+            return False
+        return True
