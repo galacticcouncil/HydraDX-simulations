@@ -387,31 +387,39 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: float, iters: float = 20) -> float:
+def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: float, iters: float = 20, min_amt = 1) -> float:
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
 
-    delta_debt = cdp.debt_amt * (1 + penalty)
-    delta_debt_up = min(delta_debt, omnipool.liquidity[debt_asset] * 0.999)
-    delta_debt_down = 0
-    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: delta_debt_up})
+    delta_debt_up = min(cdp.debt_amt, omnipool.liquidity[debt_asset] * 0.999)
+    delta_debt = delta_debt_up
+    delta_debt_down = min_amt
+    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: delta_debt})
 
-    # if no liquidation can happen at spot price, we cannot even partially liquidate
-    if omnipool.price(omnipool, collateral_asset, debt_asset) < (1 + penalty) * (
-            cdp.debt_amt / cdp.collateral_amt):
-        return 0
+    if min_amt > 0:
+        # if minimum liquidation cannot be done, we cannot even partially liquidate
+        temp_state, temp_agent = simulate_swap(omnipool, agent, tkn_buy=debt_asset,
+                                               tkn_sell=collateral_asset, buy_quantity=min_amt)
+        collat_from_cdp = (agent.holdings[collateral_asset] - temp_agent.holdings[collateral_asset]) * (1 + penalty)
+        execution_price = min_amt / collat_from_cdp if collat_from_cdp != 0 else float('inf')
+        if execution_price < cdp.debt_amt / cdp.collateral_amt or collat_from_cdp == 0:
+            # trade amount too high
+            return 0
+    else:
+        # if spot price is too low, we cannot even partially liquidate
+        if omnipool.buy_spot(collateral_asset, debt_asset) / (1 + penalty) < cdp.debt_amt / cdp.collateral_amt:
+            return 0
 
     # binary search
     for i in range(iters):
-
         temp_state, temp_agent = simulate_swap(omnipool, agent, tkn_buy=debt_asset,
                                                tkn_sell=collateral_asset, buy_quantity=delta_debt)
-        collat_sold = agent.holdings[collateral_asset] - temp_agent.holdings[collateral_asset]
+        collat_from_cdp = (agent.holdings[collateral_asset] - temp_agent.holdings[collateral_asset]) * (1 + penalty)
         # we use execution price instead of spot price because liquidating as much as possible is a priority
-        execution_price = delta_debt / collat_sold if collat_sold != 0 else float('inf')
+        execution_price = delta_debt / collat_from_cdp if collat_from_cdp != 0 else float('inf')
 
-        if execution_price < (1 + penalty) * (
-                cdp.debt_amt / cdp.collateral_amt) or collat_sold == 0:  # trade amount too high
+        if execution_price < cdp.debt_amt / cdp.collateral_amt or collat_from_cdp == 0:
+            # trade amount too high
             delta_debt_up = delta_debt
         else:  # trade amt can be executed
             delta_debt_down = delta_debt
@@ -421,19 +429,37 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: 
     return delta_debt_down
 
 
-def omnipool_liquidate_cdp(state: GlobalState, cdp: CDP, treasury_agent: Agent, delta_debt: float) -> None:
-    init_cdp_collateral = cdp.collateral_amt
-    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: cdp.collateral_amt})
-    omnipool = state.pools["omnipool"]
-    omnipool.swap(agent, tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset, buy_quantity=delta_debt)
-    final_collat = agent.holdings[cdp.collateral_asset]
-    collateral_amt = min((cdp.collateral_amt - final_collat), cdp.collateral_amt)
-    cdp.liquidate_cdp(agent, delta_debt / (1 + state.liquidation_penalty), collateral_amt)
+def omnipool_liquidate_cdp(omnipool: OmnipoolState, cdp: CDP, treasury_agent: Agent, delta_debt: float, penalty: float) -> None:
+    # treasury_agent buys borrowed asset to cover the debt, but only if debt can be covered by existing collateral
+    # check if debt can be covered by existing collateral
+    if delta_debt > cdp.debt_amt or delta_debt == 0:
+        return
+    if cdp.collateral_asset not in treasury_agent.holdings:
+        treasury_agent.holdings[cdp.collateral_asset] = 0
+    init_collat_amt = cdp.collateral_amt
+    treasury_agent.holdings[cdp.collateral_asset] += init_collat_amt  # flash mint collateral_amt to treasury_agent
+    omnipool_check, agent_check = simulate_swap(
+        old_state=omnipool,
+        old_agent=treasury_agent,
+        tkn_buy=cdp.debt_asset,
+        tkn_sell=cdp.collateral_asset,
+        buy_quantity=delta_debt
+    )
+    collat_sold = treasury_agent.holdings[cdp.collateral_asset] - agent_check.holdings[cdp.collateral_asset]
+    collat_required = collat_sold * (1 + penalty)
 
-    # transfer profit to treasury_agent
-    treasury_agent.holdings[cdp.debt_asset] += agent.holdings[cdp.debt_asset]
-    if agent.holdings[cdp.collateral_asset] != init_cdp_collateral:
-        raise
+    if (not omnipool_check.fail) and (collat_required <= cdp.collateral_amt):  # cdp has enough collateral
+        omnipool.swap(
+            agent=treasury_agent,
+            tkn_buy=cdp.debt_asset,
+            tkn_sell=cdp.collateral_asset,
+            buy_quantity=delta_debt
+        )
+
+        # treasury_agent swaps borrowed asset for same amount of collateral + penalty
+        cdp.liquidate_cdp(treasury_agent, delta_debt, collat_required)
+    # burn assets that were flash minted
+    treasury_agent.holdings[cdp.collateral_asset] -= init_collat_amt
 
 
 def settle_otc_against_omnipool(pool_id: str, agent_id: str):
