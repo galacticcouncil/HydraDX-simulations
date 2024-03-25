@@ -279,7 +279,6 @@ def test_settle_otc_against_omnipool():
     # settle_otc_against_omnipool(pool_id: str, agent_id: str)
     # returns transform(state: GlobalState) -> GlobalState
     # this transform function is how GlobalState is evolved
-    # settle_otc_against_omnipool(pool_id: str, agent_id: str)
 
     tokens = {
         "HDX": {'liquidity': mpf(1000000), 'LRNA': mpf(100000)},
