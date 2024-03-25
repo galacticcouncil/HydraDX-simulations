@@ -10,6 +10,34 @@ from hydradx.model.amm.global_state import find_partial_liquidation_amount, omni
 mp.dps = 50
 
 
+def test_cdp_validate():
+    debt_asset = "USDT"
+    collateral_asset = "DOT"
+    init_debt_amt = 1000
+    init_collat_amt = 200
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt, True)
+    if not cdp.validate():
+        raise
+    cdp.debt_amt = -1
+    if cdp.validate():
+        raise
+    cdp.debt_amt = init_debt_amt
+    cdp.collateral_amt = -1
+    if cdp.validate():
+        raise
+    cdp.collateral_amt = init_collat_amt
+    cdp.debt_asset = collateral_asset
+    if cdp.validate():
+        raise
+
+    cdp = CDP(debt_asset, collateral_asset, 0, init_collat_amt, True)
+    if not cdp.validate():
+        raise
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, 0, True)
+    if not cdp.validate():  # note that toxic debt does not fail validation
+        raise
+
+
 def test_liquidate_cdp():
     liquidate_pct = 0.7
     debt_asset = "USDT"
@@ -22,6 +50,7 @@ def test_liquidate_cdp():
     agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
 
     cdp.liquidate_cdp(agent, init_debt_amt * liquidate_pct, init_collat_amt * liquidate_pct)
+    cdp.validate()
     if agent.holdings[collateral_asset] + cdp.collateral_amt != init_collat_holdings + init_collat_amt:
         raise
     if agent.holdings[debt_asset] - cdp.debt_amt != init_debt_holdings - init_debt_amt:
@@ -47,6 +76,7 @@ def test_liquidate_cdp_fails():
     with pytest.raises(Exception):
         cdp.liquidate_cdp(agent, init_debt_amt * 0.7, init_collat_amt * 1.2)
     cdp.liquidate_cdp(agent, init_debt_amt * 0.7, init_collat_amt * 0.7)
+    cdp.validate()
 
 
 @given(
@@ -99,8 +129,7 @@ def test_omnipool_liquidate_cdp(collat_ratio: float, collateral_amt: float):
     if before_USDT != pytest.approx(final_USDT, rel=1e-20):  # check that total debt asset amounts are correct
         raise
 
-    if cdp.debt_amt < 0 or cdp.collateral_amt < 0:  # validity check of cdp state
-        raise
+    cdp.validate()
 
     if treasury_agent.holdings['DOT'] != pytest.approx(
             penalty * (omnipool.liquidity['DOT'] - init_pool.liquidity['DOT']), rel=1e-15):

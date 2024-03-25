@@ -41,6 +41,31 @@ def test_buy():
         raise
 
 
+def test_validate():
+    otc = OTC('DOT', 'USDT', 100, 7)
+    if not otc.validate():
+        raise
+    otc = OTC('DOT', 'DOT', 100, 7)
+    if otc.validate():
+        raise
+    otc = OTC('DOT', 'USDT', 100, 0)
+    if otc.validate():
+        raise
+    otc = OTC('DOT', 'USDT', 100, float('inf'))
+    if otc.validate():
+        raise
+    otc = OTC('DOT', 'USDT', 100, -1)
+    if otc.validate():
+        raise
+    otc = OTC('DOT', 'USDT', -1, 7)
+    if otc.validate():
+        raise
+    otc = OTC('DOT', 'USDT', 100, 7)
+    otc.buy_amount = -1
+    if otc.validate():
+        raise
+
+
 def test_sell_fails():
     otc = OTC('DOT', 'USDT', 100, 7)
     agent = Agent(holdings={"USDT": 1000, "DOT": 100})
@@ -242,6 +267,8 @@ def test_find_partial_otc_sell_amount_fuzz(price, sell_amount):
     treasury = Agent(holdings={"USDT": 0, "DOT": 0})
     omnipool_settle_otc(omnipool, otc, treasury, partial_otc_amount)
     spot_after = omnipool.buy_spot('DOT', 'USDT')
+
+    otc.validate()
 
     partially_filled = False
     # if OTC order is not filled at all, initial spot price > OTC price
