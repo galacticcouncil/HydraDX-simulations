@@ -663,6 +663,9 @@ def get_omnipool_balance_history():
             data=json.dumps(request)
         )
 
+        # todo: this needs some work. It should use query_sqlPad,
+        # and it needs to handle the end of the available data gracefully.
+
         # Check if the request was successful (status code 200)
         if response.status_code == 200:
             data = response.json()
