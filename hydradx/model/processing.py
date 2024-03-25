@@ -669,6 +669,9 @@ def get_omnipool_balance_history():
             data=json.dumps(request)
         )
 
+        # todo: this needs some work. It should use query_sqlPad,
+        # and it needs to handle the end of the available data gracefully.
+
         # Check if the request was successful (status code 200)
         if response.status_code == 200:
             data = response.json()
@@ -774,7 +777,7 @@ async def query_sqlPad(query: str):
 
     load_dotenv()
     username = os.getenv('SQLPAD_USERNAME')
-    password = "yA2Wwpr-e2YP!5s"  # os.getenv('PASSWORD')
+    password = os.getenv('PASSWORD')
     credentials = f"{username}:{password}"
     encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
 
