@@ -380,12 +380,12 @@ def test_liquidate_against_omnipool():
     # can't be liquidated
     cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
     # should be partially liquidated
-    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000/6.9, True)
+    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000/6.5, True)
     # should be fully liquidated
     cdp4 = CDP('DOT', 'USDT', 100, 1000, True)
     cdps = [cdp1, cdp2, cdp3, cdp4]
     agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
-    init_state = GlobalState(agents=agents, pools={'omnipool': init_pool}, cdps=cdps)
+    init_state = GlobalState(agents=agents, pools={'omnipool': init_pool}, cdps=cdps, liquidation_penalty=0.02)
 
     transform_fn = liquidate_against_omnipool("omnipool", "treasury")
     transform_fn(init_state)
