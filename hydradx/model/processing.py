@@ -768,7 +768,7 @@ async def query_sqlPad(query: str):
 
     load_dotenv()
     username = os.getenv('SQLPAD_USERNAME')
-    password = "yA2Wwpr-e2YP!5s"  # os.getenv('PASSWORD')
+    password = os.getenv('PASSWORD')
     credentials = f"{username}:{password}"
     encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
 
