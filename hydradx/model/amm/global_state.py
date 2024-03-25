@@ -381,7 +381,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
             if cdp.in_liquidation:
                 delta_debt = find_partial_liquidation_amount(omnipool, cdp, penalty)
                 if delta_debt > 0:
-                    omnipool_liquidate_cdp(state, cdp, agent, delta_debt)
+                    omnipool_liquidate_cdp(state.pools['omnipool'], cdp, agent, delta_debt, state.liquidation_penalty)
         return state
 
     return transform
@@ -394,7 +394,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, cdp: CDP, penalty: 
     delta_debt_up = min(cdp.debt_amt, omnipool.liquidity[debt_asset] * 0.999)
     delta_debt = delta_debt_up
     delta_debt_down = min_amt
-    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: delta_debt})
+    agent = Agent(holdings={cdp.debt_asset: 0, cdp.collateral_asset: cdp.collateral_amt})
 
     if min_amt > 0:
         # if minimum liquidation cannot be done, we cannot even partially liquidate

@@ -5,7 +5,8 @@ from mpmath import mp, mpf
 from hydradx.model.amm.liquidations import CDP
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp
+from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
+    liquidate_against_omnipool
 
 mp.dps = 50
 
@@ -278,9 +279,10 @@ def test_find_partial_liquidation_amount_partial(collat_ratio: float):
 @given(
     st.floats(min_value=4, max_value=10),
     st.floats(min_value=200, max_value=200000),
-    st.floats(min_value=0.0, max_value=1.0)
+    st.floats(min_value=0.0, max_value=1.0),
+    st.booleans()
 )
-def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: float, min_amt: float):
+def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: float, min_amt: float, invert: bool):
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
 
     assets = {
@@ -307,8 +309,16 @@ def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: fl
         preferred_stablecoin='USDT',
     )
 
+    if invert:
+        collateral_asset = 'USDT'
+        debt_asset = 'DOT'
+        collat_ratio = 1 / collat_ratio
+    else:
+        collateral_asset = 'DOT'
+        debt_asset = 'USDT'
+
     debt_amt = collat_ratio * collateral_amt
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt, True)
+    cdp = CDP(debt_asset, collateral_asset, debt_amt, collateral_amt, True)
     penalty = 0.01
 
     liquidation_amount = find_partial_liquidation_amount(omnipool, cdp, penalty, 100, min_amt)
@@ -322,7 +332,7 @@ def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: fl
 
     omnipool_copy = omnipool.copy()
     cdp_copy = cdp.copy()
-    treasury_agent = Agent(holdings={"USDT": mpf(0), "DOT": mpf(0)})
+    treasury_agent = Agent(holdings={debt_asset: mpf(0), collateral_asset: mpf(0)})
     omnipool_liquidate_cdp(omnipool_copy, cdp_copy, treasury_agent, liquidation_amount, penalty)
 
     collat_penalty = treasury_agent.holdings[cdp.collateral_asset]
@@ -336,3 +346,57 @@ def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: fl
 
         if cdp_copy.debt_amt > 0 and exec_price != pytest.approx(collat_ratio, rel=1e-12):
             raise  # if liquidation is partial, execution price should be equal to collateral ratio
+
+
+def test_liquidate_against_omnipool():
+    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
+
+    assets = {
+        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
+        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
+        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
+        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
+        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
+    }
+
+    lrna_price_usd = 35
+    initial_omnipool_tvl = 20000000
+    liquidity = {}
+    lrna = {}
+
+    for tkn, info in assets.items():
+        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
+        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+
+    init_pool = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
+        },
+        preferred_stablecoin='USDT',
+    )
+
+    # should be fully liquidated
+    cdp1 = CDP('USDT', 'DOT', 1000, 200, True)
+    # can't be liquidated
+    cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
+    # should be partially liquidated
+    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000/6.9, True)
+    # should be fully liquidated
+    cdp4 = CDP('DOT', 'USDT', 100, 1000, True)
+    cdps = [cdp1, cdp2, cdp3, cdp4]
+    agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
+    init_state = GlobalState(agents=agents, pools={'omnipool': init_pool}, cdps=cdps)
+
+    transform_fn = liquidate_against_omnipool("omnipool", "treasury")
+    transform_fn(init_state)
+
+    if cdp1.debt_amt != 0:
+        raise  # should be fully liquidated
+    if cdp2.debt_amt != 1000:
+        raise  # shouldn't be liquidated at all
+    if cdp3.debt_amt == 0 or cdp3.debt_amt == 1000000:
+        raise  # should be partially liquidated
+    if cdp4.debt_amt != 0:
+        raise  # should be fully liquidated
+    if len(init_state.cdps) != 4:
+        raise
