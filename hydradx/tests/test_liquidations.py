@@ -6,7 +6,8 @@ from hydradx.model.amm.liquidations import CDP
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
-    liquidate_against_omnipool
+    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc
+from hydradx.model.amm.otc import OTC
 
 mp.dps = 50
 
@@ -399,4 +400,64 @@ def test_liquidate_against_omnipool():
     if cdp4.debt_amt != 0:
         raise  # should be fully liquidated
     if len(init_state.cdps) != 4:
+        raise
+
+
+def test_liquidate_against_omnipool_and_settle_otc():
+    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
+
+    assets = {
+        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
+        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
+        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
+        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
+        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
+    }
+
+    lrna_price_usd = 35
+    initial_omnipool_tvl = 20000000
+    liquidity = {}
+    lrna = {}
+
+    for tkn, info in assets.items():
+        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
+        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+
+    init_pool = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
+        },
+        preferred_stablecoin='USDT',
+    )
+
+    # should be fully liquidated
+    cdp1 = CDP('USDT', 'DOT', 1000, 200, True)
+    # can't be liquidated
+    cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
+
+    # should be executed and removed
+    otc1 = OTC('DOT', 'USDT', 120, 12, partially_fillable=True)
+    # should not be executed
+    otc2 = OTC('DOT', 'USDT', 120, 5, partially_fillable=True)
+
+    cdps = [cdp1, cdp2]
+    otcs = [otc1, otc2]
+    agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
+    init_state = GlobalState(
+        agents=agents, pools={'omnipool': init_pool}, cdps=cdps, otcs=otcs, liquidation_penalty=0.02)
+
+    transform_fn = liquidate_against_omnipool_and_settle_otc("omnipool", "treasury")
+    transform_fn(init_state)
+
+    if cdp1.debt_amt != 0:
+        raise  # should be fully liquidated
+    if cdp2.debt_amt != 1000:
+        raise  # shouldn't be liquidated at all
+    if otc1.sell_amount != 0:
+        raise  # should be completed
+    if otc2.sell_amount != 120:
+        raise  # shouldn't be traded
+    if len(init_state.cdps) != 2:
+        raise
+    if len(init_state.otcs) != 1:
         raise
