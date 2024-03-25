@@ -2491,3 +2491,141 @@ def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_
         raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
     if hdx_per_usd != pytest.approx(ex_price_usd):
         raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')
+
+
+def test_LRNA_price_LRNA():
+    '''Test that we can call lrna_price with input LRNA and get 1'''
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(10000000000), 'LRNA': mpf(5000000)},
+            'USD': {'liquidity': mpf(1000000000), 'LRNA': mpf(3333333333)},
+            'DOT': {'liquidity': mpf(100000000), 'LRNA': mpf(1111111111)},
+        },
+        lrna_fee=0.0005,
+        asset_fee=0.0025,
+        preferred_stablecoin='USD'
+    )
+
+    lrna_price = initial_state.lrna_price(initial_state, 'LRNA')
+    if lrna_price != pytest.approx(1, rel=1e-15):
+        raise AssertionError(f'lrna_price {price} != 1')
+
+
+@given(st.lists(asset_quantity_strategy, min_size=6, max_size=6),
+       st.floats(min_value=0.0001, max_value=0.1, exclude_min=True))
+def test_price_LRNA(amts: list, asset_fee: float):
+    '''Tests the price function with LRNA as each input'''
+
+    hdx_amt, usd_amt, dot_amt = mpf(amts[0]), mpf(amts[1]), mpf(amts[2])
+    hdx_lrna, usd_lrna, dot_lrna = mpf(amts[3]), mpf(amts[4]), mpf(amts[5])
+
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna},
+            'USD': {'liquidity': usd_amt, 'LRNA': usd_lrna},
+            'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
+        },
+        lrna_fee=0.0005,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USD'
+    )
+
+    lrna_price = initial_state.price(initial_state, 'LRNA', 'USD')
+    usd_price = initial_state.price(initial_state, 'USD', 'LRNA')
+    if lrna_price != pytest.approx(usd_amt / usd_lrna, rel=1e-15):
+        raise AssertionError(f'lrna_price {lrna_price} != {usd_amt / usd_lrna}')
+    if usd_price != pytest.approx(usd_lrna / usd_amt, rel=1e-15):
+        raise AssertionError(f'lrna_price {usd_price} != {usd_lrna / usd_amt}')
+
+
+@given(st.lists(asset_quantity_strategy, min_size=6, max_size=6),
+       st.floats(min_value=0.0001, max_value=0.1, exclude_min=True))
+def test_sell_spot_LRNA(amts: list, asset_fee: float):
+    '''Tests sell_spot with LRNA as the sell_tkn'''
+
+    hdx_amt, usd_amt, dot_amt = mpf(amts[0]), mpf(amts[1]), mpf(amts[2])
+    hdx_lrna, usd_lrna, dot_lrna = mpf(amts[3]), mpf(amts[4]), mpf(amts[5])
+
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna},
+            'USD': {'liquidity': usd_amt, 'LRNA': usd_lrna},
+            'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
+        },
+        lrna_fee=0.0005,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USD'
+    )
+
+    price = initial_state.sell_spot('LRNA', 'USD')
+    if price != pytest.approx(usd_amt / usd_lrna * (1-asset_fee), rel=1e-15):
+        raise AssertionError(f'price {price} is incorrect')
+
+
+@given(st.lists(asset_quantity_strategy, min_size=6, max_size=6),
+       st.floats(min_value=0.0001, max_value=0.1, exclude_min=True))
+def test_buy_spot_LRNA(amts: list, asset_fee: float):
+    '''Tests buy_spot with LRNA as the sell_tkn'''
+
+    hdx_amt, usd_amt, dot_amt = mpf(amts[0]), mpf(amts[1]), mpf(amts[2])
+    hdx_lrna, usd_lrna, dot_lrna = mpf(amts[3]), mpf(amts[4]), mpf(amts[5])
+
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': hdx_amt, 'LRNA': hdx_lrna},
+            'USD': {'liquidity': usd_amt, 'LRNA': usd_lrna},
+            'DOT': {'liquidity': dot_amt, 'LRNA': dot_lrna},
+        },
+        lrna_fee=0.0005,
+        asset_fee=asset_fee,
+        preferred_stablecoin='USD'
+    )
+
+    price = initial_state.buy_spot('USD', 'LRNA')
+    exp_price = usd_lrna / usd_amt
+    if price != pytest.approx(exp_price/(1-asset_fee), rel=1e-15):
+        raise AssertionError(f'price {price} is incorrect')
+
+
+def test_value_assets_without_equivalency_map():
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
+            'USD': {'liquidity': mpf(1000000000), 'LRNA': mpf(1000000000)},
+            'DOT': {'liquidity': mpf(1000000000), 'LRNA': mpf(10000000000)},
+        },
+        lrna_fee=0.0025,
+        asset_fee=0.0005,
+        preferred_stablecoin='USD'
+    )
+
+    assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000), 'LRNA': mpf(4000)}
+    val = initial_state.value_assets(assets, stablecoin='USD')
+    if val != 100 + 2000 + 30000 + 4000:
+        raise AssertionError(f'val {val} is incorrect')
+
+
+def test_no_preferred_stablecoin():
+    '''Tests Omnipool initialization, as well as value_assets and usd_price, with no preferred_stablecoin'''
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000000), 'LRNA': mpf(100000000)},
+            'USD': {'liquidity': mpf(1000000000), 'LRNA': mpf(1000000000)},
+            'DOT': {'liquidity': mpf(1000000000), 'LRNA': mpf(10000000000)},
+        },
+        lrna_fee=0.0025,
+        asset_fee=0.0005,
+    )
+
+    # assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000), 'LRNA': mpf(4000)}
+    assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000)}
+    val = initial_state.value_assets(assets, stablecoin='USD')
+    # if val != 100 + 2000 + 30000 + 4000:
+    if val != 100 + 2000 + 30000:
+        raise AssertionError(f'val {val} is incorrect')
+
+    usd_p = initial_state.usd_price(initial_state, 'HDX', usd_asset='USD')
+    if usd_p != pytest.approx(0.1, rel=1e-15):
+        raise AssertionError(f'usd_p {usd_p} is incorrect')
+
+    initial_state.__repr__()
