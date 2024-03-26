@@ -1,6 +1,7 @@
 import math
 
 import pytest
+import os
 from hypothesis import given, strategies as st
 
 from hydradx.model.amm import omnipool_amm as oamm
@@ -318,8 +319,13 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 
 def test_save_load():
+    path = os.getcwd()
+    if not os.path.exists(os.path.join(path, 'archive')):
+        path = os.path.join(path, 'hydradx', 'tests', 'archive')
+    else:
+        path = os.path.join(path, 'archive')
     omnipool = get_omnipool()
-    save_omnipool(omnipool, path="hydradx/tests/archive/")
-    omnipool2 = load_omnipool(path="hydradx/tests/archive/")
+    save_omnipool(omnipool, path=path)
+    omnipool2 = load_omnipool(path=path)
     if repr(omnipool2) != repr(omnipool):
         raise AssertionError('Save and load failed')
