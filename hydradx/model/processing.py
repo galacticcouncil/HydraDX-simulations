@@ -447,9 +447,9 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
         return omnipool
 
 
-def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
+def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
     ts = time.time()
-    with open(f'{path}omnipool_savefile_{ts}.json', 'w') as output_file:
+    with open(os.path.join(path, f'omnipool_savefile_{ts}.json'), 'w+') as output_file:
         json.dump(
         {
                 'liquidity': omnipool.liquidity,
@@ -469,13 +469,13 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
         )
 
 
-def load_omnipool(path: str = './archive/', filename: str = '') -> OmnipoolState:
+def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
     if filename:
         file_ls = [filename]
     else:
         file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
     for filename in reversed(file_ls):  # by default, load the latest first
-        with open (path + filename, 'r') as input_file:
+        with open (os.path.join(path, filename), 'r') as input_file:
             json_state = json.load(input_file)
             # pprint(json_state)
         omnipool = OmnipoolState(
