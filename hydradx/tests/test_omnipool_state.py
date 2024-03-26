@@ -8,6 +8,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool, dynamicadd_asset_fee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
+from hydradx.model.processing import get_omnipool, save_omnipool, load_omnipool
 
 
 def test_omnipool_constructor_dynamic_fee_dict_works():
@@ -314,3 +315,11 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
     cash_count = sum([market_prices[tkn] * withdraw_agent.holdings[tkn] for tkn in withdraw_agent.holdings])
     if cash_count != pytest.approx(cash_out, rel=1e-15):
         raise AssertionError('Cash out calculation is not accurate.')
+
+
+def test_save_load():
+    omnipool = get_omnipool()
+    save_omnipool(omnipool, path="hydradx/tests/archive/")
+    omnipool2 = load_omnipool(path="hydradx/tests/archive/")
+    if repr(omnipool2) != repr(omnipool):
+        raise AssertionError('Save and load failed')

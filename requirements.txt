@@ -12,7 +12,8 @@ hypothesis~=6.39.6
 pytest~=7.4.2
 ipdb
 sympy
-mpmath~=1.2.1
+mpmath~=1.4.0a0
 zipp
-requests~=2.27.1
-hydradx-api~=0.2.10
+requests~=2.31.0
+python-dotenv
+hydradx-api~=0.3.0

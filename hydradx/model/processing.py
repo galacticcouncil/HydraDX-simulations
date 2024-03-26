@@ -1,18 +1,20 @@
 import json
 from csv import reader
-from typing import List
-
 import requests
 from zipfile import ZipFile
 import datetime
 import os
 from hydradxapi import HydraDX
 import time
+import base64
+from pprint import pprint
+from dotenv import load_dotenv
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.stableswap_amm import StableSwapPoolState
 from .amm.omnipool_amm import OmnipoolState
+from .amm.amm import basic_fee
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -445,22 +447,22 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
         return omnipool
 
 
-def save_omnipool(omnipool: OmnipoolState):
+def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
     ts = time.time()
-    with open(f'./archive/omnipool_data_{ts}.json', 'w') as output_file:
+    with open(f'{path}omnipool_savefile_{ts}.json', 'w') as output_file:
         json.dump(
         {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
-                'asset_fee': omnipool.asset_fee,
-                'lrna_fee': omnipool.lrna_fee,
+                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.asset_fee.items()},
+                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.lrna_fee.items()},
                 'sub_pools': [
                     {
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
                         'unique_id': pool.unique_id
-                    } for pool in omnipool.sub_pools
+                    } for pool in omnipool.sub_pools.values()
                 ]
             },
             output_file
@@ -471,26 +473,31 @@ def load_omnipool(path: str = './archive/', filename: str = '') -> OmnipoolState
     if filename:
         file_ls = [filename]
     else:
-        file_ls = list(filter(lambda file: file.startswith('ominpool_data'), os.listdir(path)))
-    for filename in file_ls:
+        file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
+    for filename in reversed(file_ls):  # by default, load the latest first
         with open (path + filename, 'r') as input_file:
             json_state = json.load(input_file)
+            # pprint(json_state)
         omnipool = OmnipoolState(
-            tokens=json_state['liquidity'],
-            lrna=json_state['LRNA'],
-            asset_fee=json_state['asset_fee'],
-            lrna_fee=json_state['lrna_fee']
+            tokens={
+                tkn: {
+                    'liquidity': json_state['liquidity'][tkn],
+                    'LRNA': json_state['LRNA'][tkn]
+                }
+                for tkn in json_state['liquidity']
+            },
+            asset_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['asset_fee'].items()},
+            lrna_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['lrna_fee'].items()}
         )
         for pool in json_state['sub_pools']:
             omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
                 tokens=pool['tokens'],
                 amplification=pool['amplification'],
-                trade_fee=pool['trade_fee'],
+                trade_fee=float(pool['trade_fee']),
                 unique_id=pool['unique_id']
             )
         return omnipool
     raise FileNotFoundError(f'Omnipool file not found in {path}.')
-
 
 
 def get_centralized_market(
@@ -554,3 +561,269 @@ def convert_config(cfg: list[dict]) -> list[dict]:
         }
         for cfg_item in cfg
     ]
+
+
+def get_omnipool_balance_history():
+    chunk_size = 10000
+    chunks_per_file = 100
+
+    load_dotenv()
+    username = os.getenv('SQLPAD_USERNAME')
+    password = os.getenv('PASSWORD')
+
+    # Encode the username and password in Base64
+    credentials = f"{username}:{password}"
+    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+
+    headers = {
+        'Authorization': f'Basic {encoded_credentials}',
+        'Content-Type': 'application/json'  # This is typically required for JSON payloads
+    }
+
+    def insert_data_chunk(position: int, data_list: list):
+        request = {
+            'connectionId': "4a34594e-efa6-4f6e-a594-655ca20f2881",
+            'batchText': (
+                f"with hdx_changes as ("
+                f"  select"
+                f"    block_id,"
+                f"    '0' as asset_id,"
+                f"    (args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name like 'Balances.Transfer'"
+                f"    and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"  union all"
+                f"  select"
+                f"    block_id,"
+                f"    '0' as asset_id,"
+                f"    -(args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name like 'Balances.Transfer'"
+                f"    and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"),"
+                f"tokens_changes as ("
+                f"  select"
+                f"    block_id,"
+                f"    args->>'currencyId' as asset_id,"
+                f"    (args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name = 'Tokens.Transfer'"
+                f"    and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"  union all"
+                f"  select"
+                f"    block_id,"
+                f"    args->>'currencyId' as asset_id,"
+                f"    -(args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name = 'Tokens.Transfer'"
+                f"    and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"  union all"
+                f"  select"
+                f"    block_id,"
+                f"    args->>'currencyId' as asset_id,"
+                f"    (args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name = 'Tokens.Deposited'"
+                f"    and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"  union all"
+                f"  select"
+                f"    block_id,"
+                f"    args->>'currencyId' as asset_id,"
+                f"    -(args->>'amount')::numeric as amount"
+                f"  from event"
+                f"  where"
+                f"    name = 'Tokens.Withdrawn'"
+                f"    and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
+                f"),"
+                f"balance_changes as ("
+                f"  select * from hdx_changes"
+                f"  union all"
+                f"  select * from tokens_changes"
+                f"),"
+                f"balance_history as ("
+                f"  select"
+                f"    height,"
+                f"    timestamp,"
+                f"    block_id,"
+                f"    asset_id,"
+                f"    symbol,"
+                f"    sum(amount) over (partition by asset_id order by block_id) / 10 ^ decimals as balance"
+                f"  from balance_changes"
+                f"  inner join block on block_id = block.id"
+                f"  inner join token_metadata on asset_id = token_metadata.id::text"
+                f")"
+                f"select timestamp, symbol, balance as liquidity "
+                f"from balance_history "
+                f"order by timestamp asc "
+                f"limit {chunk_size} offset {chunk_size} * {position}"
+            )
+        }
+        response = requests.post(
+            url='https://sqlpad.play.hydration.cloud/api/batches',
+            headers=headers,
+            data=json.dumps(request)
+        )
+
+        # todo: this needs some work. It should use query_sqlPad,
+        # and it needs to handle the end of the available data gracefully.
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200:
+            data = response.json()
+            batchID = data['statements'][0]['batchId']
+            try:
+                statement = requests.get(
+                    url=f'https://sqlpad.play.hydration.cloud/api/batches/{batchID}/statements',
+                    headers=headers
+                ).json()
+                statementID = statement[0]['id']
+
+                print(f'waiting for query page {position + 1}...')
+                if response.status_code == 200:
+                    # this is the response we get from the server if the query isn't finished yet.
+                    # loop until we get a different response
+                    response = {'title': 'Not found'}
+                    while 'title' in response and response['title'] == 'Not found':
+                        response = requests.get(
+                            url=f'https://sqlpad.play.hydration.cloud/api/statements/{statementID}/results',
+                            headers=headers
+                        ).json()
+                        time.sleep(1)
+                    print("finished.")
+                    response = list(response)
+                    # tag a record number to each entry, so we can go back and see if anything is missing
+                    new_data = []
+                    for i in range(len(response)):
+                        new_data.append([position * chunk_size + i] + response[i])
+                    # insert at the correct position
+                    data_list = data_list[:position * chunk_size] + new_data + data_list[position * chunk_size:]
+
+            except Exception as e:
+                print(f"There was a problem with your request: {str(e)}")
+        else:
+            pprint(response)
+        return data_list
+
+    def load_history_file(file_name: str):
+        with open(f'./data/{file_name}', 'r') as file:
+            file_data = json.loads('[' + file.read() + ']')
+        return file_data
+
+    def save_history_file(data_list: list, n: int):
+        with open(f'./data/omnipool_history_{str(n).zfill(2)}', 'w') as file:
+            file.write(', '.join([json.dumps(line) for line in
+                                  data_list[chunk_size * chunks_per_file * (n - 1): chunk_size * chunks_per_file * n]]))
+        print(f'Saved {filename}')
+
+    def check_errors(data_list):
+        errors = []
+        for i in range(int(len(data_list) / chunk_size)):
+            correctIndex = (i + len(errors)) * chunk_size
+            if correctIndex >= len(data_list):
+                break
+            if data_list[i * chunk_size][0] != correctIndex:
+                errors.append(i)
+        return errors
+
+    def fix_errors(data_list):
+        # error checking and correction
+        # this works in the specific case where a piece of chunk_size length failed to download, which is typical
+        # other types of errors would require different handling
+        errors = check_errors(data_list)
+        if not errors:
+            print('Data looks error-free.')
+        while errors:
+            print(f'Error detected at: {errors[0]}')
+            data_list = insert_data_chunk(position=errors[0], data_list=data_list)
+            errors = check_errors(data_list)
+
+        return data_list
+
+    # load what we have so far
+    all_data = []
+    file_ls = os.listdir('./data')
+    for filename in file_ls:
+        if filename.startswith('omnipool_history'):
+            print(f'loading {filename}')
+            all_data += load_history_file(filename)
+
+    # continue downloading and check for errors
+    while True:
+        fix_errors(all_data)
+        file_number = round(len(all_data) / chunk_size / chunks_per_file) + 1
+        start_at = round(len(all_data) / chunk_size)
+        for n in range(start_at, start_at + chunks_per_file):
+            data_length = len(all_data)
+            all_data = insert_data_chunk(position=n, data_list=all_data)
+            print(data_length, len(all_data))
+            if 0 < len(all_data) - data_length < chunk_size:
+                # probably means we're finished. There might be a better way to detect this, but I think it'll do
+                return all_data
+
+        print(f'saving omnipool_history_{str(file_number).zfill(2)}')
+        save_history_file(all_data, file_number)
+
+async def query_sqlPad(query: str):
+    """
+    input: sql query string
+    output: result of the query as a list of lists
+    requirement: .env file with SQLPAD_USERNAME and PASSWORD in /model/ folder
+    """
+
+    load_dotenv()
+    username = os.getenv('SQLPAD_USERNAME')
+    password = os.getenv('PASSWORD')
+    credentials = f"{username}:{password}"
+    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+
+    headers = {
+        'Authorization': f'Basic {encoded_credentials}',
+        'Content-Type': 'application/json'  # This is typically required for JSON payloads
+    }
+
+    request = {
+        'connectionId': "4a34594e-efa6-4f6e-a594-655ca20f2881",
+        'batchText': query
+    }
+
+    try:
+        response = requests.post(
+            url='https://sqlpad.play.hydration.cloud/api/batches',
+            headers=headers,
+            data=json.dumps(request)
+        )
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200:
+            data = response.json()
+            batchID = data['statements'][0]['batchId']
+            try:
+                statement = requests.get(
+                    url=f'https://sqlpad.play.hydration.cloud/api/batches/{batchID}/statements',
+                    headers=headers
+                ).json()
+                statementID = statement[0]['id']
+
+                print('waiting for query to finish...')
+                if response.status_code == 200:
+                    data = {'title': 'Not found'}
+                    while 'title' in data and data['title'] == 'Not found':
+                        data = requests.get(
+                            url=f'https://sqlpad.play.hydration.cloud/api/statements/{statementID}/results',
+                            headers=headers
+                        ).json()
+                    return data
+
+            except Exception as e:
+                print(f"There was a problem with your request: {str(e)}")
+        else:
+            print(f"Request failed with status code {response.status_code}")
+            return []
+
+    except Exception as e:
+        print(f"There was a problem with your request: {str(e)}")
