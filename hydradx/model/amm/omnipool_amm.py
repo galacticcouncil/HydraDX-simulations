@@ -257,7 +257,11 @@ class OmnipoolState(AMM):
         lrna_total = round(self.lrna_total, precision)
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
-        prices = {tkn: round(usd_price(self, tkn), precision) for tkn in self.asset_list}
+        usd_prices = (
+            {tkn: round(usd_price(self, tkn), precision) for tkn in self.asset_list}
+            if self.stablecoin is not None
+            else {tkn: 'N/A' for tkn in self.asset_list}
+        )
         newline = '\n'
         return (
             f'Omnipool: {self.unique_id}\n'
@@ -274,7 +278,7 @@ class OmnipoolState(AMM):
                     f'    *{tkn}*\n'
                     f'    asset quantity: {liquidity[tkn]}\n'
                     f'    lrna quantity: {lrna[tkn]}\n'
-                    f'    USD price: {prices[tkn]}\n' +
+                    f'    USD price: {usd_prices[tkn]}\n' +
                     # f'    tvl: ${lrna[tkn] * liquidity[self.stablecoin] / lrna[self.stablecoin]}\n'
                     f'    weight: {lrna[tkn]}/{lrna_total} ({lrna[tkn] / lrna_total})\n'
                     f'    weight cap: {weight_cap[tkn]}\n'
