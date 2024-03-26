@@ -119,4 +119,6 @@ def basic_fee(f: float = 0) -> FeeMechanism:
             exchange: AMM, tkn: str, delta_tkn: float
     ) -> float:
         return f
-    return FeeMechanism(fee_function, f"{f * 100}%")
+    f_mech = FeeMechanism(fee_function, f"{f * 100}%")
+    f_mech.fee = f
+    return f_mech
