@@ -382,16 +382,16 @@ def test_process_next_swap(
 ):
     tokens = {
         'USDT': {
-            'liquidity': 2062772,
-            'LRNA': 2062772
+            'liquidity': mpf(2062772),
+            'LRNA': mpf(2062772)
         },
         'DOT': {
-            'liquidity': 350000,
-            'LRNA': 1456248
+            'liquidity': mpf(350000),
+            'LRNA': mpf(1456248)
         },
         'HDX': {
-            'liquidity': 108000000,
-            'LRNA': 494896
+            'liquidity': mpf(108000000),
+            'LRNA': mpf(494896)
         }
     }
 
