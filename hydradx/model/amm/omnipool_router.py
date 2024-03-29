@@ -54,6 +54,41 @@ class OmnipoolRouter:
     def sell_limit(self, tkn_buy, tkn_sell):
         return float('inf')
 
+    def buy_spot(self, tkn_buy, tkn_sell):
+        sell_pool, buy_pool = self.find_best_route(tkn_buy, tkn_sell)
+        # note: best_route[0] is sell_pool_id, best_route[1] is buy_pool_id
+        price = self.price_route(tkn_buy, tkn_sell, buy_pool, sell_pool)
+        if buy_pool == self.omnipool_id and sell_pool == self.omnipool_id:
+            price = self.exchanges[self.omnipool_id].buy_spot(tkn_buy, tkn_sell)
+
+        if sell_pool == self.omnipool_id and type(self.exchanges[buy_pool]) == StableSwapPoolState:
+            # we will buy enough shares of buy_pool to buy buy_quantity tkn_buy
+            price = self.exchanges[self.omnipool_id].buy_spot(tkn_buy=buy_pool, tkn_sell=tkn_sell)
+            price /= self.exchanges[buy_pool].withdraw_asset_spot(tkn_remove=tkn_buy)
+
+        return price
+
+    def sell_spot(self, tkn_sell: str, tkn_buy: str):
+        sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+        if sell_pool == buy_pool:
+            return self.exchanges[sell_pool].sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+        elif sell_pool == self.omnipool_id != buy_pool:
+            # we will sell enough shares of sell_pool to buy sell_quantity tkn_sell
+            price = self.exchanges[sell_pool].sell_spot(tkn_sell=tkn_sell, tkn_buy=buy_pool)
+            price *= self.exchanges[buy_pool].remove_liquidity_spot(tkn_remove=tkn_buy)
+            return price
+        elif buy_pool == self.omnipool_id != sell_pool:
+            price = self.exchanges[sell_pool].add_liquidity_spot(tkn_sell)
+            price /= self.exchanges[buy_pool].sell_spot(tkn_sell=sell_pool, tkn_buy=tkn_buy)
+            return price
+        elif buy_pool != self.omnipool_id and sell_pool != self.omnipool_id:
+            price = self.exchanges[sell_pool].sell_spot(tkn_sell, buy_pool)
+            price *= self.exchanges[self.omnipool_id].sell_spot(buy_pool, tkn_buy)
+            price *= self.exchanges[buy_pool].buy_spot(tkn_buy, sell_pool)
+            return price
+
+        return self.price_route(tkn_sell, tkn_buy, sell_pool, buy_pool)
+
     def fail_transaction(self, fail_message):
         self.fail = fail_message
         return self
