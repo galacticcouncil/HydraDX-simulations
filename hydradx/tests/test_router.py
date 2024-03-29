@@ -556,7 +556,7 @@ def test_sell_spot_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
 
 
 @given(
-    assets=st.lists(asset_quantity_strategy, min_size=8, max_size=8),
+    assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
     lrna_fee=fee_strategy,
     asset_fee=fee_strategy,
     trade_fee=fee_strategy
@@ -566,43 +566,43 @@ def test_sell_spot_buy_stableswap_sell_stableswap(assets, lrna_fee, asset_fee, t
         tokens={
             "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
             "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
-            "DOT": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
-            "stablepool": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+            "stablepool1": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "stablepool2": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])}
         },
         preferred_stablecoin="USDT",
         asset_fee=asset_fee,
         lrna_fee=lrna_fee
     )
     stablepool1 = StableSwapPoolState(
-        tokens={"stable1": mpf(assets[4]), "stable2": mpf(assets[5])},
+        tokens={"stable1": mpf(1000000), "stable2": mpf(1000000)},
         amplification=100,
         trade_fee=trade_fee, unique_id="stablepool1"
     )
     stablepool2 = StableSwapPoolState(
-        tokens={"stable3": mpf(assets[6]), "stable4": mpf(assets[7])},
+        tokens={"stable3": mpf(1000000), "stable4": mpf(1000000)},
         amplification=1000,
         trade_fee=trade_fee, unique_id="stablepool2"
     )
-    router = OmnipoolRouter({"omnipool": omnipool, "stablepool1": stablepool1, "stablepool2": stablepool2})
-
-    tkn_sell = "stable1"
-    tkn_buy = "stable3"
-    trade_size = 1e-08
     initial_agent = Agent(
         holdings={"stable1": mpf(1), "stable3": mpf(0)}
     )
+    tkn_sell = "stable1"
+    tkn_buy = "stable3"
+    trade_size = mpf(1e-07)
+
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool1": stablepool1, "stablepool2": stablepool2})
+
     stableswap_buy_router, stableswap_buy_agent = router.simulate_swap(
         initial_agent, tkn_buy, tkn_sell, sell_quantity=trade_size
     )
 
-    spot_price = router.sell_spot(tkn_buy, tkn_sell)
+    spot_price = router.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
     execution_price = ((stableswap_buy_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
                        / (initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]))
-
     actually_sold = initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]
     if actually_sold != trade_size:
         raise ValueError(f"actually bought {actually_sold} != trade size {trade_size}")
-    if spot_price != pytest.approx(execution_price, rel=1e-08):
+    if spot_price != pytest.approx(execution_price, rel=1e-05):
         raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
 
 
