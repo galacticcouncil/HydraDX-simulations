@@ -5,6 +5,8 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.tests.strategies_omnipool import fee_strategy
+
 from mpmath import mpf, mp
 mp.dps = 50
 
@@ -474,3 +476,272 @@ def test_swap_shares(assets: list[float]):
     stablepool2_copy.buy_shares(agent2, trade_size, "USDT")
     check_agent_holdings_equal(agent1, agent2)
     check_liquidity_equal(stablepool2, stablepool2_copy)
+
+
+@given(st.lists(asset_quantity_strategy, min_size=6, max_size=6))
+def test_buy_spot_omnipool_to_self(assets: list[float]):
+    tokens = {
+        "HDX": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+        "USDT": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+        "DOT": {'liquidity': mpf(assets[4]), 'LRNA': mpf(assets[5])},
+    }
+
+    tkn_buy = "USDT"
+    tkn_sell = "DOT"
+
+    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0025, lrna_fee=0.0005)
+    exchanges = {"omnipool": omnipool}
+    router = OmnipoolRouter(exchanges)
+    initial_agent = Agent(
+        holdings={"DOT": mpf(1000000), "USDT": mpf(1000000)}
+    )
+    trade_size = 1e-12
+    spot_price = router.buy_spot(tkn_buy, tkn_sell)
+    new_router, new_agent = router.simulate_swap(initial_agent, tkn_buy, tkn_sell, buy_quantity=trade_size)
+    execution_price = ((initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell])
+                       / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]))
+    if spot_price != pytest.approx(execution_price, rel=1e-12):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
+
+
+@given(
+    assets=st.lists(asset_quantity_strategy, min_size=8, max_size=8),
+    lrna_fee=fee_strategy,
+    asset_fee=fee_strategy,
+    trade_fee=fee_strategy
+)
+def test_sell_spot_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
+            "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
+            "DOT": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "stablepool": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+    stablepool1 = StableSwapPoolState(
+        tokens={"stable1": mpf(assets[4]), "stable2": mpf(assets[5])},
+        amplification=100,
+        trade_fee=trade_fee, unique_id="stablepool1"
+    )
+    stablepool2 = StableSwapPoolState(
+        tokens={"stable3": mpf(assets[6]), "stable4": mpf(assets[7])},
+        amplification=1000,
+        trade_fee=trade_fee, unique_id="stablepool2"
+    )
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool1": stablepool1, "stablepool2": stablepool2})
+
+    tkn_sell = "stable1"
+    tkn_buy = "stable2"
+    trade_size = 1e-08
+    initial_agent = Agent(
+        holdings={"stable1": mpf(1), "stable2": mpf(0)}
+    )
+    stableswap_buy_router, stableswap_buy_agent = router.simulate_swap(
+        initial_agent, tkn_buy, tkn_sell, sell_quantity=trade_size
+    )
+
+    spot_price = router.sell_spot(tkn_buy, tkn_sell)
+    execution_price = ((stableswap_buy_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
+                       / (initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]))
+
+    actually_sold = initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]
+    if actually_sold != trade_size:
+        raise ValueError(f"actually bought {actually_sold} != trade size {trade_size}")
+    if spot_price != pytest.approx(execution_price, rel=1e-08):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
+
+
+@given(
+    assets=st.lists(asset_quantity_strategy, min_size=8, max_size=8),
+    lrna_fee=fee_strategy,
+    asset_fee=fee_strategy,
+    trade_fee=fee_strategy
+)
+def test_sell_spot_buy_stableswap_sell_stableswap(assets, lrna_fee, asset_fee, trade_fee):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
+            "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
+            "DOT": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "stablepool": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+    stablepool1 = StableSwapPoolState(
+        tokens={"stable1": mpf(assets[4]), "stable2": mpf(assets[5])},
+        amplification=100,
+        trade_fee=trade_fee, unique_id="stablepool1"
+    )
+    stablepool2 = StableSwapPoolState(
+        tokens={"stable3": mpf(assets[6]), "stable4": mpf(assets[7])},
+        amplification=1000,
+        trade_fee=trade_fee, unique_id="stablepool2"
+    )
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool1": stablepool1, "stablepool2": stablepool2})
+
+    tkn_sell = "stable1"
+    tkn_buy = "stable3"
+    trade_size = 1e-08
+    initial_agent = Agent(
+        holdings={"stable1": mpf(1), "stable3": mpf(0)}
+    )
+    stableswap_buy_router, stableswap_buy_agent = router.simulate_swap(
+        initial_agent, tkn_buy, tkn_sell, sell_quantity=trade_size
+    )
+
+    spot_price = router.sell_spot(tkn_buy, tkn_sell)
+    execution_price = ((stableswap_buy_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
+                       / (initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]))
+
+    actually_sold = initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell]
+    if actually_sold != trade_size:
+        raise ValueError(f"actually bought {actually_sold} != trade size {trade_size}")
+    if spot_price != pytest.approx(execution_price, rel=1e-08):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
+
+
+@given(
+    assets=st.lists(asset_quantity_strategy, min_size=10, max_size=10),
+    lrna_fee=fee_strategy,
+    asset_fee=fee_strategy,
+    trade_fee=fee_strategy
+)
+def test_buy_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, trade_fee):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "USDT": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+            "DOT": {'liquidity': mpf(assets[4]), 'LRNA': mpf(assets[5])},
+            "stablepool": {'liquidity': mpf(assets[6]), 'LRNA': mpf(assets[7])},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+    stablepool = StableSwapPoolState(
+        tokens={"stable1": mpf(assets[8]), "stable2": mpf(assets[9])},
+        amplification=1000,
+        trade_fee=trade_fee, unique_id="stablepool"
+    )
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
+
+    tkn_sell = "DOT"
+    tkn_buy = "stable1"
+    trade_size = 1e-08
+    initial_agent = Agent(
+        holdings={"DOT": mpf(1000000), "stable1": mpf(1000000)}
+    )
+    stableswap_buy_router, stableswap_buy_agent = router.simulate_swap(
+        initial_agent, tkn_buy, tkn_sell, buy_quantity=trade_size
+    )
+
+    spot_price = router.buy_spot(tkn_buy, tkn_sell)
+    execution_price = ((initial_agent.holdings[tkn_sell] - stableswap_buy_agent.holdings[tkn_sell])
+                       / (stableswap_buy_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]))
+
+    actually_bought = stableswap_buy_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]
+    if actually_bought != trade_size:
+        raise ValueError(f"actually bought {actually_bought} != trade size {trade_size}")
+    if spot_price != pytest.approx(execution_price, rel=1e-08):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
+
+
+@given(
+    assets=st.lists(asset_quantity_strategy, min_size=10, max_size=10),
+    lrna_fee=fee_strategy,
+    asset_fee=fee_strategy,
+    trade_fee=fee_strategy
+)
+def test_sell_spot_sell_stableswap_buy_omnipool(
+    assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
+):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "USDT": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+            "DOT": {'liquidity': mpf(assets[4]), 'LRNA': mpf(assets[5])},
+            "stablepool": {'liquidity': mpf(assets[6]), 'LRNA': mpf(assets[7])},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+    stablepool = StableSwapPoolState(
+        tokens={"stable1": mpf(assets[8]), "stable2": mpf(assets[9])},
+        amplification=1000,
+        trade_fee=trade_fee, unique_id="stablepool"
+    )
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
+
+    tkn_sell = "stable1"
+    tkn_buy = "DOT"
+    trade_size = 1e-08
+    initial_agent = Agent(
+        holdings={"DOT": mpf(1000000), "stable1": mpf(1000000)}
+    )
+    stableswap_sell_router, stableswap_sell_agent = router.simulate_swap(
+        initial_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=trade_size
+    )
+
+    spot_price = router.sell_spot(tkn_buy, tkn_sell)
+    execution_price = ((stableswap_sell_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
+                       / (initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]))
+
+    actually_sold = initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]
+    if actually_sold != trade_size:
+        raise ValueError(f"actually sold {actually_sold} != trade size {trade_size}")
+    if spot_price != pytest.approx(execution_price, rel=1e-08):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
+
+
+@given(
+    assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
+    lrna_fee=fee_strategy,
+    asset_fee=fee_strategy,
+    trade_fee=fee_strategy
+)
+def test_sell_spot_buy_stableswap_sell_omnipool(
+    assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
+):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
+            "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
+            "DOT": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
+            "stablepool": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee
+    )
+    stablepool = StableSwapPoolState(
+        tokens={"stable1": mpf(assets[4]), "stable2": mpf(assets[5])},
+        amplification=1000,
+        trade_fee=trade_fee, unique_id="stablepool"
+    )
+    router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
+    tkn_buy = "stable1"
+    tkn_sell = "DOT"
+    trade_size = 1e-08
+    initial_agent = Agent(
+        holdings={"DOT": mpf(1000000), "stable1": mpf(1000000)}
+    )
+    stableswap_sell_router, stableswap_sell_agent = router.simulate_swap(
+        initial_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=trade_size
+    )
+
+    spot_price = router.sell_spot(tkn_buy, tkn_sell)
+    execution_price = ((stableswap_sell_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
+                       / (initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]))
+
+    actually_sold = initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]
+    if actually_sold != trade_size:
+        raise ValueError(f"actually sold {actually_sold} != trade size {trade_size}")
+    if spot_price != pytest.approx(execution_price, rel=1e-03):
+        raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
