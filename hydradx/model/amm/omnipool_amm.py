@@ -1063,8 +1063,8 @@ class OmnipoolState(AMM):
                         return self
     
             raise AssertionError(f"invalid value for i: {tkn_remove}")
-    
-        if quantity == 0 or agent.holdings[(self.unique_id, tkn_remove)] == 0:
+
+        if quantity == 0 or not agent.is_holding((self.unique_id, tkn_remove)):
             return self
     
         if self.remove_liquidity_volatility_threshold:
