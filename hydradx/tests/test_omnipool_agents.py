@@ -8,10 +8,12 @@ from hypothesis import given, strategies as st  # , settings
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all
+from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all, dca_with_lping
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 from hydradx.model.run import run
 from hydradx.tests.utils import randomize_object
+from mpmath import mp, mpf
+mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
 asset_price_bounded_strategy = st.floats(min_value=0.1, max_value=10)
@@ -21,7 +23,6 @@ asset_quantity_strategy = st.floats(min_value=100, max_value=10000000)
 asset_quantity_bounded_strategy = st.floats(min_value=1000000, max_value=10000000)
 percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
-
 
 
 @given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), percentage_of_liquidity_strategy)
@@ -185,3 +186,73 @@ def test_agent_copy():
             raise AssertionError(f'Copy failed for {member}.\n'
                                  f'original: {getattr(init_agent, member)}\n'
                                  f'copy: {getattr(copy_agent, member)}')
+
+
+@given(
+    omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=5),
+    st.lists(st.floats(min_value=0.0001, max_value=0.5), min_size=2, max_size=2),
+    st.lists(st.floats(min_value=0.9, max_value=1.1), min_size=2, max_size=2),
+    st.floats(min_value=0.00001, max_value=1.1),
+    st.lists(st.floats(min_value=10000, max_value=100000), min_size=2, max_size=2),
+    st.lists(st.booleans(), min_size=2, max_size=2)
+)
+def test_dca_with_lping(
+        omnipool: oamm.OmnipoolState,
+        init_lp_pcts: list[float],
+        price_mults: list[float],
+        shares_mult: float,
+        assets: list[float],
+        has_assets: list[bool]
+):
+    buy_tkn = omnipool.asset_list[3]
+    sell_tkn = omnipool.asset_list[4]
+    trader_id = 'trader'
+
+    for tkn in omnipool.liquidity:
+        omnipool.liquidity[tkn] = mpf(omnipool.liquidity[tkn])
+        omnipool.lrna[tkn] = mpf(omnipool.lrna[tkn])
+
+    holdings = {
+        ('omnipool', sell_tkn): mpf(init_lp_pcts[0] * omnipool.shares[sell_tkn]),
+        ('omnipool', buy_tkn): mpf(init_lp_pcts[1] * omnipool.shares[buy_tkn]),
+        sell_tkn: mpf(assets[0]) if has_assets[0] else 0,
+        buy_tkn: mpf(assets[1]) if has_assets[1] else 0
+    }
+    max_shares_per_block = holdings[('omnipool', sell_tkn)] * shares_mult
+    share_prices = {
+        ('omnipool', sell_tkn): omnipool.lrna_price(omnipool, sell_tkn) * price_mults[0],
+        ('omnipool', buy_tkn): omnipool.lrna_price(omnipool, buy_tkn) * price_mults[1]
+    }
+
+    agent = Agent(holdings=holdings, unique_id=trader_id, share_prices=share_prices)
+
+    state = GlobalState(pools={'omnipool': omnipool}, agents={trader_id: agent})
+
+    strategy = dca_with_lping('omnipool', sell_tkn, buy_tkn, max_shares_per_block)
+
+    init_buy_tkn_lped = agent.holdings[('omnipool', buy_tkn)] if ('omnipool', buy_tkn) in agent.holdings else 0
+    init_sell_tkn_lped = agent.holdings[('omnipool', sell_tkn)] if ('omnipool', sell_tkn) in agent.holdings else 0
+    init_buy_tkn = agent.holdings[buy_tkn]
+    init_sell_tkn = agent.holdings[sell_tkn]
+
+    strategy.execute(state, trader_id)
+
+    if init_sell_tkn_lped > 0:
+        if ('omnipool', buy_tkn) not in agent.holdings:
+            raise AssertionError('Agent does not have shares for buy_tkn.')
+        if agent.holdings[('omnipool', buy_tkn)] == init_buy_tkn_lped:
+            raise AssertionError('Agent did not receive shares for buy_tkn.')
+
+        lp_diff = init_sell_tkn_lped
+        if ('omnipool', sell_tkn) in agent.holdings:
+            lp_diff -= agent.holdings[('omnipool', sell_tkn)]
+
+        if lp_diff != pytest.approx(min(max_shares_per_block, init_sell_tkn_lped), rel=1e-20):
+            raise AssertionError('Agent traded incorrect amount of shares.')
+    elif (agent.holdings[('omnipool', sell_tkn)] != init_sell_tkn_lped or
+            agent.holdings[('omnipool', buy_tkn)] != init_buy_tkn_lped):
+        raise AssertionError('Agent LP shares changed.')
+    if agent.holdings[sell_tkn] != pytest.approx(init_sell_tkn, rel=1e-20):
+        raise AssertionError('Agent sell token changed.')
+    if agent.holdings[buy_tkn] != pytest.approx(init_buy_tkn, rel=1e-20):
+        raise AssertionError('Agent buy token changed.')

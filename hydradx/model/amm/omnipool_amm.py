@@ -1106,6 +1106,9 @@ class OmnipoolState(AMM):
             agent.holdings['LRNA'] = 0
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[(self.unique_id, tkn_remove)] -= quantity
+        if agent.holdings[(self.unique_id, tkn_remove)] == 0:
+            del agent.holdings[(self.unique_id, tkn_remove)]
+            del agent.share_prices[(self.unique_id, tkn_remove)]
         agent.holdings[tkn_remove] -= delta_r
     
         self.current_block.withdrawals[tkn_remove] += quantity
