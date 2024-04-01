@@ -97,7 +97,7 @@ def test_calculate_arb_amount_bid(
     numeraire = 'USDT'
     bid = [bid_price, 100000]
     p = 1e-10
-    amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p, max_iters=1000)
+    amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, precision=p, max_iters=50)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
@@ -173,7 +173,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
     bid = [bid_price, 100000]
     p = 1e-10
     amt = calculate_arb_amount_bid(initial_state, tkn, numeraire, bid, cex_fee, max_liq_tkn=max_trade,
-                                   max_liq_num=max_trade, precision=p, max_iters=1000)
+                                   max_liq_num=max_trade, precision=p, max_iters=50)
     init_holding = 1000000
     agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
     init_agent = agent.copy()
@@ -256,7 +256,7 @@ def test_calculate_arb_amount_ask(
     numeraire = 'USDT'
     ask = [ask_price, 100000]
     p = 1e-10
-    amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p, max_iters=1000)
+    amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, precision=p, max_iters=50)
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
@@ -332,7 +332,7 @@ def test_calculate_arb_amount_ask_max_liquidity(
     ask = [ask_price, 100000]
     p = 1e-10
     amt = calculate_arb_amount_ask(initial_state, tkn, numeraire, ask, cex_fee, max_liq_tkn=max_trade,
-                                   max_liq_num=max_trade, precision=p, max_iters=1000)
+                                   max_liq_num=max_trade, precision=p, max_iters=50)
     init_holding = 1000000
     agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
     init_agent = agent.copy()
