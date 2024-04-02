@@ -9,8 +9,8 @@ class OmnipoolRouter:
     Handles routing between Omnipool and Stableswap subpools that have LP assets in Omnipool
     """
 
-    def __init__(self, exchanges: dict):
-        self.exchanges = exchanges
+    def __init__(self, exchanges: dict or list):
+        self.exchanges = exchanges if type(exchanges) == dict else {ex.unique_id: ex for ex in exchanges}
         self.omnipool_id = None
         for exchange_id in exchanges:
             if isinstance(exchanges[exchange_id], OmnipoolState):
@@ -20,6 +20,7 @@ class OmnipoolRouter:
                     self.omnipool_id = exchange_id
         if self.omnipool_id is None:
             raise ValueError('No Omnipool in exchange list')
+        self.omnipool: OmnipoolState = exchanges[self.omnipool_id]
         self.fail = ''
 
     def copy(self):
@@ -27,11 +28,9 @@ class OmnipoolRouter:
         return copy_self
 
     def price_route(self, tkn: str, denomination: str, tkn_pool_id: str, denom_pool_id: str) -> float:
-        omnipool = self.exchanges[self.omnipool_id]
-
         if tkn_pool_id == denom_pool_id:
             if tkn_pool_id == self.omnipool_id:  # This is necessary because Omnipool has wrong price signature
-                return omnipool.price(omnipool, tkn, denomination)
+                return self.omnipool.price(self.omnipool, tkn, denomination)
             else:
                 return self.exchanges[tkn_pool_id].price(tkn, denomination)
 
@@ -46,7 +45,7 @@ class OmnipoolRouter:
             denom_subpool_share_price = self.exchanges[denom_pool_id].share_price(denomination)
             denom_adj = denom_pool_id
 
-        return denom_subpool_share_price * omnipool.price(omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
+        return denom_subpool_share_price * self.omnipool.price(self.omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
 
     def buy_limit(self, tkn_buy, tkn_sell=None):
         return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges])
@@ -55,18 +54,24 @@ class OmnipoolRouter:
         return float('inf')
 
     def buy_spot(self, tkn_buy, tkn_sell):
-        sell_pool, buy_pool = self.find_best_route(tkn_buy, tkn_sell)
-        # note: best_route[0] is sell_pool_id, best_route[1] is buy_pool_id
-        price = self.price_route(tkn_buy, tkn_sell, buy_pool, sell_pool)
-        if buy_pool == self.omnipool_id and sell_pool == self.omnipool_id:
-            price = self.exchanges[self.omnipool_id].buy_spot(tkn_buy, tkn_sell)
-
-        if sell_pool == self.omnipool_id and type(self.exchanges[buy_pool]) == StableSwapPoolState:
-            # we will buy enough shares of buy_pool to buy buy_quantity tkn_buy
-            price = self.exchanges[self.omnipool_id].buy_spot(tkn_buy=buy_pool, tkn_sell=tkn_sell)
+        sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+        if buy_pool == sell_pool:
+            return self.exchanges[buy_pool].buy_spot(tkn_buy, tkn_sell)
+        elif sell_pool == self.omnipool_id != buy_pool:
+            price = self.omnipool.buy_spot(tkn_buy=buy_pool, tkn_sell=tkn_sell)
             price /= self.exchanges[buy_pool].withdraw_asset_spot(tkn_remove=tkn_buy)
+            return price
+        elif buy_pool == self.omnipool_id != sell_pool:
+            price = self.exchanges[sell_pool].buy_shares_spot(tkn_add=tkn_sell)
+            price *= self.omnipool.buy_spot(tkn_buy=tkn_buy, tkn_sell=sell_pool)
+            return price
+        elif buy_pool != self.omnipool_id != sell_pool:
+            price1 = self.exchanges[sell_pool].buy_shares_spot(tkn_add=tkn_sell)
+            price2 = self.omnipool.buy_spot(tkn_buy=buy_pool, tkn_sell=sell_pool)
+            price3 = 1 / self.exchanges[buy_pool].withdraw_asset_spot(tkn_remove=tkn_buy)
+            return price1 * price2 * price3
 
-        return price
+        return  self.price_route(tkn_buy, tkn_sell, buy_pool, sell_pool)
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str):
         sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
@@ -78,14 +83,14 @@ class OmnipoolRouter:
             price *= self.exchanges[buy_pool].remove_liquidity_spot(tkn_remove=tkn_buy)
             return price
         elif buy_pool == self.omnipool_id != sell_pool:
-            price = self.exchanges[sell_pool].add_liquidity_spot(tkn_sell)
-            price /= self.exchanges[buy_pool].sell_spot(tkn_sell=sell_pool, tkn_buy=tkn_buy)
+            price = 1 / self.exchanges[sell_pool].add_liquidity_spot(tkn_sell)
+            price *= self.exchanges[buy_pool].sell_spot(tkn_sell=sell_pool, tkn_buy=tkn_buy)
             return price
-        elif buy_pool != self.omnipool_id and sell_pool != self.omnipool_id:
-            price = self.exchanges[sell_pool].sell_spot(tkn_sell, buy_pool)
-            price *= self.exchanges[self.omnipool_id].sell_spot(buy_pool, tkn_buy)
-            price *= self.exchanges[buy_pool].buy_spot(tkn_buy, sell_pool)
-            return price
+        elif buy_pool != self.omnipool_id != sell_pool:
+            price1 = 1 / self.exchanges[sell_pool].add_liquidity_spot(tkn_sell)
+            price2 = self.omnipool.sell_spot(tkn_sell=sell_pool, tkn_buy=buy_pool)
+            price3 = self.exchanges[buy_pool].remove_liquidity_spot(tkn_buy)
+            return price1 * price2 * price3
 
         return self.price_route(tkn_sell, tkn_buy, sell_pool, buy_pool)
 
@@ -105,7 +110,7 @@ class OmnipoolRouter:
     ):
         if not buy_quantity and not sell_quantity:
             return self
-        omnipool = self.exchanges[self.omnipool_id]
+        omnipool = self.omnipool
 
         if buy_pool_id is None:
             buy_pool_id = self.omnipool_id
@@ -115,24 +120,40 @@ class OmnipoolRouter:
         if buy_pool_id == sell_pool_id:  # just call the swap function of the pool
             self.exchanges[buy_pool_id].swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_quantity, sell_quantity=sell_quantity)
             return self
-
-        if tkn_sell == 'LRNA':
+        elif buy_quantity and buy_pool_id == tkn_sell:
+            # we are selling LP token for tkn_sell, i.e. withdrawing asset
+            self.exchanges[buy_pool_id].withdraw_asset(agent, buy_quantity, tkn_buy)
+            return self
+        elif buy_quantity and sell_pool_id == tkn_buy:
+            # we are just buying LP token for tkn_sell, i.e. buying shares
+            self.exchanges[sell_pool_id].buy_shares(agent, buy_quantity, tkn_sell)
+            return self
+        elif sell_quantity and sell_pool_id == tkn_buy:
+            # add liquidity to sell_pool
+            self.exchanges[sell_pool_id].add_liquidity(agent, sell_quantity, tkn_sell)
+            return self
+        elif sell_quantity and buy_pool_id == tkn_sell:
+            # remove liquidity from buy_pool
+            self.exchanges[buy_pool_id].remove_liquidity(agent, sell_quantity, tkn_buy)
+            return self
+        elif tkn_sell == 'LRNA':
+            # this would be in the case that you are buying a stableswap asset with LRNA
+            stable_pool: StableSwapPoolState = self.exchanges[buy_pool_id]
             if buy_quantity:
-                stable_pool = self.exchanges[buy_pool_id]
                 # buy a specific quantity of a stableswap asset using LRNA
                 shares_needed = stable_pool.calculate_withdrawal_shares(tkn_remove=tkn_buy, quantity=buy_quantity)
-                omnipool.lrna_swap(agent, delta_ra=shares_needed, tkn=stable_pool.unique_id)
+                omnipool.lrna_swap(agent, delta_ra=shares_needed, tkn=buy_pool_id)
                 if omnipool.fail:
                     # if the swap failed, the transaction failed.
                     return self.fail_transaction(omnipool.fail)
                 stable_pool.withdraw_asset(agent, buy_quantity, tkn_buy)
                 return self
             elif sell_quantity:
-                stable_pool = self.exchanges[buy_pool_id]
-                agent_shares = agent.holdings[stable_pool.unique_id]
+                # sell a specific quantity of LRNA for a stableswap asset
+                agent_shares = agent.holdings[buy_pool_id]
                 omnipool.swap(
                     agent=agent,
-                    tkn_buy=stable_pool.unique_id, tkn_sell='LRNA',
+                    tkn_buy=buy_pool_id, tkn_sell='LRNA',
                     sell_quantity=sell_quantity
                 )
                 if omnipool.fail:
@@ -202,7 +223,7 @@ class OmnipoolRouter:
                     agent=agent, shares_removed=delta_shares, tkn_remove=tkn_buy
                 )
                 return self
-        else:
+        elif sell_pool_id != self.omnipool_id != buy_pool_id:
             # trade between two stableswap pools
             pool_buy: StableSwapPoolState = self.exchanges[buy_pool_id]
             pool_sell: StableSwapPoolState = self.exchanges[sell_pool_id]
