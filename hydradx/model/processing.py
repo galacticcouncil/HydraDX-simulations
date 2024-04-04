@@ -430,6 +430,7 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 symbol_map[tkn_id]: op_state[tkn_id].fees.protocol_fee / 100 if tkn_id in op_state else 0
                 for tkn_id, tkn in [asset for asset in assets]
             },
+            unique_id='omnipool'
             # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
@@ -474,7 +475,7 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
         file_ls = [filename]
     else:
         file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
-    for filename in reversed(file_ls):  # by default, load the latest first
+    for filename in reversed(sorted(file_ls)):  # by default, load the latest first
         with open (os.path.join(path, filename), 'r') as input_file:
             json_state = json.load(input_file)
             # pprint(json_state)
