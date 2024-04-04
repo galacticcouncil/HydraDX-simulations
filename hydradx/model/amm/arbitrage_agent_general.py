@@ -145,7 +145,7 @@ def process_next_swap(
         buy_ex=exchanges[buy_ex], sell_ex=exchanges[sell_ex],
         buy_ex_tkn_pair=tkn_pairs[buy_ex], sell_ex_tkn_pair=tkn_pairs[sell_ex],
         buffer=buffer, min_amt=1e-6,
-        buy_ex_max_sell=max_liquidity[buy_ex][tkn_pairs[buy_ex][0]],
+        buy_ex_max_sell=max_liquidity[buy_ex][tkn_pairs[buy_ex][1]],
         sell_ex_max_sell=max_liquidity[sell_ex][tkn_pairs[sell_ex][0]],
         precision=precision,
         max_iters=max_iters
@@ -203,6 +203,7 @@ def process_next_swap(
         swap[sell_ex].update({'price': sell_price['feeless'][sell_ex] * (1 - slippage_tolerance[sell_ex])})
     else:
         swap[sell_ex].update({'min_buy': amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])})
+    print(swap)
     return swap
 
 
@@ -243,7 +244,7 @@ def calculate_arb_amount(
     buy_ex_max_sell = buy_ex_max_sell if buy_ex_max_sell is not None else float('inf')
     max_buy = buy_ex.calculate_buy_from_sell(
         tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], sell_quantity=buy_ex_max_sell
-    )
+    ) if hasattr(buy_ex, 'calculate_buy_from_sell') else float('inf')
     amt_low = min_amt
     amt_high = min(
         sell_ex_max_sell if sell_ex_max_sell is not None else float('inf'),
@@ -254,18 +255,21 @@ def calculate_arb_amount(
     for i in range(max_iters):
         test_ex_buy = buy_ex.copy()
         test_ex_sell = sell_ex.copy()
+        buy_ex_sold = 0
         if not isinstance(test_ex_buy, CentralizedMarket):
+            buy_ex_tkn_sell = buy_ex.liquidity[buy_ex_tkn_pair[1]]
             test_ex_buy.swap(
                 test_agent, tkn_buy=buy_ex_tkn_pair[0], tkn_sell=buy_ex_tkn_pair[1], buy_quantity=amt
             )
             buy_price = test_ex_buy.buy_spot(buy_ex_tkn_pair[0], buy_ex_tkn_pair[1])
+            buy_ex_sold = buy_ex_tkn_sell - test_ex_buy.liquidity[buy_ex_tkn_pair[1]]
         if not isinstance(test_ex_sell, CentralizedMarket):
             test_ex_sell.swap(
                 test_agent, tkn_sell=sell_ex_tkn_pair[0], tkn_buy=sell_ex_tkn_pair[1], sell_quantity=amt
             )
             sell_price = test_ex_sell.sell_spot(sell_ex_tkn_pair[0], sell_ex_tkn_pair[1]) * (1 - buffer)
 
-        if test_ex_buy.fail or test_ex_sell.fail or buy_price > sell_price or amt > max_buy:
+        if test_ex_buy.fail or test_ex_sell.fail or buy_price > sell_price or amt > max_buy or buy_ex_sold > buy_ex_max_sell:
             amt_high = amt
         else:
             amt_low = amt
@@ -307,7 +311,10 @@ def execute_arb(exchanges: dict[str: AMM], agent: Agent, swaps: list[dict]):
 
 def calculate_profit(init_agent, agent, asset_map=None):
     asset_map = {} if asset_map is None else asset_map
-    profit_asset = {tkn: agent.holdings[tkn] - init_agent.holdings[tkn] for tkn in agent.holdings}
+    profit_asset = {
+        tkn: agent.holdings[tkn] - (init_agent.holdings[tkn] if tkn in init_agent.holdings else 0)
+        for tkn in agent.holdings
+    }
     profit = {}
 
     for tkn in profit_asset:
