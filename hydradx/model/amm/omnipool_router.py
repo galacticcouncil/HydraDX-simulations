@@ -12,15 +12,15 @@ class OmnipoolRouter:
     def __init__(self, exchanges: dict or list):
         self.exchanges = exchanges if type(exchanges) == dict else {ex.unique_id: ex for ex in exchanges}
         self.omnipool_id = None
-        for exchange_id in exchanges:
-            if isinstance(exchanges[exchange_id], OmnipoolState):
+        for exchange_id in self.exchanges:
+            if isinstance(self.exchanges[exchange_id], OmnipoolState):
                 if self.omnipool_id is not None:
                     raise ValueError('Multiple Omnipools in exchange list')
                 else:
                     self.omnipool_id = exchange_id
         if self.omnipool_id is None:
             raise ValueError('No Omnipool in exchange list')
-        self.omnipool: OmnipoolState = exchanges[self.omnipool_id]
+        self.omnipool: OmnipoolState = self.exchanges[self.omnipool_id]
         self.fail = ''
 
     def copy(self):
@@ -48,13 +48,24 @@ class OmnipoolRouter:
         return denom_subpool_share_price * self.omnipool.price(self.omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
 
     def buy_limit(self, tkn_buy, tkn_sell=None):
-        return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges])
+        return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges.values()])
 
     def sell_limit(self, tkn_buy, tkn_sell):
         return float('inf')
 
-    def buy_spot(self, tkn_buy, tkn_sell):
+    @property
+    def liquidity(self):
+        return {
+            tkn: sum([exchange.liquidity[tkn] if tkn in exchange.liquidity else 0 for exchange in self.exchanges.values()])
+            for tkn in [tkn for exchange in self.exchanges.values() for tkn in exchange.asset_list]
+        }
+
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = -1):
         sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+        if fee == 0:
+            # this handles custom fees only in the case that fee is explicitly set to 0
+            # otherwise, each pool's native fees will be used. Values other than 0 are ignored.
+            return self.price_route(tkn=tkn_buy, denomination=tkn_sell, tkn_pool_id=buy_pool, denom_pool_id=sell_pool)
         if buy_pool == sell_pool:
             return self.exchanges[buy_pool].buy_spot(tkn_buy, tkn_sell)
         elif sell_pool == self.omnipool_id != buy_pool:
@@ -73,8 +84,12 @@ class OmnipoolRouter:
 
         return  self.price_route(tkn_buy, tkn_sell, buy_pool, sell_pool)
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str):
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = -1):
         sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+        if fee == 0:
+            # this handles custom fees only in the case that fee is explicitly set to 0
+            # otherwise, each pool's native fees will be used. Values other than 0 are ignored.
+            return self.price_route(tkn=tkn_sell, denomination=tkn_buy, tkn_pool_id=sell_pool, denom_pool_id=buy_pool)
         if sell_pool == buy_pool:
             return self.exchanges[sell_pool].sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
         elif sell_pool == self.omnipool_id != buy_pool:
@@ -93,6 +108,30 @@ class OmnipoolRouter:
             return price1 * price2 * price3
 
         return self.price_route(tkn_sell, tkn_buy, sell_pool, buy_pool)
+
+    # def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float):
+    #     sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+    #     if sell_pool == buy_pool:
+    #         return self.exchanges[sell_pool].calculate_buy_from_sell(tkn_sell, tkn_buy, sell_quantity)
+    #     else:
+    #         test_router = self.copy()
+    #         test_agent = Agent(holdings={tkn_sell: sell_quantity})
+    #         test_router.swap(
+    #             agent=test_agent,
+    #             tkn_buy=tkn_buy,
+    #             tkn_sell=tkn_sell,
+    #             sell_quantity=sell_quantity
+    #         )
+    #         return test_agent.holdings[tkn_buy]
+        # elif sell_pool == self.omnipool_id != buy_pool:
+        #     shares_sold = self.exchanges[sell_pool].calculate_buy_from_sell(tkn_sell, buy_pool, sell_quantity)
+        #     return self.exchanges[buy_pool].calculate_buy_from_sell(sell_pool, tkn_buy, shares_sold)
+        # elif buy_pool == self.omnipool_id != sell_pool:
+        #     shares_bought = self.exchanges[buy_pool].calculate_sell_from_buy(sell_pool, tkn_buy, sell_quantity)
+        #     return self.exchanges[sell_pool].calculate_sell_from_buy(tkn_sell, buy_pool, shares_bought)
+        # elif buy_pool != self.omnipool_id != sell_pool:
+        #     shares_bought = self.exchanges[buy_pool].calculate_sell_from_buy(sell_pool, tkn_buy, sell_quantity)
+        #     return self.exchanges[sell_pool].calculate_sell_from_buy(tkn_sell, buy_pool, shares_bought)
 
     def fail_transaction(self, fail_message):
         self.fail = fail_message
@@ -306,7 +345,7 @@ class OmnipoolRouter:
         routes = self.find_routes(tkn_buy, tkn_sell)
         return sorted(routes, key=lambda x: self.price_route(tkn_buy, tkn_sell, x[1], x[0]))[0]
 
-    def swap(self, agent, tkn_buy, tkn_sell, buy_quantity=0, sell_quantity=0):
+    def swap(self, agent, tkn_buy, tkn_sell, buy_quantity: float = 0, sell_quantity: float = 0):
         """Does swap along whatever route has best spot price"""
         if not buy_quantity and not sell_quantity:
             return self
