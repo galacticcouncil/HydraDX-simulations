@@ -796,54 +796,6 @@ def test_sell_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, tra
         raise ValueError(f"spot price {sell_spot} != execution price {sell_ex}")
 
 
-#
-# @given(
-#     assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
-#     lrna_fee=fee_strategy,
-#     asset_fee=fee_strategy,
-#     trade_fee=fee_strategy
-# )
-# def test_sell_spot_buy_stableswap_sell_omnipool(
-#     assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
-# ):
-#     omnipool = OmnipoolState(
-#         tokens={
-#             "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
-#             "USDT": {'liquidity': 1000000, 'LRNA': 1000000},
-#             "DOT": {'liquidity': mpf(assets[0]), 'LRNA': mpf(assets[1])},
-#             "stablepool": {'liquidity': mpf(assets[2]), 'LRNA': mpf(assets[3])},
-#         },
-#         preferred_stablecoin="USDT",
-#         asset_fee=asset_fee,
-#         lrna_fee=lrna_fee
-#     )
-#     stablepool = StableSwapPoolState(
-#         tokens={"stable1": mpf(assets[4]), "stable2": mpf(assets[5])},
-#         amplification=1000,
-#         trade_fee=trade_fee, unique_id="stablepool"
-#     )
-#     router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
-#     tkn_buy = "stable1"
-#     tkn_sell = "DOT"
-#     trade_size = 1e-08
-#     initial_agent = Agent(
-#         holdings={"DOT": mpf(1), "stable1": mpf(0)}
-#     )
-#     stableswap_sell_router, stableswap_sell_agent = router.simulate_swap(
-#         initial_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=trade_size
-#     )
-#
-#     spot_price = router.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
-#     execution_price = ((stableswap_sell_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
-#                        / (initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]))
-#
-#     actually_sold = initial_agent.holdings[tkn_sell] - stableswap_sell_agent.holdings[tkn_sell]
-#     if actually_sold != trade_size:
-#         raise ValueError(f"actually sold {actually_sold} != trade size {trade_size}")
-#     if spot_price != pytest.approx(execution_price, rel=1e-04):
-#         raise ValueError(f"spot price {spot_price} != execution price {execution_price}")
-
-
 @given(
     assets=st.lists(asset_quantity_strategy, min_size=4, max_size=4),
     lrna_fee=fee_strategy,
