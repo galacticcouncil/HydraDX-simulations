@@ -153,6 +153,8 @@ class StableSwapPoolState(AMM):
         return self.liquidity[tkn_buy]
 
     def buy_limit(self, tkn_buy, tkn_sell):
+        if tkn_buy not in self.liquidity:
+            return 0
         return self.liquidity[tkn_buy]
 
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
