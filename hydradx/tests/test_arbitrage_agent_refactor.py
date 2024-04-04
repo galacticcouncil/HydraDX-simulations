@@ -11,7 +11,9 @@ from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
-from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool
+from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool, save_omnipool, load_omnipool
+from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from mpmath import mp, mpf
 mp.dps = 50
 
@@ -815,3 +817,73 @@ def test_combine_step():
             print(f'Second iteration also gained {iter_profit_total - combined_profit_total}.')
         else:
             print('Iteration did not improve profit.')
+
+
+def test_stableswap_router_arbitrage():
+    # omnipool = get_omnipool()
+    # save_omnipool(omnipool)
+    path = os.getcwd()
+    if not os.path.exists(os.path.join(path, 'archive')):
+        path = os.path.join(path, 'hydradx', 'tests', 'archive')
+    else:
+        path = os.path.join(path, 'archive')
+    omnipool = load_omnipool(path)
+    fourpool, btcpool, twopool = omnipool.sub_pools.values()
+    router = OmnipoolRouter(
+        exchanges=[omnipool, twopool, fourpool, btcpool]
+    )
+    input_path = './data/'
+    if not os.path.exists(input_path):
+        input_path = 'hydradx/tests/data/'
+    cex = {}
+    for exchange in ('kraken', 'binance'):
+        cex[exchange] = CentralizedMarket(
+            order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
+            unique_id=exchange,
+            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+        )
+    kraken = cex['kraken']
+    binance = cex['binance']
+
+    cfg = [
+        {'exchanges': {'router': ('iBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'router': ('WBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'router': ('iBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'router': ('WBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+    ]
+    exchanges = {'router': router, 'kraken': kraken, 'binance': binance}
+    max_liquidity = {
+        'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000},
+        'kraken': {'BTC': 10, 'USDT': 1000000}
+    }
+    swaps = get_arb_swaps(
+        exchanges=exchanges,
+        config=cfg,
+        max_liquidity=max_liquidity,
+        max_iters=20
+    )
+    agent = Agent(
+        holdings={k: v for exchange in max_liquidity.values() for k, v in exchange.items()}
+    )
+    equivalency_map = {
+        'WETH': 'ETH',
+        'XETH': 'ETH',
+        'XXBT': 'BTC',
+        'WBTC': 'BTC',
+        'ZUSD': 'USD',
+        'USDT': 'USD',
+        'USDT10': 'USD',
+        'USDT23': 'USD',
+        'USDC': 'USD',
+        'DAI': 'USD',
+        'iBTC': 'BTC',
+        'XBT': 'BTC',
+    }
+    initial_agent = agent.copy()
+    execute_arb(exchanges, agent, swaps)
+    profit = calculate_profit(initial_agent, agent, equivalency_map)
+    profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
+    print(profit_total)
+    if profit_total <= 0:
+        raise AssertionError('Arbitrageur should definitely make money.')
+    er = 1
