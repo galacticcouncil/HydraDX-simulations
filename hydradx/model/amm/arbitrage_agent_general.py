@@ -203,7 +203,7 @@ def process_next_swap(
         swap[sell_ex].update({'price': sell_price['feeless'][sell_ex] * (1 - slippage_tolerance[sell_ex])})
     else:
         swap[sell_ex].update({'min_buy': amt_out[sell_ex] * (1 - slippage_tolerance[sell_ex])})
-    print(swap)
+    # print(swap)
     return swap
 
 
