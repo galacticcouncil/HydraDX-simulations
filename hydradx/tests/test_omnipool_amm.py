@@ -2629,3 +2629,119 @@ def test_no_preferred_stablecoin():
         raise AssertionError(f'usd_p {usd_p} is incorrect')
 
     initial_state.__repr__()
+
+
+@given(st.floats(min_value=0.8, max_value=1.2))
+def test_buy_lrna_amt_from_price(price: float):
+    lrna_fee = 0.0005
+    asset_fee = 0.0025
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(100000000), 'LRNA': mpf(100000)},
+            'USD': {'liquidity': mpf(10000000), 'LRNA': mpf(1000000)},
+            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+        },
+        lrna_fee=lrna_fee,
+        asset_fee=asset_fee,
+    )
+
+    buy_lrna_amt = omnipool.buy_lrna_amt_from_price(price, 'DOT', lrna_fee)
+    init_spot_price = oamm.lrna_price(omnipool, 'DOT')
+    if price >= init_spot_price and buy_lrna_amt != 0:
+        raise AssertionError(f'buy_lrna_amt {buy_lrna_amt} should be 0 if target price is not lower than spot price')
+    if buy_lrna_amt < 0:
+        raise AssertionError(f'buy_lrna_amt {buy_lrna_amt} should be non-negative')
+
+    if price < init_spot_price:
+        holdings = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000), 'LRNA': mpf(1000000)}
+        agent = Agent(holdings=holdings)
+        omnipool.lrna_swap(agent, delta_qa=buy_lrna_amt, tkn='DOT', modify_imbalance=False)
+        spot_price = oamm.lrna_price(omnipool, 'DOT')
+        if spot_price != pytest.approx(price, rel=1e-20):
+            raise AssertionError(f'spot_price {spot_price} is incorrect')
+
+
+@given(st.floats(min_value=0.8, max_value=1.2))
+def test_sell_asset_amt_from_price(price: float):
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(100000000), 'LRNA': mpf(100000)},
+            'USD': {'liquidity': mpf(10000000), 'LRNA': mpf(1000000)},
+            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+        },
+        lrna_fee=0.0005,
+        asset_fee=0.0025,
+    )
+
+    sell_asset_amt = omnipool.sell_asset_amt_from_price(price, 'DOT')
+    init_spot_price = oamm.lrna_price(omnipool, 'DOT')
+    if price >= init_spot_price and sell_asset_amt != 0:
+        raise AssertionError(f'sell_asset_amt {sell_asset_amt} should be 0 if target price is not lower than spot price')
+    if sell_asset_amt < 0:
+        raise AssertionError(f'sell_asset_amt {sell_asset_amt} should be non-negative')
+
+    if price < init_spot_price:
+        holdings = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000), 'LRNA': mpf(1000000)}
+        agent = Agent(holdings=holdings)
+        omnipool.lrna_swap(agent, delta_ra=-sell_asset_amt, tkn='DOT', modify_imbalance=False)
+        spot_price = oamm.lrna_price(omnipool, 'DOT')
+        if spot_price != pytest.approx(price, rel=1e-20):
+            raise AssertionError(f'spot_price {spot_price} is incorrect')
+
+
+def test_buy_asset_amt_from_price():
+    asset_fee = 0.0025
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(100000000), 'LRNA': mpf(100000)},
+            'USD': {'liquidity': mpf(10000000), 'LRNA': mpf(1000000)},
+            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+        },
+        lrna_fee=0.0005,
+        asset_fee=asset_fee,
+    )
+
+    price = 1.1
+    buy_asset_amt = omnipool.buy_asset_amt_from_price(price, 'DOT', asset_fee)
+    init_spot_price = oamm.lrna_price(omnipool, 'DOT')
+    if price <= init_spot_price and buy_asset_amt != 0:
+        raise AssertionError(f'buy_asset_amt {buy_asset_amt} should be 0 if target price is not higher than spot price')
+    if buy_asset_amt < 0:
+        raise AssertionError(f'buy_asset_amt {buy_asset_amt} should be non-negative')
+
+    if price > init_spot_price:
+        holdings = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000), 'LRNA': mpf(1000000)}
+        agent = Agent(holdings=holdings)
+        omnipool.lrna_swap(agent, delta_ra=buy_asset_amt, tkn='DOT')
+        spot_price = oamm.lrna_price(omnipool, 'DOT')
+        if spot_price != pytest.approx(price, rel=1e-20):
+            raise AssertionError(f'spot_price {spot_price} is incorrect')
+
+
+def test_sell_lrna_amt_from_price():
+    asset_fee = 0.0025
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(100000000), 'LRNA': mpf(100000)},
+            'USD': {'liquidity': mpf(10000000), 'LRNA': mpf(1000000)},
+            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+        },
+        lrna_fee=0.0005,
+        asset_fee=asset_fee,
+    )
+
+    price = 1.1
+    sell_lrna_amt = omnipool.sell_lrna_amt_from_price(price, 'DOT', asset_fee)
+    init_spot_price = oamm.lrna_price(omnipool, 'DOT')
+    if price <= init_spot_price and sell_lrna_amt != 0:
+        raise AssertionError(f'sell_lrna_amt {sell_lrna_amt} should be 0 if target price is not higher than spot price')
+    if sell_lrna_amt < 0:
+        raise AssertionError(f'sell_lrna_amt {sell_lrna_amt} should be non-negative')
+
+    if price > init_spot_price:
+        holdings = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000), 'LRNA': mpf(1000000)}
+        agent = Agent(holdings=holdings)
+        omnipool.lrna_swap(agent, delta_qa=-sell_lrna_amt, tkn='DOT')
+        spot_price = oamm.lrna_price(omnipool, 'DOT')
+        if spot_price != pytest.approx(price, rel=1e-20):
+            raise AssertionError(f'spot_price {spot_price} is incorrect')

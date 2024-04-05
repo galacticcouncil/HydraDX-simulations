@@ -1,4 +1,5 @@
 import copy
+import math
 from numbers import Number
 from typing import Callable
 
@@ -1143,6 +1144,53 @@ class OmnipoolState(AMM):
                     break
             value += tkn_value
         return value
+
+    def buy_lrna_amt_from_price(self, price: float, tkn_sell: str, lrna_fee: float = 0.0) -> float:
+        """
+        Given a price, return amount of LRNA to buy to get Omnipool spot price to match input price
+        price is price of tkn_sell denominated in LRNA
+        """
+        assert price > 0, f"Price must be positive: {price}"
+        if price >= lrna_price(self, tkn_sell):
+            return 0
+        feeless_delta_q = math.sqrt(price * self.liquidity[tkn_sell] * self.lrna[tkn_sell]) - self.lrna[tkn_sell]
+        return -feeless_delta_q * (1 - lrna_fee)
+
+    def sell_asset_amt_from_price(self, price: float, tkn_sell: str) -> float:
+        """
+        Given a price, return amount of asset to sell to get Omnipool spot price to match input price
+        price is price of tkn_sell denominated in LRNA
+        """
+        assert price > 0, f"Price must be positive: {price}"
+        if price >= lrna_price(self, tkn_sell):
+            return 0
+        return math.sqrt(self.liquidity[tkn_sell] * self.lrna[tkn_sell] / price) - self.liquidity[tkn_sell]
+
+    def buy_asset_amt_from_price(self, price: float, tkn_buy: str, asset_fee: float = 0) -> float:
+        """
+        Given a price, return amount of asset to buy to get Omnipool spot price to match input price
+        price is price of tkn_buy denominated in LRNA
+        """
+        assert price > 0, f"Price must be positive: {price}"
+        if price <= lrna_price(self, tkn_buy):
+            return 0
+        f = asset_fee
+        q = self.lrna[tkn_buy]
+        r = self.liquidity[tkn_buy]
+        p = price
+        mult = (f + math.sqrt(f**2 + 4 * q/(p*r) * (1-f))) / 2 - 1
+        return -r * mult
+
+    def sell_lrna_amt_from_price(self, price: float, tkn_buy: str, asset_fee: float = 0) -> float:
+        """
+        Given a price, return amount of LRNA to sell to get Omnipool spot price to match input price
+        price is price of tkn_buy denominated in LRNA
+        """
+        assert price > 0, f"Price must be positive: {price}"
+        if price <= lrna_price(self, tkn_buy):
+            return 0
+        delta_r = -self.buy_asset_amt_from_price(price, tkn_buy, asset_fee)
+        return price * (self.liquidity[tkn_buy] + delta_r) - self.lrna[tkn_buy]
 
 
 class OmnipoolArchiveState:
