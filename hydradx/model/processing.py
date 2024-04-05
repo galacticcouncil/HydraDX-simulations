@@ -563,6 +563,14 @@ def convert_config(cfg: list[dict]) -> list[dict]:
         for cfg_item in cfg
     ]
 
+def load_config(filename, path='archive'):
+    with open(os.path.join(path, filename), 'r') as input_file:
+        config = json.load(input_file)
+    for cfg_item in config:
+        for exchange in cfg_item['exchanges']:
+            cfg_item['exchanges'][exchange] = tuple(cfg_item['exchanges'][exchange])
+    return config
+
 
 def get_omnipool_balance_history():
     chunk_size = 10000
