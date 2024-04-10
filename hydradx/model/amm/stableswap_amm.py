@@ -13,7 +13,8 @@ class StableSwapPoolState(AMM):
             amplification: float,
             precision: float = 0.0001,
             trade_fee: float = 0,
-            unique_id: str = ''
+            unique_id: str = '',
+            spot_price_precision: float = 1e-07
     ):
         """
         Tokens should be in the form of:
@@ -32,6 +33,7 @@ class StableSwapPoolState(AMM):
         self.target_amp_block = 0
         self.time_step = 0
         self.precision = precision
+        self.spot_price_precision = spot_price_precision
         self.liquidity = dict()
         self.asset_list: list[str] = []
         self.trade_fee = trade_fee
@@ -474,49 +476,36 @@ class StableSwapPoolState(AMM):
         agent.holdings[tkn_add] -= quantity
         return self
 
-    def add_liquidity_spot(self, tkn_add: str):
+    def add_liquidity_spot(self, tkn_add: str, precision: float = None):
         """Calculates spot price of adding liquidity as shares denominated in liquidity"""
-        if type(self.liquidity[tkn_add]) == float or type(self.liquidity[tkn_add]) == int:
-            # chosen based on Python float precision
-            trade_size = self.liquidity[tkn_add] / 10 ** 7
-        else:
-            # for higher-precision testing
-            trade_size = self.liquidity[tkn_add] / 10 ** 12
+        if precision is None: precision = self.spot_price_precision
+        trade_size = self.liquidity[tkn_add] * precision
         agent = Agent({tkn_add: trade_size})
         new_state, new_agent = simulate_add_liquidity(self, agent, trade_size, tkn_add)
         return trade_size / new_agent.holdings[self.unique_id]
 
-    def buy_shares_spot(self, tkn_add: str):
+    def buy_shares_spot(self, tkn_add: str, precision: float = None):
         """Calculates spot price of buying shares as shares denominated in liquidity"""
-        if type(self.liquidity[tkn_add]) == float or type(self.liquidity[tkn_add]) == int:
-            trade_size = self.liquidity[tkn_add] / 10 ** 7
-        else:
-            # for higher-precision testing
-            trade_size = self.liquidity[tkn_add] / 10 ** 12
+        if precision is None: precision = self.spot_price_precision
+        trade_size = self.liquidity[tkn_add] * precision
         share_price = self.share_price(tkn_add)
         init_tkn_add = share_price * trade_size * 2
         agent = Agent({tkn_add: init_tkn_add})
         new_state, new_agent = simulate_buy_shares(self, agent, trade_size, tkn_add)
         return (init_tkn_add - new_agent.holdings[tkn_add]) / trade_size
 
-    def remove_liquidity_spot(self, tkn_remove: str):
+    def remove_liquidity_spot(self, tkn_remove: str, precision: float = None):
         """Calculates spot price of removing liquidity as shares denominated in liquidity"""
-        if type(self.liquidity[tkn_remove]) == float or type(self.liquidity[tkn_remove]) == int:
-            trade_size = self.liquidity[tkn_remove] / 10 ** 7
-        else:
-            # for higher-precision testing
-            trade_size = self.liquidity[tkn_remove] / 10 ** 12
+        if precision is None: precision = self.spot_price_precision
+        trade_size = self.liquidity[tkn_remove] * precision
         agent = Agent({self.unique_id: trade_size})
         new_state, new_agent = simulate_remove_liquidity(self, agent, trade_size, tkn_remove)
         return new_agent.holdings[tkn_remove] / trade_size
 
-    def withdraw_asset_spot(self, tkn_remove: str):
+    def withdraw_asset_spot(self, tkn_remove: str, precision: float = None):
         """Calculates spot price of withdrawing asset as shares denominated in liquidity"""
-        if type(self.liquidity[tkn_remove]) == float or type(self.liquidity[tkn_remove]) == int:
-            trade_size = self.liquidity[tkn_remove] / 10 ** 7
-        else:
-            # for higher-precision testing
-            trade_size = self.liquidity[tkn_remove] / 10 ** 12
+        if precision is None: precision = self.spot_price_precision
+        trade_size = self.liquidity[tkn_remove] * precision
         delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size)
         return trade_size / delta_shares
 
