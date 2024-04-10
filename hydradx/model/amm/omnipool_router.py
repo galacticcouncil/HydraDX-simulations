@@ -60,7 +60,7 @@ class OmnipoolRouter:
             for tkn in [tkn for exchange in self.exchanges.values() for tkn in exchange.asset_list]
         }
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = -1):
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
         sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
         if fee == 0:
             # this handles custom fees only in the case that fee is explicitly set to 0
@@ -84,7 +84,7 @@ class OmnipoolRouter:
 
         return  self.price_route(tkn_buy, tkn_sell, buy_pool, sell_pool)
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = -1):
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
         sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
         if fee == 0:
             # this handles custom fees only in the case that fee is explicitly set to 0
