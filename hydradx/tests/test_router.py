@@ -724,7 +724,8 @@ def test_buy_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, trad
         tokens={"stable1": mpf(assets[2]), "stable2": mpf(assets[3])},
         amplification=1000,
         trade_fee=trade_fee, unique_id="stablepool",
-        precision=1e-08
+        precision=1e-08,
+        spot_price_precision=1e-12
     )
     router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
 
@@ -747,6 +748,9 @@ def test_buy_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, trad
         raise ValueError(f"actually bought {buy_quantity} != trade size {trade_size}")
     if buy_spot != pytest.approx(buy_ex, rel=1e-08):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
+    if test_agent.holdings['stablepool'] > 0:
+        # 1e-50 would be still acceptable, but we're leaving this at 0 because it seems to work
+        raise ValueError(f"leftover stablepool shares: {test_agent.holdings['stablepool']}")
 
 
 @given(
@@ -771,7 +775,8 @@ def test_sell_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, tra
         tokens={"stable1": mpf(assets[2]), "stable2": mpf(assets[3])},
         amplification=1000,
         trade_fee=trade_fee, unique_id="stablepool",
-        precision=1e-08
+        precision=1e-08,
+        spot_price_precision=1e-12
     )
     router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
 
@@ -819,7 +824,9 @@ def test_sell_spot_sell_stableswap_buy_omnipool(
     stablepool = StableSwapPoolState(
         tokens={"stable1": mpf(assets[2]), "stable2": mpf(assets[3])},
         amplification=1000,
-        trade_fee=trade_fee, unique_id="stablepool"
+        trade_fee=trade_fee, unique_id="stablepool",
+        precision=1e-08,
+        spot_price_precision=1e-12
     )
     router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
 
@@ -868,7 +875,8 @@ def test_buy_spot_sell_stableswap_buy_omnipool(
         tokens={"stable1": mpf(assets[2]), "stable2": mpf(assets[3])},
         amplification=1000,
         trade_fee=trade_fee, unique_id="stablepool",
-        precision=1e-08
+        precision=1e-08,
+        spot_price_precision=1e-12
     )
     router = OmnipoolRouter({"omnipool": omnipool, "stablepool": stablepool})
 
