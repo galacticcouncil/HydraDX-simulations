@@ -240,6 +240,8 @@ class OmnipoolState(AMM):
         return float('inf')
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):
+        if tkn_buy not in self.liquidity:
+            return 0
         return self.liquidity[tkn_buy] * (1 - self.asset_fee[tkn_buy].compute())
 
     def copy(self):

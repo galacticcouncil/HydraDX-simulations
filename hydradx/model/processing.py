@@ -430,6 +430,7 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 symbol_map[tkn_id]: op_state[tkn_id].fees.protocol_fee / 100 if tkn_id in op_state else 0
                 for tkn_id, tkn in [asset for asset in assets]
             },
+            unique_id='omnipool'
             # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
@@ -447,9 +448,9 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
         return omnipool
 
 
-def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
+def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
     ts = time.time()
-    with open(f'{path}omnipool_savefile_{ts}.json', 'w') as output_file:
+    with open(os.path.join(path, f'omnipool_savefile_{ts}.json'), 'w+') as output_file:
         json.dump(
         {
                 'liquidity': omnipool.liquidity,
@@ -469,13 +470,13 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive/'):
         )
 
 
-def load_omnipool(path: str = './archive/', filename: str = '') -> OmnipoolState:
+def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
     if filename:
         file_ls = [filename]
     else:
         file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
-    for filename in reversed(file_ls):  # by default, load the latest first
-        with open (path + filename, 'r') as input_file:
+    for filename in reversed(sorted(file_ls)):  # by default, load the latest first
+        with open (os.path.join(path, filename), 'r') as input_file:
             json_state = json.load(input_file)
             # pprint(json_state)
         omnipool = OmnipoolState(
@@ -561,6 +562,14 @@ def convert_config(cfg: list[dict]) -> list[dict]:
         }
         for cfg_item in cfg
     ]
+
+def load_config(filename, path='archive'):
+    with open(os.path.join(path, filename), 'r') as input_file:
+        config = json.load(input_file)
+    for cfg_item in config:
+        for exchange in cfg_item['exchanges']:
+            cfg_item['exchanges'][exchange] = tuple(cfg_item['exchanges'][exchange])
+    return config
 
 
 def get_omnipool_balance_history():
