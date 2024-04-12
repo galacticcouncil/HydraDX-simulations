@@ -117,11 +117,11 @@ def test_omnipool_settle_otc():
     # USDT conserved
     if omnipool.liquidity['USDT'] + treasury.holdings['USDT'] != pytest.approx(init_state.liquidity['USDT'] + init_sell_amt, rel=1e-15):
         raise
-    if treasury.holdings['DOT'] <= 0:  # treasury should make profit
-        raise
-    for asset in treasury.holdings:  # treasury should not lose any asset
+    if treasury.holdings['DOT'] <= 0:
+        raise AssertionError("Treasury should make profit")
+    for asset in treasury.holdings:
         if asset != 'DOT' and treasury.holdings[asset] < 0:
-            raise
+            raise AssertionError("Treasury should not lose any asset")
 
     # partially execute the OTC order
     omnipool = init_state.copy()
@@ -143,11 +143,11 @@ def test_omnipool_settle_otc():
     if (omnipool.liquidity['USDT'] + otc.sell_amount + treasury.holdings['USDT'] != pytest.approx(init_state.liquidity['USDT'] + init_sell_amt,
                                                                       rel=1e-15)):
         raise
-    if treasury.holdings['DOT'] <= 0:  # treasury should make profit
-        raise
-    for asset in treasury.holdings:  # treasury should not lose any asset
+    if treasury.holdings['DOT'] <= 0:
+        raise AssertionError("Treasury should make profit")
+    for asset in treasury.holdings:
         if asset != 'DOT' and treasury.holdings[asset] < 0:
-            raise
+            raise AssertionError("Treasury should not lose any asset")
 
     # try amount too large for OTC order
     omnipool = init_state.copy()
@@ -268,7 +268,8 @@ def test_find_partial_otc_sell_amount_fuzz(price, sell_amount):
     omnipool_settle_otc(omnipool, otc, treasury, partial_otc_amount)
     spot_after = omnipool.buy_spot('DOT', 'USDT')
 
-    otc.validate()
+    if not otc.validate():
+        raise AssertionError("OTC state is invalid")
 
     partially_filled = False
     # if OTC order is not filled at all, initial spot price > OTC price

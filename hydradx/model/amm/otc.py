@@ -17,25 +17,25 @@ class OTC:
         return OTC(self.buy_asset, self.sell_asset, self.sell_amount, self.price, self.partially_fillable)
 
     # numeraire is asset OTC order is selling
-    def sell(self, agent: Agent, sell_amount: float) -> None:
+    def sell(self, agent: Agent, sell_quantity: float) -> None:
         '''sell_amount is the amount of the buy_asset that the agent is selling for the sell_asset.'''
-        assert sell_amount >= 0
-        if sell_amount * self.price > self.sell_amount:
-            raise
-        self.buy_amount += sell_amount
-        self.sell_amount -= sell_amount * self.price
-        agent.holdings[self.buy_asset] -= sell_amount
-        agent.holdings[self.sell_asset] += sell_amount * self.price
+        assert sell_quantity >= 0
+        if sell_quantity * self.price > self.sell_amount:
+            raise ValueError("Sell amount exceeds OTC sell amount.")
+        self.buy_amount += sell_quantity
+        self.sell_amount -= sell_quantity * self.price
+        agent.holdings[self.buy_asset] -= sell_quantity
+        agent.holdings[self.sell_asset] += sell_quantity * self.price
 
-    def buy(self, agent: Agent, buy_amount: float) -> None:
+    def buy(self, agent: Agent, buy_quantity: float) -> None:
         '''buy_amount is the amount of the sell_asset that the agent is buying with the buy_asset.'''
-        assert buy_amount >= 0
-        if buy_amount > self.sell_amount:
+        assert buy_quantity >= 0
+        if buy_quantity > self.sell_amount:
             raise
-        self.buy_amount += buy_amount / self.price
-        self.sell_amount -= buy_amount
-        agent.holdings[self.buy_asset] -= buy_amount / self.price
-        agent.holdings[self.sell_asset] += buy_amount
+        self.buy_amount += buy_quantity / self.price
+        self.sell_amount -= buy_quantity
+        agent.holdings[self.buy_asset] -= buy_quantity / self.price
+        agent.holdings[self.sell_asset] += buy_quantity
 
     def validate(self) -> bool:
         if self.buy_amount < 0 or self.sell_amount < 0:

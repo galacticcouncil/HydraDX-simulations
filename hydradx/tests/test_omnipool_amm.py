@@ -3,15 +3,16 @@ import math
 
 import pytest
 from hypothesis import given, strategies as st, assume, settings, Verbosity
+from mpmath import mp, mpf
 
 from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee
+from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee, OmnipoolState
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
-from mpmath import mp, mpf
+
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -392,7 +393,7 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     ri_arb = old_state.liquidity[i] * old_state.lrna_total / new_state.lrna_total
 
     if (
-        (old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
+            (old_state.lrna[i] + old_state.lrna_imbalance * (old_state.lrna[i] / old_state.lrna_total)) * ri_arb
     ) != pytest.approx(
         (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total)) * old_state.liquidity[i]
     ):
@@ -2430,6 +2431,24 @@ def test_trade_manipulation(
         raise AssertionError(f'profit with LP asset2 ({asset2}) = {lp2_profit} > without {no_lp_profit}')
 
 
+def test_calculate_sell_from_buy_low_liq_sell_asset():
+    tokens = {
+        "HDX": {"liquidity": mpf(10000000), "LRNA": mpf(1000000)},
+        "USDT": {"liquidity": mpf(1000000), "LRNA": mpf(1000000)},
+        "DOT": {"liquidity": mpf(100000), "LRNA": mpf(1000000)},
+        "TKN": {"liquidity": mpf(100), "LRNA": mpf(100)}  # spot price of $1, TVL in Omnipool $100
+    }
+    omnipool = OmnipoolState(
+        tokens=tokens,
+        lrna_fee=0.0005,
+        asset_fee=0.0025,
+    )
+
+    buy_amt = omnipool.calculate_sell_from_buy(tkn_sell='TKN', tkn_buy='USDT', buy_quantity=1000)
+    if buy_amt != float('inf'):
+        raise AssertionError(f'buy_amt {buy_amt} != inf')
+
+
 @given(omnipool_config())
 def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={tkn: 1000000000 for tkn in omnipool.asset_list})
@@ -2558,7 +2577,7 @@ def test_sell_spot_LRNA(amts: list, asset_fee: float):
     )
 
     price = initial_state.sell_spot('LRNA', 'USD')
-    if price != pytest.approx(usd_amt / usd_lrna * (1-asset_fee), rel=1e-15):
+    if price != pytest.approx(usd_amt / usd_lrna * (1 - asset_fee), rel=1e-15):
         raise AssertionError(f'price {price} is incorrect')
 
 
@@ -2583,7 +2602,7 @@ def test_buy_spot_LRNA(amts: list, asset_fee: float):
 
     price = initial_state.buy_spot('USD', 'LRNA')
     exp_price = usd_lrna / usd_amt
-    if price != pytest.approx(exp_price/(1-asset_fee), rel=1e-15):
+    if price != pytest.approx(exp_price / (1 - asset_fee), rel=1e-15):
         raise AssertionError(f'price {price} is incorrect')
 
 

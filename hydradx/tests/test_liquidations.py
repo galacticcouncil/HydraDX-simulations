@@ -1,12 +1,12 @@
 import pytest
-from hypothesis import given, strategies as st, assume, settings, Verbosity
+from hypothesis import given, strategies as st
 from mpmath import mp, mpf
 
-from hydradx.model.amm.liquidations import CDP
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
     liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc
+from hydradx.model.amm.liquidations import CDP
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.otc import OTC
 
 mp.dps = 50
@@ -52,7 +52,8 @@ def test_liquidate_cdp():
     agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
 
     cdp.liquidate_cdp(agent, init_debt_amt * liquidate_pct, init_collat_amt * liquidate_pct)
-    cdp.validate()
+    if not cdp.validate():
+        raise
     if agent.holdings[collateral_asset] + cdp.collateral_amt != init_collat_holdings + init_collat_amt:
         raise
     if agent.holdings[debt_asset] - cdp.debt_amt != init_debt_holdings - init_debt_amt:
@@ -177,10 +178,8 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
     penalty = 0.01
     init_agent = Agent(holdings={"USDT": mpf(0), "DOT": mpf(0)})
     treasury_agent = init_agent.copy()
-    omnipool_liquidate_cdp(omnipool, cdp, treasury_agent, cdp.debt_amt * 1.01, penalty)
-
-    if cdp.debt_amt != init_cdp.debt_amt or cdp.collateral_amt != init_cdp.collateral_amt:
-        raise  # liquidation should fail because delta_debt > cdp.debt_amt
+    with pytest.raises(Exception):  # liquidation should fail because delta_debt > cdp.debt_amt
+        omnipool_liquidate_cdp(omnipool, cdp, treasury_agent, cdp.debt_amt * 1.01, penalty)
 
 
 @given(st.floats(min_value=4, max_value=6))
@@ -234,7 +233,7 @@ def test_find_partial_liquidation_amount_partial(collat_ratio: float):
     }
 
     lrna_price_usd = 35
-    initial_omnipool_tvl = 20000000
+    initial_omnipool_tvl = mpf(20000000)
     liquidity = {}
     lrna = {}
 
@@ -381,7 +380,7 @@ def test_liquidate_against_omnipool():
     # can't be liquidated
     cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
     # should be partially liquidated
-    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000/6.5, True)
+    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000 / 6.5, True)
     # should be fully liquidated
     cdp4 = CDP('DOT', 'USDT', 100, 1000, True)
     cdps = [cdp1, cdp2, cdp3, cdp4]

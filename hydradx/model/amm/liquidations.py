@@ -18,9 +18,9 @@ class CDP:
 
     def liquidate_cdp(self, agent: Agent, debt_amt: float, collateral_amt: float) -> None:
         if debt_amt > self.debt_amt or debt_amt > agent.holdings[self.debt_asset]:
-            raise
+            raise ValueError("Debt amount exceeds CDP debt or agent holdings.")
         if collateral_amt > self.collateral_amt:
-            raise
+            raise ValueError("Collateral amount exceeds CDP collateral.")
         self.debt_amt -= debt_amt
         agent.holdings[self.debt_asset] -= debt_amt
         self.collateral_amt -= collateral_amt

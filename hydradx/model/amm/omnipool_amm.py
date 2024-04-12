@@ -318,6 +318,8 @@ class OmnipoolState(AMM):
         ))
         # lrna_fee = self.last_lrna_fee[tkn_sell]
         delta_Qi = -delta_Qj / (1 - lrna_fee)
+        if -delta_Qi >= self.lrna[tkn_sell]:
+            return float('inf')
         delta_Ri = -self.liquidity[tkn_sell] * delta_Qi / (self.lrna[tkn_sell] + delta_Qi)
         return delta_Ri
 
