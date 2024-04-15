@@ -1037,7 +1037,7 @@ def dca_with_lping(
         # In reality someone executing this strategy would simply add liquidity and get a new LP position.
         withdrawal_fee_cache = pool.withdrawal_fee  # hack to temporarily zero out withdrawal fee
         pool.withdrawal_fee = False
-        if (pool.unique_id, buy_asset) in agent.holdings and agent.holdings[(pool.unique_id, buy_asset)] > 0:
+        if agent.is_holding((pool.unique_id, buy_asset)):
             # remove all liquidity in buy_asset
             pool.remove_liquidity(
                 agent=agent,

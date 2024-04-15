@@ -292,6 +292,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
             tkn_remove=tkn,
             quantity=withdraw_agent.holdings[('omnipool', tkn)]
         )
+        del withdraw_agent.holdings[('omnipool', tkn)]
 
     if 'LRNA' in withdraw_agent.holdings:
         lrna_sells = {
