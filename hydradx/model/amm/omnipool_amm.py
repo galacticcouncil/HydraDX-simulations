@@ -1067,9 +1067,11 @@ class OmnipoolState(AMM):
                         return self
     
             raise AssertionError(f"invalid value for i: {tkn_remove}")
-    
-        if quantity == 0 or agent.holdings[(self.unique_id, tkn_remove)] == 0:
+
+        if quantity == 0:
             return self
+        if not agent.is_holding((self.unique_id, tkn_remove)):
+            return self.fail_transaction('Agent does not have liquidity in this pool.', agent)
     
         if self.remove_liquidity_volatility_threshold:
             if self.oracles['price']:
@@ -1110,6 +1112,8 @@ class OmnipoolState(AMM):
             agent.holdings['LRNA'] = 0
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[(self.unique_id, tkn_remove)] -= quantity
+        if agent.holdings[(self.unique_id, tkn_remove)] == 0:
+            agent.share_prices[(self.unique_id, tkn_remove)] = 0
         agent.holdings[tkn_remove] -= delta_r
     
         self.current_block.withdrawals[tkn_remove] += quantity

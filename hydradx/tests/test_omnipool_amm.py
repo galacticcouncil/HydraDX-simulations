@@ -1587,7 +1587,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
         tkn_remove='HDX',
         quantity=state.shares['HDX'] * max_withdrawal_per_block
     )
-    if state.fail:
+    if agent.is_holding(('omnipool', 'HDX')) and state.fail:
         raise AssertionError('Agent was not able to remove liquidity.')
 
 

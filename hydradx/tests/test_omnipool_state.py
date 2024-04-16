@@ -312,7 +312,6 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
             lrna_profits[tkn] = withdraw_agent.holdings[tkn] - agent_holdings
 
     del withdraw_agent.holdings['LRNA']
-    # del withdraw_agent.holdings[('omnipool', lp_asset)]
     cash_count = sum([market_prices[tkn] * withdraw_agent.holdings[tkn] for tkn in withdraw_agent.holdings])
     if cash_count != pytest.approx(cash_out, rel=1e-15):
         raise AssertionError('Cash out calculation is not accurate.')

@@ -59,6 +59,9 @@ class Agent:
         return copy_self
         # return copy.deepcopy(self)
 
+    def is_holding(self, tkn):
+        return tkn in self.holdings and self.holdings[tkn] > 0
+
 
 class AgentArchiveState:
     def __init__(self, agent: Agent):
