@@ -1343,23 +1343,29 @@ def dynamicadd_asset_fee(
         decay: float = 0.001,
         fee_max: float = 0.5
 ) -> FeeMechanism:
-    class Fee:
+    class Fee(FeeMechanism):
         def __init__(self):
+            super().__init__(
+                fee_function=self.fee_function,
+                name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+            )
+            self.amplification = amplification
+            self.decay = decay
+            self.minimum = minimum
+            self.fee_max = fee_max
+            self.raise_oracle_name = raise_oracle_name
             # force compute on first call
-            self.time_step = dict()
+            self.time_step = 0
 
         def fee_function(
                 self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
-            if tkn not in self.time_step:
-                self.time_step[tkn] = 0
-            elif self.time_step[tkn] == exchange.time_step:
+            if self.time_step == exchange.time_step:
                 # since fee is the same regardless of delta_tkn, just return the last fee
                 # if it's already been computed for this tkn and block
                 return exchange.last_fee[tkn]
-            else:
-                self.time_step[tkn] = exchange.time_step
 
+            self.time_step = exchange.time_step
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
             if raise_oracle.liquidity[tkn] != 0:
@@ -1376,10 +1382,7 @@ def dynamicadd_asset_fee(
 
             return fee
 
-    return FeeMechanism(
-        fee_function=Fee().fee_function,
-        name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
-    )
+    return Fee()
 
 
 def dynamicadd_lrna_fee(
@@ -1389,22 +1392,28 @@ def dynamicadd_lrna_fee(
         decay: float = 0.001,
         fee_max: float = 0.5,
 ) -> FeeMechanism:
-    class Fee:
+    class Fee(FeeMechanism):
         def __init__(self):
-            self.time_step = dict()
+            super().__init__(
+                fee_function=self.fee_function,
+                name=f'Dynamic fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
+            )
+            self.amplification = amplification
+            self.decay = decay
+            self.minimum = minimum
+            self.fee_max = fee_max
+            self.raise_oracle_name = raise_oracle_name
+            self.time_step = 0
 
         def fee_function(
                 self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
         ) -> float:
-            if tkn not in self.time_step:
-                self.time_step[tkn] = 0
-            elif self.time_step[tkn] == exchange.time_step:
+            if self.time_step == exchange.time_step:
                 # since fee is the same regardless of delta_tkn, just return the last fee
                 # if it's already been computed for this tkn and block
                 return exchange.last_lrna_fee[tkn]
-            else:
-                self.time_step[tkn] = exchange.time_step
 
+            self.time_step = exchange.time_step
             raise_oracle: Oracle = exchange.oracles[raise_oracle_name]
 
             if raise_oracle.liquidity[tkn] != 0:
@@ -1421,10 +1430,7 @@ def dynamicadd_lrna_fee(
 
             return fee
 
-    return FeeMechanism(
-        fee_function=Fee().fee_function,
-        name=f'Dynamic LRNA fee (oracle={raise_oracle_name}, amplification={amplification}, min={minimum})'
-    )
+    return Fee()
 
 
 def value_assets(prices: dict, assets: dict) -> float:
