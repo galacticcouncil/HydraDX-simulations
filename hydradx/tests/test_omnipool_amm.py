@@ -2479,8 +2479,8 @@ def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
 @given(
     hdx_lrna=st.floats(min_value=100000000, max_value=1000000000),
     usd_lrna=st.floats(min_value=100000000, max_value=1000000000),
-    hdx_asset_fee=st.floats(min_value=0, max_value=0.01),
-    hdx_lrna_fee=st.floats(min_value=0, max_value=0.01),
+    hdx_asset_fee=st.floats(min_value=0, max_value=0.1),
+    hdx_lrna_fee=st.floats(min_value=0, max_value=0.1),
     usd_asset_fee=st.floats(min_value=0, max_value=0.1),
     usd_lrna_fee=st.floats(min_value=0, max_value=0.1)
 )
