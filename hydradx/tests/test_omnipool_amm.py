@@ -2479,17 +2479,22 @@ def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
 @given(
     hdx_lrna=st.floats(min_value=100000000, max_value=1000000000),
     usd_lrna=st.floats(min_value=100000000, max_value=1000000000),
-    asset_fee=st.floats(min_value=0, max_value=0.01),
-    lrna_fee=st.floats(min_value=0, max_value=0.01)
+    hdx_asset_fee=st.floats(min_value=0, max_value=0.01),
+    hdx_lrna_fee=st.floats(min_value=0, max_value=0.01),
+    usd_asset_fee=st.floats(min_value=0, max_value=0.1),
+    usd_lrna_fee=st.floats(min_value=0, max_value=0.1)
 )
-def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_fee: float):
+def test_buy_sell_spot(
+        hdx_lrna: float, usd_lrna: float, hdx_asset_fee: float, hdx_lrna_fee: float, usd_asset_fee: float, usd_lrna_fee: float
+):
+    tokens = {
+        'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
+        'USD': {'liquidity': mpf(1000000000), 'LRNA': usd_lrna},
+    }
     initial_state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
-            'USD': {'liquidity': mpf(1000000000), 'LRNA': usd_lrna},
-        },
-        lrna_fee=lrna_fee,
-        asset_fee=asset_fee,
+        tokens=tokens,
+        lrna_fee={'HDX': hdx_lrna_fee, 'USD': usd_lrna_fee},
+        asset_fee={'HDX': hdx_asset_fee, 'USD': usd_asset_fee},
     )
     agent = Agent(holdings={tkn: mpf(1000) for tkn in initial_state.asset_list})
     test_state, test_agent = initial_state.copy(), agent.copy()
@@ -2506,10 +2511,12 @@ def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_
     actual_buy_quantity = test_agent.holdings['HDX'] - test_agent.initial_holdings['HDX']
     ex_price_hdx = actual_sell_quantity / actual_buy_quantity
     ex_price_usd = actual_buy_quantity / actual_sell_quantity
-    if usd_per_hdx != pytest.approx(ex_price_hdx):
+    if usd_per_hdx != pytest.approx(ex_price_hdx, rel=1e-08):
         raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
-    if hdx_per_usd != pytest.approx(ex_price_usd):
+    if hdx_per_usd != pytest.approx(ex_price_usd, rel=1e-08):
         raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')
+    else:
+        er = 1
 
 
 def test_LRNA_price_LRNA():
