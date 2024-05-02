@@ -366,9 +366,9 @@ class OmnipoolState(AMM):
                         fee['asset'] = pool.trade_fee
                         break
             if 'lrna' not in fee:
-                fee['lrna'] = self.lrna_fee[tkn_sell].compute()
+                fee['lrna'] = self.lrna_fee[tkn_buy].compute()
             if 'asset' not in fee:
-                fee['asset'] = self.asset_fee[tkn_buy].compute()
+                fee['asset'] = self.asset_fee[tkn_sell].compute()
         elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
@@ -399,9 +399,9 @@ class OmnipoolState(AMM):
                         fee['asset'] = pool.trade_fee
                         break
             if 'lrna' not in fee:
-                fee['lrna'] = self.lrna_fee[tkn_sell].compute()
+                fee['lrna'] = self.lrna_fee[tkn_buy].compute()
             if 'asset' not in fee:
-                fee['asset'] = self.asset_fee[tkn_buy].compute()
+                fee['asset'] = self.asset_fee[tkn_sell].compute()
         elif not isinstance(fee, dict):
             fee = {
                 'lrna': fee,
