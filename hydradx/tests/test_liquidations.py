@@ -460,3 +460,23 @@ def test_liquidate_against_omnipool_and_settle_otc():
         raise
     if len(init_state.otcs) != 1:
         raise
+
+
+def test_is_liquidatable():
+    cdp = CDP("USDT", "DOT", 1000, 200, liquidation_threshold=0.7)
+    if cdp.is_liquidatable(10):
+        raise
+    cdp = CDP("USDT", "DOT", 1000, 100, liquidation_threshold=0.7)
+    if not cdp.is_liquidatable(10):
+        raise
+
+
+def test_liquidate():
+    debt_amt = 1000
+    cdp = CDP("USDT", "DOT", debt_amt, 100, liquidation_threshold=0.7)
+    agent = Agent(holdings={"USDT": debt_amt})
+    cdp.liquidate(agent, debt_amt, 11)
+    if cdp.debt_amt != 0:
+        raise
+    if agent.holdings["USDT"] != 0:
+        raise

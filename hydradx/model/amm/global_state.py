@@ -20,7 +20,8 @@ class GlobalState:
                  evolve_function: Callable = None,
                  save_data: dict = None,
                  archive_all: bool = True,
-                 liquidation_penalty: float = 0.01
+                 liquidation_penalty: float = 0.01,
+                 external_oracle: dict = None
                  ):
         self.external_market = external_market or {}
         if 'USD' not in self.external_market:
@@ -51,6 +52,11 @@ class GlobalState:
         } if save_data else {}
         self.time_step = 0
         self.archive_all = archive_all
+        for cdp in cdps:
+            if not (cdp.debt_asset, cdp.collateral_asset) in external_oracle:
+                if not (cdp.collateral_asset, cdp.debt_asset) in external_oracle:
+                    raise ValueError("No oracle provided for CDP asset pair.")
+        self.external_oracle = external_oracle or {}
         self.cdps = cdps
         self.liquidation_penalty = liquidation_penalty
         self.otcs = otcs
