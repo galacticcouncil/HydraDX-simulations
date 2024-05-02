@@ -635,7 +635,9 @@ class OmnipoolState(AMM):
     
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
-    
+        if tkn not in agent.holdings:
+            agent.holdings[tkn] = 0
+
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[tkn] += delta_ra
     
