@@ -2515,8 +2515,6 @@ def test_buy_sell_spot(
         raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
     if hdx_per_usd != pytest.approx(ex_price_usd, rel=1e-08):
         raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')
-    else:
-        er = 1
 
 
 def test_LRNA_price_LRNA():
@@ -2655,3 +2653,46 @@ def test_no_preferred_stablecoin():
         raise AssertionError(f'usd_p {usd_p} is incorrect')
 
     initial_state.__repr__()
+
+
+def test_fee_application():
+    initial_state = OmnipoolState(
+        tokens={'HDX': {'liquidity': 1000000, 'LRNA': 1000}, 'USD': {'liquidity': 3000, 'LRNA': 150}},
+        lrna_fee={'HDX': 0.0005, 'USD': 0.001},
+        asset_fee={'HDX': 0.007, 'USD': 0.0025}
+    )
+    initial_agent = Agent(
+        holdings={'HDX': 1000000}
+    )
+    sell_quantity = 1
+    sell_agent = initial_agent.copy()
+    sell_state = initial_state.copy().swap(
+        agent=sell_agent,
+        tkn_sell='HDX',
+        tkn_buy='USD',
+        sell_quantity=sell_quantity
+    )
+    buy_quantity = sell_agent.holdings['USD']
+    sell_lrna_agent = initial_agent.copy()
+    sell_lrna_state = initial_state.copy()
+    sell_lrna_state.asset_fee = 0
+    sell_lrna_state.lrna_fee = 0
+    sell_lrna_state.lrna_swap(
+        agent=sell_lrna_agent,
+        delta_ra=-sell_quantity,
+        tkn='HDX'
+    )
+    lrna_fee = sell_lrna_agent.holdings['LRNA'] * initial_state.lrna_fee['HDX'].compute()
+    sell_lrna_state.lrna['HDX'] += lrna_fee
+    sell_lrna_agent.holdings['LRNA'] -= lrna_fee
+    sell_lrna_state.lrna_swap(
+        agent=sell_lrna_agent,
+        delta_qa=-sell_lrna_agent.holdings['LRNA'],
+        tkn='USD'
+    )
+    asset_fee = sell_lrna_agent.holdings['USD'] * initial_state.asset_fee['USD'].compute()
+    sell_lrna_state.liquidity['USD'] += asset_fee
+    sell_lrna_agent.holdings['USD'] -= asset_fee
+    buy_quantity_2 = sell_lrna_agent.holdings['USD']
+    if buy_quantity != pytest.approx(buy_quantity_2, rel=1e-12):
+        raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
