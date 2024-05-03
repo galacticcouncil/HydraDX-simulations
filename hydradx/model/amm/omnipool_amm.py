@@ -486,9 +486,9 @@ class OmnipoolState(AMM):
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
-            asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            asset_fee = self.asset_fee[tkn_buy].compute(tkn=tkn_buy, delta_tkn=sell_quantity)
             lrna_fee = self.lrna_fee[tkn_sell].compute(
-                tkn=tkn_buy,
+                tkn=tkn_sell,
                 delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
                            / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
             )
