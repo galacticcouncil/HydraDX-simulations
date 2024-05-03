@@ -168,7 +168,7 @@ class OmnipoolState(AMM):
                 for tkn, fee in value.items()
             })
         elif isinstance(value, FeeMechanism):
-            return {tkn: value.assign(self, tkn) for tkn in self.asset_list}
+            return {tkn: copy.deepcopy(value).assign(self, tkn) for tkn in self.asset_list}
         else:
             return {tkn: basic_fee(value or 0).assign(self, tkn) for tkn in self.asset_list}
 
