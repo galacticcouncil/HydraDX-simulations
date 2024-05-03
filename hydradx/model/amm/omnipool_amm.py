@@ -307,16 +307,12 @@ class OmnipoolState(AMM):
         """
         Given a buy quantity, calculate the effective price, so we can execute it as a sell
         """
-    
-        asset_fee = self.asset_fee[tkn_buy].compute(delta_tkn=-buy_quantity)
+        asset_fee = self.asset_fee[tkn_buy].compute()
         if buy_quantity >= self.liquidity[tkn_buy] * (1 - asset_fee):
             return float('inf')
-        # asset_fee = self.last_fee[tkn_buy]
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
-        lrna_fee = self.lrna_fee[tkn_sell].compute(
-            delta_tkn=(self.liquidity[tkn_buy] * delta_Qj /(self.lrna[tkn_buy] + delta_Qj))
-        )
+        lrna_fee = self.lrna_fee[tkn_sell].compute()
         # lrna_fee = self.last_lrna_fee[tkn_sell]
         delta_Qi = -delta_Qj / (1 - lrna_fee)
         if -delta_Qi >= self.lrna[tkn_sell]:
@@ -330,18 +326,13 @@ class OmnipoolState(AMM):
             tkn_sell: str,
             sell_quantity: float
     ):
-
         """
         Given a sell quantity, calculate the effective price, so we can execute it as a buy
         """
         delta_Ri = sell_quantity
         delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
-        asset_fee = self.asset_fee[tkn_buy].compute(delta_tkn=sell_quantity)
-        lrna_fee = self.lrna_fee[tkn_sell].compute(
-            delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
-                       / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
-        )
-
+        asset_fee = self.asset_fee[tkn_buy].compute()
+        lrna_fee = self.lrna_fee[tkn_sell].compute()
         delta_Qt = -delta_Qi * (1 - lrna_fee)
         delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         return -delta_Rj
@@ -486,12 +477,8 @@ class OmnipoolState(AMM):
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
-            asset_fee = self.asset_fee[tkn_buy].compute(delta_tkn=sell_quantity)
-            lrna_fee = self.lrna_fee[tkn_sell].compute(
-                delta_tkn=(self.liquidity[tkn_buy] * sell_quantity
-                           / (self.lrna[tkn_buy] + sell_quantity) * (1 - asset_fee))
-            )
-
+            asset_fee = self.asset_fee[tkn_buy].compute()
+            lrna_fee = self.lrna_fee[tkn_sell].compute()
             delta_Qt = -delta_Qi * (1 - lrna_fee)
             delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
                 tkn_buy] * self.lrna_mint_pct
@@ -556,9 +543,7 @@ class OmnipoolState(AMM):
         """
     
         if delta_qa < 0:
-            asset_fee = self.asset_fee[tkn].compute(
-                delta_tkn=self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
-            )
+            asset_fee = self.asset_fee[tkn].compute()
             if -delta_qa + self.lrna[tkn] <= 0:
                 return self.fail_transaction('insufficient lrna in pool', agent)
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
@@ -574,7 +559,7 @@ class OmnipoolState(AMM):
             self.liquidity[tkn] += -delta_ra
     
         elif delta_ra > 0:
-            asset_fee = self.asset_fee[tkn].compute(delta_tkn=delta_ra)
+            asset_fee = self.asset_fee[tkn].compute()
             if -delta_ra + self.liquidity[tkn] <= 0:
                 return self.fail_transaction('insufficient assets in pool', agent)
             denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
@@ -591,9 +576,7 @@ class OmnipoolState(AMM):
     
         # buying LRNA
         elif delta_qa > 0:
-            lrna_fee = self.lrna_fee[tkn].compute(
-                delta_tkn=self.liquidity[tkn] * delta_qa / (delta_qa + self.lrna[tkn])
-            )
+            lrna_fee = self.lrna_fee[tkn].compute()
             delta_qi = -delta_qa / (1 - lrna_fee)
             if delta_qi + self.lrna[tkn] <= 0:
                 return self.fail_transaction('insufficient lrna in pool', agent)
@@ -612,7 +595,7 @@ class OmnipoolState(AMM):
             self.lrna["HDX"] += lrna_fee_amt - delta_l
     
         elif delta_ra < 0:
-            lrna_fee = self.lrna_fee[tkn].compute(delta_tkn=delta_ra)
+            lrna_fee = self.lrna_fee[tkn].compute()
             # delta_ri = -delta_ra
             if delta_ra > agent.holdings[tkn]:
                 return self.fail_transaction('agent has insufficient assets', agent)
@@ -1354,14 +1337,11 @@ def dynamicadd_asset_fee(
             self.fee_max = fee_max
             self.raise_oracle_name = raise_oracle_name
             # force compute on first call
-            self.time_step = 0
+            self.time_step = -1
 
-        def fee_function(
-                self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
-        ) -> float:
+        def fee_function(self, exchange: OmnipoolState, tkn: str) -> float:
             if self.time_step == exchange.time_step:
-                # since fee is the same regardless of delta_tkn, just return the last fee
-                # if it's already been computed for this tkn and block
+                # return the last fee if it's already been computed for this tkn and block
                 return exchange.last_fee[tkn]
 
             self.time_step = exchange.time_step
@@ -1402,14 +1382,12 @@ def dynamicadd_lrna_fee(
             self.minimum = minimum
             self.fee_max = fee_max
             self.raise_oracle_name = raise_oracle_name
-            self.time_step = 0
+            self.time_step = -1
 
         def fee_function(
-                self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0
-        ) -> float:
+                self, exchange: OmnipoolState, tkn: str) -> float:
             if self.time_step == exchange.time_step:
-                # since fee is the same regardless of delta_tkn, just return the last fee
-                # if it's already been computed for this tkn and block
+                # return the last fee if it's already been computed for this tkn and block
                 return exchange.last_lrna_fee[tkn]
 
             self.time_step = exchange.time_step
@@ -1487,10 +1465,7 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
             if tkn not in agent_holdings:
                 agent_holdings[tkn] = 0
             asset_fee = (
-                omnipool.asset_fee[tkn].compute(
-                    delta_tkn=(omnipool.liquidity[tkn] - liquidity_removed[tkn])
-                              * delta_qa / (delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
-                )
+                omnipool.asset_fee[tkn].compute()
                 if hasattr(omnipool, 'asset_fee')
                 else omnipool.last_fee[tkn]
             )
