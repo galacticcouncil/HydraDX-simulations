@@ -1339,7 +1339,7 @@ def dynamicadd_asset_fee(
             # force compute on first call
             self.time_step = -1
 
-        def fee_function(self, exchange: OmnipoolState, tkn: str) -> float:
+        def fee_function(self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0) -> float:
             if self.time_step == exchange.time_step:
                 # return the last fee if it's already been computed for this tkn and block
                 return exchange.last_fee[tkn]
@@ -1385,7 +1385,7 @@ def dynamicadd_lrna_fee(
             self.time_step = -1
 
         def fee_function(
-                self, exchange: OmnipoolState, tkn: str) -> float:
+                self, exchange: OmnipoolState, tkn: str, delta_tkn: float = 0) -> float:
             if self.time_step == exchange.time_step:
                 # return the last fee if it's already been computed for this tkn and block
                 return exchange.last_lrna_fee[tkn]
