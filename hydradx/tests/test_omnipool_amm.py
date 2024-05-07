@@ -1365,6 +1365,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_prices: list[float], n, trade_size: float, lrna_fees: list[float],
                                  asset_fees: list[float], amp: list[float], decay: list[float]):
+
     init_liquidity = {
         'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
         'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
@@ -1412,50 +1413,22 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
             'oracle': n
         },
         asset_fee={
-            'HDX': dynamicadd_asset_fee(
+            tkn: dynamicadd_asset_fee(
                 minimum=asset_fee_params['minimum'],
                 amplification=asset_fee_params['amplification'],
                 raise_oracle_name=asset_fee_params['raise_oracle_name'],
                 decay=asset_fee_params['decay'],
                 fee_max=asset_fee_params['fee_max'],
-            ),
-            'USD': dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ),
-            'DOT': dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ),
+            ) for tkn in init_liquidity
         },
         lrna_fee={
-            'HDX': dynamicadd_lrna_fee(
+            tkn: dynamicadd_lrna_fee(
                 minimum=lrna_fee_params['minimum'],
                 amplification=lrna_fee_params['amplification'],
                 raise_oracle_name=lrna_fee_params['raise_oracle_name'],
                 decay=lrna_fee_params['decay'],
                 fee_max=lrna_fee_params['fee_max'],
-            ),
-            'USD': dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ),
-            'DOT': dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ),
+            ) for tkn in init_liquidity
         },
         last_oracle_values={
             'oracle': copy.deepcopy(init_oracle)
@@ -2479,17 +2452,22 @@ def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
 @given(
     hdx_lrna=st.floats(min_value=100000000, max_value=1000000000),
     usd_lrna=st.floats(min_value=100000000, max_value=1000000000),
-    asset_fee=st.floats(min_value=0, max_value=0.01),
-    lrna_fee=st.floats(min_value=0, max_value=0.01)
+    hdx_asset_fee=st.floats(min_value=0, max_value=0.1),
+    hdx_lrna_fee=st.floats(min_value=0, max_value=0.1),
+    usd_asset_fee=st.floats(min_value=0, max_value=0.1),
+    usd_lrna_fee=st.floats(min_value=0, max_value=0.1)
 )
-def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_fee: float):
+def test_buy_sell_spot(
+        hdx_lrna: float, usd_lrna: float, hdx_asset_fee: float, hdx_lrna_fee: float, usd_asset_fee: float, usd_lrna_fee: float
+):
+    tokens = {
+        'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
+        'USD': {'liquidity': mpf(1000000000), 'LRNA': usd_lrna},
+    }
     initial_state = oamm.OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
-            'USD': {'liquidity': mpf(1000000000), 'LRNA': usd_lrna},
-        },
-        lrna_fee=lrna_fee,
-        asset_fee=asset_fee,
+        tokens=tokens,
+        lrna_fee={'HDX': hdx_lrna_fee, 'USD': usd_lrna_fee},
+        asset_fee={'HDX': hdx_asset_fee, 'USD': usd_asset_fee},
     )
     agent = Agent(holdings={tkn: mpf(1000) for tkn in initial_state.asset_list})
     test_state, test_agent = initial_state.copy(), agent.copy()
@@ -2506,9 +2484,9 @@ def test_buy_sell_spot(hdx_lrna: float, usd_lrna: float, asset_fee: float, lrna_
     actual_buy_quantity = test_agent.holdings['HDX'] - test_agent.initial_holdings['HDX']
     ex_price_hdx = actual_sell_quantity / actual_buy_quantity
     ex_price_usd = actual_buy_quantity / actual_sell_quantity
-    if usd_per_hdx != pytest.approx(ex_price_hdx):
+    if usd_per_hdx != pytest.approx(ex_price_hdx, rel=1e-08):
         raise AssertionError(f'sell_spot_hdx {usd_per_hdx} != ex_price_hdx {ex_price_hdx}')
-    if hdx_per_usd != pytest.approx(ex_price_usd):
+    if hdx_per_usd != pytest.approx(ex_price_usd, rel=1e-08):
         raise AssertionError(f'sell_spot_usd {hdx_per_usd} != ex_price_usd {ex_price_usd}')
 
 
@@ -2648,3 +2626,46 @@ def test_no_preferred_stablecoin():
         raise AssertionError(f'usd_p {usd_p} is incorrect')
 
     initial_state.__repr__()
+
+
+def test_fee_application():
+    initial_state = OmnipoolState(
+        tokens={'HDX': {'liquidity': 1000000, 'LRNA': 1000}, 'USD': {'liquidity': 3000, 'LRNA': 150}},
+        lrna_fee={'HDX': 0.0005, 'USD': 0.001},
+        asset_fee={'HDX': 0.007, 'USD': 0.0025}
+    )
+    initial_agent = Agent(
+        holdings={'HDX': 1000000}
+    )
+    sell_quantity = 1
+    sell_agent = initial_agent.copy()
+    initial_state.copy().swap(
+        agent=sell_agent,
+        tkn_sell='HDX',
+        tkn_buy='USD',
+        sell_quantity=sell_quantity
+    )
+    buy_quantity = sell_agent.holdings['USD']
+    sell_lrna_agent = initial_agent.copy()
+    sell_lrna_state = initial_state.copy()
+    sell_lrna_state.asset_fee = 0
+    sell_lrna_state.lrna_fee = 0
+    sell_lrna_state.lrna_swap(
+        agent=sell_lrna_agent,
+        delta_ra=-sell_quantity,
+        tkn='HDX'
+    )
+    lrna_fee = sell_lrna_agent.holdings['LRNA'] * initial_state.lrna_fee['HDX'].compute()
+    sell_lrna_state.lrna['HDX'] += lrna_fee
+    sell_lrna_agent.holdings['LRNA'] -= lrna_fee
+    sell_lrna_state.lrna_swap(
+        agent=sell_lrna_agent,
+        delta_qa=-sell_lrna_agent.holdings['LRNA'],
+        tkn='USD'
+    )
+    asset_fee = sell_lrna_agent.holdings['USD'] * initial_state.asset_fee['USD'].compute()
+    sell_lrna_state.liquidity['USD'] += asset_fee
+    sell_lrna_agent.holdings['USD'] -= asset_fee
+    buy_quantity_2 = sell_lrna_agent.holdings['USD']
+    if buy_quantity != pytest.approx(buy_quantity_2, rel=1e-12):
+        raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
