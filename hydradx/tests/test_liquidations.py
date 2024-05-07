@@ -5,19 +5,21 @@ from mpmath import mp, mpf
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
     liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc
-from hydradx.model.amm.liquidations import CDP
+from hydradx.model.amm.liquidations import CDP, money_market
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.otc import OTC
 
 mp.dps = 50
 
 
+# CDP tests
+
 def test_cdp_validate():
     debt_asset = "USDT"
     collateral_asset = "DOT"
     init_debt_amt = 1000
     init_collat_amt = 200
-    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt, True)
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt)
     if not cdp.validate():
         raise
     cdp.debt_amt = -1
@@ -32,54 +34,223 @@ def test_cdp_validate():
     if cdp.validate():
         raise
 
-    cdp = CDP(debt_asset, collateral_asset, 0, init_collat_amt, True)
+    cdp = CDP(debt_asset, collateral_asset, 0, init_collat_amt)
     if not cdp.validate():
         raise
-    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, 0, True)
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, 0)
     if not cdp.validate():  # note that toxic debt does not fail validation
         raise
 
 
-def test_liquidate_cdp():
-    liquidate_pct = 0.7
+# money_market tests
+
+def test_get_oracle_price():
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10}
+    )
+    if mm.get_oracle_price("DOT", "USDT") != 10:
+        raise
+    if mm.get_oracle_price("USDT", "DOT") != 0.1:
+        raise
+    with pytest.raises(Exception):
+        mm.get_oracle_price("DOT", "ETH")
+
+
+def test_is_liquidatable():
+    agent = Agent()
+    cdp = CDP("USDT", "DOT", 1000, 200)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10},
+        cdps=[(agent, cdp)]
+    )
+    if mm.is_liquidatable(cdp):
+        raise
+    cdp.collateral_amt = 100
+    if not mm.is_liquidatable(cdp):
+        raise
+
+
+def test_liquidate():
+    debt_amt = 1000
+    collat_amt = 100
+    borrow_agent = Agent()
+    cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
+    collat_price = 11
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): collat_price},
+        cdps=[(borrow_agent, cdp)],
+        liquidation_threshold=0.7,
+        liquidation_penalty=0.01,
+    )
+    liquidate_amt = debt_amt / 2
+    collat_sold_expected = liquidate_amt / collat_price * 1.01
+    agent = Agent(holdings={"USDT": liquidate_amt})
+    mm.liquidate(cdp, agent, liquidate_amt)
+    if debt_amt - liquidate_amt != cdp.debt_amt:
+        raise
+    if agent.holdings["USDT"] != 0:
+        raise
+    if agent.holdings["DOT"] != collat_sold_expected:
+        raise
+    if cdp.collateral_amt != collat_amt - collat_sold_expected:
+        raise
+    if not mm.validate():
+        raise
+
+
+def test_liquidate_not_liquidatable():
+    debt_amt = 1000
+    collat_amt = 500
+    borrow_agent = Agent()
+    cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
+    collat_price = 11
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): collat_price},
+        cdps=[(borrow_agent, cdp)],
+        liquidation_threshold=0.7,
+        liquidation_penalty=0.01,
+    )
+    liquidate_amt = debt_amt / 2
+    agent = Agent(holdings={"USDT": liquidate_amt})
+    mm.liquidate(cdp, agent, liquidate_amt)
+    if debt_amt != cdp.debt_amt:
+        raise
+    if agent.holdings["USDT"] != liquidate_amt:
+        raise
+    if agent.is_holding("DOT"):
+        raise
+    if cdp.collateral_amt != collat_amt:
+        raise
+    if not mm.validate():
+        raise
+
+
+def test_liquidate_fails():
     debt_asset = "USDT"
     collateral_asset = "DOT"
     init_debt_amt = 1000
-    init_collat_amt = 200
-    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt, True)
-    init_debt_holdings = 10000
-    init_collat_holdings = 10000
-    agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
+    init_collat_amt = 100
+    borrow_agent = Agent()
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 11},
+        cdps=[(borrow_agent, cdp.copy())]
+    )
+    agent = Agent(holdings={"USDT": 10000, "DOT": 10000})
 
-    cdp.liquidate_cdp(agent, init_debt_amt * liquidate_pct, init_collat_amt * liquidate_pct)
-    if not cdp.validate():
-        raise
-    if agent.holdings[collateral_asset] + cdp.collateral_amt != init_collat_holdings + init_collat_amt:
-        raise
-    if agent.holdings[debt_asset] - cdp.debt_amt != init_debt_holdings - init_debt_amt:
-        raise
-    if cdp.debt_amt != pytest.approx(init_debt_amt * (1 - liquidate_pct)):
-        raise
-    if cdp.collateral_amt != pytest.approx(init_collat_amt * (1 - liquidate_pct)):
-        raise
+    with pytest.raises(Exception):  # trying to liquidate more than debt amount, should fail
+        mm.liquidate(cdp, agent, init_debt_amt * 2)
+
+    # not enough collateral, should fail
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt / 10)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 11},
+        cdps=[(borrow_agent, cdp.copy())]
+    )
+    agent = Agent(holdings={"USDT": 10000, "DOT": 10000})
+
+    with pytest.raises(Exception):
+        mm.liquidate(cdp, agent, init_debt_amt)
 
 
-def test_liquidate_cdp_fails():
-    debt_asset = "USDT"
+def test_borrow():
+    borrow_asset = "USDT"
     collateral_asset = "DOT"
-    init_debt_amt = 1000
-    init_collat_amt = 200
-    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt, True)
-    init_debt_holdings = 10000
-    init_collat_holdings = 10000
-    agent = Agent(holdings={"USDT": init_debt_holdings, "DOT": init_collat_holdings})
+    borrow_amt = 500
+    collat_amt = 100
+    agent = Agent(holdings={collateral_asset: collat_amt})
+    mm = money_market(
+        liquidity={borrow_asset: 1000000, collateral_asset: 1000000},
+        oracles={("DOT", "USDT"): 11},
+        liquidation_threshold=0.7,
+    )
+    mm.borrow(agent, borrow_asset, collateral_asset, borrow_amt, collat_amt)
+    if agent.holdings[borrow_asset] != borrow_amt:
+        raise
+    if agent.is_holding(collateral_asset):
+        raise
+    if len(mm.cdps) != 1:
+        raise
+    cdp = mm.cdps[0][1]
+    if cdp.debt_amt != borrow_amt:
+        raise
+    if cdp.collateral_amt != collat_amt:
+        raise
+    if cdp.debt_asset != borrow_asset:
+        raise
+    if cdp.collateral_asset != collateral_asset:
+        raise
+    if not mm.validate():
+        raise
 
-    with pytest.raises(Exception):
-        cdp.liquidate_cdp(agent, init_debt_amt * 1.2, init_collat_amt * 0.7)
-    with pytest.raises(Exception):
-        cdp.liquidate_cdp(agent, init_debt_amt * 0.7, init_collat_amt * 1.2)
-    cdp.liquidate_cdp(agent, init_debt_amt * 0.7, init_collat_amt * 0.7)
-    cdp.validate()
+    agent2 = Agent(holdings={collateral_asset: collat_amt})
+    mm.borrow(agent2, borrow_asset, collateral_asset, borrow_amt, collat_amt)
+    if len(mm.cdps) != 2:
+        raise
+    if not mm.validate():
+        raise
+
+
+def test_borrow_fails():
+    borrow_asset = "USDT"
+    collateral_asset = "DOT"
+    collat_amt = 100
+    agent = Agent(holdings={collateral_asset: collat_amt})
+    mm = money_market(
+        liquidity={borrow_asset: 1000000, collateral_asset: 1000000},
+        oracles={("DOT", "USDT"): 10, ("ETH", "UST"): 3000, ("ETH", "DOT"): 300},
+        liquidation_threshold=0.7,
+        min_ltv=0.6
+    )
+    borrow_amt = collat_amt * 10 * 0.65
+    with pytest.raises(Exception):  # should fail because LTV is too low
+        mm.borrow(agent, borrow_asset, collateral_asset, borrow_amt, collat_amt)
+    borrow_amt = collat_amt * 10 * 0.50
+    with pytest.raises(Exception):  # should fail because debt asset == collateral asset
+        mm.borrow(agent, collateral_asset, collateral_asset, borrow_amt, collat_amt)
+    with pytest.raises(Exception):  # should fail because collateral asset is not in agent holdings
+        mm.borrow(agent, borrow_asset, "ETH", borrow_amt, collat_amt)
+    with pytest.raises(Exception):  # should fail because borrow asset is not in liquidity
+        mm.borrow(agent, "ETH", collateral_asset, borrow_amt, collat_amt)
+    with pytest.raises(Exception):  # should fail because of missing oracle
+        mm.borrow(agent, "BTC", collateral_asset, borrow_amt, collat_amt)
+
+
+def test_repay():
+    agent = Agent(holdings={"USDT": 1000})
+    cdp = CDP("USDT", "DOT", 1000, 200)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10},
+        liquidation_threshold=0.7,
+        cdps=[(agent, cdp)]
+    )
+    mm.repay(agent, 0)
+    if agent.holdings["USDT"] != 0:
+        raise
+    if mm.borrowed["USDT"] != 0:
+        raise
+    if not mm.validate():
+        raise
+
+
+def test_repay_fails():
+    agent = Agent(holdings={"USDT": 500})
+    cdp = CDP("USDT", "DOT", 1000, 200)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10},
+        liquidation_threshold=0.7,
+        cdps=[(agent, cdp)]
+    )
+    with pytest.raises(Exception):  # should fail because agent does not have enough funds
+        mm.repay(agent, 0)
 
 
 @given(
@@ -115,7 +286,7 @@ def test_omnipool_liquidate_cdp(collat_ratio: float, collateral_amt: float):
     omnipool = init_pool.copy()
 
     debt_amt = collat_ratio * collateral_amt
-    init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt), True)
+    init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
     cdp = init_cdp.copy()
     penalty = 0.01
     liquidation_amount = debt_amt
@@ -173,7 +344,7 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
     omnipool = init_pool.copy()
 
     debt_amt = collat_ratio * collateral_amt
-    init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt), True)
+    init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
     cdp = init_cdp.copy()
     penalty = 0.01
     init_agent = Agent(holdings={"USDT": mpf(0), "DOT": mpf(0)})
@@ -212,7 +383,7 @@ def test_find_partial_liquidation_amount_full(collat_ratio: float):
 
     collateral_amt = 200
     debt_amt = collat_ratio * collateral_amt
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt, True)
+    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
     penalty = 0.01
 
     liquidation_amount = find_partial_liquidation_amount(omnipool, cdp, penalty)
@@ -250,7 +421,7 @@ def test_find_partial_liquidation_amount_partial(collat_ratio: float):
 
     collateral_amt = 200000
     debt_amt = collat_ratio * collateral_amt
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt, True)
+    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
     penalty = 0.01
 
     liquidation_amount = find_partial_liquidation_amount(omnipool, cdp, penalty, 100)
@@ -318,7 +489,7 @@ def test_find_partial_liquidation_amount(collat_ratio: float, collateral_amt: fl
         debt_asset = 'USDT'
 
     debt_amt = collat_ratio * collateral_amt
-    cdp = CDP(debt_asset, collateral_asset, debt_amt, collateral_amt, True)
+    cdp = CDP(debt_asset, collateral_asset, debt_amt, collateral_amt)
     penalty = 0.01
 
     liquidation_amount = find_partial_liquidation_amount(omnipool, cdp, penalty, 100, min_amt)
@@ -368,6 +539,8 @@ def test_liquidate_against_omnipool():
         liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
         lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
 
+    oracles = {('DOT', 'USDT'): prices['DOT']}
+
     init_pool = OmnipoolState(
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
@@ -376,29 +549,31 @@ def test_liquidate_against_omnipool():
     )
 
     # should be fully liquidated
-    cdp1 = CDP('USDT', 'DOT', 1000, 200, True)
-    # can't be liquidated
-    cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
+    cdp1 = CDP('USDT', 'DOT', 1000, 200)
     # should be partially liquidated
-    cdp3 = CDP('USDT', 'DOT', 1000000, 1000000 / 6.5, True)
+    cdp2 = CDP('USDT', 'DOT', 1000000, 1000000 / 6.5)
     # should be fully liquidated
-    cdp4 = CDP('DOT', 'USDT', 100, 1000, True)
-    cdps = [cdp1, cdp2, cdp3, cdp4]
+    cdp3 = CDP('DOT', 'USDT', 100, 1000)
+    cdps = [cdp1, cdp2, cdp3]
     agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
-    init_state = GlobalState(agents=agents, pools={'omnipool': init_pool}, cdps=cdps, liquidation_penalty=0.02)
+    init_state = GlobalState(
+        agents=agents,
+        pools={'omnipool': init_pool},
+        cdps=cdps,
+        liquidation_penalty=0.02,
+        external_oracle=oracles
+    )
 
     transform_fn = liquidate_against_omnipool("omnipool", "treasury")
     transform_fn(init_state)
 
     if cdp1.debt_amt != 0:
         raise  # should be fully liquidated
-    if cdp2.debt_amt != 1000:
-        raise  # shouldn't be liquidated at all
-    if cdp3.debt_amt == 0 or cdp3.debt_amt == 1000000:
+    if cdp2.debt_amt == 0 or cdp2.debt_amt == 1000000:
         raise  # should be partially liquidated
-    if cdp4.debt_amt != 0:
+    if cdp3.debt_amt != 0:
         raise  # should be fully liquidated
-    if len(init_state.cdps) != 4:
+    if len(init_state.cdps) != 3:
         raise
 
 
@@ -432,14 +607,14 @@ def test_liquidate_against_omnipool_and_settle_otc():
     # should be fully liquidated
     cdp1 = CDP('USDT', 'DOT', 1000, 200, True)
     # can't be liquidated
-    cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
+    # cdp2 = CDP('USDT', 'DOT', 1000, 200, False)
 
     # should be executed and removed
     otc1 = OTC('DOT', 'USDT', 120, 12, partially_fillable=True)
     # should not be executed
     otc2 = OTC('DOT', 'USDT', 120, 5, partially_fillable=True)
 
-    cdps = [cdp1, cdp2]
+    cdps = [cdp1]
     otcs = [otc1, otc2]
     agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
     init_state = GlobalState(
@@ -450,8 +625,8 @@ def test_liquidate_against_omnipool_and_settle_otc():
 
     if cdp1.debt_amt != 0:
         raise  # should be fully liquidated
-    if cdp2.debt_amt != 1000:
-        raise  # shouldn't be liquidated at all
+    # if cdp2.debt_amt != 1000:
+    #     raise  # shouldn't be liquidated at all
     if otc1.sell_amount != 0:
         raise  # should be completed
     if otc2.sell_amount != 120:
@@ -459,24 +634,4 @@ def test_liquidate_against_omnipool_and_settle_otc():
     if len(init_state.cdps) != 2:
         raise
     if len(init_state.otcs) != 1:
-        raise
-
-
-def test_is_liquidatable():
-    cdp = CDP("USDT", "DOT", 1000, 200, liquidation_threshold=0.7)
-    if cdp.is_liquidatable(10):
-        raise
-    cdp = CDP("USDT", "DOT", 1000, 100, liquidation_threshold=0.7)
-    if not cdp.is_liquidatable(10):
-        raise
-
-
-def test_liquidate():
-    debt_amt = 1000
-    cdp = CDP("USDT", "DOT", debt_amt, 100, liquidation_threshold=0.7)
-    agent = Agent(holdings={"USDT": debt_amt})
-    cdp.liquidate(agent, debt_amt, 11)
-    if cdp.debt_amt != 0:
-        raise
-    if agent.holdings["USDT"] != 0:
         raise
