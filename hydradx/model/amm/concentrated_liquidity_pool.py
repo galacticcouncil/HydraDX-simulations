@@ -2,31 +2,19 @@ from math import sqrt as sqrt
 import math
 from .agents import Agent
 from .amm import AMM
-from mpmath import mp, mpf
-mp.dps = 50
+# from mpmath import mp, mpf
+# mp.dps = 50
 
-tick_increment = mpf(1 + 1e-4)
+tick_increment = 1 + 1e-4
 def tick_to_price(tick: int):
     return tick_increment ** tick
 
-def price_to_tick(price: float, tick_spacing: int = 10):
+def price_to_tick(price: float, tick_spacing: int = 1):
     raw_tick = math.log(price) / math.log(tick_increment)
     nearest_valid_tick = round(raw_tick / tick_spacing) * tick_spacing
     return nearest_valid_tick
 
 import math
-
-def find_scale_factor(init_x, init_y, trade_fee, p_b):
-    numerator1 = (init_x * p_b * trade_fee - init_x * p_b - init_y * trade_fee / 2)
-    numerator2 = sqrt(init_y * (-4 * init_x * p_b * trade_fee + 4 * init_x * p_b + init_y * trade_fee ** 2)) / 2
-    denominator = (init_x * p_b * trade_fee - init_x * p_b - init_y * trade_fee + init_y)
-    solution1 = (numerator1 - numerator2) / denominator
-    solution2 = (numerator1 + numerator2) / denominator
-    if solution1 > solution2:
-        print("solution1")
-    else:
-        print("solution2")
-    return max(solution1, solution2, 0)
 
 class ConcentratedLiquidityState(AMM):
     def __init__(
@@ -109,12 +97,10 @@ class ConcentratedLiquidityState(AMM):
 
     def calculate_buy_from_sell(self, tkn_buy: str, tkn_sell: str, sell_quantity: float) -> float:
         x_virtual, y_virtual = self.get_virtual_reserves()
-
+        sell_quantity *= (1 - self.fee)
         if tkn_sell == self.asset_x:
-            x_virtual += sell_quantity * (1 - self.fee)
             buy_quantity = sell_quantity * y_virtual / (x_virtual + sell_quantity)
         else:
-            y_virtual += sell_quantity * (1 - self.fee)
             buy_quantity = sell_quantity * x_virtual / (y_virtual + sell_quantity)
 
         return buy_quantity
@@ -127,9 +113,12 @@ class ConcentratedLiquidityState(AMM):
         else:
             sell_quantity = buy_quantity * x_virtual / (y_virtual - buy_quantity)
 
-        sell_quantity /= (1 - self.fee)
+        return sell_quantity / (1 - self.fee)
 
-        return sell_quantity
+    def get_virtual_reserves(self):
+        x_virtual = self.liquidity[self.asset_x] + self.x_offset
+        y_virtual = self.liquidity[self.asset_y] + self.y_offset
+        return x_virtual, y_virtual
 
     def price(self, tkn: str, denomination: str = '') -> float:
         if tkn not in self.asset_list:
@@ -145,11 +134,6 @@ class ConcentratedLiquidityState(AMM):
             return y_virtual / x_virtual
         else:
             return x_virtual / y_virtual
-
-    def get_virtual_reserves(self):
-        x_virtual = self.liquidity[self.asset_x] + self.x_offset
-        y_virtual = self.liquidity[self.asset_y] + self.y_offset
-        return x_virtual, y_virtual
 
     def copy(self):
         return ConcentratedLiquidityState(
