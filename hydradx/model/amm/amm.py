@@ -78,7 +78,8 @@ class AMM:
         self,
         agent: Agent,
         quantity: float,
-        tkn_add: str
+        tkn_add: str,
+        **kwargs
     ):
         return self
 
