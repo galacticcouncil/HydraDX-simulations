@@ -2,8 +2,10 @@ from math import sqrt as sqrt
 import math
 from .agents import Agent
 from .amm import AMM
+from mpmath import mp, mpf
+mp.dps = 50
 
-tick_increment = 1.0001
+tick_increment = mpf(1 + 1e-4)
 def tick_to_price(tick: int):
     return tick_increment ** tick
 
@@ -61,12 +63,12 @@ class ConcentratedLiquidityState(AMM):
         self.max_price = tick_to_price(max_tick)
         self.min_tick = min_tick
         self.max_tick = max_tick
-        # scale_factor = find_scale_factor(x, y, self.fee, self.max_price)
-        # self.x_offset = x * (scale_factor - 1)
-        # self.y_offset = y * (scale_factor - 1)
-        # (p_a * x**2) / (y - p_a * x), (y * p_a * x) / (y - p_a * x)
-        self.x_offset = self.min_price * x ** 2 / (y - self.min_price * x)
-        self.y_offset = (y * self.min_price * x) / (y - self.min_price * x)
+        k = (x * sqrt(y / x) * sqrt(self.max_price) / (sqrt(self.max_price) - sqrt(y / x))) ** 2
+        a = sqrt(k * x / y) - x
+        b = sqrt(k * y / x) - y
+        self.x_offset = a
+        self.y_offset = b
+        self.invariant = k
 
         if not min_tick <= price_tick <= max_tick:
             raise ValueError("Initial price is outside the tick range.")
