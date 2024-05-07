@@ -19,7 +19,7 @@ class FeeMechanism:
     def compute(self, tkn: str = '', delta_tkn: float = 0) -> float:
         return self.fee_function(
             exchange=self.exchange,
-            tkn=tkn or self.tkn,
+            tkn=self.tkn or tkn,
             delta_tkn=delta_tkn
         )
 
