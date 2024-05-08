@@ -12,14 +12,13 @@ token_amounts = st.floats(min_value=0.01, max_value=1000.0, allow_nan=False, all
 price_strategy = st.floats(min_value=0.01, max_value=100.0, allow_nan=False, allow_infinity=False)
 fee_strategy = st.floats(min_value=0.0, max_value=0.05, allow_nan=False, allow_infinity=False)
 
-@given(price_strategy, st.integers(min_value=1, max_value=100))
-def test_price_boundaries_no_fee(initial_price, price_spread):
-    tick_spacing = 1
-    price_spread *= tick_spacing
+@given(price_strategy, st.integers(min_value=1, max_value=100), st.integers(min_value=1, max_value=100))
+def test_price_boundaries_no_fee(initial_price, tick_spacing, price_range):
+    price_range *= tick_spacing
     price = tick_to_price(price_to_tick(initial_price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityState(
         assets={'A': mpf(1000 / price), 'B': mpf(1000)},
-        min_tick=price_to_tick(price, tick_spacing) - price_spread,
+        min_tick=price_to_tick(price, tick_spacing) - price_range,
         tick_spacing=tick_spacing,
         fee=0
     )
@@ -48,14 +47,14 @@ def test_price_boundaries_no_fee(initial_price, price_spread):
 
 
 @given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
-def test_asset_conservation(price, trade_fee, price_spread):
+def test_asset_conservation(price, fee, price_range):
     tick_spacing = 1
     price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityState(
         assets={'A': mpf(1000 / price), 'B': mpf(1000)},
-        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_spread,
+        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
-        fee=trade_fee
+        fee=fee
     )
     sell_quantity = 1000
     sell_agent = Agent(holdings={'B': 1000000})
@@ -78,14 +77,14 @@ def test_asset_conservation(price, trade_fee, price_spread):
         raise AssertionError('Asset B was not conserved.')
 
 @given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
-def test_buy_sell_equivalency(price, trade_fee, price_spread):
+def test_buy_sell_equivalency(price, fee, price_range):
     tick_spacing = 10
     price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityState(
         assets={'A': mpf(1000 / price), 'B': mpf(1000)},
-        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_spread,
+        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
-        fee=0.0111
+        fee=fee
     )
     sell_quantity = 1000
     sell_y_agent = Agent(holdings={'B': 1000000})
@@ -102,48 +101,44 @@ def test_buy_sell_equivalency(price, trade_fee, price_spread):
     if sell_y_agent.holdings['A'] != pytest.approx(buy_x_agent.holdings['A'], rel=1e-12):
         raise AssertionError('Sell quantity was not calculated correctly.')
 
-# @given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
-def test_price_boundaries_with_fee():  # initial_price, trade_fee, price_spread):
-    tick_spacing = 1
-    trade_fee = 0.0111
-    price_spread = 100
-    initial_price = 5
-    price = tick_to_price(price_to_tick(initial_price, tick_spacing=tick_spacing))
+
+@given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
+def test_buy_spot(price, fee, price_range):
+    tick_spacing = 10
+    price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityState(
         assets={'A': mpf(1000 / price), 'B': mpf(1000)},
-        min_tick=price_to_tick(price, tick_spacing) - price_spread,
+        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
-        fee=trade_fee
+        fee=fee
     )
-    second_state = ConcentratedLiquidityState(
-        assets=initial_state.liquidity.copy(),
-        max_tick=initial_state.max_tick,
+    buy_quantity = 1 / mpf(1e20)
+    agent = Agent(holdings={'B': 1000})
+    buy_spot = initial_state.buy_spot(tkn_buy='A', tkn_sell='B', fee=fee)
+    initial_state.swap(
+        agent, tkn_buy='A', tkn_sell='B', buy_quantity=buy_quantity
+    )
+    ex_price = (agent.initial_holdings['B'] - agent.holdings['B']) / agent.holdings['A']
+    if ex_price != pytest.approx(buy_spot, rel=1e-20):
+        raise AssertionError('Buy spot price was not calculated correctly.')
+
+
+@given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
+def test_sell_spot(price, fee, price_range):
+    tick_spacing = 10
+    price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
+    initial_state = ConcentratedLiquidityState(
+        assets={'A': mpf(1000 / price), 'B': mpf(1000)},
+        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
-        fee=trade_fee
+        fee=fee
     )
-    if initial_state.min_tick != second_state.min_tick:
-        raise AssertionError('min_tick is not the same')
-    buy_x_agent = Agent(holdings={'B': 100000})
-    buy_x_state = initial_state.copy().swap(
-        buy_x_agent, tkn_buy='A', tkn_sell='B', buy_quantity=initial_state.liquidity['A']
+    sell_quantity = 1 / mpf(1e20)
+    agent = Agent(holdings={'A': 1000})
+    sell_spot = initial_state.sell_spot(tkn_sell='A', tkn_buy='B', fee=fee)
+    initial_state.swap(
+        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
     )
-    new_price = buy_x_state.price('A')
-    if new_price != pytest.approx(initial_state.max_price, rel=1e-20):
-        print()
-        if new_price < initial_state.max_price:
-            print(f"new price is {100 * (1 - new_price / initial_state.max_price)} % lower than max")
-        else:
-            print(f"new price is {100 * (new_price / initial_state.max_price - 1)} % higher than max")
-        # raise AssertionError(f"Buying all initial liquidity[A] should raise price to max.")
-    buy_y_agent = Agent(holdings={'A': 1000000})
-    buy_y_state = initial_state.copy().swap(
-        buy_y_agent, tkn_buy='B', tkn_sell='A', buy_quantity=initial_state.liquidity['B']
-    )
-    new_price = buy_y_state.price('A')
-    if new_price != pytest.approx(initial_state.min_price, rel=1e-20):
-        print()
-        if new_price < initial_state.min_price:
-            print(f"new price is {100 * (1 - new_price / initial_state.min_price)} % lower than min")
-        else:
-            print(f"new price is {100 * (new_price / initial_state.min_price - 1)} % higher than min")
-        # raise AssertionError(f"Buying all initial liquidity[B] should lower price to min.")
+    ex_price = agent.holdings['B'] / (agent.initial_holdings['A'] - agent.holdings['A'])
+    if ex_price != pytest.approx(sell_spot, rel=1e-20):
+        raise AssertionError('Sell spot price was not calculated correctly.')
