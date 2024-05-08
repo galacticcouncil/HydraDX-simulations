@@ -79,6 +79,7 @@ class ConcentratedLiquidityState(AMM):
 
         if buy_quantity > 0:
             sell_quantity = self.calculate_sell_from_buy(tkn_sell, tkn_buy, buy_quantity)
+            # vvv what happens to the fee is TBD ^^^
         elif sell_quantity > 0:
             buy_quantity = self.calculate_buy_from_sell(tkn_buy, tkn_sell, sell_quantity)
 
@@ -134,6 +135,16 @@ class ConcentratedLiquidityState(AMM):
             return y_virtual / x_virtual
         else:
             return x_virtual / y_virtual
+
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
+        if fee is None:
+            fee = self.fee
+        return self.price(tkn_buy) / (1 - fee)
+
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
+        if fee is None:
+            fee = self.fee
+        return self.price(tkn_sell) * (1 - fee)
 
     def copy(self):
         return ConcentratedLiquidityState(
