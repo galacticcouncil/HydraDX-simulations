@@ -92,8 +92,7 @@ class GlobalState:
             external_market=self.external_market.copy(),
             evolve_function=copy.copy(self._evolve_function),
             save_data=self.datastreams,
-            archive_all=self.archive_all,
-            liquidation_penalty=self.liquidation_penalty
+            archive_all=self.archive_all
         )
         copy_state.time_step = self.time_step
         return copy_state
