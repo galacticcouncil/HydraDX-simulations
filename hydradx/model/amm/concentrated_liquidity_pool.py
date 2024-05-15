@@ -14,8 +14,6 @@ def price_to_tick(price: float, tick_spacing: int = 1):
     nearest_valid_tick = round(raw_tick / tick_spacing) * tick_spacing
     return nearest_valid_tick
 
-import math
-
 class ConcentratedLiquidityState(AMM):
     def __init__(
             self,
