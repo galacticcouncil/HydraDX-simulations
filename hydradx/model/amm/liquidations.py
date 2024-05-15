@@ -83,6 +83,11 @@ class money_market:
         price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
         return cdp.debt_amt / (cdp.collateral_amt * price) > self.liquidation_threshold[cdp.collateral_asset]
 
+    def get_liquidate_collateral_amt(self, cdp: CDP, delta_debt: float) -> float:
+        if not self.is_liquidatable(cdp):
+            return 0
+        return delta_debt / self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset) * (1 + self.liquidation_penalty[cdp.collateral_asset])
+
     def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
                collateral_amt: float) -> None:
         assert borrow_asset != collateral_asset
@@ -113,6 +118,9 @@ class money_market:
             agent.holdings[cdp.collateral_asset] = 0
         agent.holdings[cdp.collateral_asset] += cdp.collateral_amt
         self.cdps.pop(cdp_i)
+
+    def add_collateral(self, cdp_i, collateral_amt):
+        self.cdps[cdp_i][1].collateral_amt += collateral_amt
 
     def liquidate(self, cdp: CDP, agent: Agent, debt_amt: float) -> None:
         if not self.is_liquidatable(cdp):
