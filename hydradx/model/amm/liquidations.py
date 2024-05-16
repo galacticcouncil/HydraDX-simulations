@@ -7,23 +7,12 @@ class CDP:
             debt_asset,
             collateral_asset,
             debt_amt,
-            collateral_amt,
-            # in_liquidation: bool = False,
-            # oracle_price: float = 0.0,
-            # liquidation_threshold: float = 0.7,
-            # liquidation_penalty: float = 0.0
+            collateral_amt
     ):
         self.debt_asset = debt_asset
         self.collateral_asset = collateral_asset
         self.debt_amt = debt_amt
         self.collateral_amt = collateral_amt
-        # self.in_liquidation = in_liquidation
-        # self.liquidation_threshold = liquidation_threshold
-        # self.liquidation_penalty = liquidation_penalty
-        # self.oracle_price = oracle_price  # collateral asset denominated in debt asset
-
-        # if oracle_price != 0:
-        #     self.in_liquidation = self.is_liquidatable()
 
     def __repr__(self):
         return f"CDP({self.debt_asset}, {self.collateral_asset}, {self.debt_amt}, {self.collateral_amt}, {self.liquidation_threshold}, {self.liquidation_penalty})"
@@ -47,7 +36,9 @@ class money_market:
             liquidation_threshold: float or dict[str: float] = 0.7,
             min_ltv: float or dict[str: float] = 0.6,
             liquidation_penalty: float or dict[str: float] = 0.01,
-            cdps: list = None
+            cdps: list = None,
+            full_liquidation_threshold: float or dict[str: float] = None,
+            partial_liquidation_pct: float = 1.0
     ):
         self.liquidity = liquidity
         if isinstance(liquidation_threshold, dict):
@@ -60,11 +51,20 @@ class money_market:
         else:
             self.liquidation_penalty = {asset: liquidation_penalty for asset in liquidity}
 
+        if full_liquidation_threshold is None:
+            self.full_liquidation_threshold = {key: value for key, value in self.liquidation_threshold.items()}
+        elif isinstance(full_liquidation_threshold, dict):
+            self.full_liquidation_threshold = full_liquidation_threshold
+        else:
+            self.full_liquidation_threshold = {asset: full_liquidation_threshold for asset in liquidity}
+
         self.oracles = oracles  # MoneyMarket should never mutate the oracles
         self.cdps = [] if cdps is None else cdps
         self.borrowed = {asset: 0 for asset in liquidity}
         for cdp in self.cdps:
             self.borrowed[cdp[1].debt_asset] += cdp[1].debt_amt
+
+        self.partial_liquidation_pct = partial_liquidation_pct
         if not self.validate():
             raise ValueError("money_market initialization failed.")
 
@@ -83,10 +83,18 @@ class money_market:
         price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
         return cdp.debt_amt / (cdp.collateral_amt * price) > self.liquidation_threshold[cdp.collateral_asset]
 
+    def is_fully_liquidatable(self, cdp: CDP) -> bool:
+        price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
+        return cdp.debt_amt / (cdp.collateral_amt * price) > self.full_liquidation_threshold[cdp.collateral_asset]
+
     def get_liquidate_collateral_amt(self, cdp: CDP, delta_debt: float) -> float:
-        if not self.is_liquidatable(cdp):
+        conversion = (1 + self.liquidation_penalty[cdp.collateral_asset]) / self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
+        if self.is_fully_liquidatable(cdp):
+            return delta_debt * conversion
+        elif self.is_liquidatable(cdp):
+            return delta_debt * conversion * self.partial_liquidation_pct
+        else:
             return 0
-        return delta_debt / self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset) * (1 + self.liquidation_penalty[cdp.collateral_asset])
 
     def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
                collateral_amt: float) -> None:
@@ -141,6 +149,8 @@ class money_market:
 
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
+        if self.partial_liquidation_pct < 0 or self.partial_liquidation_pct > 1:
+            return False
         for (agent, cdp) in self.cdps:
             cdp_borrowed[cdp.debt_asset] += cdp.debt_amt
         for asset in self.liquidity:
@@ -148,5 +158,10 @@ class money_market:
                 return False
             if asset in cdp_borrowed and self.borrowed[asset] != cdp_borrowed[asset]:
                 return False
+        for k in self.liquidation_threshold:
+            if k not in self.full_liquidation_threshold:
+                return False
+            if self.liquidation_threshold[k] > self.full_liquidation_threshold[k]:
+                return False
         return len(self.liquidity) == len(self.borrowed) == len(cdp_borrowed) == len(self.liquidation_threshold) == len(
-            self.liquidation_penalty)
+            self.liquidation_penalty) == len(self.full_liquidation_threshold)
