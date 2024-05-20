@@ -441,7 +441,8 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 },
                 amplification=float(pool_data.final_amplification),
                 trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id]
+                unique_id=symbol_map[pool_id],
+                shares=pool_data.shares / 10 ** op_state[pool_id].asset.decimals
             )
             omnipool.sub_pools[subpool.unique_id] = subpool
 
@@ -462,7 +463,8 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
-                        'unique_id': pool.unique_id
+                        'unique_id': pool.unique_id,
+                        'shares': pool.shares
                     } for pool in omnipool.sub_pools.values()
                 ]
             },
@@ -495,7 +497,8 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
                 tokens=pool['tokens'],
                 amplification=pool['amplification'],
                 trade_fee=float(pool['trade_fee']),
-                unique_id=pool['unique_id']
+                unique_id=pool['unique_id'],
+                shares=pool['shares']
             )
         return omnipool
     raise FileNotFoundError(f'Omnipool file not found in {path}.')
