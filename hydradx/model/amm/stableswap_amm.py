@@ -14,7 +14,8 @@ class StableSwapPoolState(AMM):
             precision: float = 0.0001,
             trade_fee: float = 0,
             unique_id: str = '',
-            spot_price_precision: float = 1e-07
+            spot_price_precision: float = 1e-07,
+            shares: float = 0
     ):
         """
         Tokens should be in the form of:
@@ -44,7 +45,7 @@ class StableSwapPoolState(AMM):
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
-        self.shares = self.calculate_d()
+        self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
 
     @property
