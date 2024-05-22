@@ -176,8 +176,8 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     router = OmnipoolRouter(exchanges)
     omnipool2 = omnipool.copy()
     stablepool2_copy = stablepool2.copy()
-    agent1 = Agent(holdings={"DOT": 1000000, "USDT": 1000000})
-    agent2 = Agent(holdings={"DOT": 1000000, "USDT": 1000000})
+    agent1 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
+    agent2 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
     trade_size = trade_size_mult * min(assets[4], assets[2])
 
     buy_quantity = 1000
