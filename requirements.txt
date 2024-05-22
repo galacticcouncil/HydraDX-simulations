@@ -2,9 +2,9 @@ pandas>=0.25.3
 numpy>=1.19.2
 plotly>=4.8.2
 matplotlib>=3.3.3
-jupyterlab>=2.2.6
+jupyterlab>=4.1.0b2
 seaborn>=0.11.1
-scipy>=1.5.4
+scipy>=1.10.0-rc1
 ipywidgets>=7.5.1
 jupyter>=1.0.0
 pathos
@@ -16,4 +16,4 @@ mpmath~=1.4.0a0
 zipp
 requests~=2.31.0
 python-dotenv
-hydradx-api~=0.3.0
+hydradx-api~=0.3.1

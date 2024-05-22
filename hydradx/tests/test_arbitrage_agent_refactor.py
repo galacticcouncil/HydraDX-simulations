@@ -853,7 +853,7 @@ def test_stableswap_router_arbitrage():
     ]
     exchanges = {'router': router, 'kraken': kraken, 'binance': binance}
     max_liquidity = {
-        'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000},
+        'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000, 'USDT23': 1000000},
         'kraken': {'BTC': 10, 'USDT': 1000000}
     }
     swaps = get_arb_swaps(
