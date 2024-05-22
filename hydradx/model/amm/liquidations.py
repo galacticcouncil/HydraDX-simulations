@@ -1,3 +1,5 @@
+import copy
+
 from hydradx.model.amm.agents import Agent
 
 
@@ -15,7 +17,7 @@ class CDP:
         self.collateral_amt = collateral_amt
 
     def __repr__(self):
-        return f"CDP({self.debt_asset}, {self.collateral_asset}, {self.debt_amt}, {self.collateral_amt}, {self.liquidation_threshold}, {self.liquidation_penalty})"
+        return f"CDP({self.debt_asset}, {self.collateral_asset}, {self.debt_amt}, {self.collateral_amt})"
 
     def copy(self):
         return CDP(self.debt_asset, self.collateral_asset, self.debt_amt, self.collateral_amt)
@@ -70,6 +72,9 @@ class money_market:
 
     def __repr__(self):
         return f"money_market({self.liquidity}, {self.liquidation_threshold}, {self.liquidation_penalty})"
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     def get_oracle_price(self, tkn: str, numeraire: str):
         if (tkn, numeraire) in self.oracles:

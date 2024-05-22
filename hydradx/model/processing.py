@@ -102,7 +102,7 @@ def import_binance_prices(
     stablecoin: str = 'USDT', return_as_dict: bool = False
 ) -> dict[str: list[float]]:
 
-    start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
+    start_date = datetime.datetime.strptime(start_date, "%B %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
 
     # find the data folder
