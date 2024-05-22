@@ -454,7 +454,7 @@ def test_omnipool_liquidate_cdp_not_profitable():
 
 
 @given(st.floats(min_value=5.9, max_value=6))
-def test_find_partial_liquidation_amount_full(collat_ratio: float):
+def test_liquidate_against_omnipool_full_liquidation(collat_ratio: float):
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
 
     assets = {
@@ -496,8 +496,14 @@ def test_find_partial_liquidation_amount_full(collat_ratio: float):
         liquidation_penalty=penalty
     )
 
-    liquidation_amount = find_partial_liquidation_amount(omnipool, mm, 0)
-    if liquidation_amount != debt_amt:
+    evolve_function = liquidate_against_omnipool("omnipool", "agent")
+    state = GlobalState(agents={"agent": agent}, pools={"omnipool": omnipool}, money_market=mm,
+                        evolve_function=evolve_function)
+
+    state.evolve()
+
+    liquidated_amount = debt_amt - cdp.debt_amt
+    if liquidated_amount != debt_amt:
         raise  # liquidation should be full
 
 

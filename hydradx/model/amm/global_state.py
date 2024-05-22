@@ -384,7 +384,17 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: float = 20, min_amt = 0) -> float:
+def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: float = 20,
+                                    min_amt: float = 0) -> float:
+    """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
+
+    Args:
+        omnipool: Omnipool state
+        mm: money market
+        cdp_i: int index of CDP in mm.cdps list
+        iters: max iterations for the binomial search (default 20)
+        min_amt: minimum debt amount to liquidate (default 0)
+    """
     cdp = mm.cdps[cdp_i][1]
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
@@ -397,29 +407,15 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
         # if minimum liquidation cannot be done, we cannot even partially liquidate
         amt_sold = omnipool.calculate_sell_from_buy(tkn_buy=debt_asset, tkn_sell=collateral_asset, buy_quantity=min_amt)
         collat_from_cdp = mm.get_liquidate_collateral_amt(cdp, min_amt)
-        # execution_price = min_amt / collat_from_cdp if collat_from_cdp != 0 else float('inf')
-        # if execution_price < cdp.debt_amt / cdp.collateral_amt or collat_from_cdp == 0:
-        #     # trade amount too high
-        #     return 0
         if amt_sold > collat_from_cdp:
             # trade amount too high
             return 0
-    # else:
-    #     # if spot price is too low, we cannot even partially liquidate
-    #     if omnipool.buy_spot(collateral_asset, debt_asset) / (1 + penalty) < cdp.debt_amt / cdp.collateral_amt:
-    #         return 0
 
     # binary search
     for i in range(iters):
-        amt_sold = omnipool.calculate_sell_from_buy(tkn_buy=debt_asset, tkn_sell=collateral_asset, buy_quantity=delta_debt)
-        # collat_from_cdp = amt_sold * (1 + penalty)
+        amt_sold = omnipool.calculate_sell_from_buy(tkn_buy=debt_asset, tkn_sell=collateral_asset,
+                                                    buy_quantity=delta_debt)
         collat_from_cdp = mm.get_liquidate_collateral_amt(cdp, delta_debt)
-        # we use execution price instead of spot price because liquidating as much as possible is a priority
-        # execution_price = delta_debt / collat_from_cdp if collat_from_cdp != 0 else float('inf')
-        #
-        # if execution_price < cdp.debt_amt / cdp.collateral_amt or collat_from_cdp == 0:
-        #     # trade amount too high
-        #     delta_debt_up = delta_debt
 
         if amt_sold > collat_from_cdp:
             # trade amount too high
@@ -433,7 +429,8 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
     return delta_debt_down
 
 
-def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent, delta_debt: float) -> None:
+def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent,
+                           delta_debt: float) -> None:
     cdp = mm.cdps[cdp_i][1]
     penalty = mm.liquidation_penalty[cdp.collateral_asset]
     # treasury_agent buys borrowed asset to cover the debt, but only if debt can be covered by existing collateral
@@ -447,7 +444,8 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int
 
     # need to simulate Omnipool swap to see if we can profitably liquidate
     # simulate buying debt_amt with collateral
-    collateral_sold = omnipool.calculate_sell_from_buy(tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset, buy_quantity=delta_debt)
+    collateral_sold = omnipool.calculate_sell_from_buy(tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset,
+                                                       buy_quantity=delta_debt)
     collateral_liquidatable = mm.get_liquidate_collateral_amt(cdp, delta_debt)
     if collateral_liquidatable < collateral_sold:
         raise ValueError("Cannot liquidate profitably against Omnipool.")
