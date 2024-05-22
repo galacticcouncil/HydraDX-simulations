@@ -684,7 +684,7 @@ def test_liquidate_against_omnipool():
     agent = Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
+        oracles=oracles,
         liquidation_threshold=0.7,
         cdps=[(agent, cdp1), (agent, cdp2), (agent, cdp3)],
         min_ltv=0.6,
@@ -694,8 +694,7 @@ def test_liquidate_against_omnipool():
     init_state = GlobalState(
         agents=agents,
         pools={'omnipool': init_pool},
-        money_market=mm,
-        external_oracle=oracles
+        money_market=mm
     )
 
     transform_fn = liquidate_against_omnipool("omnipool", "treasury")
