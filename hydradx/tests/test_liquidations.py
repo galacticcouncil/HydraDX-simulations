@@ -453,8 +453,7 @@ def test_omnipool_liquidate_cdp_not_profitable():
 # - if liquidation doesn't happen, buying delta_debt requires too much collateral
 
 
-@given(st.floats(min_value=5.9, max_value=6))
-def test_liquidate_against_omnipool_full_liquidation(collat_ratio: float):
+def omnipool_setup_for_liquidate_against_omnipool() -> OmnipoolState:
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
 
     assets = {
@@ -481,15 +480,23 @@ def test_liquidate_against_omnipool_full_liquidation(collat_ratio: float):
         preferred_stablecoin='USDT',
     )
 
+    return omnipool
+
+
+@given(st.floats(min_value=0.7, max_value=0.9))
+def test_liquidate_against_omnipool_full_liquidation(collat_ratio: float):
+
+    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+
     collateral_amt = 200
-    debt_amt = collat_ratio * collateral_amt
+    debt_amt = collat_ratio * collateral_amt * omnipool.price(omnipool, "DOT", "USDT")
     cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
     penalty = 0.01
 
     agent = Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
+        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT")},
         liquidation_threshold=0.7,
         cdps=[(agent, cdp)],
         min_ltv=0.6,
@@ -504,7 +511,69 @@ def test_liquidate_against_omnipool_full_liquidation(collat_ratio: float):
 
     liquidated_amount = debt_amt - cdp.debt_amt
     if liquidated_amount != debt_amt:
-        raise  # liquidation should be full
+        raise ValueError("CDP should be fully liquidated")
+
+
+@given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True))
+def test_liquidate_against_omnipool_no_liquidation_fully_collateralized(collat_ratio: float):
+
+    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+
+    collateral_amt = 200
+    debt_amt = collat_ratio * collateral_amt * omnipool.price(omnipool, "DOT", "USDT")
+    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
+    penalty = 0.01
+
+    agent = Agent()
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT")},
+        liquidation_threshold=0.7,
+        cdps=[(agent, cdp)],
+        min_ltv=0.6,
+        liquidation_penalty=penalty
+    )
+
+    evolve_function = liquidate_against_omnipool("omnipool", "agent")
+    state = GlobalState(agents={"agent": agent}, pools={"omnipool": omnipool}, money_market=mm,
+                        evolve_function=evolve_function)
+
+    state.evolve()
+
+    liquidated_amount = debt_amt - cdp.debt_amt
+    if liquidated_amount != 0:
+        raise ValueError("No liquidation should occur")
+
+
+# @given(st.floats(min_value=2.0, max_value=10.0))
+# def test_liquidate_against_omnipool_no_liquidation_under_collateralized(collat_ratio: float):
+#
+#     omnipool = omnipool_setup_for_liquidate_against_omnipool()
+#
+#     collateral_amt = 200
+#     debt_amt = collat_ratio * collateral_amt * omnipool.price(omnipool, "DOT", "USDT")
+#     cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
+#     penalty = 0.01
+#
+#     agent = Agent()
+#     mm = money_market(
+#         liquidity={"USDT": 1000000, "DOT": 1000000},
+#         oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT")},
+#         liquidation_threshold=0.7,
+#         cdps=[(agent, cdp)],
+#         min_ltv=0.6,
+#         liquidation_penalty=penalty
+#     )
+#
+#     evolve_function = liquidate_against_omnipool("omnipool", "agent")
+#     state = GlobalState(agents={"agent": agent}, pools={"omnipool": omnipool}, money_market=mm,
+#                         evolve_function=evolve_function)
+#
+#     state.evolve()
+#
+#     liquidated_amount = debt_amt - cdp.debt_amt
+#     if liquidated_amount != 0:
+#         raise ValueError("No liquidation should occur")
 
 
 @given(st.floats(min_value=6, max_value=6.9))
