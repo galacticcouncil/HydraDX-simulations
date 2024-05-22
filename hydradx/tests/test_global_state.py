@@ -27,3 +27,9 @@ def test_external_oracle():
     assert state.external_oracle[('ETH', 'USD')] == 3000
     assert state.external_oracle[('BTC', 'USD')] == 60000
     assert state.external_oracle[('BTC', 'ETH')] == 21
+
+
+def test_adding_usd_to_external_market():
+    state = GlobalState(agents={}, pools={}, external_market={'USD': 1, 'DOT': 10})
+    state2 = GlobalState(agents={}, pools={}, external_market={'DOT': 10})
+    assert state.external_market == state2.external_market
