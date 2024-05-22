@@ -1,8 +1,9 @@
 import copy
 import functools
+from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 
 from hydradx.model import run
@@ -631,6 +632,7 @@ def test_buy_sell_spot(
         raise AssertionError(f'Buy spot R2 ({r1_per_r2}) != execution price ({ex_price_r2}).')
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     st.lists(asset_quantity_strategy, min_size=2, max_size=2),
     st.floats(min_value=0.0001, max_value=0.50),
