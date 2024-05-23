@@ -143,7 +143,7 @@ class money_market:
         if debt_amt > cdp.debt_amt or debt_amt > agent.holdings[cdp.debt_asset]:
             raise ValueError("Debt amount exceeds CDP debt or agent holdings.")
         if collateral_amt > cdp.collateral_amt:
-            raise ValueError("Collateral amount exceeds CDP collateral.")
+            return
         cdp.debt_amt -= debt_amt
         self.borrowed[cdp.debt_asset] -= debt_amt
         agent.holdings[cdp.debt_asset] -= debt_amt

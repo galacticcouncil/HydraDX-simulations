@@ -458,14 +458,12 @@ def test_omnipool_liquidate_cdp_not_profitable():
 # - test partial liquidation due to higher full liquidation threshold
 # - test partial liquidation due to limited Omnipool trade profitability
 
-# test no liquidation due to overcollateralization
-# test no liquidation due to undercollateralization
-# test no liquidation due to unprofitability of liquidation against Omnipool
-# fuzz test logic that determines how much is liquidated
+# test_liquidate_against_omnipool_no_liquidation
+# - test no liquidation due to overcollateralization
+# - test no liquidation due to undercollateralization
+# - test no liquidation due to unprofitability of liquidation against Omnipool
 
-# test success case with example
-# test each failure case with examples
-# fuzz test checks logic that chooses paths
+# fuzz test logic that determines how much is liquidated
 
 # For fuzz test of omnipool_liquidate_cdp, we will want to see that
 # - any liquidation results in treasury profit
@@ -551,9 +549,6 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
         raise ValueError("CDP3 should be fully liquidated")
 
 
-# test_liquidate_against_omnipool_partial_liquidation
-# - test partial liquidation due to higher full liquidation threshold
-# - test partial liquidation due to limited Omnipool trade profitability
 def test_liquidate_against_omnipool_partial_liquidation():
     omnipool = omnipool_setup_for_liquidate_against_omnipool()
 
@@ -604,37 +599,49 @@ def test_liquidate_against_omnipool_partial_liquidation():
         raise ValueError("If liquidation agent is profitable, they should have liquidated more")
 
 
-@given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True))
-def test_liquidate_against_omnipool_no_liquidation_fully_collateralized(collat_ratio: float):
+@given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True),
+       st.floats(min_value=2.0, max_value=3.0))
+def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float):
 
     omnipool = omnipool_setup_for_liquidate_against_omnipool()
 
-    collateral_amt = 200
-    debt_amt = collat_ratio * collateral_amt * omnipool.price(omnipool, "DOT", "USDT")
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
-    penalty = 0.01
+    collateral_amt1 = 200
+    debt_amt1 = ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
+    cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
 
-    agent = Agent()
+    collateral_amt2 = 10000
+    debt_amt2 = ratio2 * collateral_amt2 * omnipool.price(omnipool, "HDX", "USDT")
+    cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
+
+    collateral_amt3 = 10
+    price_mult = 10  # this offsets the oracle price from Omnipool price, making liquidation unprofitable
+    debt_amt3 = 0.7 * collateral_amt3 * price_mult * omnipool.price(omnipool, "WETH", "USDT")
+    cdp3 = CDP('USDT', 'WETH', debt_amt3, collateral_amt3)
+
+    liq_agent, agent1, agent2, agent3 = Agent(), Agent(), Agent(), Agent()
     mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT")},
+        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000, "WETH": 1000000},
+        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT"),
+                 ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT"),
+                 ("WETH", "USDT"): price_mult * omnipool.price(omnipool, "WETH", "USDT")},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)],
+        cdps=[(agent1, cdp1), (agent2, cdp2), (agent3, cdp3)],
         min_ltv=0.6,
-        liquidation_penalty=penalty
+        liquidation_penalty=0.01
     )
 
-    evolve_function = liquidate_against_omnipool("omnipool", "agent")
-    state = GlobalState(agents={"agent": agent}, pools={"omnipool": omnipool}, money_market=mm,
-                        evolve_function=evolve_function)
+    evolve_function = liquidate_against_omnipool("omnipool", "liq_agent")
+    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "agent3": agent3, "liq_agent": liq_agent},
+                        pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
 
     state.evolve()
 
-    liquidated_amount = debt_amt - cdp.debt_amt
-    if liquidated_amount != 0:
+    if debt_amt1 != cdp1.debt_amt:
         raise ValueError("No liquidation should occur")
-    for tkn in agent.holdings:
-        assert agent.holdings[tkn] == 0
+    if debt_amt2 != cdp2.debt_amt:
+        raise ValueError("No liquidation should occur")
+    if debt_amt3 != cdp3.debt_amt:
+        raise ValueError("No liquidation should occur")
 
 
 @given(st.floats(min_value=2.0, max_value=10.0))

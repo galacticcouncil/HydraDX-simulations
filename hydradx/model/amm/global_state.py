@@ -456,17 +456,19 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int
     treasury_agent.holdings[cdp.debt_asset] += flash_mint_amt  # flash mint collateral_amt to treasury_agent
     init_collat_amt = treasury_agent.holdings[cdp.collateral_asset]
 
+    init_debt_amt = cdp.debt_amt
     mm.liquidate(cdp, treasury_agent, delta_debt)
+    delta_debt_real = init_debt_amt - cdp.debt_amt  # in case delta_debt_real < delta_debt
 
     omnipool.swap(
         agent=treasury_agent,
         tkn_buy=cdp.debt_asset,
         tkn_sell=cdp.collateral_asset,
-        buy_quantity=delta_debt
+        buy_quantity=delta_debt_real
     )
 
     # need to calculate penalty_amt
-    debt_paid_converted_to_collateral_asset = delta_debt * mm.get_oracle_price(cdp.debt_asset, cdp.collateral_asset)
+    debt_paid_converted_to_collateral_asset = delta_debt_real * mm.get_oracle_price(cdp.debt_asset, cdp.collateral_asset)
     penalty_amt = penalty * debt_paid_converted_to_collateral_asset
 
     # any excess treasury agent has above penalty_amt is returned to cdp
