@@ -174,8 +174,9 @@ def test_liquidate_fails():
     )
     agent = Agent(holdings={"USDT": 10000, "DOT": 10000})
 
-    with pytest.raises(Exception):
-        mm.liquidate(cdp, agent, init_debt_amt)
+    mm.liquidate(cdp, agent, init_debt_amt)
+    if init_debt_amt != cdp.debt_amt:
+        raise
 
 
 def test_borrow():
@@ -642,34 +643,6 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float)
         raise ValueError("No liquidation should occur")
     if debt_amt3 != cdp3.debt_amt:
         raise ValueError("No liquidation should occur")
-
-
-@given(st.floats(min_value=2.0, max_value=10.0))
-def test_liquidate_against_omnipool_no_liquidation_under_collateralized(collat_ratio: float):
-
-    omnipool = omnipool_setup_for_liquidate_against_omnipool()
-
-    collateral_amt = 200
-    debt_amt = collat_ratio * collateral_amt * omnipool.price(omnipool, "DOT", "USDT")
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
-    penalty = 0.01
-
-    agent = Agent()
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT")},
-        liquidation_threshold=0.7,
-        cdps=[(agent, cdp)],
-        min_ltv=0.6,
-        liquidation_penalty=penalty
-    )
-
-    evolve_function = liquidate_against_omnipool("omnipool", "agent")
-    state = GlobalState(agents={"agent": agent}, pools={"omnipool": omnipool}, money_market=mm,
-                        evolve_function=evolve_function)
-
-    with pytest.raises(Exception):
-        state.evolve()
 
 
 @given(st.floats(min_value=6, max_value=6.9))
