@@ -94,10 +94,10 @@ class money_market:
 
     def get_liquidate_collateral_amt(self, cdp: CDP, delta_debt: float) -> float:
         conversion = (1 + self.liquidation_penalty[cdp.collateral_asset]) / self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
-        if self.is_fully_liquidatable(cdp):
+        if self.is_fully_liquidatable(cdp) and delta_debt <= cdp.debt_amt:
             return delta_debt * conversion
-        elif self.is_liquidatable(cdp):
-            return delta_debt * conversion * self.partial_liquidation_pct
+        elif self.is_liquidatable(cdp) and delta_debt <= cdp.debt_amt * self.partial_liquidation_pct:
+            return delta_debt * conversion
         else:
             return 0
 

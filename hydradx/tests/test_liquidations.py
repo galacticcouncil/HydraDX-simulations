@@ -454,9 +454,10 @@ def test_omnipool_liquidate_cdp_not_profitable():
 # - tests liquidation of some CDPs but not others
 # - test with CDP list with different assets
 
-# test partial liquidation due to higher full liquidation threshold
-# test partial liquidation due to limited Omnipool trade profitability
-# test partial liquidation due to
+# test_liquidate_against_omnipool_partial_liquidation
+# - test partial liquidation due to higher full liquidation threshold
+# - test partial liquidation due to limited Omnipool trade profitability
+
 # test no liquidation due to overcollateralization
 # test no liquidation due to undercollateralization
 # test no liquidation due to unprofitability of liquidation against Omnipool
@@ -488,14 +489,16 @@ def omnipool_setup_for_liquidate_against_omnipool() -> OmnipoolState:
     lrna = {}
 
     for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+        liquidity[tkn] = mpf(initial_omnipool_tvl * info['weight'] / info['usd price'])
+        lrna[tkn] = mpf(initial_omnipool_tvl * info['weight'] / lrna_price_usd)
 
     omnipool = OmnipoolState(
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
         },
         preferred_stablecoin='USDT',
+        asset_fee=0.0025,
+        lrna_fee=0.0005
     )
 
     return omnipool
@@ -542,12 +545,63 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
 
     if cdp1.debt_amt != 0:
         raise ValueError("CDP1 should be fully liquidated")
-
     if cdp2.debt_amt != debt_amt2:
         raise ValueError("CDP2 should not be liquidated")
-
     if cdp3.debt_amt != 0:
         raise ValueError("CDP3 should be fully liquidated")
+
+
+# test_liquidate_against_omnipool_partial_liquidation
+# - test partial liquidation due to higher full liquidation threshold
+# - test partial liquidation due to limited Omnipool trade profitability
+def test_liquidate_against_omnipool_partial_liquidation():
+    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+
+    dot_full_liq_threshold = 0.8
+    dot_liq_threshold = 0.6
+    collateral_amt1 = 200
+    collat_ratio1 = 0.7
+    debt_amt1 = collat_ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
+    cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
+
+    hdx_full_liq_threshold = 0.7
+    hdx_liq_threshold = 0.7
+    collateral_amt2 = 10000000
+    collat_ratio2 = 0.7
+    debt_amt2 = collat_ratio2 * collateral_amt2 * omnipool.price(omnipool, "HDX", "USDT")
+    cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
+
+    liq_agent = Agent(holdings={"HDX": mpf(0), "USDT": mpf(0), "DOT": mpf(0)})
+    agent1, agent2 = Agent(), Agent()
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
+        oracles={
+            ("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT"),
+            ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT")
+        },
+        full_liquidation_threshold={"DOT": dot_full_liq_threshold, "HDX": hdx_full_liq_threshold, "USDT": 0.7},
+        liquidation_threshold={"DOT": dot_liq_threshold, "HDX": hdx_liq_threshold, "USDT": 0.7},
+        cdps=[(agent1, cdp1), (agent2, cdp2)],
+        min_ltv=0.6,
+        liquidation_penalty=0.01,
+        partial_liquidation_pct=0.5
+    )
+
+    evolve_function = liquidate_against_omnipool("omnipool", "liq_agent")
+    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "liq_agent": liq_agent},
+                        pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
+
+    state.evolve()
+
+    if cdp1.debt_amt != debt_amt1 * (1 - mm.partial_liquidation_pct):
+        raise ValueError("CDP1 should be partially liquidated by partial_liquidation_pct")
+    if cdp2.debt_amt == 0:
+        raise ValueError("CDP2 should not be fully liquidated")
+    if cdp2.debt_amt == debt_amt2:
+        raise ValueError("CDP2 should be partially liquidated")
+    hdx_liquidated = collateral_amt2 - cdp2.collateral_amt
+    if liq_agent.holdings["HDX"] / hdx_liquidated > 1e-6:
+        raise ValueError("If liquidation agent is profitable, they should have liquidated more")
 
 
 @given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True))

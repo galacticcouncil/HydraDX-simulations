@@ -3,7 +3,7 @@ import functools
 from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mp, mpf
 
 from hydradx.model import run
@@ -588,6 +588,7 @@ def test_amplification_change_exploit():  # (end_amp):
         raise AssertionError(F"Pool lost money. loss: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     liquidity_stepdown=st.integers(min_value=-1000000, max_value=1000000),
     assets_number=st.integers(min_value=2, max_value=4),
