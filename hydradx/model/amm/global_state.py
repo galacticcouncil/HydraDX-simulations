@@ -369,14 +369,14 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     return transform
 
 
-def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
+def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         omnipool = state.pools[pool_id]
         agent = state.agents[agent_id]
         mm = state.money_market
         for i in range(len(mm.cdps)):
             if mm.is_liquidatable(mm.cdps[i][1]):
-                delta_debt = find_partial_liquidation_amount(omnipool, mm, i)
+                delta_debt = find_partial_liquidation_amount(omnipool, mm, i, iters)
                 if delta_debt > 0:
                     omnipool_liquidate_cdp(state.pools['omnipool'], mm, i, agent, delta_debt)
         return state
@@ -384,7 +384,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str) -> Callable:
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: float = 20,
+def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: int = 20,
                                     min_amt: float = 0) -> float:
     """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
 
@@ -399,7 +399,13 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
 
-    delta_debt_up = min(cdp.debt_amt, omnipool.liquidity[debt_asset] * 0.999)
+    max_debt_amt = 0
+    if mm.is_fully_liquidatable(cdp):
+        max_debt_amt = cdp.debt_amt
+    elif mm.is_liquidatable(cdp):
+        max_debt_amt = cdp.debt_amt * mm.partial_liquidation_pct
+
+    delta_debt_up = min(max_debt_amt, omnipool.liquidity[debt_asset] * 0.999)
     delta_debt = delta_debt_up
     delta_debt_down = min_amt
 
