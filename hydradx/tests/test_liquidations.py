@@ -1,5 +1,5 @@
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 
 from hydradx.model.amm.agents import Agent
@@ -165,17 +165,36 @@ def test_liquidate_fails():
     with pytest.raises(Exception):  # trying to liquidate more than debt amount, should fail
         mm.liquidate(cdp, agent, init_debt_amt * 2)
 
-    # not enough collateral, should fail
-    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt / 10)
+
+# @settings(print_blob=True)
+def test_liquidate_undercollateralized():
+    debt_asset = "USDT"
+    collateral_asset = "DOT"
+    init_debt_amt = 1000
+    init_collat_amt = 10
+    borrow_agent = Agent()
+    penalty = 0.01
+
+    # not enough collateral, should liquidate all collateral and have debt left over
+    cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt)
+    price = 11
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): 11},
-        cdps=[(borrow_agent, cdp.copy())]
+        oracles={("DOT", "USDT"): price},
+        cdps=[(borrow_agent, cdp.copy())],
+        liquidation_penalty=penalty
     )
-    agent = Agent(holdings={"USDT": 10000, "DOT": 10000})
+    agent = Agent(holdings={"USDT": 10000, "DOT": 0})
 
     mm.liquidate(cdp, agent, init_debt_amt)
-    if init_debt_amt != cdp.debt_amt:
+    if cdp.collateral_amt != 0:
+        raise
+    debt_liq = 110 / (1 + penalty)
+    if cdp.debt_amt != init_debt_amt - debt_liq:
+        raise
+    if agent.holdings["USDT"] != 10000 - debt_liq:
+        raise
+    if agent.holdings["DOT"] != init_collat_amt:
         raise
 
 

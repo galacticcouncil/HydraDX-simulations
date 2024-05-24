@@ -143,14 +143,18 @@ class money_market:
         if debt_amt > cdp.debt_amt or debt_amt > agent.holdings[cdp.debt_asset]:
             raise ValueError("Debt amount exceeds CDP debt or agent holdings.")
         if collateral_amt > cdp.collateral_amt:
-            return
-        cdp.debt_amt -= debt_amt
-        self.borrowed[cdp.debt_asset] -= debt_amt
-        agent.holdings[cdp.debt_asset] -= debt_amt
-        cdp.collateral_amt -= collateral_amt
+            real_debt_amt = price * cdp.collateral_amt / (1 + self.liquidation_penalty[cdp.collateral_asset])
+            real_collat_amt = cdp.collateral_amt
+        else:
+            real_debt_amt = debt_amt
+            real_collat_amt = collateral_amt
+        cdp.debt_amt -= real_debt_amt
+        self.borrowed[cdp.debt_asset] -= real_debt_amt
+        agent.holdings[cdp.debt_asset] -= real_debt_amt
+        cdp.collateral_amt -= real_collat_amt
         if cdp.collateral_asset not in agent.holdings:
             agent.holdings[cdp.collateral_asset] = 0
-        agent.holdings[cdp.collateral_asset] += collateral_amt
+        agent.holdings[cdp.collateral_asset] += real_collat_amt
 
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
