@@ -522,8 +522,9 @@ def omnipool_setup_for_liquidate_against_omnipool() -> OmnipoolState:
     return omnipool
 
 
-@given(st.floats(min_value=0.7, max_value=0.9), st.floats(min_value=0.3, max_value=0.5))
-def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: float):
+@given(st.floats(min_value=0.7, max_value=0.9), st.floats(min_value=0.3, max_value=0.5),
+       st.floats(min_value=2.0, max_value=3.0))
+def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: float, ratio3: float):
     omnipool = omnipool_setup_for_liquidate_against_omnipool()
 
     # CDP1 should be fully liquidated
@@ -541,7 +542,12 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
     debt_amt3 = ratio2 * collateral_amt3 * omnipool.price(omnipool, "USDT", "HDX")
     cdp3 = CDP('HDX', 'USDT', debt_amt3, collateral_amt3)
 
-    liq_agent, agent1, agent2, agent3 = Agent(), Agent(), Agent(), Agent()
+    # CDP4 should be fully liquidated, with debt left over
+    collateral_amt4 = 10000
+    debt_amt4 = ratio3 * collateral_amt4 * omnipool.price(omnipool, "HDX", "USDT")
+    cdp4 = CDP('USDT', 'HDX', debt_amt4, collateral_amt4)
+
+    liq_agent, agent1, agent2, agent3, agent4 = Agent(), Agent(), Agent(), Agent(), Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
         oracles={
@@ -549,13 +555,14 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
             ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT")
         },
         liquidation_threshold={"DOT": 0.7, "HDX": 0.7, "USDT": 0.3},
-        cdps=[(agent1, cdp1), (agent2, cdp2), (agent3, cdp3)],
+        cdps=[(agent1, cdp1), (agent2, cdp2), (agent3, cdp3), (agent4, cdp4)],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
 
     evolve_function = liquidate_against_omnipool("omnipool", "liq_agent")
-    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "agent3": agent3, "liq_agent": liq_agent},
+    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "agent3": agent3, "agent4": agent4,
+                                "liq_agent": liq_agent},
                         pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
 
     state.evolve()
@@ -566,6 +573,10 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
         raise ValueError("CDP2 should not be liquidated")
     if cdp3.debt_amt != 0:
         raise ValueError("CDP3 should be fully liquidated")
+    if cdp4.collateral_amt != 0:
+        raise ValueError("CDP4 should be fully liquidated")
+    if cdp4.debt_amt == 0:
+        raise ValueError("CDP4 should still have debt left over")
 
 
 def test_liquidate_against_omnipool_partial_liquidation():
@@ -618,23 +629,18 @@ def test_liquidate_against_omnipool_partial_liquidation():
         raise ValueError("If liquidation agent is profitable, they should have liquidated more")
 
 
-@given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True),
-       st.floats(min_value=2.0, max_value=3.0))
-def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float):
+@given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True))
+def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
     omnipool = omnipool_setup_for_liquidate_against_omnipool()
 
     collateral_amt1 = 200
     debt_amt1 = ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
     cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
 
-    collateral_amt2 = 10000
-    debt_amt2 = ratio2 * collateral_amt2 * omnipool.price(omnipool, "HDX", "USDT")
-    cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
-
-    collateral_amt3 = 10
+    collateral_amt2 = 10
     price_mult = 10  # this offsets the oracle price from Omnipool price, making liquidation unprofitable
-    debt_amt3 = 0.7 * collateral_amt3 * price_mult * omnipool.price(omnipool, "WETH", "USDT")
-    cdp3 = CDP('USDT', 'WETH', debt_amt3, collateral_amt3)
+    debt_amt2 = 0.7 * collateral_amt2 * price_mult * omnipool.price(omnipool, "WETH", "USDT")
+    cdp2 = CDP('USDT', 'WETH', debt_amt2, collateral_amt2)
 
     liq_agent, agent1, agent2, agent3 = Agent(), Agent(), Agent(), Agent()
     mm = money_market(
@@ -643,7 +649,7 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float)
                  ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT"),
                  ("WETH", "USDT"): price_mult * omnipool.price(omnipool, "WETH", "USDT")},
         liquidation_threshold=0.7,
-        cdps=[(agent1, cdp1), (agent2, cdp2), (agent3, cdp3)],
+        cdps=[(agent1, cdp1), (agent3, cdp2)],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
@@ -658,8 +664,6 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float)
         raise ValueError("No liquidation should occur")
     if debt_amt2 != cdp2.debt_amt:
         raise ValueError("No liquidation should occur")
-    if debt_amt3 != cdp3.debt_amt:
-        raise ValueError("No liquidation should occur")
 
 
 @given(
@@ -671,9 +675,9 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float, ratio2: float)
 def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, price_mult: float):
     omnipool = omnipool_setup_for_liquidate_against_omnipool()
 
-    collateral_amt1 = 516949.1872315724
-    ratio1 = 0.8699232790986524
-    price_mult = 0.5238060155349247
+    # collateral_amt1 = 516949.1872315724
+    # ratio1 = 0.8699232790986524
+    # price_mult = 0.5238060155349247
     liq_threshold = mpf(0.7)
     full_liq_threshold = mpf(0.8)
 
@@ -699,6 +703,8 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
     if cdp1.debt_amt == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
+    elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
+        assert ratio1 > 1
     elif cdp1.debt_amt == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
             pass
