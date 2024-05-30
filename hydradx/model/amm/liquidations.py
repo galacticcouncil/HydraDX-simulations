@@ -138,8 +138,10 @@ class money_market:
     def liquidate(self, cdp: CDP, agent: Agent, debt_amt: float) -> None:
         if not self.is_liquidatable(cdp):
             return
+        elif not self.is_fully_liquidatable(cdp) and debt_amt / cdp.debt_amt > self.partial_liquidation_pct:
+            return
         price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
-        collateral_amt = debt_amt / price * (1 + self.liquidation_penalty[cdp.collateral_asset])
+        collateral_amt = self.get_liquidate_collateral_amt(cdp, debt_amt)
         if debt_amt > cdp.debt_amt or debt_amt > agent.holdings[cdp.debt_asset]:
             raise ValueError("Debt amount exceeds CDP debt or agent holdings.")
         if collateral_amt > cdp.collateral_amt:

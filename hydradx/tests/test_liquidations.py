@@ -166,7 +166,6 @@ def test_liquidate_fails():
         mm.liquidate(cdp, agent, init_debt_amt * 2)
 
 
-# @settings(print_blob=True)
 def test_liquidate_undercollateralized():
     debt_asset = "USDT"
     collateral_asset = "DOT"
@@ -196,6 +195,66 @@ def test_liquidate_undercollateralized():
         raise
     if agent.holdings["DOT"] != init_collat_amt:
         raise
+
+
+# @settings(max_examples=1)
+@given(
+    st.floats(min_value=1.0, max_value=1.0),
+    st.floats(min_value=0.1, max_value=1.0),
+    st.floats(min_value=0.01, max_value=0.05),
+    st.floats(min_value=0.6, max_value=0.75),
+    st.floats(min_value=0.75, max_value=0.9),
+    st.floats(min_value=0.2, max_value=0.8),
+
+)
+def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, liq_threshold: float,
+                            full_liq_threshold: float, partial_liq_pct: float):
+
+    # ltv_ratio = 1 / (1.01) + 0.000001
+    # liq_pct = 1.0
+
+    # penalty = mpf(0.01)
+    # liq_threshold = mpf(0.7)
+    # full_liq_threshold = mpf(0.8)
+    # partial_liq_pct = mpf(0.5)
+
+    collat_amt = mpf(100)
+    collat_price = mpf(11)
+
+    debt_amt = collat_amt * collat_price * ltv_ratio
+    borrow_agent = Agent()
+    cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
+    mm = money_market(
+        liquidity={"USDT": mpf(1000000), "DOT": mpf(1000000)},
+        oracles={("DOT", "USDT"): collat_price},
+        cdps=[(borrow_agent, cdp)],
+        liquidation_threshold=liq_threshold,
+        full_liquidation_threshold=full_liq_threshold,
+        partial_liquidation_pct=partial_liq_pct,
+        liquidation_penalty=penalty,
+    )
+    liquidate_amt = debt_amt * liq_pct
+    collat_sold_expected = liquidate_amt / collat_price * (1 + penalty)
+    agent = Agent(holdings={"USDT": liquidate_amt})
+    mm.liquidate(cdp, agent, liquidate_amt)
+
+    if debt_amt - liquidate_amt == cdp.debt_amt:  # case 1: we liquidated
+        if ltv_ratio < liq_threshold:
+            raise
+        if ltv_ratio < full_liq_threshold and liq_pct > partial_liq_pct:
+            raise
+        if cdp.collateral_amt != pytest.approx(collat_amt - collat_sold_expected, rel=1e-15):
+            raise
+    elif cdp.collateral_amt == 0:  # case 2: we liquidated but left some toxic debt
+        if ltv_ratio <= 1 / (1+penalty):
+            raise
+    else:
+        if cdp.debt_amt != debt_amt:  # shouldn't liquidate some partial amount
+            raise
+        if ltv_ratio >= full_liq_threshold:
+            raise
+        if ltv_ratio >= liq_threshold and liq_pct <= partial_liq_pct:
+            raise
 
 
 def test_borrow():
@@ -666,6 +725,7 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
         raise ValueError("No liquidation should occur")
 
 
+@settings(print_blob=True)
 @given(
     st.floats(min_value=100, max_value=1000000),
     # st.floats(min_value=0.1, max_value=10.0),
