@@ -4,7 +4,7 @@ from mpmath import mp, mpf
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
-    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc
+    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc, _set_mm_oracles_to_omnipool_spot
 from hydradx.model.amm.liquidations import CDP, money_market
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.otc import OTC
@@ -748,6 +748,21 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
             raise ValueError("Liquidation agent should not have negative holdings")
     else:
         raise ValueError("CDP debt amount should not go above initial debt_amt or below 0")
+
+
+def test_set_mm_oracles_to_omnipool_spot():
+    omnipool = omnipool_setup_for_liquidation_testing()
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000},
+        oracles={("DOT", "USDT"): 100, ("HDX", "USDT"): 100, ("DOT", "HDX"): 100},
+    )
+    state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={})
+    _set_mm_oracles_to_omnipool_spot(state)
+    for tkn1 in mm.liquidity:
+        for tkn2 in mm.liquidity:
+            if tkn1 != tkn2:
+                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(omnipool.price(omnipool, tkn1, tkn2), rel=1e-25):
+                    raise ValueError("Oracle price should be set to Omnipool spot price")
 
 
 @given(st.floats(min_value=6, max_value=6.9))

@@ -563,7 +563,7 @@ def liquidate_against_omnipool_and_settle_otc(pool_id: str, agent_id: str) -> Ca
     return transform
 
 
-def set_mm_oracles_to_omnipool_spot(state: GlobalState) -> GlobalState:
+def _set_mm_oracles_to_omnipool_spot(state: GlobalState) -> GlobalState:
     mm_oracles = state.money_market.oracles
     omnipool = state.pools['omnipool']
     for tkn_pair in mm_oracles:
@@ -576,7 +576,7 @@ def update_prices_and_process(pool_id: str, liquidating_agent_id: str, price_lis
 
     def transform(state: GlobalState) -> GlobalState:
         transform_price(state)
-        set_mm_oracles_to_omnipool_spot(state)
+        _set_mm_oracles_to_omnipool_spot(state)
         transform_liquidate(state)
         return state
 
