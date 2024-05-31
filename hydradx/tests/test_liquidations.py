@@ -4,7 +4,8 @@ from mpmath import mp, mpf
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
-    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc, _set_mm_oracles_to_omnipool_spot
+    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc, _set_mm_oracles_to_external_market, \
+    update_prices_and_process
 from hydradx.model.amm.liquidations import CDP, money_market
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.otc import OTC
@@ -750,18 +751,19 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
         raise ValueError("CDP debt amount should not go above initial debt_amt or below 0")
 
 
-def test_set_mm_oracles_to_omnipool_spot():
+def test_set_mm_oracles_to_external_market():
     omnipool = omnipool_setup_for_liquidation_testing()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000},
         oracles={("DOT", "USDT"): 100, ("HDX", "USDT"): 100, ("DOT", "HDX"): 100},
     )
-    state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={})
-    _set_mm_oracles_to_omnipool_spot(state)
+    prices = {tkn: omnipool.price(omnipool, tkn, "USDT") for tkn in omnipool.asset_list}
+    state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={}, external_market=prices)
+    _set_mm_oracles_to_external_market(state, "USDT")
     for tkn1 in mm.liquidity:
         for tkn2 in mm.liquidity:
             if tkn1 != tkn2:
-                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(omnipool.price(omnipool, tkn1, tkn2), rel=1e-25):
+                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(prices[tkn1]/prices[tkn2], rel=1e-25):
                     raise ValueError("Oracle price should be set to Omnipool spot price")
 
 
@@ -971,3 +973,59 @@ def test_liquidate_against_omnipool_and_settle_otc():
         raise
     if len(init_state.otcs) != 1:
         raise
+
+
+def test_update_prices_and_process():
+    omnipool = omnipool_setup_for_liquidation_testing()
+    dot_price = omnipool.price(omnipool, "DOT", "USDT")
+    hdx_price = omnipool.price(omnipool, "HDX", "USDT")
+
+    price_list = [{'DOT': 5, 'HDX': 0.03, 'USDT': 1, 'WETH': 2600, 'iBTC': 46000},
+                  {'DOT': 5, 'HDX': 0.04, 'USDT': 1, 'WETH': 2700, 'iBTC': 47000}]
+
+    # cdp1 should be liquidated fully
+    cdp1 = CDP('USDT', 'DOT', 20*7*.7 - 0.00001, 20)
+    # cdp2 should not be liquidated
+    cdp2 = CDP('USDT', 'HDX', 1, 1000)
+    # cdp3 should be liquidated fully
+    cdp3 = CDP('HDX', 'DOT', 20*5/0.03 * .7 + 0.00001, 20)
+
+    cdps = [(Agent(), cdp1), (Agent(), cdp2), (Agent(), cdp3)]
+
+    pool_id = "omnipool"
+    liquidating_agent_id = "liq_agent"
+
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
+        oracles={
+            ("DOT", "USDT"): dot_price,
+            ("HDX", "USDT"): hdx_price,
+            ("HDX", "DOT"): hdx_price / dot_price
+        },
+        liquidation_threshold=0.7,
+        cdps=cdps,
+        min_ltv=0.6,
+        liquidation_penalty=0.02
+    )
+
+    state = GlobalState(
+        agents={liquidating_agent_id: Agent()},
+        pools={pool_id: omnipool},
+        money_market=mm
+    )
+
+    evolve_fn = update_prices_and_process(pool_id, liquidating_agent_id, price_list, "USDT")
+    evolve_fn(state)
+
+    if cdp1.debt_amt != 0:
+        raise ValueError("CDP1 should be fully liquidated")
+    if cdp2.debt_amt != 1:
+        raise ValueError("CDP2 should not be liquidated")
+    if cdp3.debt_amt != 0:
+        raise ValueError("CDP3 should be fully liquidated")
+    if mm.get_oracle_price("HDX", "USDT") != 0.03:
+        raise ValueError("Oracle price for HDX should be 0.03")
+    if mm.get_oracle_price("DOT", "USDT") != 5:
+        raise ValueError("Oracle price for DOT should be 5")
+    if mm.get_oracle_price("HDX", "DOT") != 0.03 / 5:
+        raise ValueError("Oracle price for HDX/DOT should be 0.03 / 5 ")
