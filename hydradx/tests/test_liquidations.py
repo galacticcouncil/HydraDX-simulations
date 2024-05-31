@@ -59,16 +59,34 @@ def test_get_oracle_price():
 
 def test_is_liquidatable():
     agent = Agent()
-    cdp = CDP("USDT", "DOT", 1000, 200)
+    cdp = CDP("USDT", "DOT", 2000*0.7-0.00001, 200)
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
-        cdps=[(agent, cdp)]
+        cdps=[(agent, cdp)],
+        liquidation_threshold=0.7
     )
     if mm.is_liquidatable(cdp):
         raise
-    cdp.collateral_amt = 100
+    cdp.debt_amt = 2000*0.7+0.00001
     if not mm.is_liquidatable(cdp):
+        raise
+
+
+def test_is_fully_liquidatable():
+    agent = Agent()
+    cdp = CDP("USDT", "DOT", 2000*0.8-0.00001, 200)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10},
+        cdps=[(agent, cdp)],
+        liquidation_threshold=0.7,
+        full_liquidation_threshold=0.8
+    )
+    if mm.is_fully_liquidatable(cdp):
+        raise
+    cdp.debt_amt = 2000*0.8+0.00001
+    if not mm.is_fully_liquidatable(cdp):
         raise
 
 
@@ -349,6 +367,20 @@ def test_repay_fails():
     )
     with pytest.raises(Exception):  # should fail because agent does not have enough funds
         mm.repay(agent, 0)
+
+
+def test_add_collateral():
+    agent = Agent(holdings={"DOT": 500})
+    cdp = CDP("USDT", "DOT", 1000, 200)
+    mm = money_market(
+        liquidity={"USDT": 1000000, "DOT": 1000000},
+        oracles={("DOT", "USDT"): 10},
+        liquidation_threshold=0.7,
+        cdps=[(agent, cdp)]
+    )
+    mm.add_collateral(0, 100)
+    if cdp.collateral_amt != 300:
+        raise
 
 
 @given(
@@ -761,7 +793,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
     state.evolve()
 
-    if cdp1.debt_amt == 0:  # fully liquidated
+    if 0 <= cdp1.debt_amt <= 1e-12:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
         assert ratio1 > 1
