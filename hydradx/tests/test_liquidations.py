@@ -726,14 +726,12 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
     state.evolve()
 
-    if cdp1.debt_amt / debt_amt1 <= 1e-10:  # fully liquidated
+    if cdp1.debt_amt == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
         assert ratio1 > 1
     elif cdp1.debt_amt == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
-            pass
-        elif ratio1 > 1 - mm.liquidation_penalty['DOT']:  # 2. undercollateralized
             pass
         elif price_mult >= 1:  # 3. not profitable to liquidate
             pass
@@ -743,6 +741,8 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
         assert ratio1 >= liq_threshold
         if ratio1 - full_liq_threshold <= 1e-20 and cdp1.debt_amt / debt_amt1 == 1 - mm.partial_liquidation_pct:
             pass  # partially liquidated due to partial_liquidation_pct
+        elif ratio1 > 1 - mm.liquidation_penalty['DOT']:  # 2. undercollateralized, partially but not fully liquidated
+            pass
         elif liq_agent.holdings["DOT"] / (collateral_amt1 - cdp1.collateral_amt) > 1e-25:
             raise ValueError("If liquidation agent is profitable, they should have liquidated more")
         elif liq_agent.holdings["DOT"] < 0:
