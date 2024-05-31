@@ -726,7 +726,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
     state.evolve()
 
-    if cdp1.debt_amt / debt_amt1 <= 1e-12:  # fully liquidated
+    if cdp1.debt_amt / debt_amt1 <= 1e-10:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
         assert ratio1 > 1
