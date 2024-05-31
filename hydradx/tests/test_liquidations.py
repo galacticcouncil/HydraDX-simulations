@@ -383,18 +383,15 @@ def test_add_collateral():
         raise
 
 
-@given(
-    st.floats(min_value=200, max_value=2000)
-)
-def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: float):
+def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
 
     assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
-        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
-        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
-        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
+        'DOT': {'usd price': prices['DOT'], 'weight': 0.40},
+        'HDX': {'usd price': prices['HDX'], 'weight': 0.10},
+        'USDT': {'usd price': prices['USDT'], 'weight': 0.30},
+        'WETH': {'usd price': prices['WETH'], 'weight': 0.10},
+        'iBTC': {'usd price': prices['iBTC'], 'weight': 0.10}
     }
 
     lrna_price_usd = 35
@@ -403,20 +400,33 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
     lrna = {}
 
     for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
+        liquidity[tkn] = mpf(initial_omnipool_tvl * info['weight'] / info['usd price'])
+        lrna[tkn] = mpf(initial_omnipool_tvl * info['weight'] / lrna_price_usd)
 
-    init_pool = OmnipoolState(
+    omnipool = OmnipoolState(
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
         },
         preferred_stablecoin='USDT',
+        asset_fee=0.0025,
+        lrna_fee=0.0005
     )
-    omnipool = init_pool.copy()
+
+    return omnipool
+
+
+@given(
+    st.floats(min_value=200, max_value=2000)
+)
+def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: float):
+
+    omnipool = omnipool_setup_for_liquidation_testing()
+    init_pool = omnipool.copy()
+    dot_price = omnipool.price(omnipool, "DOT", "USDT")
 
     collat_ratio = 0.75
 
-    debt_amt = collat_ratio * prices['DOT'] * collateral_amt
+    debt_amt = collat_ratio * dot_price * collateral_amt
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
     cdp = init_cdp.copy()
     penalty = 0.01
@@ -424,7 +434,7 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
     agent = Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
+        oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
         cdps=[(agent, cdp)],
         min_ltv=0.6
@@ -459,32 +469,8 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
 def test_omnipool_liquidate_cdp_delta_debt_too_large():
     collat_ratio = 5.0
     collateral_amt = 200
-    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
-        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
-        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
-        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = 20000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    init_pool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-    )
-    omnipool = init_pool.copy()
+    omnipool = omnipool_setup_for_liquidation_testing()
+    dot_price = omnipool.price(omnipool, "DOT", "USDT")
 
     debt_amt = collat_ratio * collateral_amt
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
@@ -493,7 +479,7 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
     agent = Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
+        oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
         cdps=[(agent, cdp)],
         min_ltv=0.6,
@@ -509,32 +495,10 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
 def test_omnipool_liquidate_cdp_not_profitable():
     collat_ratio = 5.0
     collateral_amt = 2000
-    prices = {'DOT': 1, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
-        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
-        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
-        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = 10000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    init_pool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-    )
-    omnipool = init_pool.copy()
+    omnipool = omnipool_setup_for_liquidation_testing()
+    for tkn in omnipool.asset_list:  # reduce TVL to increase slippage for the test
+        omnipool.liquidity[tkn] /= 2000
+    dot_price = omnipool.price(omnipool, "DOT", "USDT")
 
     debt_amt = collat_ratio * collateral_amt
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
@@ -543,7 +507,7 @@ def test_omnipool_liquidate_cdp_not_profitable():
     agent = Agent()
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
+        oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
         cdps=[(agent, cdp)],
         min_ltv=0.6,
@@ -581,42 +545,10 @@ def test_omnipool_liquidate_cdp_not_profitable():
 # - if liquidation doesn't happen, buying delta_debt requires too much collateral
 
 
-def omnipool_setup_for_liquidate_against_omnipool() -> OmnipoolState:
-    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': 0.40},
-        'HDX': {'usd price': prices['HDX'], 'weight': 0.10},
-        'USDT': {'usd price': prices['USDT'], 'weight': 0.30},
-        'WETH': {'usd price': prices['WETH'], 'weight': 0.10},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': 0.10}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = 20000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = mpf(initial_omnipool_tvl * info['weight'] / info['usd price'])
-        lrna[tkn] = mpf(initial_omnipool_tvl * info['weight'] / lrna_price_usd)
-
-    omnipool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-        asset_fee=0.0025,
-        lrna_fee=0.0005
-    )
-
-    return omnipool
-
-
 @given(st.floats(min_value=0.7, max_value=0.9), st.floats(min_value=0.3, max_value=0.5),
        st.floats(min_value=2.0, max_value=3.0))
 def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: float, ratio3: float):
-    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+    omnipool = omnipool_setup_for_liquidation_testing()
 
     # CDP1 should be fully liquidated
     collateral_amt1 = 200
@@ -671,7 +603,7 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
 
 
 def test_liquidate_against_omnipool_partial_liquidation():
-    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+    omnipool = omnipool_setup_for_liquidation_testing()
 
     dot_full_liq_threshold = 0.8
     dot_liq_threshold = 0.6
@@ -722,7 +654,7 @@ def test_liquidate_against_omnipool_partial_liquidation():
 
 @given(st.floats(min_value=0.0, max_value=0.7, exclude_min=True, exclude_max=True))
 def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
-    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+    omnipool = omnipool_setup_for_liquidation_testing()
 
     collateral_amt1 = 200
     debt_amt1 = ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
@@ -765,7 +697,7 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
     st.floats(min_value=0.5, max_value=1.5)
 )
 def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, price_mult: float):
-    omnipool = omnipool_setup_for_liquidate_against_omnipool()
+    omnipool = omnipool_setup_for_liquidation_testing()
 
     # collateral_amt1 = 516949.1872315724
     # ratio1 = 0.8699232790986524
@@ -773,8 +705,8 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     liq_threshold = mpf(0.7)
     full_liq_threshold = mpf(0.8)
 
-    debt_amt1 = ratio1 * collateral_amt1 * price_mult * omnipool.price(omnipool, "DOT", "USDT")
-    cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
+    debt_amt1 = ratio1 * mpf(collateral_amt1) * price_mult * omnipool.price(omnipool, "DOT", "USDT")
+    cdp1 = CDP('USDT', 'DOT', debt_amt1, mpf(collateral_amt1))
 
     liq_agent, agent1 = Agent(), Agent()
     mm = money_market(
@@ -793,7 +725,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
     state.evolve()
 
-    if 0 <= cdp1.debt_amt <= 1e-12:  # fully liquidated
+    if 0 == pytest.approx(cdp1.debt_amt, rel=1e-12):  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
         assert ratio1 > 1
