@@ -99,7 +99,8 @@ class money_market:
         return min(delta_debt, max_debt)
 
     def get_liquidate_collateral_amt(self, cdp: CDP, delta_debt: float) -> float:
-        conversion = (1 + self.liquidation_penalty[cdp.collateral_asset]) / self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
+        conversion = (1 + self.liquidation_penalty[cdp.collateral_asset]) / self.get_oracle_price(cdp.collateral_asset,
+                                                                                                  cdp.debt_asset)
         actual_debt_liq = self._calculate_debt(cdp, delta_debt)
         return actual_debt_liq * conversion
 

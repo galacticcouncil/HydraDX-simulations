@@ -1,5 +1,6 @@
 from hydradx.model.amm.agents import Agent
 
+
 def test_is_holding():
     holdings = {'USDT': 100, 'DOT': 0}
     agent = Agent(holdings=holdings)

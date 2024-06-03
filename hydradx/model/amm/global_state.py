@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .agents import AgentArchiveState
 from .amm import AMM
-from .liquidations import CDP, money_market
+from .liquidations import money_market
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
@@ -474,7 +474,8 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int
     )
 
     # need to calculate penalty_amt
-    debt_paid_converted_to_collateral_asset = delta_debt_real * mm.get_oracle_price(cdp.debt_asset, cdp.collateral_asset)
+    debt_paid_converted_to_collateral_asset = delta_debt_real * mm.get_oracle_price(cdp.debt_asset,
+                                                                                    cdp.collateral_asset)
     penalty_amt = penalty * debt_paid_converted_to_collateral_asset
 
     # any excess treasury agent has above penalty_amt is returned to cdp

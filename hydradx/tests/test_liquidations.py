@@ -60,7 +60,7 @@ def test_get_oracle_price():
 
 def test_is_liquidatable():
     agent = Agent()
-    cdp = CDP("USDT", "DOT", 2000*0.7-0.00001, 200)
+    cdp = CDP("USDT", "DOT", 2000 * 0.7 - 0.00001, 200)
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
@@ -69,14 +69,14 @@ def test_is_liquidatable():
     )
     if mm.is_liquidatable(cdp):
         raise
-    cdp.debt_amt = 2000*0.7+0.00001
+    cdp.debt_amt = 2000 * 0.7 + 0.00001
     if not mm.is_liquidatable(cdp):
         raise
 
 
 def test_is_fully_liquidatable():
     agent = Agent()
-    cdp = CDP("USDT", "DOT", 2000*0.8-0.00001, 200)
+    cdp = CDP("USDT", "DOT", 2000 * 0.8 - 0.00001, 200)
     mm = money_market(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
@@ -86,7 +86,7 @@ def test_is_fully_liquidatable():
     )
     if mm.is_fully_liquidatable(cdp):
         raise
-    cdp.debt_amt = 2000*0.8+0.00001
+    cdp.debt_amt = 2000 * 0.8 + 0.00001
     if not mm.is_fully_liquidatable(cdp):
         raise
 
@@ -228,7 +228,6 @@ def test_liquidate_undercollateralized():
 )
 def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, liq_threshold: float,
                             full_liq_threshold: float, partial_liq_pct: float):
-
     # ltv_ratio = 1 / (1.01) + 0.000001
     # liq_pct = 1.0
 
@@ -265,7 +264,7 @@ def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, li
         if cdp.collateral_amt != pytest.approx(collat_amt - collat_sold_expected, rel=1e-15):
             raise
     elif cdp.collateral_amt == 0:  # case 2: we liquidated but left some toxic debt
-        if ltv_ratio <= 1 / (1+penalty):
+        if ltv_ratio <= 1 / (1 + penalty):
             raise
     else:
         if cdp.debt_amt != debt_amt:  # shouldn't liquidate some partial amount
@@ -420,7 +419,6 @@ def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
     st.floats(min_value=200, max_value=2000)
 )
 def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: float):
-
     omnipool = omnipool_setup_for_liquidation_testing()
     init_pool = omnipool.copy()
     dot_price = omnipool.price(omnipool, "DOT", "USDT")
@@ -763,7 +761,7 @@ def test_set_mm_oracles_to_external_market():
     for tkn1 in mm.liquidity:
         for tkn2 in mm.liquidity:
             if tkn1 != tkn2:
-                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(prices[tkn1]/prices[tkn2], rel=1e-25):
+                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(prices[tkn1] / prices[tkn2], rel=1e-25):
                     raise ValueError("Oracle price should be set to Omnipool spot price")
 
 
@@ -984,11 +982,11 @@ def test_update_prices_and_process():
                   {'DOT': 5, 'HDX': 0.04, 'USDT': 1, 'WETH': 2700, 'iBTC': 47000}]
 
     # cdp1 should be liquidated fully
-    cdp1 = CDP('USDT', 'DOT', 20*7*.7 - 0.00001, 20)
+    cdp1 = CDP('USDT', 'DOT', 20 * 7 * .7 - 0.00001, 20)
     # cdp2 should not be liquidated
     cdp2 = CDP('USDT', 'HDX', 1, 1000)
     # cdp3 should be liquidated fully
-    cdp3 = CDP('HDX', 'DOT', 20*5/0.03 * .7 + 0.00001, 20)
+    cdp3 = CDP('HDX', 'DOT', 20 * 5 / 0.03 * .7 + 0.00001, 20)
 
     cdps = [(Agent(), cdp1), (Agent(), cdp2), (Agent(), cdp3)]
 

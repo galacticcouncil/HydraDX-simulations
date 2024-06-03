@@ -1,14 +1,12 @@
-import copy
 import functools
 from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st, settings, reproduce_failure
+from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 
 from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
@@ -277,7 +275,7 @@ def test_arbitrage_profitability(trade_fraction, amp, fee):
     )
     arbitrageur.trade_strategy.execute(pre_arb_state, 'Arbitrageur')
     if (
-        sum(arbitrageur.holdings.values()) < sum(arbitrageur.initial_holdings.values())
+            sum(arbitrageur.holdings.values()) < sum(arbitrageur.initial_holdings.values())
     ):
         raise AssertionError(
             f"Arbitrageur lost money. "
@@ -320,8 +318,8 @@ def test_arbitrage_efficacy(trade_fraction, amp):
     final_pool = final_state.pools['stableswap']
 
     if (
-        initial_pool.price('R1', 'R2')
-        != pytest.approx(final_pool.price('R1', 'R2'), abs=1e-6)
+            initial_pool.price('R1', 'R2')
+            != pytest.approx(final_pool.price('R1', 'R2'), abs=1e-6)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
                              f"({initial_pool.price('R1', 'R2')},"

@@ -35,16 +35,16 @@ class Agent:
         holdings = {tkn: round(self.holdings[tkn], precision) for tkn in self.holdings}
         share_prices = {tkn: round(self.share_prices[tkn], precision) for tkn in self.share_prices}
         return (
-            f'Agent: {self.unique_id}\n'
-            f'********************************\n'
-            f'trade strategy: {self.trade_strategy.name if self.trade_strategy else "None"}\n' +
-            f'holdings: (\n\n' +
-            f'\n'.join(
-                [(
-                    f'    *{tkn}*: {holdings[tkn]}\n' +
-                    (f'    price: {share_prices[tkn]}\n' if tkn in share_prices else '')
-                ) for tkn in self.holdings]
-            ) + ')\n')
+                f'Agent: {self.unique_id}\n'
+                f'********************************\n'
+                f'trade strategy: {self.trade_strategy.name if self.trade_strategy else "None"}\n' +
+                f'holdings: (\n\n' +
+                f'\n'.join(
+                    [(
+                            f'    *{tkn}*: {holdings[tkn]}\n' +
+                            (f'    price: {share_prices[tkn]}\n' if tkn in share_prices else '')
+                    ) for tkn in self.holdings]
+                ) + ')\n')
 
     def copy(self):
         copy_self = Agent(
@@ -54,7 +54,7 @@ class Agent:
             trade_strategy=self.trade_strategy,
             unique_id=self.unique_id
         )
-        copy_self.initial_holdings={k: v for k, v in self.initial_holdings.items()}
+        copy_self.initial_holdings = {k: v for k, v in self.initial_holdings.items()}
         copy_self.asset_list = [tkn for tkn in self.asset_list]
         return copy_self
         # return copy.deepcopy(self)
@@ -72,4 +72,3 @@ class AgentArchiveState:
         self.holdings = {k: v for k, v in agent.holdings.items()}
         self.share_prices = {k: v for k, v in agent.share_prices.items()}
         self.asset_list = [tkn for tkn in agent.asset_list]
-
