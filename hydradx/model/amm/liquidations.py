@@ -1,4 +1,4 @@
-from hydradx.model.amm.agents import Agent
+from .agents import Agent
 
 
 # Dummy CDP class, in which CDP positions are determined to be in liquidation via a boolean
