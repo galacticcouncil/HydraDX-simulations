@@ -84,6 +84,11 @@ class money_market:
         else:
             raise ValueError("Oracle price not found.")
 
+    def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
+        return [(agent, cdp) for agent, cdp in self.cdps if (
+                (collateral_tkn is None or cdp.collateral_asset == collateral_tkn) and
+                (debt_tkn is None or cdp.debt_asset == debt_tkn))]
+
     def is_liquidatable(self, cdp: CDP) -> bool:
         price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
         return cdp.debt_amt / (cdp.collateral_amt * price) > self.liquidation_threshold[cdp.collateral_asset]
