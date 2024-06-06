@@ -15,11 +15,12 @@ import numpy as np
 
 
 class TradeStrategy:
-    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
+    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False, frequency: int = None):
         self.function = strategy_function
         self.run_once = run_once
         self.done = False
         self.name = name
+        self.frequency = frequency if frequency is not None else 1
 
     def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
         if self.done:
@@ -427,7 +428,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
+def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequency=1):
     if skip_assets is None:
         skip_assets = []
 
@@ -558,7 +559,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
 
         return state
 
-    return TradeStrategy(strategy, name='omnipool arbitrage')
+    return TradeStrategy(strategy, name='omnipool arbitrage', frequency=frequency)
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 1e-6):

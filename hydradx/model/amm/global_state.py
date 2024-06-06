@@ -369,12 +369,15 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     return transform
 
 
-def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> Callable:
+def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, rand: bool = False) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         omnipool = state.pools[pool_id]
         agent = state.agents[agent_id]
         mm = state.money_market
-        for i in range(len(mm.cdps)):
+        ordered_index_list = list(range(len(mm.cdps)))
+        if rand:
+            random.shuffle(ordered_index_list)
+        for i in ordered_index_list:
             if mm.is_liquidatable(mm.cdps[i][1]):
                 delta_debt = find_partial_liquidation_amount(omnipool, mm, i, iters)
                 if delta_debt > 0:
@@ -581,7 +584,7 @@ def _set_mm_oracles_to_external_market(state: GlobalState, stablecoin: str, trig
 def update_prices_and_process(pool_id: str, liquidating_agent_id: str, price_list: list[dict[str: float]],
                               stablecoin: str, trigger_pct: float = 0) -> Callable:
     transform_price = historical_prices(price_list)
-    transform_liquidate = liquidate_against_omnipool(pool_id, liquidating_agent_id)
+    transform_liquidate = liquidate_against_omnipool(pool_id, liquidating_agent_id, rand=True)
     trigger = trigger_pct
 
     def transform(state: GlobalState) -> GlobalState:
