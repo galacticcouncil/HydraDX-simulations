@@ -90,6 +90,8 @@ class money_market:
                 (debt_tkn is None or cdp.debt_asset == debt_tkn))]
 
     def is_liquidatable(self, cdp: CDP) -> bool:
+        if cdp.collateral_amt == 0:
+            return False
         price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
         return cdp.debt_amt / (cdp.collateral_amt * price) > self.liquidation_threshold[cdp.collateral_asset]
 
