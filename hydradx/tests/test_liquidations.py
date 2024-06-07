@@ -6,7 +6,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
     liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc, _set_mm_oracles_to_external_market, \
     update_prices_and_process
-from hydradx.model.amm.liquidations import CDP, MoneyMarket
+from hydradx.model.amm.money_market import CDP, MoneyMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.otc import OTC
 

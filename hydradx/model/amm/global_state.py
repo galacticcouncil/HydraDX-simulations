@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .agents import AgentArchiveState
 from .amm import AMM
-from .liquidations import MoneyMarket
+from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
