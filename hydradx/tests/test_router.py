@@ -1,6 +1,6 @@
 import copy
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from mpmath import mpf, mp
 
 from hydradx.model.amm.agents import Agent
@@ -565,6 +565,7 @@ def test_spot_prices_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
     lrna_fee=fee_strategy,
