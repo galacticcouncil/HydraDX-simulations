@@ -378,7 +378,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, ran
         if rand:
             random.shuffle(ordered_index_list)
         for i in ordered_index_list:
-            if mm.is_liquidatable(mm.cdps[i][1]):
+            if mm.is_liquidatable(mm.cdps[i]):
                 delta_debt = find_partial_liquidation_amount(omnipool, mm, i, iters)
                 if delta_debt > 0:
                     omnipool_liquidate_cdp(state.pools['omnipool'], mm, i, agent, delta_debt)
@@ -398,7 +398,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cd
         iters: max iterations for the binomial search (default 20)
         min_amt: minimum debt amount to liquidate (default 0)
     """
-    cdp = mm.cdps[cdp_i][1]
+    cdp = mm.cdps[cdp_i]
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
 
@@ -440,7 +440,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cd
 
 def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, treasury_agent: Agent,
                            delta_debt: float) -> None:
-    cdp = mm.cdps[cdp_i][1]
+    cdp = mm.cdps[cdp_i]
     penalty = mm.liquidation_penalty[cdp.collateral_asset]
     # treasury_agent buys borrowed asset to cover the debt, but only if debt can be covered by existing collateral
     # check if debt can be covered by existing collateral
@@ -485,7 +485,7 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int,
     collat_profit = treasury_agent.holdings[cdp.collateral_asset] - init_collat_amt
     return_amt = max(collat_profit - penalty_amt, 0)
     treasury_agent.holdings[cdp.collateral_asset] -= return_amt
-    mm.cdps[cdp_i][1].collateral_amt += return_amt
+    mm.cdps[cdp_i].collateral_amt += return_amt
 
     treasury_agent.holdings[cdp.debt_asset] -= flash_mint_amt  # flash burn
 

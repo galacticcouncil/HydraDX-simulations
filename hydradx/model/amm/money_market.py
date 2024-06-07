@@ -9,12 +9,17 @@ class CDP:
             debt_asset,
             collateral_asset,
             debt_amt,
-            collateral_amt
+            collateral_amt,
+            agent=None
     ):
         self.debt_asset = debt_asset
         self.collateral_asset = collateral_asset
         self.debt_amt = debt_amt
         self.collateral_amt = collateral_amt
+        if agent is not None:
+            self.agent = agent
+        else:
+            self.agent = Agent()
 
     def __repr__(self):
         return f"CDP({self.debt_asset}, {self.collateral_asset}, {self.debt_amt}, {self.collateral_amt})"
@@ -64,7 +69,7 @@ class MoneyMarket:
         self.cdps = [] if cdps is None else cdps
         self.borrowed = {asset: 0 for asset in liquidity}
         for cdp in self.cdps:
-            self.borrowed[cdp[1].debt_asset] += cdp[1].debt_amt
+            self.borrowed[cdp.debt_asset] += cdp.debt_amt
 
         self.partial_liquidation_pct = partial_liquidation_pct
         if not self.validate():
@@ -85,7 +90,7 @@ class MoneyMarket:
             raise ValueError("Oracle price not found.")
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
-        return [(agent, cdp) for agent, cdp in self.cdps if (
+        return [cdp for cdp in self.cdps if (
                 (collateral_tkn is None or cdp.collateral_asset == collateral_tkn) and
                 (debt_tkn is None or cdp.debt_asset == debt_tkn))]
 
@@ -124,11 +129,12 @@ class MoneyMarket:
             agent.holdings[borrow_asset] = 0
         agent.holdings[borrow_asset] += borrow_amt
         agent.holdings[collateral_asset] -= collateral_amt
-        cdp = CDP(borrow_asset, collateral_asset, borrow_amt, collateral_amt)
-        self.cdps.append((agent.unique_id, cdp))
+        cdp = CDP(borrow_asset, collateral_asset, borrow_amt, collateral_amt, agent)
+        self.cdps.append(cdp)
 
-    def repay(self, agent: Agent, cdp_i: int) -> None:
-        cdp = self.cdps[cdp_i][1]
+    def repay(self, cdp_i: int) -> None:
+        cdp = self.cdps[cdp_i]
+        agent = self.cdps[cdp_i].agent
         assert agent.is_holding(cdp.debt_asset, cdp.debt_amt)
         agent.holdings[cdp.debt_asset] -= cdp.debt_amt
         self.borrowed[cdp.debt_asset] -= cdp.debt_amt
@@ -136,9 +142,6 @@ class MoneyMarket:
             agent.holdings[cdp.collateral_asset] = 0
         agent.holdings[cdp.collateral_asset] += cdp.collateral_amt
         self.cdps.pop(cdp_i)
-
-    def add_collateral(self, cdp_i, collateral_amt):
-        self.cdps[cdp_i][1].collateral_amt += collateral_amt
 
     def liquidate(self, cdp: CDP, agent: Agent, debt_amt: float) -> None:
         if not self.is_liquidatable(cdp):
@@ -167,7 +170,7 @@ class MoneyMarket:
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
         if self.partial_liquidation_pct < 0 or self.partial_liquidation_pct > 1:
             return False
-        for (agent, cdp) in self.cdps:
+        for cdp in self.cdps:
             cdp_borrowed[cdp.debt_asset] += cdp.debt_amt
         for asset in self.liquidity:
             if asset not in self.borrowed:
