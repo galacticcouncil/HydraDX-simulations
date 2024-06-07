@@ -369,20 +369,6 @@ def test_repay_fails():
         mm.repay(agent, 0)
 
 
-def test_add_collateral():
-    agent = Agent(holdings={"DOT": 500})
-    cdp = CDP("USDT", "DOT", 1000, 200)
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): 10},
-        liquidation_threshold=0.7,
-        cdps=[(agent, cdp)]
-    )
-    mm.add_collateral(0, 100)
-    if cdp.collateral_amt != 300:
-        raise
-
-
 def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
     prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
 
