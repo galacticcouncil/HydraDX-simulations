@@ -23,7 +23,8 @@ class ConcentratedLiquidityPosition(AMM):
             min_tick: int = None,
             max_tick: int = None,
             tick_spacing: int = 10,
-            fee: float = 0.0
+            fee: float = 0.0,
+            protocol_fee: float = 0.0
     ):
         super().__init__()
         self.asset_list = list(assets.keys())
@@ -31,6 +32,7 @@ class ConcentratedLiquidityPosition(AMM):
             raise ValueError("Expected 2 assets.")
         self.tick_spacing = tick_spacing
         self.fee = fee
+        self.protocol_fee = protocol_fee
         self.liquidity = {tkn: assets[tkn] for tkn in self.asset_list}
         self.asset_x = self.asset_list[0]
         self.asset_y = self.asset_list[1]
@@ -57,7 +59,6 @@ class ConcentratedLiquidityPosition(AMM):
         b = sqrt(k * y / x) - y
         self.x_offset = a
         self.y_offset = b
-        # self.invariant = k
 
         if not min_tick <= price_tick <= max_tick:
             raise ValueError("Initial price is outside the tick range.")
@@ -172,6 +173,7 @@ class Tick:
         self.liquidityNet = liquidity_net
         self.sqrtPrice = sqrt_price
         self.index = index
+        self.initialized = True
 
 
 class ConcentratedLiquidityPoolState(AMM):
@@ -181,6 +183,7 @@ class ConcentratedLiquidityPoolState(AMM):
             asset_list: list[str],
             tick_spacing: int = 10,
             fee: float = 0.0,
+            protocol_fee: float = 0.0,
             sqrt_price: float = 1.0,
             liquidity: float = 0.0,
             ticks: dict[int, Tick] = None
@@ -189,6 +192,7 @@ class ConcentratedLiquidityPoolState(AMM):
         self.asset_list = asset_list
         self.tick_spacing = tick_spacing
         self.fee = fee
+        self.protocol_fee = protocol_fee
         self.fees_accrued = {tkn: 0 for tkn in self.asset_list}
         self.ticks: dict[int, Tick] = ticks or {}
         self.sqrt_price = sqrt_price
@@ -244,9 +248,7 @@ class ConcentratedLiquidityPoolState(AMM):
         exact_input = sell_quantity > 0
         amountSpecifiedRemaining = sell_quantity or -buy_quantity
         amountCalculated = 0
-        sqrt_price_current = self.sqrt_price
-        liquidity_current = self.liquidity
-        tick_current = self.current_tick
+        protocolFee_current = 0
 
         zeroForOne = tkn_sell == self.asset_list[0]  # zeroForOne means selling x, buying y
         if price_limit is None:
@@ -255,86 +257,44 @@ class ConcentratedLiquidityPoolState(AMM):
             sqrt_price_limit = sqrt(price_limit)
 
         while amountSpecifiedRemaining != 0:
-            # state.sqrtPriceX96 = sqrt_price_current
-            # step.sqrtPriceStartX96 = sqrt_price_start
-            # step.sqrtPriceNextX96 = sqrt_price_next
-
             next_tick: Tick = self.next_initialized_tick(zeroForOne)
 
             # get the price for the next tick
             sqrt_price_next = tick_to_price(next_tick.index)
-            sqrt_price_start = self.sqrt_price
-
 
             # compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
             sqrt_price_current, amountIn, amountOut, feeAmount = self.compute_swap_step(
-                sqrt_price_current,
+                self.sqrt_price,
                 sqrt_ratio_target=(
                     sqrt_price_limit if
                     (sqrt_price_next < sqrt_price_limit if zeroForOne else sqrt_price_next > sqrt_price_limit)
                     else sqrt_price_next
                 ),
-                liquidity=liquidity_current,
+                liquidity=self.liquidity,
                 amount_remaining=amountSpecifiedRemaining
             )
 
-            if exactInput:
-                amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
-                amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
+            if exact_input:
+                amountSpecifiedRemaining -= amountIn + feeAmount
+                amountCalculated -= amountOut
             else:
-                state.amountSpecifiedRemaining += step.amountOut.toInt256();
-                state.amountCalculated = state.amountCalculated.add((step.amountIn + step.feeAmount).toInt256());
+                amountSpecifiedRemaining += amountOut
+                amountCalculated += amountIn + feeAmount
 
+            # if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee
+            if self.protocol_fee > 0:
+                delta = feeAmount / self.protocol_fee
+                feeAmount -= delta
+                protocolFee_current += delta
 
-            // if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee
-            if (cache.feeProtocol > 0) {
-                uint256 delta = step.feeAmount / cache.feeProtocol;
-                step.feeAmount -= delta;
-                state.protocolFee += uint128(delta);
-            }
+            # update global fee tracker
+            # if self.liquidity > 0:
+            #     state.feeGrowthGlobalX128 += feeAmount / self.liquidity
 
-            // update global fee tracker
-            if (state.liquidity > 0)
-                state.feeGrowthGlobalX128 += FullMath.mulDiv(step.feeAmount, FixedPoint128.Q128, state.liquidity);
-
-            // shift tick if we reached the next price
-            if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
-                // if the tick is initialized, run the tick transition
-                if (step.initialized) {
-                    // check for the placeholder value, which we replace with the actual value the first time the swap
-                    // crosses an initialized tick
-                    if (!cache.computedLatestObservation) {
-                        (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
-                            cache.blockTimestamp,
-                            0,
-                            slot0Start.tick,
-                            slot0Start.observationIndex,
-                            cache.liquidityStart,
-                            slot0Start.observationCardinality
-                        );
-                        cache.computedLatestObservation = true;
-                    }
-                    int128 liquidityNet =
-                        ticks.cross(
-                            step.tickNext,
-                            (zeroForOne ? state.feeGrowthGlobalX128 : feeGrowthGlobal0X128),
-                            (zeroForOne ? feeGrowthGlobal1X128 : state.feeGrowthGlobalX128),
-                            cache.secondsPerLiquidityCumulativeX128,
-                            cache.tickCumulative,
-                            cache.blockTimestamp
-                        );
-                    // if we're moving leftward, we interpret liquidityNet as the opposite sign
-                    // safe because liquidityNet cannot be type(int128).min
-                    if (zeroForOne) liquidityNet = -liquidityNet;
-
-                    state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
-                }
-
-                state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
-            } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
-                // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
-                state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);
-            }
+            # shift tick if we reached the next price
+            if sqrt_price_current == sqrt_price_next:
+                # if the tick is initialized, run the tick transition
+                self.liquidity += next_tick.liquidityNet if zeroForOne else -next_tick.liquidityNet
 
     def compute_swap_step(
             self,
@@ -360,10 +320,8 @@ class ConcentratedLiquidityPoolState(AMM):
                 sqrt_ratio_next = sqrt_ratio_target
             else:
                 sqrt_ratio_next = self.getNextSqrtPriceFromInput(
-                    sqrt_ratio_current,
-                    liquidity,
-                    amountRemainingLessFee,
-                    zeroForOne
+                    amount_in=amountRemainingLessFee,
+                    zero_for_one=zeroForOne
                 )
         else:
             amountOut = (
@@ -375,10 +333,8 @@ class ConcentratedLiquidityPoolState(AMM):
                 sqrt_ratio_next = sqrt_ratio_target
             else:
                 sqrt_ratio_next = self.getNextSqrtPriceFromOutput(
-                    sqrt_ratio_current,
-                    liquidity,
-                    -amount_remaining,
-                    zeroForOne
+                    amount_out=-amount_remaining,
+                    zero_for_one=zeroForOne
                 )
 
         is_max = sqrt_ratio_target == sqrt_ratio_next
@@ -421,19 +377,14 @@ class ConcentratedLiquidityPoolState(AMM):
     # /// @return sqrtQX96 The price after adding the input amount to token0 or token1
     def getNextSqrtPriceFromInput(
         self,
-        current_sqrt_price: float,
-        liquidity: float,
         amount_in: float,
         zero_for_one: bool
     ):
-        assert current_sqrt_price > 0
-        assert liquidity > 0
-
         # // round to make sure that we don't pass the target price
         return (
-            self.getNextSqrtPriceFromAmount0RoundingUp(current_sqrt_price, liquidity, amount_in, True)
+            self.getNextSqrtPriceFromAmount0RoundingUp(amount=amount_in, add=True)
             if zero_for_one else
-            self.getNextSqrtPriceFromAmount1RoundingDown(current_sqrt_price, liquidity, amount_in, True)
+            self.getNextSqrtPriceFromAmount1RoundingDown(amount=amount_in, add=True)
         )
 
     # /// @notice Gets the next sqrt price given an output amount of token0 or token1
@@ -445,19 +396,14 @@ class ConcentratedLiquidityPoolState(AMM):
     # /// @return sqrtQX96 The price after removing the output amount of token0 or token1
     def getNextSqrtPriceFromOutput(
         self,
-        current_sqrt_price: float,
-        liquidity: float,
-        amountOut: float,
-        zeroForOne: bool
+        amount_out: float,
+        zero_for_one: bool,
     ):
-        assert current_sqrt_price > 0
-        assert liquidity > 0
-
         # round to make sure that we pass the target price
         return (
-            self.getNextSqrtPriceFromAmount1RoundingDown(current_sqrt_price, liquidity, amountOut, add=False)
-            if zeroForOne else
-            self.getNextSqrtPriceFromAmount0RoundingUp(current_sqrt_price, liquidity, amountOut, add=False)
+            self.getNextSqrtPriceFromAmount1RoundingDown(amount=amount_out, add=False)
+            if zero_for_one else
+            self.getNextSqrtPriceFromAmount0RoundingUp(amount=amount_out, add=False)
         )
 
     # Gets the next sqrt price given a delta of token0
@@ -468,12 +414,14 @@ class ConcentratedLiquidityPoolState(AMM):
     # @return The price after adding or removing amount, depending on add
     def getNextSqrtPriceFromAmount0RoundingUp(
         self,
-        sqrt_ratio: float,
-        liquidity: float,
         amount: float,
-        add: bool
+        add: bool,
+        sqrt_ratio: float = None,
+        liquidity: float = None,
     ):
         # we short circuit amount == 0 because the result is otherwise not guaranteed to equal the input price
+        sqrt_ratio = sqrt_ratio or self.sqrt_price
+        liquidity = liquidity or self.liquidity
         if amount == 0:
             return sqrt_ratio
         if add:
@@ -491,13 +439,15 @@ class ConcentratedLiquidityPoolState(AMM):
     # @return The price after adding or removing `amount`
     def getNextSqrtPriceFromAmount1RoundingDown(
         self,
-        sqrt_ratio: float,
-        liquidity: float,
         amount: float,
-        add: bool
+        add: bool,
+        sqrt_ratio: float = None,
+        liquidity: float = None,
     ):
         # if we're adding (subtracting), rounding down requires rounding the quotient down (up)
         # in both cases, avoid a mulDiv for most inputs
+        sqrt_ratio = sqrt_ratio or self.sqrt_price
+        liquidity = liquidity or self.liquidity
         if add:
             return sqrt_ratio + amount / liquidity
         else:
