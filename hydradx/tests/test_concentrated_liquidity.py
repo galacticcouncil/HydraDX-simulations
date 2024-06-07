@@ -159,7 +159,7 @@ def test_get_amount_0_delta(price, tick_spacing):
         sqrt_price=mpf.sqrt(price)
     ).initialize_tick(
         tick=tick,
-        liquidity=k
+        liquidity_net=k
     )
     agent = Agent(holdings={'B': 1000})
     tick_position = initial_state.ticks[tick]
@@ -182,3 +182,39 @@ def test_get_amount_0_delta(price, tick_spacing):
 
 # def test_get_amount_1_delta():
 #     pass
+def test_implementation():
+    tick_spacing = 10
+    price = 1
+    price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
+    initial_state = ConcentratedLiquidityPosition(
+        assets={'A': mpf(1000 / price), 'B': mpf(1000)},
+        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * 10,
+        tick_spacing=tick_spacing,
+        fee=0.003
+    )
+    buy_quantity = 1 / mpf(1e20)
+    agent = Agent(holdings={'B': 1000})
+    buy_spot = initial_state.buy_spot(tkn_buy='A', tkn_sell='B', fee=0.003)
+    initial_state.swap(
+        agent, tkn_buy='A', tkn_sell='B', buy_quantity=buy_quantity
+    )
+    ex_price = (agent.initial_holdings['B'] - agent.holdings['B']) / agent.holdings['A']
+    if ex_price != pytest.approx(buy_spot, rel=1e-20):
+        raise AssertionError('Buy spot price was not calculated correctly.')
+    sell_quantity = 1 / mpf(1e20)
+    agent = Agent(holdings={'A': 1000})
+    sell_spot = initial_state.sell_spot(tkn_sell='A', tkn_buy='B', fee=0.003)
+    initial_state.swap(
+        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
+    )
+    ex_price = agent.holdings['B'] / (agent.initial_holdings['A'] - agent.holdings['A'])
+    if ex_price != pytest.approx(sell_spot, rel=1e-20):
+        raise AssertionError('Sell spot price was not calculated correctly.')
+    sell_quantity = 1 / mpf(1e20)
+    agent = Agent(holdings={'A': 1000})
+    sell_spot = initial_state.sell_spot(tkn_sell='A', tkn_buy='B', fee=0.003)
+    initial_state.swap(
+        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
+    )
+    ex_price = agent.holdings['B'] / (agent.initial_holdings['A'] - agent.holdings['A'])
+    if ex_price != pytest.approx(s
