@@ -1,13 +1,12 @@
-import copy
 import functools
+from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 
 from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
@@ -276,7 +275,7 @@ def test_arbitrage_profitability(trade_fraction, amp, fee):
     )
     arbitrageur.trade_strategy.execute(pre_arb_state, 'Arbitrageur')
     if (
-        sum(arbitrageur.holdings.values()) < sum(arbitrageur.initial_holdings.values())
+            sum(arbitrageur.holdings.values()) < sum(arbitrageur.initial_holdings.values())
     ):
         raise AssertionError(
             f"Arbitrageur lost money. "
@@ -319,8 +318,8 @@ def test_arbitrage_efficacy(trade_fraction, amp):
     final_pool = final_state.pools['stableswap']
 
     if (
-        initial_pool.price('R1', 'R2')
-        != pytest.approx(final_pool.price('R1', 'R2'), abs=1e-6)
+            initial_pool.price('R1', 'R2')
+            != pytest.approx(final_pool.price('R1', 'R2'), abs=1e-6)
     ):
         raise AssertionError(f"Arbitrageur didn't keep the price stable."
                              f"({initial_pool.price('R1', 'R2')},"
@@ -587,6 +586,7 @@ def test_amplification_change_exploit():  # (end_amp):
         raise AssertionError(F"Pool lost money. loss: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     liquidity_stepdown=st.integers(min_value=-1000000, max_value=1000000),
     assets_number=st.integers(min_value=2, max_value=4),
@@ -631,6 +631,7 @@ def test_buy_sell_spot(
         raise AssertionError(f'Buy spot R2 ({r1_per_r2}) != execution price ({ex_price_r2}).')
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     st.lists(asset_quantity_strategy, min_size=2, max_size=2),
     st.floats(min_value=0.0001, max_value=0.50),

@@ -1,20 +1,21 @@
-import json
-from csv import reader
-import requests
-from zipfile import ZipFile
-import datetime
-import os
-from hydradxapi import HydraDX
-import time
 import base64
+import datetime
+import json
+import os
+import time
+from csv import reader
 from pprint import pprint
-from dotenv import load_dotenv
+from zipfile import ZipFile
 
+import requests
+from dotenv import load_dotenv
+from hydradxapi import HydraDX
+
+from .amm.amm import basic_fee
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
-from .amm.stableswap_amm import StableSwapPoolState
 from .amm.omnipool_amm import OmnipoolState
-from .amm.amm import basic_fee
+from .amm.stableswap_amm import StableSwapPoolState
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -98,11 +99,10 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
 
 
 def import_binance_prices(
-    assets: list[str], start_date: str, days: int, interval: int = 12,
-    stablecoin: str = 'USDT', return_as_dict: bool = False
+        assets: list[str], start_date: str, days: int, interval: int = 12,
+        stablecoin: str = 'USDT', return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-
-    start_date = datetime.datetime.strptime(start_date, "%b %d %Y")
+    start_date = datetime.datetime.strptime(start_date, "%B %d %Y")
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
 
     # find the data folder
@@ -291,7 +291,6 @@ def get_omnipool_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = Fals
         op_state = chain.api.omnipool.state()
 
         for asset_id in op_state:
-
             fee = op_state[asset_id].fees
             decimals = op_state[asset_id].asset.decimals
             symbol = op_state[asset_id].asset.symbol
@@ -325,7 +324,7 @@ def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = Fa
             symbols = [asset.symbol for asset in pool_data.assets]
             repeats = [symbol for symbol in symbols if symbols.count(symbol) > 1]
             pools.append(StableSwapPoolState(
-                tokens = {
+                tokens={
                     f"{asset.symbol}{asset.asset_id}" if asset.symbol in repeats else asset.symbol:
                         int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
                     for asset in pool_data.assets
@@ -453,11 +452,13 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
     ts = time.time()
     with open(os.path.join(path, f'omnipool_savefile_{ts}.json'), 'w+') as output_file:
         json.dump(
-        {
+            {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
-                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.asset_fee.items()},
-                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in omnipool.lrna_fee.items()},
+                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
+                              omnipool.asset_fee.items()},
+                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
+                             omnipool.lrna_fee.items()},
                 'sub_pools': [
                     {
                         'tokens': pool.liquidity,
@@ -478,7 +479,7 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
     else:
         file_ls = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))
     for filename in reversed(sorted(file_ls)):  # by default, load the latest first
-        with open (os.path.join(path, filename), 'r') as input_file:
+        with open(os.path.join(path, filename), 'r') as input_file:
             json_state = json.load(input_file)
             # pprint(json_state)
         omnipool = OmnipoolState(
@@ -510,7 +511,6 @@ def get_centralized_market(
         trade_fee: float,
         archive: bool
 ) -> CentralizedMarket:
-
     order_books = {}
     for arb_cfg in config:
         exchanges = arb_cfg['exchanges'].keys()
@@ -565,6 +565,7 @@ def convert_config(cfg: list[dict]) -> list[dict]:
         }
         for cfg_item in cfg
     ]
+
 
 def load_config(filename, path='archive'):
     with open(os.path.join(path, filename), 'r') as input_file:
@@ -779,6 +780,7 @@ def get_omnipool_balance_history():
 
         print(f'saving omnipool_history_{str(file_number).zfill(2)}')
         save_history_file(all_data, file_number)
+
 
 async def query_sqlPad(query: str):
     """
