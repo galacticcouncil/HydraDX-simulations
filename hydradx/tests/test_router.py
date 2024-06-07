@@ -2,6 +2,7 @@ import copy
 import pytest
 from hypothesis import given, strategies as st, settings
 from mpmath import mpf, mp
+from datetime import timedelta
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
