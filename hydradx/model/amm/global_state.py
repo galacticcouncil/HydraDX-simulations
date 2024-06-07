@@ -485,7 +485,7 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int
     collat_profit = treasury_agent.holdings[cdp.collateral_asset] - init_collat_amt
     return_amt = max(collat_profit - penalty_amt, 0)
     treasury_agent.holdings[cdp.collateral_asset] -= return_amt
-    mm.add_collateral(cdp_i, return_amt)
+    mm.cdps[cdp_i][1].collateral_amt += return_amt
 
     treasury_agent.holdings[cdp.debt_asset] -= flash_mint_amt  # flash burn
 

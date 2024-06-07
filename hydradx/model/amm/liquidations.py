@@ -115,14 +115,9 @@ class money_market:
                collateral_amt: float) -> None:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
-        assert borrow_amt <= self.liquidity[borrow_asset]
+        assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
         assert agent.is_holding(collateral_asset, collateral_amt)
-        if (borrow_asset, collateral_asset) in self.oracles:
-            price = 1 / self.oracles[(borrow_asset, collateral_asset)]
-        elif (collateral_asset, borrow_asset) in self.oracles:
-            price = self.oracles[(collateral_asset, borrow_asset)]
-        else:
-            raise ValueError("Oracle price not found.")
+        price = self.get_oracle_price(collateral_asset, borrow_asset)
         assert price * collateral_amt * self.min_ltv >= borrow_amt
         self.borrowed[borrow_asset] += borrow_amt
         if borrow_asset not in agent.holdings:

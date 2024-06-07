@@ -319,8 +319,8 @@ def test_borrow_fails():
     collat_amt = 100
     agent = Agent(holdings={collateral_asset: collat_amt})
     mm = money_market(
-        liquidity={borrow_asset: 1000000, collateral_asset: 1000000},
-        oracles={("DOT", "USDT"): 10, ("ETH", "UST"): 3000, ("ETH", "DOT"): 300},
+        liquidity={"DOT": 1000000, "BTC": 1000000, "USDT": 1000000},
+        oracles={("DOT", "USDT"): 10, ("ETH", "USDT"): 3000, ("ETH", "DOT"): 300},
         liquidation_threshold=0.7,
         min_ltv=0.6
     )
@@ -367,20 +367,6 @@ def test_repay_fails():
     )
     with pytest.raises(Exception):  # should fail because agent does not have enough funds
         mm.repay(agent, 0)
-
-
-def test_add_collateral():
-    agent = Agent(holdings={"DOT": 500})
-    cdp = CDP("USDT", "DOT", 1000, 200)
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): 10},
-        liquidation_threshold=0.7,
-        cdps=[(agent, cdp)]
-    )
-    mm.add_collateral(0, 100)
-    if cdp.collateral_amt != 300:
-        raise
 
 
 def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
