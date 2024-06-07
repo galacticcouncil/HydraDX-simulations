@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .agents import AgentArchiveState
 from .amm import AMM
-from .liquidations import money_market
+from .liquidations import MoneyMarket
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
@@ -14,7 +14,7 @@ class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
-                 money_market: money_market = None,
+                 money_market: MoneyMarket = None,
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
@@ -387,7 +387,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, ran
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: int = 20,
+def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, iters: int = 20,
                                     min_amt: float = 0) -> float:
     """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
 
@@ -438,7 +438,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
     return delta_debt_down
 
 
-def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent,
+def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, treasury_agent: Agent,
                            delta_debt: float) -> None:
     cdp = mm.cdps[cdp_i][1]
     penalty = mm.liquidation_penalty[cdp.collateral_asset]

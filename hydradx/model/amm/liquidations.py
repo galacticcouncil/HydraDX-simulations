@@ -30,7 +30,7 @@ class CDP:
         return True
 
 
-class money_market:
+class MoneyMarket:
     def __init__(
             self,
             liquidity: dict[str: float],
