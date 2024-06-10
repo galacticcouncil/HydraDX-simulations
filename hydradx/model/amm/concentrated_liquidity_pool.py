@@ -6,6 +6,8 @@ from mpmath import mp, mpf
 mp.dps = 50
 
 tick_increment = 1 + 1e-4
+min_tick = -965504
+max_tick = -min_tick
 def tick_to_price(tick: int or float):
     return tick_increment ** tick
 
@@ -13,7 +15,7 @@ def price_to_tick(price: float, tick_spacing: int = 0):
     raw_tick = math.log(price) / math.log(tick_increment)
     if tick_spacing == 0:
         return raw_tick
-    nearest_valid_tick = round(raw_tick / tick_spacing) * tick_spacing
+    nearest_valid_tick = int(raw_tick / tick_spacing) * tick_spacing
     return nearest_valid_tick
 
 class ConcentratedLiquidityPosition(AMM):
@@ -181,11 +183,11 @@ class ConcentratedLiquidityPoolState(AMM):
     def __init__(
             self,
             asset_list: list[str],
+            sqrt_price: float,
+            liquidity: float,
             tick_spacing: int = 10,
             fee: float = 0.0,
             protocol_fee: float = 0.0,
-            sqrt_price: float = 1.0,
-            liquidity: float = 0.0,
             ticks: dict[int, Tick] = None
     ):
         super().__init__()
@@ -213,28 +215,26 @@ class ConcentratedLiquidityPoolState(AMM):
 
     @property
     def current_tick(self):
-        return int(price_to_tick(self.sqrt_price ** 2))
+        return round(price_to_tick(self.sqrt_price ** 2))
 
     def next_initialized_tick(self, zero_for_one):
         search_direction = -1 if zero_for_one else 1
         current_tick = self.current_tick + search_direction * self.tick_spacing
 
-        while not current_tick in self.ticks:
+        while not current_tick in self.ticks and max_tick > current_tick > min_tick:
             current_tick += search_direction * self.tick_spacing
 
-        return self.ticks[current_tick]
+        return self.ticks[current_tick] if current_tick in self.ticks else None
 
-    @staticmethod
-    def getAmount0Delta(liquidity, sqrt_ratio_a, sqrt_ratio_b) -> float:
+    def getAmount0Delta(self, sqrt_ratio_a, sqrt_ratio_b) -> float:
         if sqrt_ratio_a > sqrt_ratio_b:
             sqrt_ratio_a, sqrt_ratio_b = sqrt_ratio_b, sqrt_ratio_a
-        return liquidity * (sqrt_ratio_b - sqrt_ratio_a) / sqrt_ratio_b / sqrt_ratio_a
+        return self.liquidity * (sqrt_ratio_b - sqrt_ratio_a) / sqrt_ratio_b / sqrt_ratio_a
 
-    @staticmethod
-    def getAmount1Delta(liquidity, sqrt_ratio_a, sqrt_ratio_b) -> float:
+    def getAmount1Delta(self, sqrt_ratio_a, sqrt_ratio_b) -> float:
         if sqrt_ratio_a > sqrt_ratio_b:
             sqrt_ratio_a, sqrt_ratio_b = sqrt_ratio_b, sqrt_ratio_a
-        return liquidity * (sqrt_ratio_b - sqrt_ratio_a)
+        return self.liquidity * (sqrt_ratio_b - sqrt_ratio_a)
 
     def swap(
             self,
@@ -260,7 +260,9 @@ class ConcentratedLiquidityPoolState(AMM):
             next_tick: Tick = self.next_initialized_tick(zeroForOne)
 
             # get the price for the next tick
-            sqrt_price_next = tick_to_price(next_tick.index)
+            sqrt_price_next = tick_to_price(next_tick.index) if next_tick else (
+                tick_to_price(min_tick) if zeroForOne else tick_to_price(max_tick)
+            )
 
             # compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
             sqrt_price_current, amountIn, amountOut, feeAmount = self.compute_swap_step(
@@ -295,6 +297,18 @@ class ConcentratedLiquidityPoolState(AMM):
             if sqrt_price_current == sqrt_price_next:
                 # if the tick is initialized, run the tick transition
                 self.liquidity += next_tick.liquidityNet if zeroForOne else -next_tick.liquidityNet
+                self.sqrt_price = sqrt_price_next
+
+        # update the agent's holdings
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+        if exact_input:
+            agent.holdings[tkn_buy] += amountCalculated
+            agent.holdings[tkn_sell] -= sell_quantity
+        else:
+            agent.holdings[tkn_buy] += buy_quantity
+            agent.holdings[tkn_sell] -= amountCalculated
+
 
     def compute_swap_step(
             self,
@@ -312,9 +326,9 @@ class ConcentratedLiquidityPoolState(AMM):
         if exactIn:
             amountRemainingLessFee = amount_remaining * (1 - self.fee)
             amountIn = (
-                self.getAmount0Delta(sqrt_ratio_target, sqrt_ratio_current, liquidity)
+                self.getAmount0Delta(sqrt_ratio_target, sqrt_ratio_current)
                 if zeroForOne else
-                self.getAmount1Delta(sqrt_ratio_current, sqrt_ratio_target, liquidity)
+                self.getAmount1Delta(sqrt_ratio_current, sqrt_ratio_target)
             )
             if amountRemainingLessFee >= amountIn:
                 sqrt_ratio_next = sqrt_ratio_target
@@ -325,9 +339,9 @@ class ConcentratedLiquidityPoolState(AMM):
                 )
         else:
             amountOut = (
-                self.getAmount1Delta(sqrt_ratio_target, sqrt_ratio_current, liquidity)
+                self.getAmount1Delta(sqrt_ratio_target, sqrt_ratio_current)
                 if zeroForOne else
-                self.getAmount0Delta(sqrt_ratio_current, sqrt_ratio_target, liquidity)
+                self.getAmount0Delta(sqrt_ratio_current, sqrt_ratio_target)
             )
             if -amount_remaining >= amountOut:
                 sqrt_ratio_next = sqrt_ratio_target
@@ -342,14 +356,14 @@ class ConcentratedLiquidityPoolState(AMM):
         # get the input/output amounts
         if zeroForOne:
             if not (is_max and exactIn):
-                amountIn = self.getAmount0Delta(sqrt_ratio_next, sqrt_ratio_current, liquidity)
+                amountIn = -amount_remaining  # self.getAmount0Delta(sqrt_ratio_next, sqrt_ratio_current)
             if exactIn or not is_max:
-                amountOut = self.getAmount1Delta(sqrt_ratio_next, sqrt_ratio_current, liquidity)
+                amountOut = self.getAmount1Delta(sqrt_ratio_next, sqrt_ratio_current)
         else:
             if not(is_max and exactIn):
-                amountIn = self.getAmount1Delta(sqrt_ratio_current, sqrt_ratio_next, liquidity)
+                amountIn = self.getAmount1Delta(sqrt_ratio_current, sqrt_ratio_next)
             if exactIn or not is_max:
-                amountOut = self.getAmount0Delta(sqrt_ratio_current, sqrt_ratio_next, liquidity)
+                amountOut = -amount_remaining  # self.getAmount0Delta(sqrt_ratio_current, sqrt_ratio_next)
 
         # cap the output amount to not exceed the remaining output amount
         if not exactIn and amountOut > -amount_remaining:
