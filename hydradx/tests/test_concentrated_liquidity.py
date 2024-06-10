@@ -184,37 +184,34 @@ def test_get_amount_0_delta(price, tick_spacing):
 #     pass
 def test_implementation():
     tick_spacing = 10
-    price = 1
-    price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
-    initial_state = ConcentratedLiquidityPosition(
-        assets={'A': mpf(1000 / price), 'B': mpf(1000)},
-        min_tick=price_to_tick(price, tick_spacing) - tick_spacing * 10,
+    price = mpf(5)
+    # price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
+    one_position = ConcentratedLiquidityPosition(
+        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
-        fee=0.003
+        fee=0
     )
-    buy_quantity = 1 / mpf(1e20)
-    agent = Agent(holdings={'B': 1000})
-    buy_spot = initial_state.buy_spot(tkn_buy='A', tkn_sell='B', fee=0.003)
-    initial_state.swap(
-        agent, tkn_buy='A', tkn_sell='B', buy_quantity=buy_quantity
+    buy_quantity = mpf(1)
+    agent1 = Agent(holdings={'B': 1000})
+    one_position.swap(
+        agent1, tkn_buy='A', tkn_sell='B', buy_quantity=buy_quantity
     )
-    ex_price = (agent.initial_holdings['B'] - agent.holdings['B']) / agent.holdings['A']
-    if ex_price != pytest.approx(buy_spot, rel=1e-20):
-        raise AssertionError('Buy spot price was not calculated correctly.')
-    sell_quantity = 1 / mpf(1e20)
-    agent = Agent(holdings={'A': 1000})
-    sell_spot = initial_state.sell_spot(tkn_sell='A', tkn_buy='B', fee=0.003)
-    initial_state.swap(
-        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
+
+    agent2 = Agent(holdings={'B': 1000})
+    whole_pool = ConcentratedLiquidityPoolState(
+        asset_list=['A', 'B'],
+        sqrt_price=mpf.sqrt(price),
+        liquidity=one_position.invariant,
+        tick_spacing = tick_spacing
+    ).initialize_tick(
+        tick=price_to_tick(price, tick_spacing),
+        liquidity_net=mpf(11111)
+    ).swap(
+        agent2, tkn_buy='A', tkn_sell='B', buy_quantity=buy_quantity
     )
-    ex_price = agent.holdings['B'] / (agent.initial_holdings['A'] - agent.holdings['A'])
-    if ex_price != pytest.approx(sell_spot, rel=1e-20):
-        raise AssertionError('Sell spot price was not calculated correctly.')
-    sell_quantity = 1 / mpf(1e20)
-    agent = Agent(holdings={'A': 1000})
-    sell_spot = initial_state.sell_spot(tkn_sell='A', tkn_buy='B', fee=0.003)
-    initial_state.swap(
-        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
-    )
-    ex_price = agent.holdings['B'] / (agent.initial_holdings['A'] - agent.holdings['A'])
-    if ex_price != pytest.approx(s
+
+    if agent1.holdings['A'] != agent2.holdings['A']:
+        raise AssertionError('Buy quantity was not bought correctly.')
+    if agent1.holdings['B'] != pytest.approx(agent2.holdings['B'], rel=1e-10):
+        raise AssertionError('Sell quantity was not calculated correctly.')
