@@ -10,6 +10,9 @@ from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.tests.strategies_omnipool import fee_strategy
 
+settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
+settings.load_profile("long")
+
 mp.dps = 50
 
 asset_quantity_strategy = st.floats(min_value=100000, max_value=10000000)
@@ -566,7 +569,6 @@ def test_spot_prices_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
 
 
-@settings(deadline=timedelta(milliseconds=500))
 @given(
     assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
     lrna_fee=fee_strategy,
