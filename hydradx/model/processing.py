@@ -122,6 +122,8 @@ def import_binance_prices(
                 print(f'Downloading {file}')
                 url = f"https://data.binance.vision/data/spot/daily/klines/{tkn}{stablecoin}/1s/{file}.zip"
                 response = requests.get(url)
+                if response.status_code == 404:
+                    raise ValueError("404")
                 with open(f'./data/{file}.zip', 'wb') as f:
                     f.write(response.content)
                 with ZipFile(f"./data/{file}.zip", 'r') as zipObj:
