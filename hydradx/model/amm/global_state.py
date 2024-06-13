@@ -5,7 +5,7 @@ from typing import Callable
 from .agents import Agent
 from .agents import AgentArchiveState
 from .amm import AMM
-from .liquidations import money_market
+from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
@@ -14,7 +14,7 @@ class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
                  pools: dict[str: AMM],
-                 money_market: money_market = None,
+                 money_market: MoneyMarket = None,
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
@@ -369,13 +369,16 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     return transform
 
 
-def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> Callable:
+def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, rand: bool = False) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         omnipool = state.pools[pool_id]
         agent = state.agents[agent_id]
         mm = state.money_market
-        for i in range(len(mm.cdps)):
-            if mm.is_liquidatable(mm.cdps[i][1]):
+        ordered_index_list = list(range(len(mm.cdps)))
+        if rand:
+            random.shuffle(ordered_index_list)
+        for i in ordered_index_list:
+            if mm.is_liquidatable(mm.cdps[i]):
                 delta_debt = find_partial_liquidation_amount(omnipool, mm, i, iters)
                 if delta_debt > 0:
                     omnipool_liquidate_cdp(state.pools['omnipool'], mm, i, agent, delta_debt)
@@ -384,7 +387,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> 
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: int = 20,
+def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, iters: int = 20,
                                     min_amt: float = 0) -> float:
     """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
 
@@ -395,7 +398,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
         iters: max iterations for the binomial search (default 20)
         min_amt: minimum debt amount to liquidate (default 0)
     """
-    cdp = mm.cdps[cdp_i][1]
+    cdp = mm.cdps[cdp_i]
     debt_asset = cdp.debt_asset
     collateral_asset = cdp.collateral_asset
 
@@ -435,9 +438,9 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, c
     return delta_debt_down
 
 
-def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent,
+def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, treasury_agent: Agent,
                            delta_debt: float) -> None:
-    cdp = mm.cdps[cdp_i][1]
+    cdp = mm.cdps[cdp_i]
     penalty = mm.liquidation_penalty[cdp.collateral_asset]
     # treasury_agent buys borrowed asset to cover the debt, but only if debt can be covered by existing collateral
     # check if debt can be covered by existing collateral
@@ -482,7 +485,7 @@ def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int
     collat_profit = treasury_agent.holdings[cdp.collateral_asset] - init_collat_amt
     return_amt = max(collat_profit - penalty_amt, 0)
     treasury_agent.holdings[cdp.collateral_asset] -= return_amt
-    mm.cdps[cdp_i][1].collateral_amt += return_amt
+    mm.cdps[cdp_i].collateral_amt += return_amt
 
     treasury_agent.holdings[cdp.debt_asset] -= flash_mint_amt  # flash burn
 
@@ -581,7 +584,7 @@ def _set_mm_oracles_to_external_market(state: GlobalState, stablecoin: str, trig
 def update_prices_and_process(pool_id: str, liquidating_agent_id: str, price_list: list[dict[str: float]],
                               stablecoin: str, trigger_pct: float = 0) -> Callable:
     transform_price = historical_prices(price_list)
-    transform_liquidate = liquidate_against_omnipool(pool_id, liquidating_agent_id)
+    transform_liquidate = liquidate_against_omnipool(pool_id, liquidating_agent_id, rand=True)
     trigger = trigger_pct
 
     def transform(state: GlobalState) -> GlobalState:
