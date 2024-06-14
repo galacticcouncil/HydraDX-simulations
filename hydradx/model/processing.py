@@ -1,3 +1,5 @@
+from web3 import Web3
+import math
 import json
 from csv import reader
 import requests
@@ -335,8 +337,7 @@ def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = Fa
                 unique_id=pool_name
             ))
     if archive:
-        for state in pools:
-            save_stableswap_data(state)
+        save_stableswap_data(pools)
     return pools
 
 
@@ -836,3 +837,149 @@ async def query_sqlPad(query: str):
 
     except Exception as e:
         print(f"There was a problem with your request: {str(e)}")
+
+
+tkn_pair_abi = json.loads('[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"int24","name":"tickLower","type":"int24"},{"indexed":true,"internalType":"int24","name":"tickUpper","type":"int24"},{"indexed":false,"internalType":"uint128","name":"amount","type":"uint128"},{"indexed":false,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1","type":"uint256"}],"name":"Burn","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":false,"internalType":"address","name":"recipient","type":"address"},{"indexed":true,"internalType":"int24","name":"tickLower","type":"int24"},{"indexed":true,"internalType":"int24","name":"tickUpper","type":"int24"},{"indexed":false,"internalType":"uint128","name":"amount0","type":"uint128"},{"indexed":false,"internalType":"uint128","name":"amount1","type":"uint128"}],"name":"Collect","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"address","name":"recipient","type":"address"},{"indexed":false,"internalType":"uint128","name":"amount0","type":"uint128"},{"indexed":false,"internalType":"uint128","name":"amount1","type":"uint128"}],"name":"CollectProtocol","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"address","name":"recipient","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"paid0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"paid1","type":"uint256"}],"name":"Flash","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint16","name":"observationCardinalityNextOld","type":"uint16"},{"indexed":false,"internalType":"uint16","name":"observationCardinalityNextNew","type":"uint16"}],"name":"IncreaseObservationCardinalityNext","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"indexed":false,"internalType":"int24","name":"tick","type":"int24"}],"name":"Initialize","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"int24","name":"tickLower","type":"int24"},{"indexed":true,"internalType":"int24","name":"tickUpper","type":"int24"},{"indexed":false,"internalType":"uint128","name":"amount","type":"uint128"},{"indexed":false,"internalType":"uint256","name":"amount0","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"amount1","type":"uint256"}],"name":"Mint","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint8","name":"feeProtocol0Old","type":"uint8"},{"indexed":false,"internalType":"uint8","name":"feeProtocol1Old","type":"uint8"},{"indexed":false,"internalType":"uint8","name":"feeProtocol0New","type":"uint8"},{"indexed":false,"internalType":"uint8","name":"feeProtocol1New","type":"uint8"}],"name":"SetFeeProtocol","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"sender","type":"address"},{"indexed":true,"internalType":"address","name":"recipient","type":"address"},{"indexed":false,"internalType":"int256","name":"amount0","type":"int256"},{"indexed":false,"internalType":"int256","name":"amount1","type":"int256"},{"indexed":false,"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"indexed":false,"internalType":"uint128","name":"liquidity","type":"uint128"},{"indexed":false,"internalType":"int24","name":"tick","type":"int24"}],"name":"Swap","type":"event"},{"inputs":[{"internalType":"int24","name":"tickLower","type":"int24"},{"internalType":"int24","name":"tickUpper","type":"int24"},{"internalType":"uint128","name":"amount","type":"uint128"}],"name":"burn","outputs":[{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"int24","name":"tickLower","type":"int24"},{"internalType":"int24","name":"tickUpper","type":"int24"},{"internalType":"uint128","name":"amount0Requested","type":"uint128"},{"internalType":"uint128","name":"amount1Requested","type":"uint128"}],"name":"collect","outputs":[{"internalType":"uint128","name":"amount0","type":"uint128"},{"internalType":"uint128","name":"amount1","type":"uint128"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint128","name":"amount0Requested","type":"uint128"},{"internalType":"uint128","name":"amount1Requested","type":"uint128"}],"name":"collectProtocol","outputs":[{"internalType":"uint128","name":"amount0","type":"uint128"},{"internalType":"uint128","name":"amount1","type":"uint128"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"factory","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"fee","outputs":[{"internalType":"uint24","name":"","type":"uint24"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"feeGrowthGlobal0X128","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"feeGrowthGlobal1X128","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"flash","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint16","name":"observationCardinalityNext","type":"uint16"}],"name":"increaseObservationCardinalityNext","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"liquidity","outputs":[{"internalType":"uint128","name":"","type":"uint128"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"maxLiquidityPerTick","outputs":[{"internalType":"uint128","name":"","type":"uint128"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"int24","name":"tickLower","type":"int24"},{"internalType":"int24","name":"tickUpper","type":"int24"},{"internalType":"uint128","name":"amount","type":"uint128"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"mint","outputs":[{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"observations","outputs":[{"internalType":"uint32","name":"blockTimestamp","type":"uint32"},{"internalType":"int56","name":"tickCumulative","type":"int56"},{"internalType":"uint160","name":"secondsPerLiquidityCumulativeX128","type":"uint160"},{"internalType":"bool","name":"initialized","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint32[]","name":"secondsAgos","type":"uint32[]"}],"name":"observe","outputs":[{"internalType":"int56[]","name":"tickCumulatives","type":"int56[]"},{"internalType":"uint160[]","name":"secondsPerLiquidityCumulativeX128s","type":"uint160[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"positions","outputs":[{"internalType":"uint128","name":"liquidity","type":"uint128"},{"internalType":"uint256","name":"feeGrowthInside0LastX128","type":"uint256"},{"internalType":"uint256","name":"feeGrowthInside1LastX128","type":"uint256"},{"internalType":"uint128","name":"tokensOwed0","type":"uint128"},{"internalType":"uint128","name":"tokensOwed1","type":"uint128"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"protocolFees","outputs":[{"internalType":"uint128","name":"token0","type":"uint128"},{"internalType":"uint128","name":"token1","type":"uint128"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint8","name":"feeProtocol0","type":"uint8"},{"internalType":"uint8","name":"feeProtocol1","type":"uint8"}],"name":"setFeeProtocol","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"slot0","outputs":[{"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"internalType":"int24","name":"tick","type":"int24"},{"internalType":"uint16","name":"observationIndex","type":"uint16"},{"internalType":"uint16","name":"observationCardinality","type":"uint16"},{"internalType":"uint16","name":"observationCardinalityNext","type":"uint16"},{"internalType":"uint8","name":"feeProtocol","type":"uint8"},{"internalType":"bool","name":"unlocked","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"int24","name":"tickLower","type":"int24"},{"internalType":"int24","name":"tickUpper","type":"int24"}],"name":"snapshotCumulativesInside","outputs":[{"internalType":"int56","name":"tickCumulativeInside","type":"int56"},{"internalType":"uint160","name":"secondsPerLiquidityInsideX128","type":"uint160"},{"internalType":"uint32","name":"secondsInside","type":"uint32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"bool","name":"zeroForOne","type":"bool"},{"internalType":"int256","name":"amountSpecified","type":"int256"},{"internalType":"uint160","name":"sqrtPriceLimitX96","type":"uint160"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"swap","outputs":[{"internalType":"int256","name":"amount0","type":"int256"},{"internalType":"int256","name":"amount1","type":"int256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"int16","name":"","type":"int16"}],"name":"tickBitmap","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"tickSpacing","outputs":[{"internalType":"int24","name":"","type":"int24"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"int24","name":"","type":"int24"}],"name":"ticks","outputs":[{"internalType":"uint128","name":"liquidityGross","type":"uint128"},{"internalType":"int128","name":"liquidityNet","type":"int128"},{"internalType":"uint256","name":"feeGrowthOutside0X128","type":"uint256"},{"internalType":"uint256","name":"feeGrowthOutside1X128","type":"uint256"},{"internalType":"int56","name":"tickCumulativeOutside","type":"int56"},{"internalType":"uint160","name":"secondsPerLiquidityOutsideX128","type":"uint160"},{"internalType":"uint32","name":"secondsOutside","type":"uint32"},{"internalType":"bool","name":"initialized","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token0","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token1","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]')
+erc20_abi = [{"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "payable": False, "stateMutability": "view", "type": "function"}]
+
+class Token:
+    def __init__(self, symbol: str, address: str, w3: Web3):
+        self.address = address
+        self.symbol = symbol
+        # print('Getting decimals for token: ', symbol)
+        self.contract = w3.eth.contract(address=self.address, abi=erc20_abi)
+        self.decimals = self.contract.functions.decimals().call()
+
+    def __str__(self):
+        return (
+            f"symbol: {self.symbol}"
+            f"address: ({self.address}"
+            f"decimals: {self.decimals}"
+        )
+
+class V3Pool:
+    def __init__(self, tkn1: Token, tkn2: Token, pool_contract, quoter_contract, w3: Web3):
+        self.pool_contract = pool_contract
+        self.quoter_contract = quoter_contract
+        if tkn1.address.lower() < tkn2.address.lower():
+            self.tkn1 = tkn1
+            self.tkn2 = tkn2
+        else:
+            self.tkn1 = tkn2
+            self.tkn2 = tkn1
+        print('new pool: ', tkn1.symbol, tkn2.symbol)
+        self.name = f"{tkn1.symbol}-{tkn2.symbol}"
+        self.address = self.pool_contract.functions.getPool(self.tkn1.address, self.tkn2.address, 3000).call()
+        print('pool address: ', self.address)
+        self.contract = w3.eth.contract(address=self.address, abi=tkn_pair_abi)
+        self.price = self.get_price()
+        self.sqrt_price = self.price ** 0.5
+        self.tick_spacing = self.contract.functions.tickSpacing().call()
+
+    def get_price(self):
+        slot0 = self.contract.functions.slot0().call()
+        sqrt_price = slot0[0] / (2 ** 192)
+        price = self.sqrt_price ** 2  # Square the sqrtPriceX96 and adjust for fixed point precision
+        # account for the different decimals of the tokens
+        price = price * (10 ** (self.tkn1.decimals - self.tkn2.decimals))
+        return price
+
+    def get_active_tick(self):
+        price_tick = self.contract.functions.slot0().call()[1]
+        return price_tick // self.tick_spacing * self.tick_spacing
+
+    def liquidity_at_tick(self, tick):
+        return_val = self.contract.functions.ticks(tick).call()
+        return return_val[0]
+
+    def get_liquidity_distribution(self):
+        """ get liquidity at the current tick and at 10 ticks above and below """
+        starting_tick = self.get_active_tick()
+        liquidity = {starting_tick: self.liquidity_at_tick(starting_tick)}
+        for i in range(1, 10):
+            tick = starting_tick + i * self.tick_spacing
+            liquidity[tick] = self.liquidity_at_tick(tick)
+            tick = starting_tick - i * self.tick_spacing
+            liquidity[tick] = self.liquidity_at_tick(tick)
+        return {k: v for k, v in sorted(liquidity.items())}
+
+    def get_quote(
+            self, tkn_sell: str = None, tkn_buy: str = None, sell_quantity: float = 0, buy_quantity: float = 0
+    ) -> float:
+        """ get quote for a token pair """
+        if tkn_sell is None:
+            tkn_sell = self.tkn1.symbol if tkn_buy == self.tkn2.symbol else self.tkn2.symbol
+        elif tkn_buy is None:
+            tkn_buy = self.tkn1.symbol if tkn_sell == self.tkn2.symbol else self.tkn2.symbol
+        if tkn_sell not in (self.tkn1.symbol, self.tkn2.symbol):
+            raise ValueError(f"Token {tkn_sell} not in pool")
+        if tkn_buy not in (self.tkn1.symbol, self.tkn2.symbol):
+            raise ValueError(f"Token {tkn_buy} not in pool")
+        sell_quantity *= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
+        buy_quantity *= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
+        if sell_quantity:
+            if tkn_sell == self.tkn1.symbol:
+                buy_quantity = self.quoter_contract.functions.quoteExactInputSingle(
+                    self.tkn1.address, self.tkn2.address, 3000, sell_quantity, 0).call()
+            else:
+                buy_quantity = self.quoter_contract.functions.quoteExactInputSingle(
+                    self.tkn2.address, self.tkn1.address, 3000, sell_quantity, 0).call()
+            buy_quantity /= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
+            return buy_quantity
+        elif buy_quantity:
+            if tkn_sell == self.tkn1.symbol:
+                sell_quantity = self.quoter_contract.functions.quoteExactOutputSingle(
+                    self.tkn1.address, self.tkn2.address, 3000, buy_quantity, 0).call()
+            else:
+                sell_quantity = self.quoter_contract.functions.quoteExactOutputSingle(
+                    self.tkn2.address, self.tkn1.address, 3000, buy_quantity, 0).call()
+            sell_quantity /= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
+            return sell_quantity
+        return 0.0
+
+
+def get_uniswap_pool_data(tkn_pairs: list[tuple]) -> dict[str, V3Pool]:
+    """ get pool data from uniswap """
+    # Connect to an Ethereum node
+    provider = 'https://eth-mainnet.g.alchemy.com/v2/wWrLtJw3ZHgitVEI0hOcrQ5UxAuemN6f'
+    # provider = 'https://moonbeam-rpc.dwellir.com'
+    w3 = Web3(Web3.HTTPProvider(provider))
+
+    # Uniswap V3 Pool address and ABI
+    uniswap_pool_address = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+    # stellaswap_factory_address = "0xabE1655110112D0E45EF91e94f8d757e4ddBA59C"
+    uniswap_pool_abi = json.loads('[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint24","name":"fee","type":"uint24"},{"indexed":true,"internalType":"int24","name":"tickSpacing","type":"int24"}],"name":"FeeAmountEnabled","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnerChanged","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"token0","type":"address"},{"indexed":true,"internalType":"address","name":"token1","type":"address"},{"indexed":true,"internalType":"uint24","name":"fee","type":"uint24"},{"indexed":false,"internalType":"int24","name":"tickSpacing","type":"int24"},{"indexed":false,"internalType":"address","name":"pool","type":"address"}],"name":"PoolCreated","type":"event"},{"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint24","name":"fee","type":"uint24"}],"name":"createPool","outputs":[{"internalType":"address","name":"pool","type":"address"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint24","name":"fee","type":"uint24"},{"internalType":"int24","name":"tickSpacing","type":"int24"}],"name":"enableFeeAmount","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint24","name":"","type":"uint24"}],"name":"feeAmountTickSpacing","outputs":[{"internalType":"int24","name":"","type":"int24"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"},{"internalType":"address","name":"","type":"address"},{"internalType":"uint24","name":"","type":"uint24"}],"name":"getPool","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"parameters","outputs":[{"internalType":"address","name":"factory","type":"address"},{"internalType":"address","name":"token0","type":"address"},{"internalType":"address","name":"token1","type":"address"},{"internalType":"uint24","name":"fee","type":"uint24"},{"internalType":"int24","name":"tickSpacing","type":"int24"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_owner","type":"address"}],"name":"setOwner","outputs":[],"stateMutability":"nonpayable","type":"function"}]')
+    uniswap_pool_contract = w3.eth.contract(address=uniswap_pool_address, abi=uniswap_pool_abi)
+
+    uniswap_quoter_address = '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6'
+    uniswap_quoter_abi = [{"inputs": [{"internalType": "address", "name": "_factory", "type": "address"}, {"internalType": "address", "name": "_WETH9", "type": "address"}],"stateMutability": "nonpayable", "type": "constructor"}, {"inputs": [], "name": "WETH9","outputs": [{"internalType": "address","name": "","type": "address"}],"stateMutability": "view","type": "function"},{"inputs": [], "name": "factory","outputs": [{"internalType": "address", "name": "", "type": "address"}],"stateMutability": "view", "type": "function"}, {"inputs": [{"internalType": "bytes", "name": "path", "type": "bytes"},{"internalType": "uint256", "name": "amountIn", "type": "uint256"}],"name": "quoteExactInput","outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],"stateMutability": "nonpayable", "type": "function"}, {"inputs": [{"internalType": "address", "name": "tokenIn", "type": "address"},{"internalType": "address", "name": "tokenOut", "type": "address"},{"internalType": "uint24", "name": "fee", "type": "uint24"},{"internalType": "uint256", "name": "amountIn", "type": "uint256"},{"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"}],"name": "quoteExactInputSingle","outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],"stateMutability": "nonpayable", "type": "function"}, {"inputs": [{"internalType": "bytes", "name": "path", "type": "bytes"},{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],"name": "quoteExactOutput","outputs": [{"internalType": "uint256", "name": "amountIn", "type": "uint256"}],"stateMutability": "nonpayable", "type": "function"}, {"inputs": [{"internalType": "address", "name": "tokenIn", "type": "address"},{"internalType": "address", "name": "tokenOut", "type": "address"}, {"internalType": "uint24", "name": "fee", "type": "uint24"}, {"internalType": "uint256", "name": "amountOut", "type": "uint256"}, {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"}], "name": "quoteExactOutputSingle", "outputs": [{"internalType": "uint256", "name": "amountIn", "type": "uint256"}], "stateMutability": "nonpayable", "type": "function"}, {"inputs": [{"internalType": "int256", "name": "amount0Delta", "type": "int256"}, {"internalType": "int256", "name": "amount1Delta", "type": "int256"}, {"internalType": "bytes", "name": "path", "type": "bytes"}], "name": "uniswapV3SwapCallback", "outputs": [], "stateMutability": "view", "type": "function"}]
+    quoter_contract = w3.eth.contract(address=uniswap_quoter_address, abi=uniswap_quoter_abi)
+
+    tkn_addr = {
+        "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "dai": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        "eth": "0x0000000000000000000000000000000000000000",
+        "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "bat": "0x0D8775F648430679A709E98d2b0Cb6250d2887EF",
+    }
+
+    class UniswapPool(V3Pool):
+        def __init__(self, tkn1: Token, tkn2: Token):
+            super().__init__(tkn1, tkn2, uniswap_pool_contract, quoter_contract, w3)
+
+    class UniswapToken(Token):
+        def __init__(self, symbol: str):
+            super().__init__(symbol, tkn_addr[symbol], w3)
+
+    # create token objects
+    tokens = {
+        tkn_name: UniswapToken(tkn_name)
+        for tkn_name in {tkn for pair in tkn_pairs for tkn in pair}
+    }
+
+    pools = {
+        f"{tkn1}-{tkn2}": UniswapPool(tokens[tkn1], tokens[tkn2])
+        for tkn1, tkn2 in tkn_pairs
+    }
+
+    return pools
