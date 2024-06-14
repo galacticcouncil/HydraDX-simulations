@@ -17,3 +17,4 @@ zipp
 requests~=2.31.0
 python-dotenv
 hydradx-api~=0.3.0
+web3~=4.10.0
