@@ -2,6 +2,7 @@ import math
 import pytest
 from hypothesis import given, strategies as st, assume, settings, Verbosity
 from mpmath import mp, mpf
+from hydradx.model.processing import get_uniswap_pool_data
 
 from hydradx.model.amm.concentrated_liquidity_pool import ConcentratedLiquidityPosition, price_to_tick, tick_to_price, \
     ConcentratedLiquidityPoolState
@@ -431,3 +432,31 @@ def test_pool_buy_spot(initial_tick, fee):
     ex_price = (agent.initial_holdings['B'] - agent.holdings['B']) / agent.holdings['A']
     if ex_price != pytest.approx(buy_spot, rel=1e-20):
         raise AssertionError('Buy spot price was not calculated correctly.')
+
+def test_vs_uniswap_quote():
+    uniswap = get_uniswap_pool_data([('weth', 'usdc')])
+    weth_usdc = uniswap['weth-usdc-500']
+    uniswap_quote = weth_usdc.get_quote('weth', 'usdc', 1)
+    ticks = weth_usdc.get_liquidity_distribution()
+    liquidity = 1000000
+    ex_price = 0
+    while ex_price != pytest.approx(uniswap_quote, rel=1e-8):
+        if ex_price < uniswap_quote:
+            liquidity *= 1.01
+        else:
+            liquidity *= 0.99
+        local_clone = ConcentratedLiquidityPoolState(
+            asset_list=['weth', 'usdc'],
+            sqrt_price=mpf.sqrt(1 / mpf(weth_usdc.price)),
+            liquidity=liquidity, # mpf(weth_usdc.liquidity_at_tick(weth_usdc.current_tick)),
+            tick_spacing=weth_usdc.tick_spacing,
+            fee=0.0005
+        ).initialize_ticks(ticks)
+        agent = Agent(holdings={'weth': 1000})
+        local_clone.swap(
+            agent, tkn_buy='usdc', tkn_sell='weth', sell_quantity=1
+        )
+        ex_price = agent.holdings['usdc']
+
+    if uniswap_quote != pytest.approx(ex_price, rel=1e-8):
+        raise AssertionError('Simulated pool did not match quote from Uniswap.')
