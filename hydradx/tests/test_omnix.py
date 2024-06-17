@@ -87,3 +87,34 @@ def test_validate_solution_with_matching():
     sell_prices = {'DOT': 7.524947064, 'USDT': 0.99703}
     tolerance = 0.0001
     validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, tolerance)
+
+
+def test_validate_solution_simple_three_intents():
+    omnipool = OmnipoolState(
+        tokens={
+            "DOT": {'liquidity': 10000000/7.5, 'LRNA': 10000000},
+            "USDT": {'liquidity': 10000000, 'LRNA': 10000000},
+            "HDX": {'liquidity': 100000000, 'LRNA': 1000000}
+        },
+        preferred_stablecoin='USDT',
+        asset_fee=0.0,
+        lrna_fee=0.0
+    )
+
+    agent_alice = Agent(holdings={'USDT': 100000})
+    agent_bob = Agent()
+    agent_charlie = Agent()
+
+    intents = [
+        {'agent': agent_alice, 'buy_quantity': 10000, 'sell_limit': 81000, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
+        {'agent': agent_bob, 'sell_quantity': 10000, 'buy_limit': 7550000, 'tkn_buy': 'HDX', 'tkn_sell': 'DOT'},
+        {'agent': agent_charlie, 'sell_quantity': 5000000, 'buy_limit': 45000, 'tkn_buy': 'USDT', 'tkn_sell': 'HDX'}
+    ]
+
+    amt_processed = [10000, 0, 0]
+    lrna_swaps = {'DOT': 75567, 'USDT': -75567}
+    buy_prices = {'DOT': 7.5566, 'USDT': 1}
+    sell_prices = {'DOT': 7.5567, 'USDT': 0.9924}
+
+    validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, 0.0001)
+
