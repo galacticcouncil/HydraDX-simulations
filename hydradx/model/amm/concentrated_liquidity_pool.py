@@ -212,6 +212,11 @@ class ConcentratedLiquidityPoolState(AMM):
         self.ticks[tick] = new_tick
         return self
 
+    def initialize_ticks(self, ticks: dict[int, float]):
+        for tick, liquidity_net in ticks.items():
+            self.initialize_tick(tick, liquidity_net)
+        return self
+
     @property
     def current_tick(self):
         return round(price_to_tick(self.sqrt_price ** 2, self.tick_spacing))
