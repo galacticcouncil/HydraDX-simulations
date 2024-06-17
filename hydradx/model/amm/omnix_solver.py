@@ -29,6 +29,11 @@ def _calculate_price_slippage_to_impact_sign_tuple(omnipool: OmnipoolState, inte
     return (1, x) if x >= 0 else (-1, -x)
 
 
+def get_sorted_intents(omnipool: OmnipoolState, intents: list) -> list:
+    return sorted(intents, key=lambda intent: _calculate_price_slippage_to_impact_sign_tuple(omnipool, intent),
+                  reverse=True)
+
+
 def order_initial_intents(intents: list):
     # intents = [
     #     {'agent': agent_alice, 'buy_quantity': 10000, 'sell_limit': 81000, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
