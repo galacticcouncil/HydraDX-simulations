@@ -8,7 +8,6 @@ def validate_solution(
         omnipool: OmnipoolState,
         intents: list,  # swap desired to be processed
         amt_processed: list,  # list of amt processed for each intent
-        lrna_swaps: dict,  # key: token, value: delta_change of LRNA w.r.t. Omnipool
         buy_prices: dict,  # key: token, value: price
         sell_prices: dict,  # key: token, value: price
         tolerance: float = 0.01
@@ -17,7 +16,6 @@ def validate_solution(
         omnipool=omnipool.copy(),
         intents=copy.deepcopy(intents),
         amt_processed=amt_processed,
-        lrna_swaps=lrna_swaps,
         buy_prices=buy_prices,
         sell_prices=sell_prices,
         tolerance=tolerance
@@ -31,61 +29,64 @@ def calculate_transfers(
         sell_prices: dict  # key: token, value: price
 ) -> (list, dict):
     transfers = []
-    net_deltas = {tkn: 0 for tkn in buy_prices}
+    deltas = {tkn: {"in": 0, "out": 0} for tkn in buy_prices}
     for i in range(len(intents)):
         intent = intents[i]
         amt = amt_processed[i]
-        if 'sell_quantity' in intent:
-            buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
-            transfer = {
-                'agent': intent['agent'],
-                'buy_quantity': buy_amt,
-                'sell_quantity': amt,
-                'tkn_buy': intent['tkn_buy'],
-                'tkn_sell': intent['tkn_sell']
-            }
-            transfers.append(transfer)
-            net_deltas[intent['tkn_buy']] -= buy_amt
-            net_deltas[intent['tkn_sell']] += amt
-        elif 'buy_quantity' in intent:
-            sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
-            transfer = {
-                'agent': intent['agent'],
-                'buy_quantity': amt,
-                'sell_quantity': sell_amt,
-                'tkn_buy': intent['tkn_buy'],
-                'tkn_sell': intent['tkn_sell']
-            }
-            transfers.append(transfer)
-            net_deltas[intent['tkn_buy']] -= amt
-            net_deltas[intent['tkn_sell']] += sell_amt
+        if amt > 0:
+            if 'sell_quantity' in intent:
+                buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
+                transfer = {
+                    'agent': intent['agent'],
+                    'buy_quantity': buy_amt,
+                    'sell_quantity': amt,
+                    'tkn_buy': intent['tkn_buy'],
+                    'tkn_sell': intent['tkn_sell']
+                }
+                transfers.append(transfer)
+                deltas[intent['tkn_buy']]["out"] += buy_amt
+                deltas[intent['tkn_sell']]["in"] += amt
+            elif 'buy_quantity' in intent:
+                sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
+                transfer = {
+                    'agent': intent['agent'],
+                    'buy_quantity': amt,
+                    'sell_quantity': sell_amt,
+                    'tkn_buy': intent['tkn_buy'],
+                    'tkn_sell': intent['tkn_sell']
+                }
+                transfers.append(transfer)
+                deltas[intent['tkn_buy']]["out"] += amt
+                deltas[intent['tkn_sell']]["in"] += sell_amt
 
-    return transfers, net_deltas
+    return transfers, deltas
 
 
 def validate_and_execute_solution(
         omnipool: OmnipoolState,
         intents: list,  # swap desired to be processed
         amt_processed: list,  # list of amt processed for each intent
-        lrna_swaps: dict,  # key: token, value: delta_change of LRNA w.r.t. Omnipool
         buy_prices: dict,  # key: token, value: price
         sell_prices: dict,  # key: token, value: price
         tolerance: float = 0.01
 ):
     assert buy_prices.keys() == sell_prices.keys(), "buy_prices and sell_prices are not provided for same tokens"
-    assert buy_prices.keys() == lrna_swaps.keys(), "buy_prices and lrna_swaps are not provided for same tokens"
 
-    validate_intents(intents, amt_processed, lrna_swaps)
-    pool_agent, deltas = execute_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices)
+    validate_intents(intents, amt_processed)
+    transfers, deltas = calculate_transfers(intents, amt_processed, buy_prices, sell_prices)
+    validate_transfer_amounts(transfers)
+    pool_agent, lrna_deltas = execute_solution(omnipool, transfers, deltas)
     if not validate_remainder(pool_agent):
         raise Exception("agent has negative holdings")
-    if not validate_prices(omnipool, lrna_swaps, buy_prices, sell_prices, deltas, tolerance):
+    if not validate_prices(omnipool, deltas, lrna_deltas, buy_prices, sell_prices, tolerance):
         raise Exception("prices are not valid")
+
+    update_intents(intents, transfers)
 
     return True
 
 
-def validate_intents(intents: list, amt_processed: list, lrna_swaps: dict):
+def validate_intents(intents: list, amt_processed: list):
     for i in range(len(intents)):
         intent = intents[i]
         amt = amt_processed[i]
@@ -104,82 +105,49 @@ def validate_intents(intents: list, amt_processed: list, lrna_swaps: dict):
     return True
 
 
+def validate_transfer_amounts(transfers: list):
+    for transfer in transfers:
+        if not transfer['agent'].is_holding(transfer['tkn_sell'], transfer['sell_quantity']):
+            raise Exception(f"agent does not have enough holdings in token {transfer['tkn_sell']}")
+
+    return True
+
+
 def execute_solution(
         omnipool: OmnipoolState,
-        intents: list,  # swap desired to be processed
-        amt_processed: list,  # list of amt processed for each intent
-        lrna_swaps: dict,  # key: token, value: delta_change of LRNA w.r.t. Omnipool
-        buy_prices: dict,  # key: token, value: price
-        sell_prices: dict  # key: token, value: price
+        transfers: list,
+        deltas: dict  # note that net_deltas can be easily reconstructed from transfers
 ):
-    # pool assets coming in/out
+    pool_agent = Agent()
 
-    # buy intent is dict with keys: agent, tkn_buy, tkn_sell, buy_quantity, sell_limit, partial
-    # sell intent is dict with keys: agent, tkn_sell, tkn_buy, sell_quantity, buy_limit, partial
-    agent_deltas_out = {tkn: 0 for tkn in buy_prices}
-    agent_deltas_in = {tkn: 0 for tkn in buy_prices}
-    for i in range(len(intents)):
-        intent = intents[i]
-        amt = amt_processed[i]
-        if amt > 0:
-            if 'sell_quantity' in intent:
-                if intent['agent'].is_holding(intent['tkn_sell'], amt):
-                    agent_deltas_in[intent['tkn_sell']] += amt
-                    intent['agent'].holdings[intent['tkn_sell']] -= amt
-                else:
-                    raise Exception("agent does not have enough holdings")
-            elif 'buy_quantity' in intent:
-                agent_deltas_out[intent['tkn_buy']] += amt
-                if not intent['agent'].is_holding(intent['tkn_buy']):
-                    intent['agent'].holdings[intent['tkn_buy']] = 0
-                intent['agent'].holdings[intent['tkn_buy']] += amt
+    # transfer assets in from agents whose intents are being executed
+    for transfer in transfers:
+        if transfer['tkn_sell'] not in pool_agent.holdings:
+            pool_agent.holdings[transfer['tkn_sell']] = 0
+        pool_agent.holdings[transfer['tkn_sell']] += transfer['sell_quantity']
+        transfer['agent'].holdings[transfer['tkn_sell']] -= transfer['sell_quantity']
 
-    pool_agent = Agent(holdings={tkn: agent_deltas_in[tkn] - agent_deltas_out[tkn] for tkn in agent_deltas_out})
-    pool_agent.holdings["LRNA"] = 0
-    # agent_deltas_out = {tkn: -amt if amt < 0 else 0 for tkn, amt in intent_deltas.items()}
-    # agent_deltas_in = {tkn: amt if amt > 0 else 0 for tkn, amt in intent_deltas.items()}
+    # execute swaps against Omnipool
+    lrna_deltas = {tkn: 0 for tkn in deltas}
+    for tkn in deltas:  # first do sells to accumulate LRNA
+        if deltas[tkn]["in"] > deltas[tkn]["out"]:
+            init_lrna = omnipool.lrna[tkn]
+            omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
+            lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
+    for tkn in deltas:  # next sell LRNA back for tokens
+        if deltas[tkn]["in"] < deltas[tkn]["out"]:
+            init_lrna = omnipool.lrna[tkn]
+            omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
+            lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
 
-    # trade assets for LRNA
-    init_liquidity = {tkn: omnipool.liquidity[tkn] for tkn in buy_prices}
-    for tkn, delta_lrna in lrna_swaps.items():
-        dummy_agent = Agent(holdings={tkn: mpf(omnipool.liquidity[tkn])})  # TODO: better solution
-        omnipool.lrna_swap(dummy_agent, delta_qa=-delta_lrna, tkn=tkn)
-        pool_agent.holdings[tkn] += dummy_agent.holdings[tkn] - dummy_agent.initial_holdings[tkn]
-        pool_agent.holdings["LRNA"] -= delta_lrna
-    omnipool_deltas = {tkn: omnipool.liquidity[tkn] - init_liquidity[tkn] for tkn in buy_prices}
+    # transfer assets out to intent agents
+    for transfer in transfers:
+        pool_agent.holdings[transfer['tkn_buy']] -= transfer['buy_quantity']
+        if transfer['tkn_buy'] not in transfer['agent'].holdings:
+            transfer['agent'].holdings[transfer['tkn_buy']] = 0
+        transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
 
-    # distribute to users
-    for i in range(len(intents)):
-        intent = intents[i]
-        amt = amt_processed[i]
-        if amt > 0:
-            if 'sell_quantity' in intent:  # distribute from price
-                buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
-                limit_price = intent['sell_quantity'] / intent['buy_limit']
-                assert amt / buy_amt <= limit_price, "buy_limit not satisfied"
-                if not intent['agent'].is_holding(intent['tkn_buy']):
-                    intent['agent'].holdings[intent['tkn_buy']] = 0
-                intent['agent'].holdings[intent['tkn_buy']] += buy_amt
-                pool_agent.holdings[intent['tkn_buy']] -= buy_amt
-                agent_deltas_out[intent['tkn_buy']] += buy_amt
-            elif 'buy_quantity' in intent:
-                sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
-                limit_price = intent['buy_quantity'] / intent['sell_limit']
-                assert amt / sell_amt >= limit_price, "sell_limit not satisfied"
-                if intent['agent'].is_holding(intent['tkn_sell'], amt):
-                    intent['agent'].holdings[intent['tkn_sell']] -= sell_amt
-                    pool_agent.holdings[intent['tkn_sell']] += sell_amt
-                    agent_deltas_in[intent['tkn_sell']] += sell_amt
-                else:
-                    raise Exception("agent does not have enough holdings")
-
-    deltas = {
-        'agent_in': agent_deltas_in,
-        'agent_out': agent_deltas_out,
-        'omnipool': omnipool_deltas
-    }
-
-    return pool_agent, deltas
+    return pool_agent, lrna_deltas
 
 
 def validate_remainder(pool_agent: Agent):
@@ -192,30 +160,48 @@ def validate_remainder(pool_agent: Agent):
 
 def validate_prices(
         omnipool: OmnipoolState,
-        lrna_swaps: dict,  # key: token, value: delta_change of LRNA w.r.t. Omnipool
+        deltas: dict,  # key: token, value: delta_change of token w.r.t. Omnipool
+        lrna_deltas: dict, # key: token, value: delta_change of LRNA w.r.t. Omnipool in tkn trade
         buy_prices: dict,  # key: token, value: price
         sell_prices: dict,  # key: token, value: price
-        deltas: dict,
         tolerance: float = 0.01
 ):
-    for tkn, amt in lrna_swaps.items():  # calculate net of Omnipool leg and other leg in same direction
-        if amt > 0:  # LRNA being sold to Omnipool for TKN
-            agent_sell_amt = deltas['agent_in'][tkn]
-            omnipool_sell_amt = -deltas['omnipool'][tkn]
-            agent_lrna_amt = deltas['agent_in'][tkn] * sell_prices[tkn]
-            omnipool_lrna_amt = lrna_swaps[tkn]
+    for tkn, delta in deltas.items():  # calculate net of Omnipool leg and other leg in same direction
+        if delta["out"] > delta["in"]:  # LRNA being sold to Omnipool for TKN
+            agent_sell_amt = delta['in']
+            omnipool_sell_amt = delta["out"] - delta['in']
+            agent_lrna_amt = agent_sell_amt * sell_prices[tkn]
+            omnipool_lrna_amt = lrna_deltas[tkn]
             net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_sell_amt + omnipool_sell_amt)
-            assert abs(buy_prices[tkn] - net_price)/net_price < tolerance, "price not valid for " + tkn
-        elif amt < 0:  # LRNA being bought from Omnipool for TKN
-            agent_buy_amt = deltas['agent_out'][tkn]
-            omnipool_buy_amt = deltas['omnipool'][tkn]
-            agent_lrna_amt = deltas['agent_out'][tkn] * buy_prices[tkn]
-            omnipool_lrna_amt = lrna_swaps[tkn]
-            net_price = (agent_lrna_amt - omnipool_lrna_amt) / (agent_buy_amt + omnipool_buy_amt)
+            if not abs(buy_prices[tkn] - net_price)/net_price < tolerance:
+                raise Exception("price not valid for " + tkn)
+        elif delta["out"] < delta["in"]:  # LRNA being bought from Omnipool for TKN
+            agent_buy_amt = delta['out']
+            omnipool_buy_amt = delta['in'] - delta["out"]
+            agent_lrna_amt = agent_buy_amt * buy_prices[tkn]
+            omnipool_lrna_amt = -lrna_deltas[tkn]
+            net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_buy_amt + omnipool_buy_amt)
             assert abs(sell_prices[tkn] - net_price)/net_price < tolerance, "price not valid for " + tkn
-        else:
+        elif delta["out"] != 0:
             spot_price = omnipool.price(omnipool, tkn, "LRNA")
             assert abs(buy_prices[tkn] - spot_price) / spot_price < tolerance, "price not valid for " + tkn
             assert abs(sell_prices[tkn] - spot_price) / spot_price < tolerance, "price not valid for " + tkn
 
     return True
+
+
+def update_intents(intents: list, transfers: list):
+    for i in range(len(intents)):
+        intent, transfer = intents[i], transfers[i]
+        if 'sell_quantity' in intent:
+            intent['sell_quantity'] -= transfer['sell_quantity']
+            if intent['sell_quantity'] == 0:
+                intent['buy_limit'] = 0
+            else:
+                intent['buy_limit'] -= transfer['buy_quantity']
+        else:
+            intent['buy_quantity'] -= transfer['buy_quantity']
+            if intent['buy_quantity'] == 0:
+                intent['sell_limit'] = 0
+            else:
+                intent['sell_limit'] -= transfer['sell_quantity']

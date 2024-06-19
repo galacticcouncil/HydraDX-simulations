@@ -9,6 +9,7 @@ from hydradx.model.amm.omnix import validate_solution, calculate_transfers
 
 
 def test_calculate_transfers():
+
     omnipool = OmnipoolState(
         tokens={
             "DOT": {'liquidity': 10000000/7.5, 'LRNA': 10000000},
@@ -32,16 +33,16 @@ def test_calculate_transfers():
     buy_prices = {'DOT': 7.522185628, 'USDT': 0.996679094}
     sell_prices = {'DOT': 7.524947064, 'USDT': 0.99703}
 
-    transfers, net_deltas = calculate_transfers(intents, amt_processed, buy_prices, sell_prices)
+    transfers, deltas = calculate_transfers(intents, amt_processed, buy_prices, sell_prices)
 
     expected_transfers = [
         {'agent': agent_alice, 'buy_quantity': amt_processed[0], 'sell_quantity': 75221.85628 / 0.99703, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
         {'agent': agent_bob, 'sell_quantity': amt_processed[1], 'buy_quantity': 7.524947064 * 7788 / 0.996679094, 'tkn_buy': 'USDT', 'tkn_sell': 'DOT'}
     ]
 
-    expected_net_deltas = {
-        'DOT': expected_transfers[1]['sell_quantity'] - expected_transfers[0]['buy_quantity'],
-        'USDT': expected_transfers[0]['sell_quantity'] - expected_transfers[1]['buy_quantity']
+    expected_deltas = {
+        'DOT': {"in": expected_transfers[1]['sell_quantity'], "out": expected_transfers[0]['buy_quantity']},
+        'USDT': {"in": expected_transfers[0]['sell_quantity'], "out": expected_transfers[1]['buy_quantity']}
     }
 
     if len(expected_transfers) != len(transfers):
@@ -57,10 +58,12 @@ def test_calculate_transfers():
             raise Exception(f"Expected transfers doesn't match transfers")
         if transfers[i]["sell_quantity"] != pytest.approx(expected_transfers[i]["sell_quantity"], rel=1e-12):
             raise Exception(f"Expected transfers doesn't match transfers")
-    if len(net_deltas) != len(expected_net_deltas):
+    if len(deltas) != len(expected_deltas):
         raise Exception(f"Expected net_deltas doesn't have the same length as net_deltas")
-    for tkn in expected_net_deltas:
-        if net_deltas[tkn] != pytest.approx(expected_net_deltas[tkn], rel=1e-12):
+    for tkn in expected_deltas:
+        if deltas[tkn]["in"] != pytest.approx(expected_deltas[tkn]["in"], rel=1e-12):
+            raise Exception(f"Expected net_deltas doesn't match net_deltas")
+        if deltas[tkn]["out"] != pytest.approx(expected_deltas[tkn]["out"], rel=1e-12):
             raise Exception(f"Expected net_deltas doesn't match net_deltas")
 
 
@@ -77,7 +80,7 @@ def test_validate_solution_simple():
     )
 
     agent_alice = Agent(holdings={'USDT': 100000})
-    agent_bob = Agent()
+    agent_bob = Agent(holdings={'DOT': 0})
 
     intents = [
         {'agent': agent_alice, 'buy_quantity': 10000, 'sell_limit': 81000, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
@@ -85,11 +88,10 @@ def test_validate_solution_simple():
     ]
 
     amt_processed = [10000, 0]
-    lrna_swaps = {'DOT': 75567, 'USDT': -75567}
     buy_prices = {'DOT': 7.5566, 'USDT': 1}
     sell_prices = {'DOT': 7.5567, 'USDT': 0.9924}
 
-    validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, 0.0001)
+    validate_solution(omnipool, intents, amt_processed, buy_prices, sell_prices, 0.0001)
 
 
 def test_validate_solution_partial_matching():
@@ -113,11 +115,10 @@ def test_validate_solution_partial_matching():
     ]
 
     amt_processed = [10000, 100]
-    lrna_swaps = {'DOT': 74805.8, 'USDT': -74805.8}
     buy_prices = {'DOT': 7.55666931, 'USDT': 0.9851}
     sell_prices = {'DOT': 7.6126, 'USDT': 0.99243}
     tolerance = 0.0001
-    validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, tolerance)
+    validate_solution(omnipool, intents, amt_processed, buy_prices, sell_prices, tolerance)
 
 
 def test_validate_solution_with_matching():
@@ -141,11 +142,10 @@ def test_validate_solution_with_matching():
     ]
 
     amt_processed = [10000, 7788]
-    lrna_swaps = {'DOT': 16618, 'USDT': -16618}
     buy_prices = {'DOT': 7.522185628, 'USDT': 0.996679094}
     sell_prices = {'DOT': 7.524947064, 'USDT': 0.99703}
     tolerance = 0.0001
-    validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, tolerance)
+    validate_solution(omnipool, intents, amt_processed, buy_prices, sell_prices, tolerance)
 
 
 def test_validate_solution_simple_three_intents():
@@ -161,8 +161,8 @@ def test_validate_solution_simple_three_intents():
     )
 
     agent_alice = Agent(holdings={'USDT': 100000})
-    agent_bob = Agent()
-    agent_charlie = Agent()
+    agent_bob = Agent(holdings={'DOT': 0})
+    agent_charlie = Agent(holdings={'HDX': 0})
 
     intents = [
         {'agent': agent_alice, 'buy_quantity': 10000, 'sell_limit': 81000, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
@@ -171,9 +171,8 @@ def test_validate_solution_simple_three_intents():
     ]
 
     amt_processed = [10000, 0, 0]
-    lrna_swaps = {'DOT': 75567, 'USDT': -75567}
-    buy_prices = {'DOT': 7.5566, 'USDT': 1}
-    sell_prices = {'DOT': 7.5567, 'USDT': 0.9924}
+    buy_prices = {'DOT': 7.5566, 'USDT': 1, 'HDX': 0.009}
+    sell_prices = {'DOT': 7.5567, 'USDT': 0.9924, 'HDX': 111.111111111}
 
-    validate_solution(omnipool, intents, amt_processed, lrna_swaps, buy_prices, sell_prices, 0.0001)
+    validate_solution(omnipool, intents, amt_processed, buy_prices, sell_prices, 0.0001)
 
