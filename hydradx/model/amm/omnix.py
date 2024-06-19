@@ -33,31 +33,30 @@ def calculate_transfers(
     for i in range(len(intents)):
         intent = intents[i]
         amt = amt_processed[i]
-        if amt > 0:
-            if 'sell_quantity' in intent:
-                buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
-                transfer = {
-                    'agent': intent['agent'],
-                    'buy_quantity': buy_amt,
-                    'sell_quantity': amt,
-                    'tkn_buy': intent['tkn_buy'],
-                    'tkn_sell': intent['tkn_sell']
-                }
-                transfers.append(transfer)
-                deltas[intent['tkn_buy']]["out"] += buy_amt
-                deltas[intent['tkn_sell']]["in"] += amt
-            elif 'buy_quantity' in intent:
-                sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
-                transfer = {
-                    'agent': intent['agent'],
-                    'buy_quantity': amt,
-                    'sell_quantity': sell_amt,
-                    'tkn_buy': intent['tkn_buy'],
-                    'tkn_sell': intent['tkn_sell']
-                }
-                transfers.append(transfer)
-                deltas[intent['tkn_buy']]["out"] += amt
-                deltas[intent['tkn_sell']]["in"] += sell_amt
+        if 'sell_quantity' in intent:
+            buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
+            transfer = {
+                'agent': intent['agent'],
+                'buy_quantity': buy_amt,
+                'sell_quantity': amt,
+                'tkn_buy': intent['tkn_buy'],
+                'tkn_sell': intent['tkn_sell']
+            }
+            transfers.append(transfer)
+            deltas[intent['tkn_buy']]["out"] += buy_amt
+            deltas[intent['tkn_sell']]["in"] += amt
+        elif 'buy_quantity' in intent:
+            sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
+            transfer = {
+                'agent': intent['agent'],
+                'buy_quantity': amt,
+                'sell_quantity': sell_amt,
+                'tkn_buy': intent['tkn_buy'],
+                'tkn_sell': intent['tkn_sell']
+            }
+            transfers.append(transfer)
+            deltas[intent['tkn_buy']]["out"] += amt
+            deltas[intent['tkn_sell']]["in"] += sell_amt
 
     return transfers, deltas
 
