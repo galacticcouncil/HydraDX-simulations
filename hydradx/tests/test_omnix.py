@@ -1,9 +1,68 @@
+import pytest
+
 from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.omnix import validate_solution
+from hydradx.model.amm.omnix import validate_solution, calculate_transfers
+
+
+def test_calculate_transfers():
+    omnipool = OmnipoolState(
+        tokens={
+            "DOT": {'liquidity': 10000000/7.5, 'LRNA': 10000000},
+            "USDT": {'liquidity': 10000000, 'LRNA': 10000000},
+            "HDX": {'liquidity': 100000000, 'LRNA': 1000000}
+        },
+        preferred_stablecoin='USDT',
+        asset_fee=0.0,
+        lrna_fee=0.0
+    )
+
+    agent_alice = Agent(holdings={'USDT': 100000})
+    agent_bob = Agent()
+
+    intents = [
+        {'agent': agent_alice, 'buy_quantity': 10000, 'sell_limit': 81000, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
+        {'agent': agent_bob, 'sell_quantity': 10000, 'buy_limit': 75500, 'tkn_buy': 'USDT', 'tkn_sell': 'DOT'}
+    ]
+
+    amt_processed = [10000, 7788]
+    buy_prices = {'DOT': 7.522185628, 'USDT': 0.996679094}
+    sell_prices = {'DOT': 7.524947064, 'USDT': 0.99703}
+
+    transfers, net_deltas = calculate_transfers(intents, amt_processed, buy_prices, sell_prices)
+
+    expected_transfers = [
+        {'agent': agent_alice, 'buy_quantity': amt_processed[0], 'sell_quantity': 75221.85628 / 0.99703, 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'},
+        {'agent': agent_bob, 'sell_quantity': amt_processed[1], 'buy_quantity': 7.524947064 * 7788 / 0.996679094, 'tkn_buy': 'USDT', 'tkn_sell': 'DOT'}
+    ]
+
+    expected_net_deltas = {
+        'DOT': expected_transfers[1]['sell_quantity'] - expected_transfers[0]['buy_quantity'],
+        'USDT': expected_transfers[0]['sell_quantity'] - expected_transfers[1]['buy_quantity']
+    }
+
+    if len(expected_transfers) != len(transfers):
+        raise Exception(f"Expected transfers doesn't have the same length as transfers")
+    for i in range(len(expected_transfers)):
+        if transfers[i]["agent"] != expected_transfers[i]["agent"]:
+            raise Exception(f"Expected transfers doesn't match transfers")
+        if transfers[i]["tkn_buy"] != expected_transfers[i]["tkn_buy"]:
+            raise Exception(f"Expected transfers doesn't match transfers")
+        if transfers[i]["tkn_sell"] != expected_transfers[i]["tkn_sell"]:
+            raise Exception(f"Expected transfers doesn't match transfers")
+        if transfers[i]["buy_quantity"] != pytest.approx(expected_transfers[i]["buy_quantity"], rel=1e-12):
+            raise Exception(f"Expected transfers doesn't match transfers")
+        if transfers[i]["sell_quantity"] != pytest.approx(expected_transfers[i]["sell_quantity"], rel=1e-12):
+            raise Exception(f"Expected transfers doesn't match transfers")
+    if len(net_deltas) != len(expected_net_deltas):
+        raise Exception(f"Expected net_deltas doesn't have the same length as net_deltas")
+    for tkn in expected_net_deltas:
+        if net_deltas[tkn] != pytest.approx(expected_net_deltas[tkn], rel=1e-12):
+            raise Exception(f"Expected net_deltas doesn't match net_deltas")
+
 
 def test_validate_solution_simple():
     omnipool = OmnipoolState(

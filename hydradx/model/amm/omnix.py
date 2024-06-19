@@ -4,7 +4,6 @@ import copy
 from mpmath import mp, mpf
 
 
-
 def validate_solution(
         omnipool: OmnipoolState,
         intents: list,  # swap desired to be processed
@@ -23,6 +22,45 @@ def validate_solution(
         sell_prices=sell_prices,
         tolerance=tolerance
     )
+
+
+def calculate_transfers(
+        intents: list,  # swap desired to be processed
+        amt_processed: list,  # list of amt processed for each intent
+        buy_prices: dict,  # key: token, value: price
+        sell_prices: dict  # key: token, value: price
+) -> (list, dict):
+    transfers = []
+    net_deltas = {tkn: 0 for tkn in buy_prices}
+    for i in range(len(intents)):
+        intent = intents[i]
+        amt = amt_processed[i]
+        if 'sell_quantity' in intent:
+            buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
+            transfer = {
+                'agent': intent['agent'],
+                'buy_quantity': buy_amt,
+                'sell_quantity': amt,
+                'tkn_buy': intent['tkn_buy'],
+                'tkn_sell': intent['tkn_sell']
+            }
+            transfers.append(transfer)
+            net_deltas[intent['tkn_buy']] -= buy_amt
+            net_deltas[intent['tkn_sell']] += amt
+        elif 'buy_quantity' in intent:
+            sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
+            transfer = {
+                'agent': intent['agent'],
+                'buy_quantity': amt,
+                'sell_quantity': sell_amt,
+                'tkn_buy': intent['tkn_buy'],
+                'tkn_sell': intent['tkn_sell']
+            }
+            transfers.append(transfer)
+            net_deltas[intent['tkn_buy']] -= amt
+            net_deltas[intent['tkn_sell']] += sell_amt
+
+    return transfers, net_deltas
 
 
 def validate_and_execute_solution(
