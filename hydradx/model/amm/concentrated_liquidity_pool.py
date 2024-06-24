@@ -6,7 +6,7 @@ from mpmath import mp, mpf
 mp.dps = 50
 
 tick_increment = 1 + 1e-4
-min_tick = -965504
+min_tick = -887272
 max_tick = -min_tick
 def tick_to_price(tick: int or float):
     return tick_increment ** tick
@@ -160,7 +160,7 @@ class ConcentratedLiquidityPosition(AMM):
 
     @property
     def invariant(self):
-        return (self.liquidity[self.asset_x] + self.x_offset) * (self.liquidity[self.asset_y] + self.y_offset)
+        return sqrt((self.liquidity[self.asset_x] + self.x_offset) * (self.liquidity[self.asset_y] + self.y_offset))
 
     def __str__(self):
         return f"""
@@ -219,7 +219,7 @@ class ConcentratedLiquidityPoolState(AMM):
 
     @property
     def current_tick(self):
-        return round(price_to_tick(self.sqrt_price ** 2, self.tick_spacing))
+        return int(price_to_tick(self.sqrt_price ** 2 + 2e-16, self.tick_spacing))
 
     def next_initialized_tick(self, zero_for_one):
         search_direction = -1 if zero_for_one else 1
@@ -264,8 +264,8 @@ class ConcentratedLiquidityPoolState(AMM):
             next_tick: Tick = self.next_initialized_tick(zeroForOne)
 
             # get the price for the next tick
-            sqrt_price_next = tick_to_price(next_tick.index) if next_tick else (
-                tick_to_price(min_tick) if zeroForOne else tick_to_price(max_tick)
+            sqrt_price_next = next_tick.sqrtPrice if next_tick else (
+                sqrt(tick_to_price(min_tick)) if zeroForOne else sqrt(tick_to_price(max_tick))
             )
 
             # compute values to swap to the target tick, price limit, or point where input/output amount is exhausted
@@ -369,7 +369,7 @@ class ConcentratedLiquidityPoolState(AMM):
                 amountOut = self.getAmount0Delta(sqrt_ratio_current, sqrt_ratio_next)
 
         # cap the output amount to not exceed the remaining output amount
-        if not exactIn and amountOut > amount_remaining:
+        if not exactIn and amountOut > -amount_remaining:
             amountOut = -amount_remaining
 
         if exactIn and not is_max:
