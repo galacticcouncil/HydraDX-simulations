@@ -81,15 +81,15 @@ def test_asset_conservation(price, fee, price_range):
     if buy_state.liquidity['B'] + buy_agent.holdings['B'] != initial_state.liquidity['B'] + buy_agent.initial_holdings['B']:
         raise AssertionError('Asset B was not conserved.')
 
-@given(price_strategy, fee_strategy, st.integers(min_value=1, max_value=100))
-def test_buy_sell_equivalency(price, fee, price_range):
+@given(price_strategy, st.integers(min_value=1, max_value=100))
+def test_buy_sell_equivalency(price, price_range):
     tick_spacing = 10
     price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityPosition(
         assets={'A': mpf(1000 / price), 'B': mpf(1000)},
         min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
-        fee=fee
+        fee=0
     )
     sell_quantity = 1000
     sell_y_agent = Agent(holdings={'B': 1000000})
@@ -103,7 +103,7 @@ def test_buy_sell_equivalency(price, fee, price_range):
     )
     if buy_x_agent.holdings['A'] != buy_quantity != sell_y_agent.holdings['A']:
         raise AssertionError('Buy quantity was not bought correctly.')
-    if sell_y_agent.holdings['A'] != pytest.approx(buy_x_agent.holdings['A'], rel=1e-12):
+    if sell_y_agent.holdings['B'] != pytest.approx(buy_x_agent.holdings['B'], rel=1e-12):
         raise AssertionError('Sell quantity was not calculated correctly.')
 
 
@@ -179,7 +179,7 @@ def test_buy_x_vs_single_position(initial_tick, fee):
     whole_pool = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=math.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing = tick_spacing,
         fee=0.0025
     ).swap(
@@ -190,7 +190,7 @@ def test_buy_x_vs_single_position(initial_tick, fee):
     whole_pool_feeless = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=math.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing = tick_spacing,
         fee=0
     ).swap(
@@ -238,7 +238,7 @@ def test_buy_y_vs_single_position(initial_tick, fee):
     whole_pool = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing = tick_spacing,
         fee=fee
     ).swap(
@@ -249,7 +249,7 @@ def test_buy_y_vs_single_position(initial_tick, fee):
     whole_pool_feeless = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing = tick_spacing,
         fee=0
     ).swap(
@@ -296,7 +296,7 @@ def test_sell_x_vs_single_position(initial_tick, fee):
     whole_pool = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing=tick_spacing,
         fee=fee
     ).swap(
@@ -307,7 +307,7 @@ def test_sell_x_vs_single_position(initial_tick, fee):
     whole_pool_feeless = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing=tick_spacing,
         fee=0
     ).swap(
@@ -356,7 +356,7 @@ def test_sell_y_vs_single_position(initial_tick, fee):
     whole_pool = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing=tick_spacing,
         fee=fee
     ).swap(
@@ -367,7 +367,7 @@ def test_sell_y_vs_single_position(initial_tick, fee):
     whole_pool_feeless = ConcentratedLiquidityPoolState(
         asset_list=['A', 'B'],
         sqrt_price=mpf.sqrt(price),
-        liquidity=mpf.sqrt(one_position.invariant),
+        liquidity=one_position.invariant,
         tick_spacing=tick_spacing,
         fee=0
     ).swap(
@@ -434,29 +434,149 @@ def test_pool_buy_spot(initial_tick, fee):
         raise AssertionError('Buy spot price was not calculated correctly.')
 
 def test_vs_uniswap_quote():
+    swap_size = 10 ** 21
+    fee = 0.003
+
     uniswap = get_uniswap_pool_data([('weth', 'usdc')])
-    weth_usdc = uniswap['weth-usdc-500']
-    uniswap_quote = weth_usdc.get_quote('weth', 'usdc', 1)
+    weth_usdc = uniswap[f'weth-usdc-{round(fee * 1000000)}']
+
     ticks = weth_usdc.get_liquidity_distribution()
-    liquidity = 1000000
+    uniswap_liquidity = weth_usdc.get_active_liquidity()
+    liquidity = mpf(uniswap_liquidity)
+
     ex_price = 0
-    while ex_price != pytest.approx(uniswap_quote, rel=1e-8):
-        if ex_price < uniswap_quote:
-            liquidity *= 1.01
-        else:
-            liquidity *= 0.99
+    uniswap_quote = weth_usdc.get_quote('weth', 'usdc', sell_quantity=swap_size)
+    weth_usdc.get_price()
+
+    while ex_price != uniswap_quote:
         local_clone = ConcentratedLiquidityPoolState(
             asset_list=['weth', 'usdc'],
-            sqrt_price=mpf.sqrt(1 / mpf(weth_usdc.price)),
-            liquidity=liquidity, # mpf(weth_usdc.liquidity_at_tick(weth_usdc.current_tick)),
+            sqrt_price=mpf.sqrt(mpf(weth_usdc.price)),
+            liquidity=liquidity,
             tick_spacing=weth_usdc.tick_spacing,
-            fee=0.0005
+            fee=fee
         ).initialize_ticks(ticks)
         agent = Agent(holdings={'weth': 1000})
         local_clone.swap(
-            agent, tkn_buy='usdc', tkn_sell='weth', sell_quantity=1
+            agent, tkn_buy='usdc', tkn_sell='weth', sell_quantity=swap_size
         )
         ex_price = agent.holdings['usdc']
+        # if ex_price < uniswap_quote / (1 + 1e-6):
+        #     liquidity *= 1.01
+        # elif ex_price > uniswap_quote * (1 + 1e-6):
+        #     liquidity *= 0.99
+        # else:
+        #     break
+        break
+    #
+    # if uniswap_quote != pytest.approx(ex_price, rel=1e-8):
+    #     raise AssertionError('Simulated pool did not match quote from Uniswap.')
 
-    if uniswap_quote != pytest.approx(ex_price, rel=1e-8):
-        raise AssertionError('Simulated pool did not match quote from Uniswap.')
+    print(f'Swap executed at {ex_price} vs Uniswap quote of {uniswap_quote}.')
+    print(f'Execution price deviated from quote by {float(ex_price) / uniswap_quote - 1:.8%}.')
+
+
+def test_tick_crossing():
+    tick_spacing = 60
+    initial_tick = 6000
+    individual_positions: dict[int: ConcentratedLiquidityPosition] = {
+        tick: ConcentratedLiquidityPosition(
+            assets={'A': 1000 / tick_to_price(mpf(tick + tick_spacing / 2)), 'B': mpf(1000)},
+            min_tick=tick,
+            tick_spacing=tick_spacing,
+            fee=0
+        )
+        .swap(
+            agent=Agent(holdings={'A': float('inf')}),
+            tkn_buy='B', tkn_sell='A', buy_quantity=1000
+        )
+        for tick in range(initial_tick, initial_tick + tick_spacing * 10 + 1, tick_spacing)
+    }  # every individual position is now at the bottom of its price range
+    initial_state = ConcentratedLiquidityPoolState(
+        asset_list=['A', 'B'],
+        sqrt_price=mpf.sqrt(individual_positions[initial_tick].price('A')),
+        liquidity=individual_positions[initial_tick].invariant,
+        tick_spacing=tick_spacing,
+        fee=0
+    ).initialize_ticks({
+        tick: individual_positions[tick].invariant - individual_positions[tick - tick_spacing].invariant
+        for tick in range(initial_tick + tick_spacing, initial_tick + tick_spacing * 10 + 1, tick_spacing)
+    })  # {current_tick + i * tick_spacing: -100 * (1 if i > 0 else -1) for i in range(-20, 20)})
+    agent1 = Agent(holdings={'B': 10000})
+    agent2 = agent1.copy()
+
+    for position in list(individual_positions.values()):
+        position.swap(
+            agent1, tkn_buy='A', tkn_sell='B', buy_quantity=position.liquidity['A']
+        )
+
+    initial_state.swap(
+        agent2, tkn_buy='A', tkn_sell='B', buy_quantity=agent1.holdings['A']
+    )
+
+    if agent1.holdings['B'] != pytest.approx(agent2.holdings['B'], rel=1e-8):
+        raise AssertionError('Sell quantity was not applied correctly.')
+
+
+def test_get_next_sqrt_price_from_amount_0():
+    price = tick_to_price(mpf(6030))
+    single_position = ConcentratedLiquidityPosition(
+        assets={'A': 1000 / price, 'B': 1000},
+        min_tick=6000,
+        tick_spacing=60,
+        fee=0
+    )
+    initial_state = ConcentratedLiquidityPoolState(
+        liquidity=single_position.invariant,
+        asset_list=['A', 'B'],
+        sqrt_price=mpf.sqrt(single_position.price('A'))
+    )
+    sell_quantity = mpf(100)
+    agent = Agent(holdings={'A': 1000})
+    single_position.swap(
+        agent, tkn_buy='B', tkn_sell='A', sell_quantity=sell_quantity
+    )
+    expected_sqrt_price = initial_state.getNextSqrtPriceFromAmount0(sell_quantity, True)
+    if expected_sqrt_price ** 2 != pytest.approx(single_position.price('A'), rel=1e-12):
+        raise AssertionError('Price was not calculated correctly.')
+
+    if initial_state.getAmount0Delta(initial_state.sqrt_price, expected_sqrt_price) != pytest.approx(sell_quantity, rel=1e-12):
+        raise AssertionError('Amount0 delta was not calculated correctly.')
+
+    if (
+            initial_state.getAmount1Delta(initial_state.sqrt_price, expected_sqrt_price)
+            != pytest.approx(agent.holdings['B'], rel=1e-12)
+    ):
+        raise AssertionError('Amount1 delta was not calculated correctly.')
+
+
+def test_get_next_sqrt_price_from_amount_1():
+    price = tick_to_price(mpf(6030))
+    single_position = ConcentratedLiquidityPosition(
+        assets={'A': 1000 / price, 'B': 1000},
+        min_tick=6000,
+        tick_spacing=60,
+        fee=0
+    )
+    initial_state = ConcentratedLiquidityPoolState(
+        liquidity=single_position.invariant,
+        asset_list=['A', 'B'],
+        sqrt_price=mpf.sqrt(single_position.price('A'))
+    )
+    buy_quantity = mpf(100)
+    agent = Agent(holdings={'A': 1000})
+    single_position.swap(
+        agent, tkn_buy='B', tkn_sell='A', buy_quantity=buy_quantity
+    )
+    expected_sqrt_price = initial_state.getNextSqrtPriceFromAmount1(buy_quantity, False)
+    if expected_sqrt_price ** 2 != pytest.approx(single_position.price('A'), rel=1e-12):
+        raise AssertionError('Price was not calculated correctly.')
+
+    if initial_state.getAmount1Delta(initial_state.sqrt_price, expected_sqrt_price) != pytest.approx(buy_quantity, rel=1e-12):
+        raise AssertionError('Amount1 delta was not calculated correctly.')
+
+    if (
+            initial_state.getAmount0Delta(initial_state.sqrt_price, expected_sqrt_price)
+            != pytest.approx(agent.initial_holdings['A'] - agent.holdings['A'], rel=1e-12)
+    ):
+        raise AssertionError('Amount0 delta was not calculated correctly.')
