@@ -872,6 +872,7 @@ class UniswapPool:
         self.address = address
         print('pool address: ', self.address)
         self.contract = w3.eth.contract(address=self.address, abi=tkn_pair_abi)
+        self.price96 = 0
         self.price = self.get_price()
         self.sqrt_price = self.price ** 0.5
         self.tick_spacing = self.contract.functions.tickSpacing().call()
@@ -880,9 +881,10 @@ class UniswapPool:
     def get_price(self):
         slot0 = self.contract.functions.slot0().call()
         sqrt_price = slot0[0]
-        price = sqrt_price ** 2 / (2 ** 192) # Square the sqrtPriceX96 and adjust for fixed point precision
+        self.price96 = sqrt_price
+        price = (2 ** 192) / sqrt_price ** 2 # Square the sqrtPriceX96 and adjust for fixed point precision
         # account for the different decimals of the tokens
-        price = price * (10 ** (self.tkn1.decimals - self.tkn2.decimals))
+        # price = price / (10 ** (self.tkn1.decimals - self.tkn2.decimals))
         return price
 
     def get_active_tick(self):
@@ -891,7 +893,10 @@ class UniswapPool:
 
     def liquidity_at_tick(self, tick):
         return_val = self.contract.functions.ticks(tick).call()
-        return return_val[0]
+        return return_val[1]
+
+    def get_active_liquidity(self):
+        return self.contract.functions.liquidity().call()
 
     def get_liquidity_distribution(self):
         """ get liquidity at the current tick and at 10 ticks above and below """
@@ -916,25 +921,25 @@ class UniswapPool:
             raise ValueError(f"Token {tkn_sell} not in pool")
         if tkn_buy not in (self.tkn1.symbol, self.tkn2.symbol):
             raise ValueError(f"Token {tkn_buy} not in pool")
-        sell_quantity *= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
-        buy_quantity *= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
+        # sell_quantity *= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
+        # buy_quantity *= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
         if sell_quantity:
             if tkn_sell == self.tkn1.symbol:
                 buy_quantity = self.quoter_contract.functions.quoteExactInputSingle(
-                    self.tkn1.address, self.tkn2.address, 3000, sell_quantity, 0).call()
+                    self.tkn1.address, self.tkn2.address, self.fee, sell_quantity, 0).call()
             else:
                 buy_quantity = self.quoter_contract.functions.quoteExactInputSingle(
-                    self.tkn2.address, self.tkn1.address, 3000, sell_quantity, 0).call()
-            buy_quantity /= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
+                    self.tkn2.address, self.tkn1.address, self.fee, sell_quantity, 0).call()
+            # buy_quantity /= 10 ** self.tkn1.decimals if tkn_buy == self.tkn1.symbol else 10 ** self.tkn2.decimals
             return buy_quantity
         elif buy_quantity:
             if tkn_sell == self.tkn1.symbol:
                 sell_quantity = self.quoter_contract.functions.quoteExactOutputSingle(
-                    self.tkn1.address, self.tkn2.address, 3000, buy_quantity, 0).call()
+                    self.tkn1.address, self.tkn2.address, self.fee, buy_quantity, 0).call()
             else:
                 sell_quantity = self.quoter_contract.functions.quoteExactOutputSingle(
-                    self.tkn2.address, self.tkn1.address, 3000, buy_quantity, 0).call()
-            sell_quantity /= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
+                    self.tkn2.address, self.tkn1.address, self.fee, buy_quantity, 0).call()
+            # sell_quantity /= 10 ** self.tkn1.decimals if tkn_sell == self.tkn1.symbol else 10 ** self.tkn2.decimals
             return sell_quantity
         return 0.0
 
