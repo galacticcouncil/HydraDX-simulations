@@ -434,46 +434,40 @@ def test_pool_buy_spot(initial_tick, fee):
         raise AssertionError('Buy spot price was not calculated correctly.')
 
 def test_vs_uniswap_quote():
-    swap_size = 10 ** 21
+    swap_size = int(1e22)
     fee = 0.003
 
     uniswap = get_uniswap_pool_data([('weth', 'usdc')])
     weth_usdc = uniswap[f'weth-usdc-{round(fee * 1000000)}']
 
-    ticks = weth_usdc.get_liquidity_distribution()
+    ticks = weth_usdc.get_liquidity_distribution(0, 30)
     uniswap_liquidity = weth_usdc.get_active_liquidity()
     liquidity = mpf(uniswap_liquidity)
 
-    ex_price = 0
     uniswap_quote = weth_usdc.get_quote('weth', 'usdc', sell_quantity=swap_size)
     weth_usdc.get_price()
 
-    while ex_price != uniswap_quote:
-        local_clone = ConcentratedLiquidityPoolState(
-            asset_list=['usdc', 'weth'],
-            sqrt_price=mpf.sqrt(mpf(1 / weth_usdc.price)),
-            liquidity=liquidity,
-            tick_spacing=weth_usdc.tick_spacing,
-            fee=fee
-        ).initialize_ticks(ticks)
-        agent = Agent(holdings={'weth': 1000})
-        local_clone.swap(
-            agent, tkn_buy='usdc', tkn_sell='weth', sell_quantity=swap_size
-        )
-        ex_price = agent.holdings['usdc']
-        # if ex_price < uniswap_quote / (1 + 1e-6):
-        #     liquidity *= 1.01
-        # elif ex_price > uniswap_quote * (1 + 1e-6):
-        #     liquidity *= 0.99
-        # else:
-        #     break
-        break
-    #
-    # if uniswap_quote != pytest.approx(ex_price, rel=1e-8):
-    #     raise AssertionError('Simulated pool did not match quote from Uniswap.')
+    local_clone = ConcentratedLiquidityPoolState(
+        asset_list=['usdc', 'weth'],
+        sqrt_price=mpf.sqrt(mpf(1 / weth_usdc.price)),
+        liquidity=liquidity,
+        tick_spacing=weth_usdc.tick_spacing,
+        fee=fee
+    ).initialize_ticks(ticks)
+    agent = Agent(holdings={'weth': 1000})
+    local_clone.swap(
+        agent, tkn_buy='usdc', tkn_sell='weth', sell_quantity=swap_size
+    )
+    ex_price = agent.holdings['usdc']
 
     print(f'Swap executed at {ex_price} vs Uniswap quote of {uniswap_quote}.')
-    print(f'Execution price deviated from quote by {float(ex_price) / uniswap_quote - 1:.8%}.')
+    print(f'Execution price deviated from quote by {float(ex_price) / uniswap_quote - 1:.12%}.')
+    # print(local_clone.tick_crossings)
+
+    if uniswap_quote != pytest.approx(ex_price, rel=1e-5):
+        raise AssertionError('Simulated pool did not match quote from Uniswap.')
+
+
 
 
 def test_tick_crossing():
