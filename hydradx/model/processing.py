@@ -898,15 +898,14 @@ class UniswapPool:
     def get_active_liquidity(self):
         return self.contract.functions.liquidity().call()
 
-    def get_liquidity_distribution(self):
+    def get_liquidity_distribution(self, low_range: int=-10, high_range: int=10):
         """ get liquidity at the current tick and at 10 ticks above and below """
         starting_tick = self.get_active_tick()
-        liquidity = {starting_tick: self.liquidity_at_tick(starting_tick)}
-        for i in range(1, 10):
+        liquidity = {}
+        for i in range(low_range, high_range):
             tick = starting_tick + i * self.tick_spacing
             liquidity[tick] = self.liquidity_at_tick(tick)
-            tick = starting_tick - i * self.tick_spacing
-            liquidity[tick] = self.liquidity_at_tick(tick)
+
         return {k: v for k, v in sorted(liquidity.items())}
 
     def get_quote(
