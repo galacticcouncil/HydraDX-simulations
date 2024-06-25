@@ -5,7 +5,7 @@ from mpmath import mp, mpf
 from hydradx.model.processing import get_uniswap_pool_data
 
 from hydradx.model.amm.concentrated_liquidity_pool import ConcentratedLiquidityPosition, price_to_tick, tick_to_price, \
-    ConcentratedLiquidityPoolState
+    ConcentratedLiquidityPoolState, Tick
 from hydradx.model.amm.agents import Agent
 
 mp.dps = 50
@@ -133,7 +133,7 @@ def test_sell_spot(price, fee, price_range):
     tick_spacing = 10
     price = tick_to_price(price_to_tick(price, tick_spacing=tick_spacing))
     initial_state = ConcentratedLiquidityPosition(
-        assets={'A': mpf(1000 / price), 'B': mpf(1000)},
+        assets={'A': 1000 / mpf(price), 'B': mpf(1000)},
         min_tick=price_to_tick(price, tick_spacing) - tick_spacing * price_range,
         tick_spacing=tick_spacing,
         fee=fee
@@ -157,7 +157,7 @@ def test_buy_x_vs_single_position(initial_tick, fee):
 
     agent1 = Agent(holdings={'B': 1000})
     one_position = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A': 10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=0.0025
@@ -167,7 +167,7 @@ def test_buy_x_vs_single_position(initial_tick, fee):
 
     agent1_copy = Agent(holdings={'B': 1000})
     one_position_feeless = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A': 10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=0
@@ -216,7 +216,7 @@ def test_buy_y_vs_single_position(initial_tick, fee):
 
     agent1 = Agent(holdings={'A': 1000})
     one_position = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A': 10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=fee
@@ -226,7 +226,7 @@ def test_buy_y_vs_single_position(initial_tick, fee):
 
     agent1_copy = Agent(holdings={'A': 1000})
     one_position_feeless = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A': 10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=0
@@ -270,11 +270,11 @@ def test_buy_y_vs_single_position(initial_tick, fee):
 def test_sell_x_vs_single_position(initial_tick, fee):
     tick_spacing = 100
     price = mpf(tick_to_price(initial_tick * tick_spacing + tick_spacing // 2))
-    sell_quantity = mpf(10)
+    sell_quantity = mpf(1)
 
     agent1 = Agent(holdings={'A': 1000, 'B': 0})
     one_position = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A':10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=fee
@@ -284,7 +284,7 @@ def test_sell_x_vs_single_position(initial_tick, fee):
 
     agent1_copy = Agent(holdings={'A': 1000, 'B': 0})
     one_position_feeless = ConcentratedLiquidityPosition(
-        assets={'A': mpf(10 / price), 'B': mpf(10)},
+        assets={'A': 10 / mpf(price), 'B': mpf(10)},
         min_tick=price_to_tick(price, tick_spacing),
         tick_spacing=tick_spacing,
         fee=0
@@ -450,8 +450,8 @@ def test_vs_uniswap_quote():
 
     while ex_price != uniswap_quote:
         local_clone = ConcentratedLiquidityPoolState(
-            asset_list=['weth', 'usdc'],
-            sqrt_price=mpf.sqrt(mpf(weth_usdc.price)),
+            asset_list=['usdc', 'weth'],
+            sqrt_price=mpf.sqrt(mpf(1 / weth_usdc.price)),
             liquidity=liquidity,
             tick_spacing=weth_usdc.tick_spacing,
             fee=fee
@@ -580,3 +580,7 @@ def test_get_next_sqrt_price_from_amount_1():
             != pytest.approx(agent.initial_holdings['A'] - agent.holdings['A'], rel=1e-12)
     ):
         raise AssertionError('Amount0 delta was not calculated correctly.')
+
+
+def test_two_part_swap():
+    test_pool
