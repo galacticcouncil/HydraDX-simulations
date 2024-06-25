@@ -499,7 +499,7 @@ def test_tick_crossing():
         tick_spacing=tick_spacing,
         fee=0
     ).initialize_ticks({
-        tick: individual_positions[tick].invariant - individual_positions[tick - tick_spacing].invariant
+        tick: individual_positions[tick - tick_spacing].invariant - individual_positions[tick].invariant
         for tick in range(initial_tick + tick_spacing, initial_tick + tick_spacing * 10 + 1, tick_spacing)
     })  # {current_tick + i * tick_spacing: -100 * (1 if i > 0 else -1) for i in range(-20, 20)})
     agent1 = Agent(holdings={'B': 10000})
@@ -580,7 +580,3 @@ def test_get_next_sqrt_price_from_amount_1():
             != pytest.approx(agent.initial_holdings['A'] - agent.holdings['A'], rel=1e-12)
     ):
         raise AssertionError('Amount0 delta was not calculated correctly.')
-
-
-def test_two_part_swap():
-    test_pool
