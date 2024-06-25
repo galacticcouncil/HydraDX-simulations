@@ -180,7 +180,8 @@ def validate_prices(
             agent_lrna_amt = agent_buy_amt * buy_prices[tkn]
             omnipool_lrna_amt = -lrna_deltas[tkn]
             net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_buy_amt + omnipool_buy_amt)
-            assert abs(sell_prices[tkn] - net_price)/net_price < tolerance, "price not valid for " + tkn
+            if not abs(sell_prices[tkn] - net_price)/net_price < tolerance:
+                raise Exception("price not valid for " + tkn)
         elif delta["out"] != 0:
             spot_price = omnipool.price(omnipool, tkn, "LRNA")
             assert abs(buy_prices[tkn] - spot_price) / spot_price < tolerance, "price not valid for " + tkn
