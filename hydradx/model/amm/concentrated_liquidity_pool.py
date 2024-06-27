@@ -299,7 +299,7 @@ class ConcentratedLiquidityPoolState(AMM):
             # shift tick if we reached the next price
             if self.sqrt_price == sqrt_price_next:
                 # if the tick is initialized, run the tick transition
-                self.liquidity -= next_tick.liquidityNet if zeroForOne else -next_tick.liquidityNet
+                self.liquidity += next_tick.liquidityNet if zeroForOne else -next_tick.liquidityNet
 
         # update the agent's holdings
         if tkn_buy not in agent.holdings:

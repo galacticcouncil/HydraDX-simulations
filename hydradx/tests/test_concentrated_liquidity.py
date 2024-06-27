@@ -434,7 +434,7 @@ def test_pool_buy_spot(initial_tick, fee):
         raise AssertionError('Buy spot price was not calculated correctly.')
 
 def test_vs_uniswap_quote():
-    swap_size = int(1e22)
+    swap_size = 10 ** 20
     fee = 0.003
 
     uniswap = get_uniswap_pool_data([('weth', 'usdc')])
@@ -461,8 +461,9 @@ def test_vs_uniswap_quote():
     ex_price = agent.holdings['usdc']
 
     print(f'Swap executed at {ex_price} vs Uniswap quote of {uniswap_quote}.')
-    print(f'Execution price deviated from quote by {float(ex_price) / uniswap_quote - 1:.12%}.')
+    print(f'Execution price deviated from quote by {int(ex_price) / uniswap_quote - 1:.12%}.')
     # print(local_clone.tick_crossings)
+    diff = int(ex_price) / uniswap_quote - 1
 
     if uniswap_quote != pytest.approx(ex_price, rel=1e-5):
         raise AssertionError('Simulated pool did not match quote from Uniswap.')
@@ -493,7 +494,7 @@ def test_tick_crossing():
         tick_spacing=tick_spacing,
         fee=0
     ).initialize_ticks({
-        tick: individual_positions[tick - tick_spacing].invariant - individual_positions[tick].invariant
+        tick: individual_positions[tick].invariant - individual_positions[tick - tick_spacing].invariant
         for tick in range(initial_tick + tick_spacing, initial_tick + tick_spacing * 10 + 1, tick_spacing)
     })  # {current_tick + i * tick_spacing: -100 * (1 if i > 0 else -1) for i in range(-20, 20)})
     agent1 = Agent(holdings={'B': 10000})
