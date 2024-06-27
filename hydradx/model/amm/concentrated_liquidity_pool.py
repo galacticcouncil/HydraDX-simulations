@@ -21,9 +21,11 @@ def price_to_tick(price: float, tick_spacing: int = 0):
 class ConcentratedLiquidityPosition(AMM):
     def __init__(
             self,
-            assets: dict,
+            assets: dict = None,
             min_tick: int = None,
             max_tick: int = None,
+            liquidity_total: float = None,
+            price: float = None,
             tick_spacing: int = 10,
             fee: float = 0.0,
             protocol_fee: float = 0.0
@@ -35,23 +37,32 @@ class ConcentratedLiquidityPosition(AMM):
         self.tick_spacing = tick_spacing
         self.fee = fee
         self.protocol_fee = protocol_fee
-        self.liquidity = {tkn: assets[tkn] for tkn in self.asset_list}
-        self.asset_x = self.asset_list[0]
-        self.asset_y = self.asset_list[1]
-        x = self.liquidity[self.asset_x]
-        y = self.liquidity[self.asset_y]
-        price = y / x
-        price_tick = price_to_tick(price)
+        if liquidity_total and price and min_tick and max_tick:
+            min_price = tick_to_price(min_tick)
+            max_price = tick_to_price(max_tick)
+            x = liquidity_total * (sqrt(price) - sqrt(min_price)) / (sqrt(max_price) * sqrt(price))
+            y = liquidity_total * (sqrt(price) - sqrt(min_price))
+            f_price = y / x
+        elif assets:
+            self.liquidity = {tkn: assets[tkn] for tkn in self.asset_list}
+            self.asset_x = self.asset_list[0]
+            self.asset_y = self.asset_list[1]
+            x = self.liquidity[self.asset_x]
+            y = self.liquidity[self.asset_y]
+            price = y / x
+            price_tick = price_to_tick(price)
 
-        if min_tick is not None and max_tick is not None:
-            # raise ValueError("Only one of min_tick or max_tick should be provided.")
-            pass
-        elif min_tick is not None and max_tick is None:
-            max_tick = round(2 * price_tick - min_tick)
-        elif max_tick is not None and min_tick is None:
-            min_tick = round(2 * price_tick - max_tick)
+            if min_tick is not None and max_tick is not None:
+                # raise ValueError("Only one of min_tick or max_tick should be provided.")
+                pass
+            elif min_tick is not None and max_tick is None:
+                max_tick = round(2 * price_tick - min_tick)
+            elif max_tick is not None and min_tick is None:
+                min_tick = round(2 * price_tick - max_tick)
+            else:
+                raise ValueError("Either min_tick or max_tick must be provided.")
         else:
-            raise ValueError("Either min_tick or max_tick must be provided.")
+            raise ValueError("Either assets or liquidity_total, price, min_tick, and max_tick must be provided.")
         self.min_price = tick_to_price(min_tick)
         self.max_price = tick_to_price(max_tick)
         self.min_tick = min_tick
@@ -199,6 +210,7 @@ class ConcentratedLiquidityPoolState(AMM):
         self.ticks: dict[int, Tick] = ticks or {}
         self.sqrt_price = sqrt_price
         self.liquidity = liquidity
+        self.tick_crossings = []
 
     def initialize_tick(self, tick: int, liquidity_net: float):
         if tick % self.tick_spacing != 0:
@@ -299,7 +311,13 @@ class ConcentratedLiquidityPoolState(AMM):
             # shift tick if we reached the next price
             if self.sqrt_price == sqrt_price_next:
                 # if the tick is initialized, run the tick transition
-                self.liquidity -= next_tick.liquidityNet if zeroForOne else -next_tick.liquidityNet
+                liquidity_delta = -next_tick.liquidityNet if zeroForOne else next_tick.liquidityNet
+                self.liquidity += liquidity_delta
+                self.tick_crossings.append({
+                    "net": liquidity_delta,
+                    "total": self.liquidity,
+                    "price": self.sqrt_price ** 2
+                })
 
         # update the agent's holdings
         if tkn_buy not in agent.holdings:
