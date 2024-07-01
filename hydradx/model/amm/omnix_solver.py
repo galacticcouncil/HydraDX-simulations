@@ -1,6 +1,7 @@
 import copy
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnix import validate_and_execute_solution
 
 
 def calculate_price_slippage_to_impact(omnipool: OmnipoolState, intent: dict) -> float:
@@ -97,14 +98,16 @@ def calculate_prices(omnipool: OmnipoolState, tkn_deltas: dict, lrna_deltas: dic
             # net price is total lrna divided by total asset in
             if lrna_deltas[tkn]["out"] <= lrna_deltas[tkn]["in"]:
                 raise Exception("lrna_deltas[tkn][out] <= lrna_deltas[tkn][in]")
-            sell_prices[tkn] = (lrna_deltas[tkn]["out"] - lrna_deltas[tkn]["in"] + lrna_for_matched) / tkn_deltas[tkn]["in"]
+            sell_prices[tkn] = (lrna_deltas[tkn]["out"] - lrna_deltas[tkn]["in"] + lrna_for_matched) / tkn_deltas[tkn][
+                "in"]
         elif tkn_deltas[tkn]["out"] > tkn_deltas[tkn]["in"]:
             sell_prices[tkn] = omnipool.price(omnipool, tkn, "LRNA")
             # matched amount being bought is traded at final spot too
             lrna_for_matched = sell_prices[tkn] * tkn_deltas[tkn]["in"]
             # net price is total lrna divided by total asset out
             assert lrna_deltas[tkn]["in"] > lrna_deltas[tkn]["out"]
-            buy_prices[tkn] = (lrna_deltas[tkn]["in"] - lrna_deltas[tkn]["out"] + lrna_for_matched) / tkn_deltas[tkn]["out"]
+            buy_prices[tkn] = (lrna_deltas[tkn]["in"] - lrna_deltas[tkn]["out"] + lrna_for_matched) / tkn_deltas[tkn][
+                "out"]
         else:
             sell_prices[tkn] = omnipool.price(omnipool, tkn, "LRNA")
             buy_prices[tkn] = omnipool.price(omnipool, tkn, "LRNA")
@@ -238,14 +241,16 @@ def calculate_price_limits(i: int, intents: list, amounts: list):
             elif included_intent['tkn_buy'] == intent['tkn_sell']:
                 if included_intent['tkn_sell'] == intent['tkn_buy']:
                     if price_limits['compound_inverse_limit'] is None:
-                        price_limits['compound_inverse_limit'] = 1/price_limit
+                        price_limits['compound_inverse_limit'] = 1 / price_limit
                     else:
-                        price_limits['compound_inverse_limit'] = min(price_limits['compound_inverse_limit'], 1/price_limit)
+                        price_limits['compound_inverse_limit'] = min(price_limits['compound_inverse_limit'],
+                                                                     1 / price_limit)
                 else:
                     if price_limits['sell_tkn_inverse_limit'] is None:
-                        price_limits['sell_tkn_inverse_limit'] = 1/price_limit
+                        price_limits['sell_tkn_inverse_limit'] = 1 / price_limit
                     else:
-                        price_limits['sell_tkn_inverse_limit'] = min(price_limits['sell_tkn_inverse_limit'], 1/price_limit)
+                        price_limits['sell_tkn_inverse_limit'] = min(price_limits['sell_tkn_inverse_limit'],
+                                                                     1 / price_limit)
             elif included_intent['tkn_sell'] == intent['tkn_sell']:
                 if price_limits['sell_tkn_same_limit'] is None:
                     price_limits['sell_tkn_same_limit'] = price_limit
@@ -253,9 +258,9 @@ def calculate_price_limits(i: int, intents: list, amounts: list):
                     price_limits['sell_tkn_same_limit'] = max(price_limits['sell_tkn_same_limit'], price_limit)
             elif included_intent['tkn_sell'] == intent['tkn_buy']:
                 if price_limits['buy_tkn_inverse_limit'] is None:
-                    price_limits['buy_tkn_inverse_limit'] = 1/price_limit
+                    price_limits['buy_tkn_inverse_limit'] = 1 / price_limit
                 else:
-                    price_limits['buy_tkn_inverse_limit'] = min(price_limits['buy_tkn_inverse_limit'], 1/price_limit)
+                    price_limits['buy_tkn_inverse_limit'] = min(price_limits['buy_tkn_inverse_limit'], 1 / price_limit)
     return price_limits
 
 
@@ -312,8 +317,120 @@ def calculate_net_intents(
         tkn_sell: str,
         buy_prices: dict,
         sell_prices: dict
-) -> list:
-    pass
+) -> tuple:
+    # keys will be [<tkn_sell>_<tkn_buy>][0/1] where 0 indicates sell is specified
+    net_intent_dict = {}
+    price_limits = {
+        'min_tkn_buy_tkn_sell_price': 0,
+        'max_tkn_buy_tkn_sell_price': float('inf'),
+        'min_tkn_sell_price': 0,
+        'max_tkn_sell_price': float('inf'),
+        'min_tkn_buy_price': 0,
+        'max_tkn_buy_price': float('inf')
+    }
+
+    for intent in intents:
+        if intent['tkn_sell'] == tkn_sell:
+            tb = tkn_buy if intent['tkn_buy'] == tkn_buy else "LRNA"
+            ts = tkn_sell
+        elif intent['tkn_sell'] == tkn_buy:
+            tb = tkn_sell if intent['tkn_buy'] == tkn_sell else "LRNA"
+            ts = tkn_buy
+        elif intent['tkn_buy'] == tkn_buy:
+            tb = tkn_buy
+            ts = "LRNA"
+        elif intent['tkn_buy'] == tkn_sell:
+            tb = tkn_sell
+            ts = "LRNA"
+        else:
+            continue
+
+        if 'sell_quantity' in intent:
+            is_buy = 0
+            amt_key = 'sell_quantity'
+            amt = intent['sell_quantity']
+            if ts == "LRNA":  # convert to LRNA if necessary
+                amt *= sell_prices[intent['tkn_sell']]
+        else:
+            is_buy = 1
+            amt_key = 'buy_quantity'
+            amt = intent['buy_quantity']
+            if tb == "LRNA":  # convert to LRNA if necessary
+                amt *= buy_prices[intent['tkn_buy']]
+
+        k = ts + "_" + tb
+        if k not in net_intent_dict:
+            net_intent_dict[k] = {}
+        if is_buy not in net_intent_dict[k]:
+            net_intent_dict[k][is_buy] = {
+                amt_key: 0,
+                'tkn_sell': ts,
+                'tkn_buy': tb
+            }
+        net_intent_dict[k][is_buy][amt_key] += amt
+
+        # adjust price limits
+        if intent['tkn_sell'] == tkn_sell and intent['tkn_buy'] == tkn_buy:
+            # need to update buy/sell price
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity']
+                sell_amt = intent['sell_limit']
+            else:
+                buy_amt = intent['buy_limit']
+                sell_amt = intent['sell_quantity']
+            price_limit = buy_amt / sell_amt
+            price_limits['min_tkn_buy_tkn_sell_price'] = max(price_limits['min_tkn_buy_tkn_sell_price'], price_limit)
+        elif intent['tkn_sell'] == tkn_sell:
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity'] * buy_prices[intent['tkn_buy']]
+                sell_amt = intent['sell_limit']
+            else:
+                buy_amt = intent['buy_limit'] * buy_prices[intent['tkn_buy']]
+                sell_amt = intent['sell_quantity']
+            price_limit = buy_amt / sell_amt
+            price_limits['min_tkn_sell_price'] = max(price_limits['min_tkn_sell_price'], price_limit)
+        elif intent['tkn_buy'] == tkn_buy:
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity']
+                sell_amt = intent['sell_limit'] * sell_prices[intent['tkn_sell']]
+            else:
+                buy_amt = intent['buy_limit']
+                sell_amt = intent['sell_quantity'] * sell_prices[intent['tkn_sell']]
+            price_limit = sell_amt / buy_amt
+            price_limits['max_tkn_buy_price'] = min(price_limits['max_tkn_buy_price'], price_limit)
+        elif intent['tkn_buy'] == tkn_sell and intent['tkn_sell'] == tkn_buy:
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity']
+                sell_amt = intent['sell_limit']
+            else:
+                buy_amt = intent['buy_limit']
+                sell_amt = intent['sell_quantity']
+            price_limit = sell_amt / buy_amt
+            price_limits['max_tkn_buy_tkn_sell_price'] = min(price_limits['max_tkn_buy_tkn_sell_price'], price_limit)
+        elif intent['tkn_buy'] == tkn_sell:
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity']
+                sell_amt = intent['sell_limit'] * sell_prices[intent['tkn_sell']]
+            else:
+                buy_amt = intent['buy_limit']
+                sell_amt = intent['sell_quantity'] * sell_prices[intent['tkn_sell']]
+            price_limit = sell_amt / buy_amt
+            price_limits['max_tkn_sell_price'] = min(price_limits['max_tkn_sell_price'], price_limit)
+        elif intent['tkn_sell'] == tkn_buy:
+            if 'buy_quantity' in intent:
+                buy_amt = intent['buy_quantity'] * buy_prices[intent['tkn_buy']]
+                sell_amt = intent['sell_limit']
+            else:
+                buy_amt = intent['buy_limit'] * buy_prices[intent['tkn_buy']]
+                sell_amt = intent['sell_quantity']
+            price_limit = buy_amt / sell_amt
+            price_limits['min_tkn_buy_price'] = max(price_limits['min_tkn_buy_price'], price_limit)
+
+    net_intents = []
+    for k in net_intent_dict:
+        for i in net_intent_dict[k]:
+            net_intents.append(net_intent_dict[k][i])
+    return net_intents, price_limits
 
 
 def calculate_transfers(
@@ -325,12 +442,17 @@ def calculate_transfers(
     # intents should be fully processed since they represent net processed amounts
     transfers = []
     deltas = {tkn: {"in": 0, "out": 0} for tkn in buy_prices}
+    deltas['LRNA'] = {"in": 0, "out": 0}
     buy_prices = {k: buy_prices[k] for k in buy_prices}
     sell_prices = {k: sell_prices[k] for k in sell_prices}
     buy_prices['LRNA'] = 1
     sell_prices['LRNA'] = 1
     for i in range(len(intents)):
         intent = intents[i]
+        if intent['tkn_buy'] not in deltas:
+            deltas[intent['tkn_buy']] = {"in": 0, "out": 0}
+        if intent['tkn_sell'] not in deltas:
+            deltas[intent['tkn_sell']] = {"in": 0, "out": 0}
         if 'sell_quantity' in intent:
             amt = intent['sell_quantity']
             buy_amt = amt * sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
@@ -347,7 +469,6 @@ def calculate_transfers(
             amt = intent['buy_quantity']
             sell_amt = amt * buy_prices[intent['tkn_buy']] / sell_prices[intent['tkn_sell']]
             transfer = {
-                'agent': intent['agent'],
                 'buy_quantity': amt,
                 'sell_quantity': sell_amt,
                 'tkn_buy': intent['tkn_buy'],
@@ -358,6 +479,116 @@ def calculate_transfers(
             deltas[intent['tkn_sell']]["in"] += sell_amt
 
     return transfers, deltas
+
+
+def calculate_solution_first_trade(
+        omnipool: OmnipoolState,
+        new_intent: dict
+):
+    omnipool_new = omnipool.copy()
+    if 'sell_quantity' in new_intent:
+        sell_amt = new_intent['sell_quantity']
+        buy_amt = omnipool.calculate_buy_from_sell(new_intent['tkn_buy'], new_intent['tkn_sell'], sell_amt)
+        if buy_amt >= new_intent['buy_limit']:
+            omnipool_new.swap(new_intent['agent'].copy(), new_intent['tkn_buy'], new_intent['tkn_sell'],
+                              sell_quantity=sell_amt)
+            amt = sell_amt
+        else:
+            amt = 0
+    elif 'buy_quantity' in new_intent:
+        buy_amt = new_intent['buy_quantity']
+        sell_amt = omnipool.calculate_sell_from_buy(new_intent['tkn_buy'], new_intent['tkn_sell'], buy_amt)
+        if sell_amt <= new_intent['sell_limit']:
+            omnipool_new.swap(new_intent['agent'].copy(), new_intent['tkn_buy'], new_intent['tkn_sell'],
+                              buy_quantity=buy_amt)
+            amt = buy_amt
+        else:
+            amt = 0
+    else:
+        raise Exception("Invalid intent")
+
+    delta_tkn_buy = omnipool.liquidity[new_intent['tkn_buy']] - omnipool_new.liquidity[new_intent['tkn_buy']]
+    delta_lrna_tkn_buy = omnipool.lrna[new_intent['tkn_buy']] - omnipool_new.lrna[new_intent['tkn_buy']]
+    delta_tkn_sell = omnipool.liquidity[new_intent['tkn_sell']] - omnipool_new.liquidity[new_intent['tkn_sell']]
+    delta_lrna_tkn_sell = omnipool.lrna[new_intent['tkn_sell']] - omnipool_new.lrna[new_intent['tkn_sell']]
+    buy_prices = {new_intent['tkn_buy']: abs(delta_lrna_tkn_buy / delta_tkn_buy)}
+    sell_prices = {new_intent['tkn_sell']: abs(delta_lrna_tkn_sell / delta_tkn_sell)}
+
+    return [new_intent], [amt], buy_prices, sell_prices, omnipool_new
+
+
+def add_intent_to_solution(
+        omnipool: OmnipoolState,
+        intents: list,
+        amt_processed: list,  # list of amt processed for each intent
+        buy_prices: dict,  # key: token, value: price
+        sell_prices: dict,  # key: token, value: price
+        omnipool_after_intents: OmnipoolState,
+        new_intent: dict
+):
+    # TODO cut down intents using amt_processed
+
+    if not intents:  # new solution is to simply execute against Omnipool
+        return calculate_solution_first_trade(omnipool, new_intent)
+
+    net_intents, price_limits = calculate_net_intents(intents, new_intent['tkn_buy'], new_intent['tkn_sell'],
+                                                      buy_prices, sell_prices)
+    transfers, deltas = calculate_transfers(net_intents, buy_prices, sell_prices)
+
+    # come up with prices that are in appropriate bounds
+    # apply new intent to omnipool_after_intents
+    # new prices should be between original Omnipool spot, and execution price
+    test_omnipool = omnipool_after_intents.copy()
+    if 'buy_quantity' in new_intent:
+        buy_amt = new_intent['buy_quantity']
+        test_omnipool.swap(new_intent['agent'].copy(), new_intent['tkn_buy'], new_intent['tkn_sell'], buy_quantity=buy_amt)
+        sell_amt = test_omnipool.liquidity[new_intent['tkn_sell']] - omnipool_after_intents.liquidity[new_intent['tkn_sell']]
+        amt = buy_amt
+    elif 'sell_quantity' in new_intent:
+        sell_amt = new_intent['sell_quantity']
+        test_omnipool.swap(new_intent['agent'].copy(), new_intent['tkn_buy'], new_intent['tkn_sell'], sell_quantity=sell_amt)
+        buy_amt = omnipool_after_intents.liquidity[new_intent['tkn_buy']] - test_omnipool.liquidity[new_intent['tkn_buy']]
+        amt = sell_amt
+    else:
+        raise Exception("Invalid intent")
+    lrna_amt = test_omnipool.lrna[new_intent['tkn_buy']] - omnipool_after_intents.lrna[new_intent['tkn_buy']]
+    buy_price_max = lrna_amt / buy_amt
+    sell_price_min = lrna_amt / sell_amt
+    buy_price_min = buy_prices[new_intent['tkn_buy']]
+    sell_price_max = sell_prices[new_intent['tkn_sell']]
+
+    # start at buy_price_max and sell_price_min
+
+    test_intents = intents + [new_intent]
+    test_amts = amt_processed + [amt]
+    test_buy_prices = copy.deepcopy(buy_prices)
+    test_sell_prices = copy.deepcopy(sell_prices)
+    test_buy_prices[new_intent['tkn_buy']] = buy_price_max
+    if new_intent['tkn_buy'] not in test_sell_prices:
+        test_sell_prices[new_intent['tkn_buy']] = 0
+    test_sell_prices[new_intent['tkn_sell']] = sell_price_min
+    if new_intent['tkn_sell'] not in test_buy_prices:
+        test_buy_prices[new_intent['tkn_sell']] = 0
+
+    # calculate_prices_outcome(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices)
+
+    validate_and_execute_solution(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices, 0.0001)
+
+    print('done')
+
+
+def calculate_solution_iteratively(
+        omnipool: OmnipoolState,
+        intents: list
+):
+    included_intents = []
+    amts = []
+    buy_prices = {}
+    sell_prices = []
+    omnipool_new = omnipool.copy()
+    for intent in intents:
+        included_intents, amts, buy_prices, sell_prices, omnipool_new = add_intent_to_solution(omnipool, included_intents, amts, buy_prices, sell_prices, omnipool_new, intent)
+    return included_intents, amts, buy_prices, sell_prices, omnipool_new
 
 
 def calculate_prices_outcome(
