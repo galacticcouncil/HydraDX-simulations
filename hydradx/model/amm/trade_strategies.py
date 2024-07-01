@@ -427,7 +427,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
+def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequency=1) -> TradeStrategy:
     if skip_assets is None:
         skip_assets = []
 
@@ -465,6 +465,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         return dq
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if state.time_step % frequency != 0:
+            return state
+
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
