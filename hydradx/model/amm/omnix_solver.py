@@ -1,8 +1,8 @@
 import copy
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.omnix import validate_and_execute_solution
-
+from hydradx.model.amm import omnix
+from hydradx.model.amm.agents import Agent
 
 def calculate_price_slippage_to_impact(omnipool: OmnipoolState, intent: dict) -> float:
     tkn_buy, tkn_sell = intent['tkn_buy'], intent['tkn_sell']
@@ -27,13 +27,34 @@ def calculate_price_slippage_to_impact(omnipool: OmnipoolState, intent: dict) ->
     return slippage / impact
 
 
+def calculate_price_slippage(omnipool: OmnipoolState, intent: dict) -> float:
+    sell_price = omnipool.price(omnipool, intent['tkn_sell'], intent['tkn_buy'])
+
+    if 'sell_quantity' in intent:
+        limit_price = intent['buy_limit'] / intent['sell_quantity']
+    else:
+        limit_price = intent['buy_quantity'] / intent['sell_limit']
+
+    return (sell_price - limit_price) / sell_price
+
+
 def _calculate_price_slippage_to_impact_sign_tuple(omnipool: OmnipoolState, intent: dict) -> tuple:
     x = calculate_price_slippage_to_impact(omnipool, intent)
     return (1, x) if x >= 0 else (-1, -x)
 
 
+def _calculate_price_slippage_sign_tuple(omnipool: OmnipoolState, intent: dict) -> tuple:
+    x = calculate_price_slippage(omnipool, intent)
+    return (1, x) if x >= 0 else (-1, -x)
+
+
 def get_sorted_intents(omnipool: OmnipoolState, intents: list) -> list:
     return sorted(intents, key=lambda intent: _calculate_price_slippage_to_impact_sign_tuple(omnipool, intent),
+                  reverse=True)
+
+
+def get_sorted_intents_slippage(omnipool: OmnipoolState, intents: list) -> list:
+    return sorted(intents, key=lambda intent: _calculate_price_slippage_sign_tuple(omnipool, intent),
                   reverse=True)
 
 
@@ -157,58 +178,6 @@ def try_swaps(omnipool, sorted_intents, skip_indices=None):
     return tkn_deltas, lrna_deltas, amts
 
 
-def construct_solution_old(init_omnipool: OmnipoolState, intents: list):
-    init_sorted_intents = get_sorted_intents(init_omnipool, intents)
-
-    # try to do swaps in order
-    omnipool = init_omnipool.copy()
-    sorted_intents = copy.deepcopy(init_sorted_intents)
-
-    tkn_deltas, lrna_deltas, amounts = try_swaps(omnipool, sorted_intents)
-    buy_prices, sell_prices = calculate_prices(omnipool, tkn_deltas, lrna_deltas)
-    # check if prices satisfy all intents
-    limit_violation_indices = []
-    for i in range(len(sorted_intents)):
-        intent = sorted_intents[i]
-        exec_price = sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
-        if "sell_quantity" in intent:
-            limit_price = intent['buy_limit'] / intent['sell_quantity']
-            if exec_price < limit_price:
-                limit_violation_indices.append(i)
-        else:
-            limit_price = intent['buy_quantity'] / intent['sell_limit']
-            if exec_price < limit_price:
-                limit_violation_indices.append(i)
-
-    first_intent_skipped_index = len(init_sorted_intents)
-    skipped_indices = []
-    # if not, throw out worst intent and try again
-    while first_intent_skipped_index > 0 and len(limit_violation_indices) > 0:
-        first_intent_skipped_index -= 1
-        skipped_indices.append(first_intent_skipped_index)
-
-        omnipool = init_omnipool.copy()
-        sorted_intents = copy.deepcopy(init_sorted_intents)
-
-        tkn_deltas, lrna_deltas, amounts = try_swaps(omnipool, sorted_intents, skip_indices=skipped_indices)
-        buy_prices, sell_prices = calculate_prices(omnipool, tkn_deltas, lrna_deltas)
-        # check if prices satisfy all intents
-        limit_violation_indices = []
-        for i in range(len(sorted_intents)):
-            intent = sorted_intents[i]
-            exec_price = sell_prices[intent['tkn_sell']] / buy_prices[intent['tkn_buy']]
-            if "sell_quantity" in intent:
-                limit_price = intent['buy_limit'] / intent['sell_quantity']
-                if exec_price < limit_price:
-                    limit_violation_indices.append(i)
-            else:
-                limit_price = intent['buy_quantity'] / intent['sell_limit']
-                if exec_price < limit_price:
-                    limit_violation_indices.append(i)
-
-    return buy_prices, sell_prices, amounts
-
-
 def calculate_price_limits(i: int, intents: list, amounts: list):
     price_limits = {
         'compound_same_limit': None,
@@ -262,53 +231,6 @@ def calculate_price_limits(i: int, intents: list, amounts: list):
                 else:
                     price_limits['buy_tkn_inverse_limit'] = min(price_limits['buy_tkn_inverse_limit'], 1 / price_limit)
     return price_limits
-
-
-def construct_solution(init_omnipool: OmnipoolState, intents: list):
-    init_sorted_intents = get_sorted_intents(init_omnipool, intents)
-
-    # try to do swaps in order
-    omnipool = init_omnipool.copy()
-
-    amounts = [0] * len(init_sorted_intents)
-    buy_prices = {}
-    sell_prices = {}
-    asset_deltas = {}
-
-    for i in range(len(init_sorted_intents)):
-        intent = init_sorted_intents[i]
-        # if neither asset in intent is present yet, solution should just try to execute against Omnipool
-        if intent['tkn_buy'] not in asset_deltas and intent['tkn_sell'] not in asset_deltas:
-            deltas = try_swap(omnipool, intent)
-            amounts[i] = deltas['sell_tkn'] if 'sell_quantity' in intent else deltas['buy_tkn']
-            buy_prices[intent['tkn_buy']] = deltas['buy_lrna'] / deltas['buy_tkn']
-            sell_prices[intent['tkn_sell']] = deltas['sell_lrna'] / deltas['sell_tkn']
-            asset_deltas[intent['tkn_buy']] = {
-                'tkn_in': 0,
-                'tkn_out': deltas['buy_tkn'],
-                'lrna_in': deltas['buy_lrna'],
-                'lrna_out': 0
-            }
-            asset_deltas[intent['tkn_sell']] = {
-                'tkn_in': deltas['sell_tkn'],
-                'tkn_out': 0,
-                'lrna_in': 0,
-                'lrna_out': deltas['sell_lrna']
-            }
-        else:
-            # want to know most restrictive buy and sell limit prices for all assets
-            # we assume that other prices will not change
-            # price_limits = calculate_price_limits(i, init_sorted_intents, amounts)
-            # now that we have the price limits, we want to know if we can include next intent while staying within the limits
-            # assets break down into several categories
-            # 1. assets that are not involved in any
-            temp_asset_deltas = copy.deepcopy(asset_deltas)
-            temp_omnipool = init_omnipool.copy()
-            if 'sell_quantity' in intent:  # sell asset is specified
-                pass
-            else:  # buy asset is specified
-                pass
-            print('done')
 
 
 def calculate_net_intents(
@@ -511,10 +433,245 @@ def calculate_solution_first_trade(
     delta_lrna_tkn_buy = omnipool.lrna[new_intent['tkn_buy']] - omnipool_new.lrna[new_intent['tkn_buy']]
     delta_tkn_sell = omnipool.liquidity[new_intent['tkn_sell']] - omnipool_new.liquidity[new_intent['tkn_sell']]
     delta_lrna_tkn_sell = omnipool.lrna[new_intent['tkn_sell']] - omnipool_new.lrna[new_intent['tkn_sell']]
-    buy_prices = {new_intent['tkn_buy']: abs(delta_lrna_tkn_buy / delta_tkn_buy)}
-    sell_prices = {new_intent['tkn_sell']: abs(delta_lrna_tkn_sell / delta_tkn_sell)}
+    buy_prices = {new_intent['tkn_buy']: abs(delta_lrna_tkn_buy / delta_tkn_buy), new_intent['tkn_sell']: 0}
+    sell_prices = {new_intent['tkn_sell']: abs(delta_lrna_tkn_sell / delta_tkn_sell), new_intent['tkn_buy']: 0}
 
     return [new_intent], [amt], buy_prices, sell_prices, omnipool_new
+
+
+def calculate_price_targets(
+        deltas: dict,  # key: token, value: delta_change of token w.r.t. Omnipool
+        lrna_deltas: dict,  # key: token, value: delta_change of LRNA w.r.t. Omnipool in tkn trade
+        buy_prices: dict,  # key: token, value: price
+        sell_prices: dict,  # key: token, value: price
+        spot_prices: dict
+):
+    price_targets = {}
+    new_sell_prices = {tkn: sell_prices[tkn] for tkn in sell_prices}
+    new_buy_prices = {tkn: buy_prices[tkn] for tkn in buy_prices}
+    for tkn, delta in deltas.items():  # calculate net of Omnipool leg and other leg in same direction
+        price_targets[tkn] = {'buy': 0, 'sell': 0}
+        if delta["out"] > delta["in"]:  # LRNA being sold to Omnipool for TKN
+            agent_sell_amt = delta['in']
+            omnipool_sell_amt = delta["out"] - delta['in']
+            agent_lrna_amt = agent_sell_amt * sell_prices[tkn]
+            omnipool_lrna_amt = lrna_deltas[tkn]
+            net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_sell_amt + omnipool_sell_amt)
+            price_targets[tkn]['buy'] = net_price
+            price_targets[tkn]['sell'] = spot_prices['sell'][tkn]
+            new_buy_prices[tkn] = net_price
+            new_sell_prices[tkn] = spot_prices['sell'][tkn]
+            # diffs[tkn]['buy'] = (buy_prices[tkn] - net_price)/net_price
+        elif delta["out"] < delta["in"]:  # LRNA being bought from Omnipool for TKN
+            agent_buy_amt = delta['out']
+            omnipool_buy_amt = delta['in'] - delta["out"]
+            agent_lrna_amt = agent_buy_amt * buy_prices[tkn]
+            omnipool_lrna_amt = -lrna_deltas[tkn]
+            net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_buy_amt + omnipool_buy_amt)
+            price_targets[tkn]['sell'] = net_price
+            price_targets[tkn]['buy'] = spot_prices['buy'][tkn]
+            new_sell_prices[tkn] = net_price
+            new_buy_prices[tkn] = spot_prices['buy'][tkn]
+            # diffs[tkn]['sell'] = (sell_prices[tkn] - net_price)/net_price
+        elif delta["out"] != 0:
+            price_targets[tkn]['buy'] = spot_prices['buy'][tkn]
+            price_targets[tkn]['sell'] = spot_prices['sell'][tkn]
+            new_buy_prices[tkn] = spot_prices['buy'][tkn]
+            new_sell_prices[tkn] = spot_prices['sell'][tkn]
+            # diffs[tkn]['buy'] = (buy_prices[tkn] - spot_price) / spot_price
+            # diffs[tkn]['sell'] = (sell_prices[tkn] - spot_price) / spot_price
+
+    return price_targets, new_buy_prices, new_sell_prices
+
+
+def is_remainder_nonnegative(pool_agent: Agent):
+    for tkn, amt in pool_agent.holdings.items():
+        if amt < 0:
+            return False
+    return True
+
+
+def validate_solution_returning_price_targets(
+        omnipool: OmnipoolState,
+        intents: list,  # swap desired to be processed
+        amt_processed: list,  # list of amt processed for each intent
+        buy_prices: dict,  # key: token, value: price
+        sell_prices: dict,  # key: token, value: price
+        tolerance: float = 0.01
+):
+    test_omnipool = omnipool.copy()
+    test_intents = copy.deepcopy(intents)
+
+    assert buy_prices.keys() == sell_prices.keys(), "buy_prices and sell_prices are not provided for same tokens"
+
+    omnix.validate_intents(test_intents, amt_processed)
+    transfers, deltas = omnix.calculate_transfers(test_intents, amt_processed, buy_prices, sell_prices)
+    omnix.validate_transfer_amounts(transfers)
+    pool_agent, lrna_deltas = omnix.execute_solution(test_omnipool, transfers, deltas)
+
+    # if not is_remainder_nonnegative(pool_agent):
+    #     raise Exception("agent has negative holdings")
+    lrna_leftover = pool_agent.holdings["LRNA"]
+    if 0 < lrna_leftover < 1:
+        lrna_leftover = 0
+    # adjust price based on leftover LRNA.
+    # distribute lrna_leftover proportionally across deltas for tokens in new intent
+    tkn_buy = intents[-1]['tkn_buy']
+    tkn_sell = intents[-1]['tkn_sell']
+    # convert agent deltas to lrna
+    lrna_buy_in = deltas[tkn_buy]['in'] * sell_prices[tkn_buy]
+    lrna_buy_out = deltas[tkn_buy]['out'] * buy_prices[tkn_buy]
+    lrna_buy_matched = min(lrna_buy_in, lrna_buy_out)
+    lrna_sell_in = deltas[tkn_sell]['in'] * sell_prices[tkn_sell]
+    lrna_sell_out = deltas[tkn_sell]['out'] * buy_prices[tkn_sell]
+    lrna_sell_matched = min(lrna_sell_in, lrna_sell_out)
+    denom = lrna_buy_matched + lrna_sell_matched
+    if denom != 0:  # allocate leftover LRNA based on how value is matched in each asset
+        lrna_buy_leftover = lrna_buy_matched / denom * lrna_leftover
+        lrna_sell_leftover = lrna_sell_matched / denom * lrna_leftover
+        # need to capture this additional LRNA from trade against Omnipool
+        if lrna_buy_in > lrna_buy_out:
+            lrna_buy_in += lrna_buy_leftover
+        else:
+            lrna_buy_out -= lrna_buy_leftover
+        if lrna_sell_in > lrna_sell_out:
+            lrna_sell_in += lrna_sell_leftover
+        else:
+            lrna_sell_out -= lrna_sell_leftover
+    # # distribute lrna_leftover across agent_lrna_deltas
+    # lrna_buy_in += lrna_buy_in / denom * lrna_leftover
+    # lrna_buy_out -= lrna_buy_out / denom * lrna_leftover
+    # lrna_sell_in += lrna_sell_in / denom * lrna_leftover
+    # lrna_sell_out -= lrna_sell_out / denom * lrna_leftover
+    # recompute buy and sell prices
+    new_sell_prices = copy.deepcopy(sell_prices)
+    new_buy_prices = copy.deepcopy(buy_prices)
+    new_sell_prices[tkn_buy] = lrna_buy_in / deltas[tkn_buy]['in'] if deltas[tkn_buy]['in'] > 0 else sell_prices[tkn_buy]
+    new_buy_prices[tkn_buy] = lrna_buy_out / deltas[tkn_buy]['out'] if deltas[tkn_buy]['out'] > 0 else buy_prices[tkn_buy]
+    new_sell_prices[tkn_sell] = lrna_sell_in / deltas[tkn_sell]['in'] if deltas[tkn_sell]['in'] > 0 else sell_prices[tkn_sell]
+    new_buy_prices[tkn_sell] = lrna_sell_out / deltas[tkn_sell]['out'] if deltas[tkn_sell]['out'] > 0 else buy_prices[tkn_sell]
+
+    test_omnipool2 = omnipool.copy()
+
+    # calculate new values
+    transfers2, deltas2 = omnix.calculate_transfers(test_intents, amt_processed, new_buy_prices, new_sell_prices)
+    # omnix.validate_transfer_amounts(transfers)
+    pool_agent2, lrna_deltas2 = omnix.execute_solution(test_omnipool2, transfers2, deltas2)
+    spot_prices = {
+        'buy': {tkn: test_omnipool.price(test_omnipool2, tkn, "LRNA") for tkn in test_omnipool2.liquidity},
+        'sell': {tkn: test_omnipool.price(test_omnipool2, tkn, "LRNA") for tkn in test_omnipool2.liquidity}
+    }
+
+    price_targets, new_buy_prices2, new_sell_prices2 = calculate_price_targets(deltas2, lrna_deltas2, new_buy_prices, new_sell_prices, spot_prices)
+
+    # update_intents(intents, transfers)
+
+    return price_targets, pool_agent2, new_buy_prices2, new_sell_prices2
+
+
+def validate_solution_returning_price_targets2(
+        omnipool: OmnipoolState,
+        intents: list,  # swap desired to be processed
+        amt_processed: list,  # list of amt processed for each intent
+        buy_prices: dict,  # key: token, value: price
+        sell_prices: dict,  # key: token, value: price
+        tolerance: float = 0.01
+):
+    test_omnipool = omnipool.copy()
+    test_intents = copy.deepcopy(intents)
+
+    assert buy_prices.keys() == sell_prices.keys(), "buy_prices and sell_prices are not provided for same tokens"
+
+    omnix.validate_intents(test_intents, amt_processed)
+    transfers, deltas = omnix.calculate_transfers(test_intents, amt_processed, buy_prices, sell_prices)
+    omnix.validate_transfer_amounts(transfers)
+    pool_agent, lrna_deltas = omnix.execute_solution(test_omnipool, transfers, deltas)
+
+    # if not is_remainder_nonnegative(pool_agent):
+    #     raise Exception("agent has negative holdings")
+    lrna_leftover = pool_agent.holdings["LRNA"]
+    if 0 < lrna_leftover < 1:
+        lrna_leftover = 0
+    # adjust price based on leftover LRNA.
+    # distribute lrna_leftover proportionally across deltas for tokens in new intent
+    tkn_buy = intents[-1]['tkn_buy']
+    tkn_sell = intents[-1]['tkn_sell']
+    # convert agent deltas to lrna
+    lrna_buy_in = deltas[tkn_buy]['in'] * sell_prices[tkn_buy]
+    lrna_buy_out = deltas[tkn_buy]['out'] * buy_prices[tkn_buy]
+    lrna_buy_matched = min(lrna_buy_in, lrna_buy_out)
+    lrna_sell_in = deltas[tkn_sell]['in'] * sell_prices[tkn_sell]
+    lrna_sell_out = deltas[tkn_sell]['out'] * buy_prices[tkn_sell]
+    lrna_sell_matched = min(lrna_sell_in, lrna_sell_out)
+    denom = lrna_buy_matched + lrna_sell_matched
+    if denom != 0:  # allocate leftover LRNA based on how value is matched in each asset
+        lrna_buy_leftover = lrna_buy_matched / denom * lrna_leftover
+        lrna_sell_leftover = lrna_sell_matched / denom * lrna_leftover
+        # need to capture this additional LRNA from trade against Omnipool
+        if lrna_buy_in > lrna_buy_out:
+            lrna_buy_in += lrna_buy_leftover
+        else:
+            lrna_buy_out -= lrna_buy_leftover
+        if lrna_sell_in > lrna_sell_out:
+            lrna_sell_in += lrna_sell_leftover
+        else:
+            lrna_sell_out -= lrna_sell_leftover
+    # # distribute lrna_leftover across agent_lrna_deltas
+    # lrna_buy_in += lrna_buy_in / denom * lrna_leftover
+    # lrna_buy_out -= lrna_buy_out / denom * lrna_leftover
+    # lrna_sell_in += lrna_sell_in / denom * lrna_leftover
+    # lrna_sell_out -= lrna_sell_out / denom * lrna_leftover
+    # recompute buy and sell prices
+    new_sell_prices = copy.deepcopy(sell_prices)
+    new_buy_prices = copy.deepcopy(buy_prices)
+    new_sell_prices[tkn_buy] = lrna_buy_in / deltas[tkn_buy]['in'] if deltas[tkn_buy]['in'] > 0 else sell_prices[tkn_buy]
+    new_buy_prices[tkn_buy] = lrna_buy_out / deltas[tkn_buy]['out'] if deltas[tkn_buy]['out'] > 0 else buy_prices[tkn_buy]
+    new_sell_prices[tkn_sell] = lrna_sell_in / deltas[tkn_sell]['in'] if deltas[tkn_sell]['in'] > 0 else sell_prices[tkn_sell]
+    new_buy_prices[tkn_sell] = lrna_sell_out / deltas[tkn_sell]['out'] if deltas[tkn_sell]['out'] > 0 else buy_prices[tkn_sell]
+
+    test_omnipool2 = omnipool.copy()
+
+    # calculate new values
+    transfers2, deltas2 = omnix.calculate_transfers(test_intents, amt_processed, new_buy_prices, new_sell_prices)
+    # omnix.validate_transfer_amounts(transfers)
+    pool_agent2, lrna_deltas2 = omnix.execute_solution(test_omnipool2, transfers2, deltas2)
+    spot_prices = {
+        'buy': {tkn: test_omnipool.price(test_omnipool2, tkn, "LRNA") for tkn in test_omnipool2.liquidity},
+        'sell': {tkn: test_omnipool.price(test_omnipool2, tkn, "LRNA") for tkn in test_omnipool2.liquidity}
+    }
+
+    price_targets, new_buy_prices2, new_sell_prices2 = calculate_price_targets(deltas2, lrna_deltas2, new_buy_prices, new_sell_prices, spot_prices)
+
+    # update_intents(intents, transfers)
+
+    return price_targets, pool_agent2, new_buy_prices2, new_sell_prices2
+
+
+def get_new_prices_for_tkn(
+        remaining_lrna: float,
+        tkn_out: float,
+        tkn_in: float,
+        lrna_out: float,
+        lrna_in: float,
+        buy_price: float,
+        sell_price: float,
+        lrna_to_omnipool: float,  # negative value indicates LRNA is leaving Omnipool
+        tkn_to_omnipool: float,  # negative value indicates tkn is leaving Omnipool
+):
+    if tkn_to_omnipool < 0:
+        assert lrna_to_omnipool > 0, "Invalid input"
+        a = tkn_in * (tkn_in - tkn_to_omnipool) / tkn_out - tkn_in
+        b = (buy_price - (sell_price * tkn_in + remaining_lrna) / tkn_out) \
+            * (tkn_in - tkn_to_omnipool) + tkn_in / tkn_out * lrna_out - (lrna_out + lrna_to_omnipool)
+        c = (buy_price - (sell_price * tkn_in + remaining_lrna) / tkn_out) * lrna_out
+        if a != 0:
+            new_sell_price = (-b + (b ** 2 - 4 * a * c) ** 0.5) / (2 * a)
+        elif b != 0:
+            new_sell_price = -c / b
+        else:
+            raise
+        new_buy_price = buy_price + (tkn_in * (new_sell_price - sell_price) + remaining_lrna) / tkn_out
+        return new_buy_price, new_sell_price
 
 
 def add_intent_to_solution(
@@ -524,12 +681,19 @@ def add_intent_to_solution(
         buy_prices: dict,  # key: token, value: price
         sell_prices: dict,  # key: token, value: price
         omnipool_after_intents: OmnipoolState,
-        new_intent: dict
+        new_intent: dict,
+        validation_tolerance=0.0001,
+        solution_tolerance=None
 ):
     # TODO cut down intents using amt_processed
 
     if not intents:  # new solution is to simply execute against Omnipool
         return calculate_solution_first_trade(omnipool, new_intent)
+
+    if solution_tolerance is None:
+        solution_tolerance = validation_tolerance / 2
+    else:
+        assert solution_tolerance <= validation_tolerance, "solution_tolerance must be less than or equal to validation_tolerance"
 
     net_intents, price_limits = calculate_net_intents(intents, new_intent['tkn_buy'], new_intent['tkn_sell'],
                                                       buy_prices, sell_prices)
@@ -554,40 +718,71 @@ def add_intent_to_solution(
     lrna_amt = test_omnipool.lrna[new_intent['tkn_buy']] - omnipool_after_intents.lrna[new_intent['tkn_buy']]
     buy_price_max = lrna_amt / buy_amt
     sell_price_min = lrna_amt / sell_amt
-    buy_price_min = buy_prices[new_intent['tkn_buy']]
-    sell_price_max = sell_prices[new_intent['tkn_sell']]
+    buy_price_min = buy_prices[new_intent['tkn_buy']] if new_intent['tkn_buy'] in buy_prices else 0
+    sell_price_max = sell_prices[new_intent['tkn_sell']] if new_intent['tkn_sell'] in sell_prices else float('inf')
 
-    # start at buy_price_max and sell_price_min
+    price_limits['min_tkn_buy_price'] = max(price_limits['min_tkn_buy_price'], buy_price_min)
+    price_limits['max_tkn_buy_price'] = min(price_limits['max_tkn_buy_price'], buy_price_max)
+    price_limits['min_tkn_sell_price'] = max(price_limits['min_tkn_sell_price'], sell_price_min)
+    price_limits['max_tkn_sell_price'] = min(price_limits['max_tkn_sell_price'], sell_price_max)
+
+    # start at price_limits['max_tkn_buy_price'] and price_limits['min_tkn_sell_price']
 
     test_intents = intents + [new_intent]
     test_amts = amt_processed + [amt]
     test_buy_prices = copy.deepcopy(buy_prices)
     test_sell_prices = copy.deepcopy(sell_prices)
-    test_buy_prices[new_intent['tkn_buy']] = buy_price_max
+    test_buy_prices[new_intent['tkn_buy']] = price_limits['max_tkn_buy_price']
     if new_intent['tkn_buy'] not in test_sell_prices:
         test_sell_prices[new_intent['tkn_buy']] = 0
-    test_sell_prices[new_intent['tkn_sell']] = sell_price_min
+    test_sell_prices[new_intent['tkn_sell']] = price_limits['min_tkn_sell_price']
     if new_intent['tkn_sell'] not in test_buy_prices:
         test_buy_prices[new_intent['tkn_sell']] = 0
 
     # calculate_prices_outcome(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices)
+    for i in range(50):
+        price_targets, remainder_agent, test_buy_prices, test_sell_prices = validate_solution_returning_price_targets(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices, 0.0001)
 
-    validate_and_execute_solution(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices, 0.0001)
+        diff_buy_price_buy_token = price_targets[new_intent['tkn_buy']]['buy'] - test_buy_prices[new_intent['tkn_buy']]
+        diff_sell_price_sell_token = price_targets[new_intent['tkn_sell']]['sell'] - test_sell_prices[new_intent['tkn_sell']]
+        diff_sell_price_buy_token = price_targets[new_intent['tkn_buy']]['sell'] - test_sell_prices[new_intent['tkn_buy']]
+        diff_buy_price_sell_token = price_targets[new_intent['tkn_sell']]['buy'] - test_buy_prices[new_intent['tkn_sell']]
 
-    print('done')
+        max_error = abs(diff_buy_price_buy_token) / price_targets[new_intent['tkn_buy']]['buy']
+        max_error = max(max_error, abs(diff_sell_price_sell_token) / price_targets[new_intent['tkn_sell']]['sell'])
+        max_error = max(max_error, abs(diff_sell_price_buy_token) / price_targets[new_intent['tkn_buy']]['sell'])
+        max_error = max(max_error, abs(diff_buy_price_sell_token) / price_targets[new_intent['tkn_sell']]['buy'])
+        error1 = abs(diff_buy_price_buy_token) / price_targets[new_intent['tkn_buy']]['buy']
+        error2 = abs(diff_sell_price_sell_token) / price_targets[new_intent['tkn_sell']]['sell']
+        error3 = abs(diff_sell_price_buy_token) / price_targets[new_intent['tkn_buy']]['sell']
+        error4 = abs(diff_buy_price_sell_token) / price_targets[new_intent['tkn_sell']]['buy']
+        if max_error < solution_tolerance and remainder_agent.holdings['LRNA'] >= 0:
+            break
+        # elif max_error >= solution_tolerance:
+
+
+    omnix.validate_solution(omnipool, test_intents, test_amts, test_buy_prices, test_sell_prices, validation_tolerance)
+    return test_intents, test_amts, test_buy_prices, test_sell_prices, omnipool
 
 
 def calculate_solution_iteratively(
         omnipool: OmnipoolState,
-        intents: list
+        intents: list,
+        validation_tolerance=0.0001,
+        solution_tolerance=None
 ):
+    if solution_tolerance is not None:
+        assert solution_tolerance <= validation_tolerance, "solution_tolerance must be less than or equal to validation_tolerance"
+    else:
+        solution_tolerance = validation_tolerance / 2
+    sorted_intents = get_sorted_intents_slippage(omnipool, intents)
     included_intents = []
     amts = []
     buy_prices = {}
     sell_prices = []
     omnipool_new = omnipool.copy()
-    for intent in intents:
-        included_intents, amts, buy_prices, sell_prices, omnipool_new = add_intent_to_solution(omnipool, included_intents, amts, buy_prices, sell_prices, omnipool_new, intent)
+    for intent in sorted_intents:
+        included_intents, amts, buy_prices, sell_prices, omnipool_new = add_intent_to_solution(omnipool, included_intents, amts, buy_prices, sell_prices, omnipool_new, intent, validation_tolerance, solution_tolerance)
     return included_intents, amts, buy_prices, sell_prices, omnipool_new
 
 

@@ -75,9 +75,13 @@ def validate_and_execute_solution(
     transfers, deltas = calculate_transfers(intents, amt_processed, buy_prices, sell_prices)
     validate_transfer_amounts(transfers)
     pool_agent, lrna_deltas = execute_solution(omnipool, transfers, deltas)
+    spot_prices = {  # TODO: adjust these for fees
+        'buy': {tkn: omnipool.price(omnipool, tkn, "LRNA") for tkn in buy_prices},
+        'sell': {tkn: omnipool.price(omnipool, tkn, "LRNA") for tkn in sell_prices}
+    }
     if not validate_remainder(pool_agent):
         raise Exception("agent has negative holdings")
-    if not validate_prices(omnipool, deltas, lrna_deltas, buy_prices, sell_prices, tolerance):
+    if not validate_prices(deltas, lrna_deltas, buy_prices, sell_prices, spot_prices, tolerance):
         raise Exception("prices are not valid")
 
     update_intents(intents, transfers)
@@ -97,7 +101,8 @@ def validate_intents(intents: list, amt_processed: list):
         elif 'buy_quantity' in intent:
             assert "sell_limit" in intent, "sell_limit not in buy intent"
             assert "buy_limit" not in intent, "intent has both sell_quantity and buy_limit"
-            assert 0 <= amt <= intent['buy_quantity'], "amt processed is not in range"
+            if not 0 <= amt <= intent['buy_quantity']:
+                raise Exception("amt processed is not in range")
         else:
             raise Exception("intent does not have sell_quantity or buy_quantity")
 
@@ -158,11 +163,11 @@ def validate_remainder(pool_agent: Agent):
 
 
 def validate_prices(
-        omnipool: OmnipoolState,
         deltas: dict,  # key: token, value: delta_change of token w.r.t. Omnipool
         lrna_deltas: dict, # key: token, value: delta_change of LRNA w.r.t. Omnipool in tkn trade
         buy_prices: dict,  # key: token, value: price
         sell_prices: dict,  # key: token, value: price
+        spot_prices: dict,
         tolerance: float = 0.01
 ):
     for tkn, delta in deltas.items():  # calculate net of Omnipool leg and other leg in same direction
@@ -173,7 +178,9 @@ def validate_prices(
             omnipool_lrna_amt = lrna_deltas[tkn]
             net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_sell_amt + omnipool_sell_amt)
             if not abs(buy_prices[tkn] - net_price)/net_price < tolerance:
-                raise Exception("price not valid for " + tkn)
+                raise Exception("buy price not valid for " + tkn)
+            if delta['in'] != 0 and not abs(sell_prices[tkn] - spot_prices['sell'][tkn])/spot_prices['sell'][tkn] < tolerance:
+                raise Exception("sell price not valid for " + tkn)
         elif delta["out"] < delta["in"]:  # LRNA being bought from Omnipool for TKN
             agent_buy_amt = delta['out']
             omnipool_buy_amt = delta['in'] - delta["out"]
@@ -181,11 +188,12 @@ def validate_prices(
             omnipool_lrna_amt = -lrna_deltas[tkn]
             net_price = (agent_lrna_amt + omnipool_lrna_amt) / (agent_buy_amt + omnipool_buy_amt)
             if not abs(sell_prices[tkn] - net_price)/net_price < tolerance:
-                raise Exception("price not valid for " + tkn)
+                raise Exception("sell price not valid for " + tkn)
+            if delta['out'] > 0 and not abs(buy_prices[tkn] - spot_prices['buy'][tkn])/spot_prices['buy'][tkn] < tolerance:
+                raise Exception("buy price not valid for " + tkn)
         elif delta["out"] != 0:
-            spot_price = omnipool.price(omnipool, tkn, "LRNA")
-            assert abs(buy_prices[tkn] - spot_price) / spot_price < tolerance, "price not valid for " + tkn
-            assert abs(sell_prices[tkn] - spot_price) / spot_price < tolerance, "price not valid for " + tkn
+            assert abs(buy_prices[tkn] - spot_prices['buy'][tkn]) / spot_prices['buy'][tkn] < tolerance, "price not valid for " + tkn
+            assert abs(sell_prices[tkn] - spot_prices['sell'][tkn]) / spot_prices['sell'][tkn] < tolerance, "price not valid for " + tkn
 
     return True
 
