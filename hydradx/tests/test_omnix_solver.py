@@ -197,9 +197,12 @@ def test_calculate_solution_first_trade():
         asset_fee=0.0,
         lrna_fee=0.0
     )
+    validation_tolerance = 0.0001
+    solution_tolerance = validation_tolerance / 2
     agent_alice = Agent(holdings={'USDT': mpf(100000)})
     new_intent = {'agent': agent_alice, 'buy_quantity': mpf(10000), 'sell_limit': mpf(81000), 'tkn_buy': 'DOT', 'tkn_sell': 'USDT'}
     intents, amts, buy_prices, sell_prices, omnipool_new = calculate_solution_first_trade(omnipool, new_intent)
+    valid = validate_solution(omnipool, intents, amts, buy_prices, sell_prices, validation_tolerance)
     print('done')
 
 
