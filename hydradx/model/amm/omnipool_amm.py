@@ -125,6 +125,8 @@ class OmnipoolState(AMM):
 
         self.asset_fee = self._get_fee(asset_fee)
         self.lrna_fee = self._get_fee(lrna_fee)
+        self.asset_fee_this_block = {tkn: 0 for tkn in self.asset_list}
+        self.lrna_fee_this_block = {tkn: 0 for tkn in self.asset_list}
 
         self.time_step = 0
         self.current_block = Block(self)
@@ -219,6 +221,8 @@ class OmnipoolState(AMM):
         # update fees
         self.last_fee = {tkn: self.asset_fee[tkn].compute() for tkn in self.asset_list}
         self.last_lrna_fee = {tkn: self.lrna_fee[tkn].compute() for tkn in self.asset_list}
+        self.asset_fee_this_block = {tkn: 0 for tkn in self.asset_list}
+        self.lrna_fee_this_block = {tkn: 0 for tkn in self.asset_list}
 
         self.fail = ''
         if self.update_function:
@@ -516,7 +520,11 @@ class OmnipoolState(AMM):
                 agent.holdings[j] = 0
             agent.holdings[i] -= delta_Ri
             agent.holdings[j] -= -buy_quantity or delta_Rj
-    
+
+            self.lrna_fee_this_block[tkn_sell] -= delta_Qi * lrna_fee
+            # measured in LRNA for consistency
+            self.asset_fee_this_block[tkn_buy] += (self.lrna[tkn_buy] + delta_Qt) * asset_fee
+
             return_val = self
     
         # update oracle
@@ -541,11 +549,12 @@ class OmnipoolState(AMM):
         """
         Execute LRNA swap in place (modify and return)
         """
-    
+        old_liquidity = self.liquidity[tkn]
         if delta_qa < 0:
+            # selling LRNA
             asset_fee = self.asset_fee[tkn].compute()
-            if -delta_qa + self.lrna[tkn] <= 0:
-                return self.fail_transaction('insufficient lrna in pool', agent)
+            if delta_qa + agent.holdings[tkn] <= 0:
+                return self.fail_transaction('Agent has insufficient lrna', agent)
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
 
             delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct
@@ -557,8 +566,10 @@ class OmnipoolState(AMM):
 
             self.lrna[tkn] += delta_q
             self.liquidity[tkn] += -delta_ra
+            self.asset_fee_this_block[tkn] -= delta_qa * asset_fee
     
         elif delta_ra > 0:
+            # buying asset
             asset_fee = self.asset_fee[tkn].compute()
             if -delta_ra + self.liquidity[tkn] <= 0:
                 return self.fail_transaction('insufficient assets in pool', agent)
@@ -573,9 +584,10 @@ class OmnipoolState(AMM):
 
             self.lrna[tkn] += delta_q
             self.liquidity[tkn] -= delta_ra
+            self.asset_fee_this_block[tkn] -= delta_qa * asset_fee
     
-        # buying LRNA
         elif delta_qa > 0:
+            # buying LRNA
             lrna_fee = self.lrna_fee[tkn].compute()
             delta_qi = -delta_qa / (1 - lrna_fee)
             if delta_qi + self.lrna[tkn] <= 0:
@@ -593,10 +605,11 @@ class OmnipoolState(AMM):
             delta_l = min(-self.lrna_imbalance, lrna_fee_amt)
             self.lrna_imbalance += delta_l
             self.lrna["HDX"] += lrna_fee_amt - delta_l
+            self.lrna_fee_this_block[tkn] += lrna_fee_amt
     
         elif delta_ra < 0:
+            # selling asset
             lrna_fee = self.lrna_fee[tkn].compute()
-            # delta_ri = -delta_ra
             if delta_ra > agent.holdings[tkn]:
                 return self.fail_transaction('agent has insufficient assets', agent)
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
@@ -611,6 +624,7 @@ class OmnipoolState(AMM):
             delta_l = min(-self.lrna_imbalance, lrna_fee_amt)
             self.lrna_imbalance += delta_l
             self.lrna["HDX"] += lrna_fee_amt - delta_l
+            self.lrna_fee_this_block[tkn] += lrna_fee_amt
     
         else:
             return self.fail_transaction('All deltas are zero.', agent)
@@ -622,6 +636,13 @@ class OmnipoolState(AMM):
 
         agent.holdings['LRNA'] += delta_qa
         agent.holdings[tkn] += delta_ra
+
+        # update oracle
+        delta_tkn = self.liquidity[tkn] - old_liquidity
+        if delta_tkn < 0:
+            self.current_block.volume_out[tkn] -= delta_tkn
+        else:
+            self.current_block.volume_in[tkn] += delta_tkn
     
         return self
     
@@ -1155,6 +1176,8 @@ class OmnipoolArchiveState:
         self.unique_id = state.unique_id
         self.volume_in = state.current_block.volume_in
         self.volume_out = state.current_block.volume_out
+        self.asset_fee_this_block = state.asset_fee_this_block
+        self.lrna_fee_this_block = state.lrna_fee_this_block
         # record these for analysis later
         self.last_fee = {k: v for (k, v) in state.last_fee.items()}
         self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
