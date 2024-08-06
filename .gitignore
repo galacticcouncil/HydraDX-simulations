@@ -9,6 +9,7 @@
 /.idea/
 /hydradx/tests/.hypothesis/
 /hydradx/notebooks/Omnipool/data/
+/hydradx/notebooks/Misc/data/
 /hydradx/other tests/.hypothesis/
 /.hypothesis/
 *.env
