@@ -703,6 +703,11 @@ def get_omnipool_balance_history():
 
         return data_list
 
+    # navigate to model directory
+    while not os.path.exists("./model"):
+        os.chdir("..")
+    os.chdir("model")
+
     # load what we have so far
     all_data = []
     file_ls = os.listdir('./data')
@@ -797,19 +802,19 @@ def query_sqlPad(query: str):
 
 def get_historical_omnipool_balance(tkn, date):
     """
-    get the balance of a particular token on a particular date without having to load the entire history
+    get the balance of a particular token on a particular date
+    (hopefully) without having to load the entire history or download anything
     """
     import dateutil.parser
     # find the date
     date = dateutil.parser.parse(f"{date}")
-
-    def load_history_file(file_name: str):
-        with open(f'./data/{file_name}', 'r') as file:
-            file_data = json.loads('[' + file.read() + ']')
-        return file_data
+    # navigate to model directory
+    while not os.path.exists("./model"):
+        os.chdir("..")
+    os.chdir("model")
 
     # load what we have available
-    all_data = []
+    file_data = []
     file_ls = os.listdir('./data')
     for file_name in file_ls[::-1]:
         if file_name.startswith('omnipool_history'):
@@ -818,10 +823,14 @@ def get_historical_omnipool_balance(tkn, date):
                 start_date = dateutil.parser.parse(json.loads(first_line.strip()[:-1])[1])
                 if start_date < date:
                     print(f'loading {file_name}')
-                    all_data += load_history_file(file_name)
+                    with open(f'./data/{file_name}', 'r') as file:
+                        file_data += json.loads('[' + file.read() + ']')
                     break
+    if not file_data:
+        # have to download more data
+        file_data = get_omnipool_balance_history()
 
-    tkn_data = [line for line in all_data if line[2] == tkn]
+    tkn_data = [line for line in file_data if line[2] == tkn]
     # find the closest date using a binary search
     left = 0
     right = len(tkn_data) - 1
@@ -831,5 +840,6 @@ def get_historical_omnipool_balance(tkn, date):
             left = mid + 1
         else:
             right = mid
+    print (f"""Retrieved balance of {tkn} on {date}: {dateutil.parser.parse(tkn_data[left][1]).strftime('%Y-%m-%d')}""")
     return tkn_data[left][3]
 
