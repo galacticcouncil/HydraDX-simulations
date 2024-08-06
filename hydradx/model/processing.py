@@ -660,8 +660,8 @@ def get_omnipool_balance_history():
             order by timestamp asc 
             limit {chunk_size} offset {chunk_size} * {position}
             """
-        new_data = None
-        while not new_data:
+        new_data = []
+        while not new_data and position * chunk_size < len(data_list):
             new_data = query_sqlPad(query)
         # append a line number to each
         new_data = [[position * chunk_size + i] + line for i, line in enumerate(new_data)]
@@ -720,14 +720,14 @@ def get_omnipool_balance_history():
 
     # continue downloading and check for errors
     while True:
-        fix_errors(all_data)
+        all_data = fix_errors(all_data)
         file_number = int(len(all_data) / chunk_size / chunks_per_file) + 1
-        start_at = round(len(all_data) / chunk_size)
+        start_at = int(len(all_data) / chunk_size)
         for n in range(start_at, file_number * chunks_per_file):
             data_length = len(all_data)
-            all_data = insert_data_chunk(position=n, data_list=all_data)
-            print(data_length, len(all_data))
-            if 0 < len(all_data) - data_length < chunk_size:
+            all_data = insert_data_chunk(position=n, data_list=all_data[:start_at * chunk_size])
+            print(f"{len(all_data)} records retrieved.")
+            if len(all_data) % chunk_size != 0 or len(all_data) == data_length:
                 # probably means we're finished. There might be a better way to detect this, but I think it'll do
                 save_history_file(all_data, file_number)
                 return all_data
