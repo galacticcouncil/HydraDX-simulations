@@ -580,146 +580,92 @@ def get_omnipool_balance_history():
     chunk_size = 10000
     chunks_per_file = 100
 
-    load_dotenv()
-    username = os.getenv('SQLPAD_USERNAME')
-    password = os.getenv('PASSWORD')
-
-    # Encode the username and password in Base64
-    credentials = f"{username}:{password}"
-    encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
-
-    headers = {
-        'Authorization': f'Basic {encoded_credentials}',
-        'Content-Type': 'application/json'  # This is typically required for JSON payloads
-    }
-
     def insert_data_chunk(position: int, data_list: list):
-        request = {
-            'connectionId': "4a34594e-efa6-4f6e-a594-655ca20f2881",
-            'batchText': (
-                f"with hdx_changes as ("
-                f"  select"
-                f"    block_id,"
-                f"    '0' as asset_id,"
-                f"    (args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name like 'Balances.Transfer'"
-                f"    and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"  union all"
-                f"  select"
-                f"    block_id,"
-                f"    '0' as asset_id,"
-                f"    -(args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name like 'Balances.Transfer'"
-                f"    and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"),"
-                f"tokens_changes as ("
-                f"  select"
-                f"    block_id,"
-                f"    args->>'currencyId' as asset_id,"
-                f"    (args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name = 'Tokens.Transfer'"
-                f"    and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"  union all"
-                f"  select"
-                f"    block_id,"
-                f"    args->>'currencyId' as asset_id,"
-                f"    -(args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name = 'Tokens.Transfer'"
-                f"    and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"  union all"
-                f"  select"
-                f"    block_id,"
-                f"    args->>'currencyId' as asset_id,"
-                f"    (args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name = 'Tokens.Deposited'"
-                f"    and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"  union all"
-                f"  select"
-                f"    block_id,"
-                f"    args->>'currencyId' as asset_id,"
-                f"    -(args->>'amount')::numeric as amount"
-                f"  from event"
-                f"  where"
-                f"    name = 'Tokens.Withdrawn'"
-                f"    and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'"
-                f"),"
-                f"balance_changes as ("
-                f"  select * from hdx_changes"
-                f"  union all"
-                f"  select * from tokens_changes"
-                f"),"
-                f"balance_history as ("
-                f"  select"
-                f"    height,"
-                f"    timestamp,"
-                f"    block_id,"
-                f"    asset_id,"
-                f"    symbol,"
-                f"    sum(amount) over (partition by asset_id order by block_id) / 10 ^ decimals as balance"
-                f"  from balance_changes"
-                f"  inner join block on block_id = block.id"
-                f"  inner join token_metadata on asset_id = token_metadata.id::text"
-                f")"
-                f"select timestamp, symbol, balance as liquidity "
-                f"from balance_history "
-                f"order by timestamp asc "
-                f"limit {chunk_size} offset {chunk_size} * {position}"
+        query = f"""
+            with hdx_changes as (
+              select
+                block_id,
+                '0' as asset_id,
+                (args->>'amount')::numeric as amount
+              from event
+              where
+                name like 'Balances.Transfer'
+                and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+              union all
+              select
+                block_id,
+                '0' as asset_id,
+                -(args->>'amount')::numeric as amount
+              from event
+              where
+                name like 'Balances.Transfer'
+                and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+            ),
+            tokens_changes as (
+              select
+                block_id,
+                args->>'currencyId' as asset_id,
+                (args->>'amount')::numeric as amount
+              from event
+              where
+                name = 'Tokens.Transfer'
+                and args->>'to' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+              union all
+              select
+                block_id,
+                args->>'currencyId' as asset_id,
+                -(args->>'amount')::numeric as amount
+              from event
+              where
+                name = 'Tokens.Transfer'
+                and args->>'from' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+              union all
+              select
+                block_id,
+                args->>'currencyId' as asset_id,
+                (args->>'amount')::numeric as amount
+              from event
+              where
+                name = 'Tokens.Deposited'
+                and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+              union all
+              select
+                block_id,
+                args->>'currencyId' as asset_id,
+                -(args->>'amount')::numeric as amount
+              from event
+              where
+                name = 'Tokens.Withdrawn'
+                and args->>'who' = '0x6d6f646c6f6d6e69706f6f6c0000000000000000000000000000000000000000'
+            ),
+            balance_changes as (
+              select * from hdx_changes
+              union all
+              select * from tokens_changes
+            ),
+            balance_history as (
+              select
+                height,
+                timestamp,
+                block_id,
+                asset_id,
+                symbol,
+                sum(amount) over (partition by asset_id order by block_id) / 10 ^ decimals as balance
+              from balance_changes
+              inner join block on block_id = block.id
+              inner join token_metadata on asset_id = token_metadata.id::text
             )
-        }
-        response = requests.post(
-            url='https://sqlpad.play.hydration.cloud/api/batches',
-            headers=headers,
-            data=json.dumps(request)
-        )
-
-        # todo: this needs some work. It should use query_sqlPad,
-        # and it needs to handle the end of the available data gracefully.
-
-        # Check if the request was successful (status code 200)
-        if response.status_code == 200:
-            data = response.json()
-            batchID = data['statements'][0]['batchId']
-            try:
-                statement = requests.get(
-                    url=f'https://sqlpad.play.hydration.cloud/api/batches/{batchID}/statements',
-                    headers=headers
-                ).json()
-                statementID = statement[0]['id']
-
-                print(f'waiting for query page {position + 1}...')
-                if response.status_code == 200:
-                    # this is the response we get from the server if the query isn't finished yet.
-                    # loop until we get a different response
-                    response = {'title': 'Not found'}
-                    while 'title' in response and response['title'] == 'Not found':
-                        response = requests.get(
-                            url=f'https://sqlpad.play.hydration.cloud/api/statements/{statementID}/results',
-                            headers=headers
-                        ).json()
-                        time.sleep(1)
-                    print("finished.")
-                    response = list(response)
-                    # tag a record number to each entry, so we can go back and see if anything is missing
-                    new_data = []
-                    for i in range(len(response)):
-                        new_data.append([position * chunk_size + i] + response[i])
-                    # insert at the correct position
-                    data_list = data_list[:position * chunk_size] + new_data + data_list[position * chunk_size:]
-
-            except Exception as e:
-                print(f"There was a problem with your request: {str(e)}")
-        else:
-            pprint(response)
+            select timestamp, symbol, balance as liquidity 
+            from balance_history 
+            order by timestamp asc 
+            limit {chunk_size} offset {chunk_size} * {position}
+            """
+        new_data = None
+        while not new_data:
+            new_data = query_sqlPad(query)
+        # append a line number to each
+        new_data = [[position * chunk_size + i] + line for i, line in enumerate(new_data)]
+        data_list = data_list[:position * chunk_size] + new_data + data_list[position * chunk_size:]
         return data_list
 
     def load_history_file(file_name: str):
@@ -729,7 +675,7 @@ def get_omnipool_balance_history():
 
     def save_history_file(data_list: list, n: int):
         with open(f'./data/omnipool_history_{str(n).zfill(2)}', 'w') as file:
-            file.write(', '.join([json.dumps(line) for line in
+            file.write(',\n'.join([json.dumps(line) for line in
                                   data_list[chunk_size * chunks_per_file * (n - 1): chunk_size * chunks_per_file * n]]))
         print(f'Saved {filename}')
 
@@ -765,30 +711,36 @@ def get_omnipool_balance_history():
             print(f'loading {filename}')
             all_data += load_history_file(filename)
 
+    print("Downloading recent transactions...")
+
     # continue downloading and check for errors
     while True:
         fix_errors(all_data)
-        file_number = round(len(all_data) / chunk_size / chunks_per_file) + 1
+        file_number = int(len(all_data) / chunk_size / chunks_per_file) + 1
         start_at = round(len(all_data) / chunk_size)
-        for n in range(start_at, start_at + chunks_per_file):
+        for n in range(start_at, file_number * chunks_per_file):
             data_length = len(all_data)
             all_data = insert_data_chunk(position=n, data_list=all_data)
             print(data_length, len(all_data))
             if 0 < len(all_data) - data_length < chunk_size:
                 # probably means we're finished. There might be a better way to detect this, but I think it'll do
+                save_history_file(all_data, file_number)
                 return all_data
 
         print(f'saving omnipool_history_{str(file_number).zfill(2)}')
         save_history_file(all_data, file_number)
 
 
-async def query_sqlPad(query: str):
+def query_sqlPad(query: str):
     """
     input: sql query string
     output: result of the query as a list of lists
     requirement: .env file with SQLPAD_USERNAME and PASSWORD in /model/ folder
     """
-
+    # navigate to model directory
+    while not os.path.exists("./model"):
+        os.chdir("..")
+    os.chdir("model")
     load_dotenv()
     username = os.getenv('SQLPAD_USERNAME')
     password = os.getenv('PASSWORD')
@@ -841,3 +793,43 @@ async def query_sqlPad(query: str):
 
     except Exception as e:
         print(f"There was a problem with your request: {str(e)}")
+
+
+def get_historical_omnipool_balance(tkn, date):
+    """
+    get the balance of a particular token on a particular date without having to load the entire history
+    """
+    import dateutil.parser
+    # find the date
+    date = dateutil.parser.parse(f"{date}")
+
+    def load_history_file(file_name: str):
+        with open(f'./data/{file_name}', 'r') as file:
+            file_data = json.loads('[' + file.read() + ']')
+        return file_data
+
+    # load what we have available
+    all_data = []
+    file_ls = os.listdir('./data')
+    for file_name in file_ls[::-1]:
+        if file_name.startswith('omnipool_history'):
+            with open(f'./data/{file_name}') as f:
+                first_line = f.readline()
+                start_date = dateutil.parser.parse(json.loads(first_line.strip()[:-1])[1])
+                if start_date < date:
+                    print(f'loading {file_name}')
+                    all_data += load_history_file(file_name)
+                    break
+
+    tkn_data = [line for line in all_data if line[2] == tkn]
+    # find the closest date using a binary search
+    left = 0
+    right = len(tkn_data) - 1
+    while left < right:
+        mid = (left + right) // 2
+        if dateutil.parser.parse(tkn_data[mid][1]) < date :
+            left = mid + 1
+        else:
+            right = mid
+    return tkn_data[left][3]
+
