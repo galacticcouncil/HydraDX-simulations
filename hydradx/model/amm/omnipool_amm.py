@@ -979,20 +979,23 @@ class OmnipoolState(AMM):
             self,
             agent: Agent = None,
             quantity: float = 0,
-            tkn_add: str = ''
+            tkn_add: str = '',
+            nft_id: str = None
     ):
         """Compute new state after liquidity addition"""
     
         if quantity <= 0:
             return self.fail_transaction('Quantity must be non-negative.', agent)
-    
+
         delta_Q = lrna_price(self, tkn_add) * quantity
-        k = (self.unique_id, tkn_add)
-        i = 0
-        while k in agent.holdings:
-            i += 1
-            k = (self.unique_id + "_" + str(i), tkn_add)
-        agent.holdings[k] = 0
+
+        if nft_id is None and (self.unique_id, tkn_add) in agent.holdings:
+            return self.fail_transaction(
+                'Agent already has liquidity in this pool. Try using nft_id input.', agent
+            )
+
+        if nft_id is not None and nft_id in agent.nfts:
+            raise AssertionError('Agent already has an NFT with this ID.')
     
         if agent.holdings[tkn_add] < quantity:
             return self.fail_transaction(
@@ -1024,7 +1027,8 @@ class OmnipoolState(AMM):
                     return self.add_liquidity(
                         agent=agent,
                         quantity=agent.holdings[sub_pool.unique_id] - old_agent_holdings,
-                        tkn_add=sub_pool.unique_id
+                        tkn_add=sub_pool.unique_id,
+                        nft_id=nft_id
                     )
             raise AssertionError(f"invalid value for i: {tkn_add}")
         else:
@@ -1040,9 +1044,6 @@ class OmnipoolState(AMM):
         else:
             shares_added = delta_Q
         self.shares[tkn_add] += shares_added
-    
-        # shares go to provisioning agent
-        agent.holdings[k] += shares_added
 
         # L update: LRNA fees to be burned before they will start to accumulate again
         delta_L = quantity * lrna_price(self, tkn_add) * self.lrna_imbalance / self.lrna_total
@@ -1053,12 +1054,20 @@ class OmnipoolState(AMM):
     
         # Token amounts update
         self.liquidity[tkn_add] += quantity
+
+        # agent update
         agent.holdings[tkn_add] -= quantity
-    
-        # set price at which liquidity was added
-        # use the minimum of the oracle price and the current price
-        agent.share_prices[k] = lrna_price(self, tkn_add)
-        agent.delta_r[k] = quantity
+        if nft_id is None:
+            k = (self.unique_id, tkn_add)
+            agent.holdings[k] = 0
+            # shares go to provisioning agent
+            agent.holdings[k] += shares_added
+            # set price at which liquidity was added
+            agent.share_prices[k] = lrna_price(self, tkn_add)
+            agent.delta_r[k] = quantity
+        else:
+            lp_position = OmnipoolLiquidityPosition(tkn_add, lrna_price(self, tkn_add), shares_added, quantity)
+            agent.nfts[nft_id] = lp_position
     
         # update block
         self.current_block.lps[tkn_add] += quantity
@@ -1189,6 +1198,18 @@ class OmnipoolState(AMM):
                     break
             value += tkn_value
         return value
+
+
+class OmnipoolLiquidityPosition:
+    def __init__(self, tkn: str, price: float, shares: float, delta_r: float):
+        self.tkn = tkn
+        self.price = price
+        self.shares = shares
+        self.delta_r = delta_r
+
+    def copy(self):
+        return OmnipoolLiquidityPosition(self.tkn, self.price, self.shares, self.delta_r)
+
 
 
 class OmnipoolArchiveState:
@@ -1325,13 +1346,14 @@ def simulate_add_liquidity(
         old_state: OmnipoolState,
         old_agent: Agent,
         quantity: float = 0,
-        tkn_add: str = ''
+        tkn_add: str = '',
+        nft_id: str = None
 ) -> tuple[OmnipoolState, Agent]:
     """Copy state, then add liquidity and return new state"""
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    new_state.add_liquidity(new_agent, quantity, tkn_add)
+    new_state.add_liquidity(new_agent, quantity, tkn_add, nft_id)
     return new_state, new_agent
 
 
