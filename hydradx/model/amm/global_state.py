@@ -143,7 +143,7 @@ class GlobalState:
         for share_id in shares:
             # if shares are for a specific asset in a specific pool, get prices according to that pool
             if isinstance(share_id, tuple):
-                pool_id = share_id[0]
+                pool_id = share_id[0].split('_')[0]
                 tkn_id = share_id[1]
                 prices[share_id] = self.pools[pool_id].usd_price(self.pools[pool_id], tkn_id)
 

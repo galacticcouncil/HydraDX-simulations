@@ -105,9 +105,9 @@ class OmnipoolState(AMM):
 
         if oracles is None or 'price' not in oracles:
             if last_oracle_values is None or 'price' not in last_oracle_values:
-                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self))
+                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self))
             else:
-                self.oracles['price'] = Oracle(sma_equivalent_length=19, first_block=Block(self),
+                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self),
                                                last_values=last_oracle_values['price'])
         if last_oracle_values is not None and oracles is not None:
             self.oracles.update({
@@ -885,8 +885,31 @@ class OmnipoolState(AMM):
         agent.holdings[old_pool_id] = 0
     
         return self
+
+    def calculate_remove_all_liquidity(self, agent: Agent, tkn_remove):
+        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, 0, 0, 0, 0, 0
+        for k in agent.holdings:
+            if len(k) > 1 and k[1] == tkn_remove:
+                k_split = k[0].split("_")
+                if len(k_split) == 1:
+                    qa, r, q, s, b, l = self.calculate_remove_liquidity(agent, agent.holdings[k], tkn_remove)
+                    delta_qa += qa
+                    delta_r += r
+                    delta_q += q
+                    delta_s += s
+                    delta_b += b
+                    delta_l += l
+                elif k_split[0] == self.unique_id:
+                    qa, r, q, s, b, l = self.calculate_remove_liquidity(agent, agent.holdings[k], tkn_remove, int(k_split[1]))
+                    delta_qa += qa
+                    delta_r += r
+                    delta_q += q
+                    delta_s += s
+                    delta_b += b
+                    delta_l += l
+        return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
     
-    def calculate_remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str):
+    def calculate_remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str, i: int = None):
         """
         calculated the pool and agent deltas for removing liquidity from a sub pool
         return as a tuple in this order:
@@ -899,6 +922,11 @@ class OmnipoolState(AMM):
         delta_b (protocol shares)
         delta_l (LRNA imbalance)
         """
+        if i is None:
+            k = (self.unique_id, tkn_remove)
+        else:
+            k = (self.unique_id + "_" + str(i), tkn_remove)
+
         quantity = -abs(quantity)
         assert quantity <= 0, f"delta_S cannot be positive: {quantity}"
         # assert tkn_remove in self.asset_list, f"invalid token name: {tkn_remove}"
@@ -906,13 +934,13 @@ class OmnipoolState(AMM):
             raise AssertionError(f"Invalid token name: {tkn_remove}")
             # return 0, 0, 0, 0, 0, 0
     
-        if (self.unique_id, tkn_remove) not in agent.share_prices:
+        if k not in agent.share_prices:
             raise AssertionError(f"Agent does not have a share price for {tkn_remove}")
             # return 0, 0, 0, 0, 0, 0
     
         # determine if they should get some LRNA back as well as the asset they invested
         piq = lrna_price(self, tkn_remove)
-        p0 = agent.share_prices[(self.unique_id, tkn_remove)]
+        p0 = agent.share_prices[k]
         mult = (piq - p0) / (piq + p0)
     
         # Share update
@@ -959,11 +987,12 @@ class OmnipoolState(AMM):
             return self.fail_transaction('Quantity must be non-negative.', agent)
     
         delta_Q = lrna_price(self, tkn_add) * quantity
-        if (self.unique_id, tkn_add) in agent.holdings:
-            if agent.holdings[(self.unique_id, tkn_add)] != 0:
-                return self.fail_transaction(f'Agent already has liquidity in pool {tkn_add}.', agent)
-        else:
-            agent.holdings[(self.unique_id, tkn_add)] = 0
+        k = (self.unique_id, tkn_add)
+        i = 0
+        while k in agent.holdings:
+            i += 1
+            k = (self.unique_id + "_" + str(i), tkn_add)
+        agent.holdings[k] = 0
     
         if agent.holdings[tkn_add] < quantity:
             return self.fail_transaction(
@@ -1013,8 +1042,8 @@ class OmnipoolState(AMM):
         self.shares[tkn_add] += shares_added
     
         # shares go to provisioning agent
-        agent.holdings[(self.unique_id, tkn_add)] += shares_added
-    
+        agent.holdings[k] += shares_added
+
         # L update: LRNA fees to be burned before they will start to accumulate again
         delta_L = quantity * lrna_price(self, tkn_add) * self.lrna_imbalance / self.lrna_total
         self.lrna_imbalance += delta_L
@@ -1028,19 +1057,35 @@ class OmnipoolState(AMM):
     
         # set price at which liquidity was added
         # use the minimum of the oracle price and the current price
-        agent.share_prices[(self.unique_id, tkn_add)] = lrna_price(self, tkn_add)
-        agent.delta_r[(self.unique_id, tkn_add)] = quantity
+        agent.share_prices[k] = lrna_price(self, tkn_add)
+        agent.delta_r[k] = quantity
     
         # update block
         self.current_block.lps[tkn_add] += quantity
     
         return self
+
+    def remove_all_liquidity(self, agent: Agent, tkn_remove: str):
+        agent_assets = list(agent.holdings.keys())
+        for k in agent_assets:
+            if len(k) > 1 and k[1] == tkn_remove:
+                k_split = k[0].split("_")
+                if len(k_split) == 1:
+                    self.remove_liquidity(agent, agent.holdings[k], tkn_remove)
+                elif k[0].split("_")[0] == self.unique_id:
+                    self.remove_liquidity(agent, agent.holdings[k], tkn_remove, int(k[0].split("_")[1]))
+        return self
     
-    def remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str):
+    def remove_liquidity(self, agent: Agent, quantity: float, tkn_remove: str, i: int = None):
         """
         Remove liquidity from a sub pool.
         """
-    
+
+        if i is None:
+            k = (self.unique_id, tkn_remove)
+        else:
+            k = (self.unique_id + "_" + str(i), tkn_remove)
+
         if tkn_remove not in self.asset_list:
             for sub_pool in self.sub_pools.values():
                 if tkn_remove in sub_pool.asset_list:
@@ -1056,7 +1101,7 @@ class OmnipoolState(AMM):
 
         if quantity == 0:
             return self
-        if not agent.is_holding((self.unique_id, tkn_remove)):
+        if not agent.is_holding(k):
             return self.fail_transaction('Agent does not have liquidity in this pool.', agent)
     
         if self.remove_liquidity_volatility_threshold:
@@ -1079,13 +1124,18 @@ class OmnipoolState(AMM):
             return self.fail_transaction(
                 f"Transaction rejected because it would exceed the withdrawal limit: {quantity} > {max_remove}", agent
             )
-    
-        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self.calculate_remove_liquidity(
-            agent, quantity, tkn_remove
-        )
+
+        if i is None:
+            delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self.calculate_remove_liquidity(
+                agent, quantity, tkn_remove
+            )
+        else:
+            delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self.calculate_remove_liquidity(
+                agent, quantity, tkn_remove, i
+            )
         if delta_r + self.liquidity[tkn_remove] < 0:
             return self.fail_transaction('Cannot remove more liquidity than exists in the pool.', agent)
-        elif quantity > agent.holdings[(self.unique_id, tkn_remove)]:
+        elif quantity > agent.holdings[k]:
             return self.fail_transaction('Cannot remove more liquidity than the agent has invested.', agent)
     
         self.liquidity[tkn_remove] += delta_r
@@ -1097,9 +1147,11 @@ class OmnipoolState(AMM):
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
         agent.holdings['LRNA'] += delta_qa
-        agent.holdings[(self.unique_id, tkn_remove)] -= quantity
-        if agent.holdings[(self.unique_id, tkn_remove)] == 0:
-            agent.share_prices[(self.unique_id, tkn_remove)] = 0
+        agent.holdings[k] -= quantity
+        if agent.holdings[k] == 0:
+            agent.share_prices[k] = 0
+        if tkn_remove not in agent.holdings:
+            agent.holdings[tkn_remove] = 0
         agent.holdings[tkn_remove] -= delta_r
     
         self.current_block.withdrawals[tkn_remove] += quantity
@@ -1438,17 +1490,21 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
             del agent_holdings[key]
 
             if agent.holdings[key] > 0:
-                delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = omnipool.calculate_remove_liquidity(
-                    agent,
-                    agent.holdings[key],
-                    tkn_remove=tkn
-                )
+                k_split = key[0].split("_")
+                # delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = omnipool.calculate_remove_all_liquidity(agent, tkn_remove=tkn)
+                if len(k_split) > 1:
+                    delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = omnipool.calculate_remove_liquidity(agent, agent.holdings[key], tkn, int(k_split[1]))
+                else:
+                    delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = omnipool.calculate_remove_liquidity(agent, agent.holdings[key], tkn)
                 agent_holdings['LRNA'] += delta_qa
                 if tkn not in agent_holdings:
                     agent_holdings[tkn] = 0
                 agent_holdings[tkn] -= delta_r
                 liquidity_removed[tkn] -= delta_r
                 lrna_removed[tkn] -= delta_q
+
+    if 'LRNA' in prices:
+        raise ValueError('LRNA price should not be given.')
 
     if 'LRNA' not in prices and agent_holdings['LRNA'] > 0:
         lrna_total = omnipool.lrna_total - sum(lrna_removed.values())
