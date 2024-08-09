@@ -10,7 +10,7 @@ from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee, OmnipoolState, \
-    cash_out_omnipool
+    cash_out_omnipool, OmnipoolLiquidityPosition
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 
@@ -199,36 +199,36 @@ def test_add_liquidity_with_existing_position_succeeds(initial_state: oamm.Omnip
 
 # TODO adjust these tests using nft_id input
 
-# @given(st.integers(min_value=1, max_value=10))
-# def test_compare_several_lp_adds_to_single(n):
-#     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
-#     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
-#     initial_state = oamm.OmnipoolState(
-#         tokens={
-#             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-#         }
-#     )
-#     tkn = initial_state.asset_list[0]
-#     init_agent = Agent(holdings={tkn: initial_state.liquidity[tkn]})
-#     delta_R = init_agent.holdings[tkn] / 2
-#
-#     single_add_state, single_add_agent = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
-#     multi_add_state, multi_add_agent = initial_state, init_agent
-#     for i in range(n):
-#         multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n, tkn)
-#
-#     if single_add_state.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
-#         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-#     if single_add_state.shares[tkn] != pytest.approx(multi_add_state.shares[tkn], rel=1e-20):
-#         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-#     if single_add_state.lrna[tkn] != pytest.approx(multi_add_state.lrna[tkn], rel=1e-20):
-#         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-#     total_multi_shares = multi_add_agent.holdings[(multi_add_state.unique_id, tkn)]
-#     total_multi_shares += sum([multi_add_agent.holdings[(multi_add_state.unique_id + f'_{i}', tkn)] for i in range(1, n)])
-#     if total_multi_shares != pytest.approx(single_add_agent.holdings[(single_add_state.unique_id, tkn)], rel=1e-20):
-#         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-#
-#
+@given(st.integers(min_value=1, max_value=10))
+def test_compare_several_lp_adds_to_single(n):
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+    tkn = initial_state.asset_list[0]
+    init_agent = Agent(holdings={tkn: initial_state.liquidity[tkn]})
+    delta_R = init_agent.holdings[tkn] / 2
+
+    single_add_state, single_add_agent = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
+    multi_add_state, multi_add_agent = initial_state, init_agent
+    for i in range(n):
+        multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n, tkn)
+
+    if single_add_state.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    if single_add_state.shares[tkn] != pytest.approx(multi_add_state.shares[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    if single_add_state.lrna[tkn] != pytest.approx(multi_add_state.lrna[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    total_multi_shares = multi_add_agent.holdings[(multi_add_state.unique_id, tkn)]
+    total_multi_shares += sum([multi_add_agent.holdings[(multi_add_state.unique_id + f'_{i}', tkn)] for i in range(1, n)])
+    if total_multi_shares != pytest.approx(single_add_agent.holdings[(single_add_state.unique_id, tkn)], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+
+
 # def test_add_additional_positions_at_new_price():
 #     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
 #     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
@@ -2892,10 +2892,34 @@ def test_fee_application():
         raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
 
 
+@given(st.floats(min_value=10.1, max_value=100))
+def test_cash_out_nft_position(price1: float):
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        withdrawal_fee=False
+    )
+    dot_spot_price = initial_state.price(initial_state, 'DOT', 'USD')
+    tkn = 'DOT'
+    amt1 = initial_state.shares[tkn] / 5
+    delta_r = initial_state.liquidity[tkn] / 5
+    nft = OmnipoolLiquidityPosition(tkn, price1, amt1, delta_r, initial_state.unique_id)
+    agent = Agent(holdings={}, nfts={'pos1': nft})
+    cash_out = cash_out_omnipool(initial_state, agent, {'DOT': dot_spot_price})
+
+    state = initial_state.copy()
+    state.remove_liquidity(agent, tkn_remove=tkn)
+    dot_value = agent.holdings['DOT'] * dot_spot_price
+    assert cash_out == pytest.approx(dot_value, rel=1e-20)
+
+
 @given(st.floats(min_value=10.1, max_value=100),
        st.floats(min_value=10.1, max_value=100),
        st.floats(min_value=0.1, max_value=0.9))
-def test_cash_out_multiple_positions_works_no_lrna(price1: float, price2: float, r: float):
+def test_cash_out_nft_position_with_holdings(price1: float, price2: float, r: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
     initial_state = oamm.OmnipoolState(
@@ -2908,13 +2932,14 @@ def test_cash_out_multiple_positions_works_no_lrna(price1: float, price2: float,
     tkn = 'DOT'
     amt1 = r * initial_state.shares[tkn] / 5
     amt2 = initial_state.shares[tkn] / 5 - amt1
-    holdings1 = {(initial_state.unique_id, tkn): amt1, (initial_state.unique_id + '_1', tkn): amt2}
-    prices1 = {(initial_state.unique_id, tkn): price1, (initial_state.unique_id + '_1', tkn): price2}
-    agent = Agent(holdings=holdings1, share_prices=prices1)
+    holdings1 = {(initial_state.unique_id, tkn): amt1}
+    prices1 = {(initial_state.unique_id, tkn): price1}
+    nft = OmnipoolLiquidityPosition(tkn, price2, amt2, 0, initial_state.unique_id)
+    agent = Agent(holdings=holdings1, share_prices=prices1, nfts={'pos1': nft})
     cash_out = cash_out_omnipool(initial_state, agent, {'DOT': dot_spot_price})
 
     state = initial_state.copy()
-    state.remove_all_liquidity(agent, tkn)
+    state.remove_liquidity(agent, tkn_remove=tkn)
     dot_value = agent.holdings['DOT'] * dot_spot_price
     assert cash_out == pytest.approx(dot_value, rel=1e-20)
 
