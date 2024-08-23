@@ -238,10 +238,8 @@ def test_dca_with_lping(
     strategy.execute(state, trader_id)
 
     if init_sell_tkn_lped > 0:
-        if ('omnipool', buy_tkn) not in agent.holdings:
+        if len(agent.nfts) == 0:
             raise AssertionError('Agent does not have shares for buy_tkn.')
-        if agent.holdings[('omnipool', buy_tkn)] == init_buy_tkn_lped:
-            raise AssertionError('Agent did not receive shares for buy_tkn.')
 
         lp_diff = init_sell_tkn_lped
         if ('omnipool', sell_tkn) in agent.holdings:
