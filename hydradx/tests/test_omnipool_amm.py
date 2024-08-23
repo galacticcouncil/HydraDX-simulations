@@ -197,8 +197,6 @@ def test_add_liquidity_with_existing_position_succeeds(initial_state: oamm.Omnip
         raise AssertionError(f'Agent holdings have wrong length.')
 
 
-# TODO adjust these tests using nft_id input
-
 @given(st.integers(min_value=1, max_value=10))
 def test_compare_several_lp_adds_to_single(n):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
@@ -212,21 +210,36 @@ def test_compare_several_lp_adds_to_single(n):
     init_agent = Agent(holdings={tkn: initial_state.liquidity[tkn]})
     delta_R = init_agent.holdings[tkn] / 2
 
-    single_add_state, single_add_agent = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
+    single_add_state_1, single_add_agent_1 = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
+    single_add_state_2, single_add_agent_2 = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn, nft_id="id001")
     multi_add_state, multi_add_agent = initial_state, init_agent
     for i in range(n):
-        multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n, tkn)
+        nft_id = str(i)
+        multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n, tkn, nft_id=nft_id)
 
-    if single_add_state.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
+    if single_add_state_1.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-    if single_add_state.shares[tkn] != pytest.approx(multi_add_state.shares[tkn], rel=1e-20):
+    if single_add_state_1.shares[tkn] != pytest.approx(multi_add_state.shares[tkn], rel=1e-20):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-    if single_add_state.lrna[tkn] != pytest.approx(multi_add_state.lrna[tkn], rel=1e-20):
+    if single_add_state_1.lrna[tkn] != pytest.approx(multi_add_state.lrna[tkn], rel=1e-20):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
-    total_multi_shares = multi_add_agent.holdings[(multi_add_state.unique_id, tkn)]
-    total_multi_shares += sum([multi_add_agent.holdings[(multi_add_state.unique_id + f'_{i}', tkn)] for i in range(1, n)])
-    if total_multi_shares != pytest.approx(single_add_agent.holdings[(single_add_state.unique_id, tkn)], rel=1e-20):
+    total_multi_shares = sum([multi_add_agent.nfts[nft_id].shares for nft_id in multi_add_agent.nfts])
+    shares_1 = single_add_agent_1.holdings[(single_add_state_1.unique_id, tkn)]
+    if total_multi_shares != pytest.approx(shares_1, rel=1e-20):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+
+    if single_add_state_2.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    if single_add_state_2.shares[tkn] != pytest.approx(multi_add_state.shares[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    if single_add_state_2.lrna[tkn] != pytest.approx(multi_add_state.lrna[tkn], rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+    shares_2 = single_add_agent_2.nfts["id001"].shares
+    if shares_1 != pytest.approx(shares_2, rel=1e-20):
+        raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
+
+
+# TODO adjust these tests using nft_id input
 
 
 # def test_add_additional_positions_at_new_price():
