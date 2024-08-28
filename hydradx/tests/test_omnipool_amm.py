@@ -511,8 +511,9 @@ def test_remove_liquidity_one_of_two(n):
     assert pool.liquidity[tkn] == comp_pool.liquidity[tkn]
 
 
-@given(st.floats(min_value=1, max_value=100))
-def test_remove_liquidity_split(price: float):
+@given(st.floats(min_value=1, max_value=100),
+st.floats(min_value=0.1, max_value=0.9))
+def test_remove_liquidity_split(price: float, split: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
     initial_state = oamm.OmnipoolState(
@@ -523,37 +524,33 @@ def test_remove_liquidity_split(price: float):
     )
     tkn = 'DOT'
     amt1 = initial_state.shares[tkn] / 5
-    amt2 = amt1 / 2
+    amt2 = amt1 * split
     amt3 = amt1 - amt2
     holdings1 = {(initial_state.unique_id, tkn): amt1}
-    holdings2 = {(initial_state.unique_id, tkn): amt2, (initial_state.unique_id + '_1', tkn): amt3}
     prices1 = {(initial_state.unique_id, tkn): price}
-    prices2 = {(initial_state.unique_id, tkn): price, (initial_state.unique_id + '_1', tkn): price}
+    agent1 = Agent(holdings=holdings1, share_prices=prices1)
+
+    # holdings2 = {(initial_state.unique_id, tkn): amt2, (initial_state.unique_id + '_1', tkn): amt3}
+    nft1 = OmnipoolLiquidityPosition(tkn, price, amt2, 0, initial_state.unique_id)
+    nft2 = OmnipoolLiquidityPosition(tkn, price, amt3, 0, initial_state.unique_id)
+    nfts = {'nft001': nft1, 'nft002': nft2}
+    agent2 = Agent(nfts=nfts)
+
     state1 = initial_state.copy()
     state2 = initial_state.copy()
-    agent1 = Agent(holdings=holdings1, share_prices=prices1)
-    agent2 = Agent(holdings=holdings2, share_prices=prices2)
-    state1.remove_all_liquidity(agent1, tkn)
-    state2.remove_all_liquidity(agent2, tkn)
+    state1.remove_liquidity(agent1, tkn_remove=tkn)
+    state2.remove_liquidity(agent2, tkn_remove=tkn)
 
-    assert state1.liquidity[tkn] == pytest.approx(state2.liquidity[tkn], rel=1e-20)
-    assert state1.shares[tkn] == pytest.approx(state2.shares[tkn], rel=1e-20)
-    assert agent1.holdings[tkn] == pytest.approx(agent2.holdings[tkn], rel=1e-20)
-    assert agent1.holdings[(initial_state.unique_id, tkn)] == 0
-    assert agent2.holdings[(initial_state.unique_id, tkn)] == 0
-    assert agent2.holdings[(initial_state.unique_id + '_1', tkn)] == 0
-
-    # test if this holds with remove_liquidity as well
-    holdings3 = {(initial_state.unique_id, tkn): amt2, (initial_state.unique_id + '_1', tkn): amt3}
-    prices3 = {(initial_state.unique_id, tkn): price, (initial_state.unique_id + '_1', tkn): price}
-    state3 = initial_state.copy()
-    agent3 = Agent(holdings=holdings3, share_prices=prices3)
-    state3.remove_liquidity(agent3, amt2, tkn)
-    state3.remove_liquidity(agent3, amt3, tkn, 1)
-
-    assert agent3.holdings[tkn] == pytest.approx(agent2.holdings[tkn], rel=1e-20)
-    assert agent3.holdings[(initial_state.unique_id, tkn)] == 0
-    assert agent3.holdings[(initial_state.unique_id + '_1', tkn)] == 0
+    if state1.liquidity[tkn] != pytest.approx(state2.liquidity[tkn], rel=1e-20):
+        raise AssertionError('liquidity should match')
+    if state1.shares[tkn] != pytest.approx(state2.shares[tkn], rel=1e-20):
+        raise AssertionError('shares should match')
+    if agent1.holdings[tkn] != pytest.approx(agent2.holdings[tkn], rel=1e-20):
+        raise AssertionError('holdings should match')
+    if agent1.holdings[(initial_state.unique_id, tkn)] != 0:
+        raise AssertionError('holdings of shares should be zero')
+    if len(agent2.nfts) != 0:
+        raise AssertionError('LP positions should be removed')
 
 
 @given(st.floats(min_value=1, max_value=100), st.floats(min_value=1, max_value=100),

@@ -947,9 +947,26 @@ class OmnipoolState(AMM):
                     if isinstance(nft, OmnipoolLiquidityPosition):
                         if nft.pool_id == self.unique_id and nft.tkn == tkn_remove:
                             nft_ids.append(nft_id)
-                            delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self._calculate_remove_one_position(
+                            dqa, dr, dq, ds, db, dl = self._calculate_remove_one_position(
                                 quantity=nft.shares, tkn_remove=tkn_remove, share_price=nft.price
                             )
+                            delta_qa += dqa
+                            delta_r += dr
+                            delta_q += dq
+                            delta_s += ds
+                            delta_b += db
+                            delta_l += dl
+                if (self.unique_id, tkn_remove) in agent.holdings:
+                    dqa, dr, dq, ds, db, dl = self._calculate_remove_one_position(
+                        quantity=agent.holdings[(self.unique_id, tkn_remove)], tkn_remove=tkn_remove,
+                        share_price=agent.share_prices[(self.unique_id, tkn_remove)]
+                    )
+                    delta_qa += dqa
+                    delta_r += dr
+                    delta_q += dq
+                    delta_s += ds
+                    delta_b += db
+                    delta_l += dl
         return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l, nft_ids
 
     def _calculate_remove_one_position(self, quantity, tkn_remove, share_price):
