@@ -291,6 +291,26 @@ def test_add_liquidity_with_quantity_zero_should_fail(initial_state: oamm.Omnipo
         raise AssertionError(f'Adding liquidity with quantity zero should fail.')
 
 
+def test_remove_liquidity_at_add_price_exact():
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+    tkn = 'DOT'
+    p = initial_state.price(initial_state, tkn, 'LRNA')
+    s = initial_state.shares[tkn] / 10
+    expected_r = initial_state.liquidity[tkn] / 10 * (1 - initial_state.min_withdrawal_fee)
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, s, tkn, 'position')
+    delta_r = initial_state.liquidity[tkn] - new_state.liquidity[tkn]
+    if delta_r != pytest.approx(expected_r, rel=1e-20):
+        raise AssertionError(f'Removed liquidity should be equal to initial liquidity minus final liquidity.')
+
+
 @given(omnipool_config(token_count=3, withdrawal_fee=False))
 def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
     i = initial_state.asset_list[2]
@@ -485,7 +505,7 @@ def test_remove_liquidity_one_of_two(n):
     init_agent = Agent(holdings=holdings, share_prices=share_prices)
     if n == 0:
         k = (initial_state.unique_id, tkn)
-        k2 = (initial_state.unique_id + '_1', tkn)
+        k2 = (initial_state.unique_id + '_1', tkn)  #TODO fix this
     else:
         k = (initial_state.unique_id + '_1', tkn)
         k2 = (initial_state.unique_id, tkn)

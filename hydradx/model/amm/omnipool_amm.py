@@ -1438,14 +1438,15 @@ def simulate_add_liquidity(
 def simulate_remove_liquidity(
         old_state: OmnipoolState,
         old_agent: Agent,
-        quantity: float,
-        tkn_remove: str
+        quantity: float = None,
+        tkn_remove: str = '',
+        nft_id: str = None
 ) -> tuple[OmnipoolState, Agent]:
     """Compute new state after liquidity removal"""
     new_state = old_state.copy()
     new_agent = old_agent.copy()
 
-    new_state.remove_liquidity(new_agent, quantity, tkn_remove)
+    new_state.remove_liquidity(new_agent, quantity, tkn_remove, nft_id)
     return new_state, new_agent
 
 
