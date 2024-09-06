@@ -300,6 +300,7 @@ def test_remove_liquidity_at_add_price_exact():
         }
     )
     tkn = 'DOT'
+
     p = initial_state.price(initial_state, tkn, 'LRNA')
     s = initial_state.shares[tkn] / 10
     expected_r = initial_state.liquidity[tkn] / 10 * (1 - initial_state.min_withdrawal_fee)
@@ -309,6 +310,63 @@ def test_remove_liquidity_at_add_price_exact():
     delta_r = initial_state.liquidity[tkn] - new_state.liquidity[tkn]
     if delta_r != pytest.approx(expected_r, rel=1e-20):
         raise AssertionError(f'Removed liquidity should be equal to initial liquidity minus final liquidity.')
+
+    p = initial_state.price(initial_state, tkn, 'LRNA') / 2
+    s = initial_state.shares[tkn] / 10
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, s, tkn, 'position')
+
+    expected_dq_pct = mpf(1) / 10 * (1 - initial_state.min_withdrawal_fee)
+    expected_agent_dq_pct = mpf(1) / 30 * (1 - initial_state.min_withdrawal_fee)
+    expected_dr_pct = mpf(1) / 10 * (1 - initial_state.min_withdrawal_fee)
+    expected_ds_pct = mpf(1) / 10
+
+    actual_dq_pct = (initial_state.lrna[tkn] - new_state.lrna[tkn]) / initial_state.lrna[tkn]
+    actual_agent_dq_pct = new_agent.holdings['LRNA'] / initial_state.lrna[tkn]
+    actual_dr_pct = (initial_state.liquidity[tkn] - new_state.liquidity[tkn]) / initial_state.liquidity[tkn]
+    actual_ds_pct = (initial_state.shares[tkn] - new_state.shares[tkn]) / initial_state.shares[tkn]
+    actual_db = initial_state.protocol_shares[tkn] - new_state.protocol_shares[tkn]
+
+    if actual_dq_pct != pytest.approx(expected_dq_pct, rel=1e-20):
+        raise AssertionError(f'LRNA change incorrect')
+    if actual_agent_dq_pct != pytest.approx(expected_agent_dq_pct, rel=1e-20):
+        raise AssertionError(f'LRNA given to agent incorrect')
+    if actual_dr_pct != pytest.approx(expected_dr_pct, rel=1e-20):
+        raise AssertionError(f'Liquidity change incorrect')
+    if actual_ds_pct != pytest.approx(expected_ds_pct, rel=1e-20):
+        raise AssertionError(f'Shares change incorrect')
+    if actual_db != 0:
+        raise AssertionError(f'Protocol should not earn shares')
+
+    p = initial_state.price(initial_state, tkn, 'LRNA') * 2
+    s = initial_state.shares[tkn] / 10
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, s, tkn, 'position')
+
+    expected_dq_pct = mpf(2) / 30 * (1 - initial_state.min_withdrawal_fee)
+    expected_dr_pct = mpf(2) / 30 * (1 - initial_state.min_withdrawal_fee)
+    expected_ds_pct = mpf(2) / 30
+    expected_db_pct = mpf(1) / 30
+
+    actual_dq_pct = (initial_state.lrna[tkn] - new_state.lrna[tkn]) / initial_state.lrna[tkn]
+    actual_agent_dq = new_agent.holdings['LRNA'] if 'LRNA' in new_agent.holdings else 0
+    actual_dr_pct = (initial_state.liquidity[tkn] - new_state.liquidity[tkn]) / initial_state.liquidity[tkn]
+    actual_ds_pct = (initial_state.shares[tkn] - new_state.shares[tkn]) / initial_state.shares[tkn]
+    actual_db_pct = (new_state.protocol_shares[tkn] - initial_state.protocol_shares[tkn]) / initial_state.shares[tkn]
+
+    if actual_dq_pct != pytest.approx(expected_dq_pct, rel=1e-20):
+        raise AssertionError(f'LRNA change incorrect')
+    if actual_agent_dq != pytest.approx(0, rel=1e-20):
+        raise AssertionError(f'LRNA given to agent incorrect')
+    if actual_dr_pct != pytest.approx(expected_dr_pct, rel=1e-20):
+        raise AssertionError(f'Liquidity change incorrect')
+    if actual_ds_pct != pytest.approx(expected_ds_pct, rel=1e-20):
+        raise AssertionError(f'Shares change incorrect')
+    if actual_db_pct != pytest.approx(expected_db_pct, rel=1e-20):
+        raise AssertionError(f'Protocol shares incorrect')
+
 
 
 @given(omnipool_config(token_count=3, withdrawal_fee=False))
