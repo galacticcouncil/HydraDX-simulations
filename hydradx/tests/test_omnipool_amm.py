@@ -444,6 +444,38 @@ def test_remove_liquidity_unspecified_quantity_specified_nft(price_mult: float):
     if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
         raise AssertionError(f'Remaining protocol shares doesn\'t match.')
 
+@given(st.floats(min_value=0.1, max_value=10))
+def test_remove_liquidity_unspecified_quantity_unspecified_nft(price_mult: float):
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+    tkn = 'DOT'
+
+    p = price_mult * initial_state.price(initial_state, tkn, 'LRNA')
+    s = initial_state.shares[tkn] / 10
+    holdings = {(initial_state.unique_id, tkn): s/2}
+    share_prices = {(initial_state.unique_id, tkn): p}
+    position = OmnipoolLiquidityPosition(tkn, p, s/2, 0, initial_state.unique_id)
+    init_agent = Agent(holdings=holdings, share_prices=share_prices, nfts={'position': position})
+
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    base_agent = Agent(nfts={'position': position})
+
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, tkn_remove=tkn)
+    comp_state, comp_agent = oamm.simulate_remove_liquidity(initial_state, base_agent, s, tkn, 'position')
+    if new_state.liquidity[tkn] != pytest.approx(comp_state.liquidity[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining liquidity doesn\'t match.')
+    if new_state.shares[tkn] != pytest.approx(comp_state.shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining shares doesn\'t match.')
+    if new_state.lrna[tkn] != pytest.approx(comp_state.lrna[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining LRNA doesn\'t match.')
+    if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining protocol shares doesn\'t match.')
+
 
 @given(omnipool_config(token_count=3, withdrawal_fee=False))
 def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
