@@ -291,7 +291,7 @@ def test_add_liquidity_with_quantity_zero_should_fail(initial_state: oamm.Omnipo
         raise AssertionError(f'Adding liquidity with quantity zero should fail.')
 
 
-def test_remove_liquidity_at_add_price_exact():
+def test_remove_liquidity_exact():
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
     initial_state = oamm.OmnipoolState(
@@ -366,6 +366,57 @@ def test_remove_liquidity_at_add_price_exact():
         raise AssertionError(f'Shares change incorrect')
     if actual_db_pct != pytest.approx(expected_db_pct, rel=1e-20):
         raise AssertionError(f'Protocol shares incorrect')
+
+
+@given(st.floats(min_value=0.1, max_value=10))
+def test_remove_liquidity_specified_quantity_unspecified_nft(price_mult: float):
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+    tkn = 'DOT'
+
+    p = price_mult * initial_state.price(initial_state, tkn, 'LRNA')
+    s = initial_state.shares[tkn] / 10
+    holdings = {(initial_state.unique_id, tkn): s}
+    share_prices = {(initial_state.unique_id, tkn): p}
+    init_agent = Agent(holdings=holdings, share_prices=share_prices)
+
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    base_agent = Agent(nfts={'position': position})
+
+    quantity = s
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, quantity, tkn)
+    comp_state, comp_agent = oamm.simulate_remove_liquidity(initial_state, base_agent, quantity, tkn, 'position')
+    if new_state.liquidity[tkn] != pytest.approx(comp_state.liquidity[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining liquidity doesn\'t match.')
+    if new_state.shares[tkn] != pytest.approx(comp_state.shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining shares doesn\'t match.')
+    if new_state.lrna[tkn] != pytest.approx(comp_state.lrna[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining LRNA doesn\'t match.')
+    if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining protocol shares doesn\'t match.')
+
+    quantity = s / 2
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, quantity, tkn)
+    comp_state, comp_agent = oamm.simulate_remove_liquidity(initial_state, base_agent, quantity, tkn, 'position')
+    if new_state.liquidity[tkn] != pytest.approx(comp_state.liquidity[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining liquidity doesn\'t match.')
+    if new_state.shares[tkn] != pytest.approx(comp_state.shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining shares doesn\'t match.')
+    if new_state.lrna[tkn] != pytest.approx(comp_state.lrna[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining LRNA doesn\'t match.')
+    if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
+        raise AssertionError(f'Remaining protocol shares doesn\'t match.')
+
+    quantity = s * 2
+    new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, quantity, tkn)
+    if not new_state.fail:
+        raise AssertionError(f'Removing liquidity with quantity greater than holdings should fail.')
+
 
 
 
