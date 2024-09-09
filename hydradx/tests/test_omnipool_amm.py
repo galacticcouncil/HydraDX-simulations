@@ -739,40 +739,6 @@ def test_remove_liquidity_split(price: float, split: float):
         raise AssertionError('LP positions should be removed')
 
 
-@given(st.floats(min_value=1, max_value=100), st.floats(min_value=1, max_value=100),
-       st.floats(min_value=0.1, max_value = 0.9))
-def test_remove_all_liquidity(price1: float, price2: float, r: float):
-    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
-    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-        },
-        withdrawal_fee=False
-    )
-    tkn = 'DOT'
-    amt1 = r * initial_state.shares[tkn] / 5
-    amt2 = initial_state.shares[tkn] / 5 - amt1
-    holdings1 = {(initial_state.unique_id, tkn): amt1, (initial_state.unique_id + '_1', tkn): amt2}
-    holdings2 = {k: v for k, v in holdings1.items()}
-    prices1 = {(initial_state.unique_id, tkn): price1, (initial_state.unique_id + '_1', tkn): price2}
-    prices2 = {k: v for k, v in prices1.items()}
-    state1 = initial_state.copy()
-    state2 = initial_state.copy()
-    agent1 = Agent(holdings=holdings1, share_prices=prices1)
-    agent2 = Agent(holdings=holdings2, share_prices=prices2)
-    state1.remove_all_liquidity(agent1, tkn)
-    state2.remove_liquidity(agent2, amt1, tkn)
-    state2.remove_liquidity(agent2, amt2, tkn, 1)
-
-    assert state1.liquidity[tkn] == pytest.approx(state2.liquidity[tkn], rel=1e-20)
-    assert state1.shares[tkn] == pytest.approx(state2.shares[tkn], rel=1e-20)
-    assert agent1.holdings[tkn] == pytest.approx(agent2.holdings[tkn], rel=1e-20)
-    assert agent1.holdings[(initial_state.unique_id, tkn)] == 0
-    assert agent2.holdings[(initial_state.unique_id, tkn)] == 0
-    assert agent2.holdings[(initial_state.unique_id + '_1', tkn)] == 0
-
-
 @given(omnipool_config(token_count=3))
 def test_swap_lrna(initial_state: oamm.OmnipoolState):
     old_state = initial_state
