@@ -1149,6 +1149,10 @@ class OmnipoolState(AMM):
         #     k = (self.unique_id + "_" + str(i), tkn_remove)
 
         k = (self.unique_id, tkn_remove)
+        if nft_id is not None:
+            if nft_id not in agent.nfts:
+                return self.fail_transaction('Agent does not have liquidity position with specified nft_id.', agent)
+            tkn_remove = agent.nfts[nft_id].tkn
 
         if tkn_remove not in self.asset_list:
             for sub_pool in self.sub_pools.values():
@@ -1161,7 +1165,7 @@ class OmnipoolState(AMM):
                     else:
                         return self
     
-            raise AssertionError(f"invalid value for i: {tkn_remove}")
+            raise AssertionError(f"invalid value for tkn_remove: {tkn_remove}")
 
         if quantity == 0:
             return self
