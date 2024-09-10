@@ -112,6 +112,8 @@ class GlobalState:
             pool.update()
         if self._evolve_function:
             return self._evolve_function(self)
+        else:
+            return self
 
     def execute_swap(
             self,
