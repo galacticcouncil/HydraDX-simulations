@@ -3121,14 +3121,15 @@ def test_cash_out_multiple_positions_works_with_lrna(price1: float, price2: floa
     tkn = 'DOT'
     amt1 = r * initial_state.shares[tkn] / 5
     amt2 = initial_state.shares[tkn] / 5 - amt1
-    holdings1 = {(initial_state.unique_id, tkn): amt1, (initial_state.unique_id + '_1', tkn): amt2}
-    prices1 = {(initial_state.unique_id, tkn): price1, (initial_state.unique_id + '_1', tkn): price2}
-    agent = Agent(holdings=holdings1, share_prices=prices1)
+    holdings1 = {(initial_state.unique_id, tkn): amt1}
+    prices1 = {(initial_state.unique_id, tkn): price1}
+    nft = OmnipoolLiquidityPosition(tkn, price2, amt2, 0, initial_state.unique_id)
+    agent = Agent(holdings=holdings1, share_prices=prices1, nfts={'pos1': nft})
     spot_prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
     cash_out = cash_out_omnipool(initial_state, agent, spot_prices)
 
     state = initial_state.copy()
-    state.remove_all_liquidity(agent, tkn)
+    state.remove_liquidity(agent, tkn_remove=tkn)
     dot_value = agent.holdings['DOT'] * spot_prices['DOT']
     lrna_value = agent.holdings['LRNA'] * initial_state.price(initial_state, 'LRNA', 'USD')
     assert dot_value < cash_out < dot_value + lrna_value  # cash_out will be less than dot + lrna due to slippage
