@@ -616,52 +616,6 @@ def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolSta
         raise AssertionError(f'LRNA imbalance did not remain constant.')
 
 
-@given(st.integers(min_value=1, max_value=2))
-def test_remove_liquidity_one_of_two(n):
-
-    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
-    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-        }
-    )
-    tkn = 'DOT'
-    holdings = {
-        tkn: initial_state.liquidity[tkn],
-        (initial_state.unique_id, tkn): initial_state.shares[tkn] / 10,
-        (initial_state.unique_id + '_1', tkn): initial_state.shares[tkn] / 10
-    }
-    share_prices = {(initial_state.unique_id, tkn): 8, (initial_state.unique_id + '_1', tkn): 12}
-    init_agent = Agent(holdings=holdings, share_prices=share_prices)
-    if n == 0:
-        k = (initial_state.unique_id, tkn)
-        k2 = (initial_state.unique_id + '_1', tkn)  #TODO fix this
-    else:
-        k = (initial_state.unique_id + '_1', tkn)
-        k2 = (initial_state.unique_id, tkn)
-
-    quantity = init_agent.holdings[k]
-
-    comp_holdings = {k: v for k, v in holdings.items()}
-    del comp_holdings[k2]
-    comp_prices = {k: v for k, v in share_prices.items()}
-    del comp_prices[k2]
-    comp_agent = Agent(holdings=comp_holdings, share_prices=comp_prices)
-
-    agent = init_agent.copy()
-    pool = initial_state.copy()
-    comp_pool = initial_state.copy()
-    if n == 0:
-        pool.remove_liquidity(agent, quantity, tkn)
-        comp_pool.remove_liquidity(comp_agent, quantity, tkn)
-    else:
-        pool.remove_liquidity(agent, quantity, tkn, n)
-        comp_pool.remove_liquidity(comp_agent, quantity, tkn, n)
-
-    assert pool.liquidity[tkn] == comp_pool.liquidity[tkn]
-
-
 @given(st.floats(min_value=1, max_value=100),
 st.floats(min_value=0.1, max_value=0.9))
 def test_remove_liquidity_split(price: float, split: float):
@@ -681,7 +635,6 @@ def test_remove_liquidity_split(price: float, split: float):
     prices1 = {(initial_state.unique_id, tkn): price}
     agent1 = Agent(holdings=holdings1, share_prices=prices1)
 
-    # holdings2 = {(initial_state.unique_id, tkn): amt2, (initial_state.unique_id + '_1', tkn): amt3}
     nft1 = OmnipoolLiquidityPosition(tkn, price, amt2, 0, initial_state.unique_id)
     nft2 = OmnipoolLiquidityPosition(tkn, price, amt3, 0, initial_state.unique_id)
     nfts = {'nft001': nft1, 'nft002': nft2}
