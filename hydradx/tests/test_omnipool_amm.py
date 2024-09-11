@@ -239,41 +239,6 @@ def test_compare_several_lp_adds_to_single(n):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
 
 
-# TODO adjust these tests using nft_id input
-
-
-# def test_add_additional_positions_at_new_price():
-#     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
-#     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
-#     initial_state = oamm.OmnipoolState(
-#         tokens={
-#             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-#         }
-#     )
-#     tkn = 'DOT'
-#     holdings = {tkn: initial_state.liquidity[tkn], (initial_state.unique_id, tkn): initial_state.shares[tkn] / 10}
-#     share_prices = {(initial_state.unique_id, tkn): 8}
-#     init_agent = Agent(holdings=holdings, share_prices=share_prices)
-#     delta_R = init_agent.holdings[tkn] / 2
-#
-#     new_state, new_agent = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
-#
-#     if new_agent.holdings[(initial_state.unique_id, tkn)] != init_agent.holdings[(initial_state.unique_id, tkn)]:
-#         raise AssertionError(f'Adding liquidity should not change the shares in existing position')
-#     if new_agent.share_prices[(initial_state.unique_id, tkn)] != init_agent.share_prices[(initial_state.unique_id, tkn)]:
-#         raise AssertionError(f'Adding liquidity should not change the share price in existing position')
-#     if new_agent.share_prices[(initial_state.unique_id + '_1', tkn)] != initial_state.price(initial_state, tkn):
-#         raise AssertionError(f'Adding liquidity should set the share price in new position to the pool price')
-#
-#     new_state2, new_agent2 = oamm.simulate_add_liquidity(new_state, new_agent, delta_R, tkn)
-#     if new_agent2.holdings[(initial_state.unique_id + '_1', tkn)] != new_agent.holdings[(initial_state.unique_id + '_1', tkn)]:
-#         raise AssertionError(f'Adding liquidity should not change the shares in existing position')
-#     if new_agent2.share_prices[(initial_state.unique_id, tkn)] != new_agent.share_prices[(initial_state.unique_id, tkn)]:
-#         raise AssertionError(f'Adding liquidity should not change the share price in existing position')
-#     if new_agent2.share_prices[(initial_state.unique_id + '_1', tkn)] != new_state.price(initial_state, tkn):
-#         raise AssertionError(f'Adding liquidity should set the share price in new position to the pool price')
-
-
 @settings(max_examples=1)
 @given(omnipool_config(token_count=3, lrna_fee=0, asset_fee=0))
 def test_add_liquidity_with_quantity_zero_should_fail(initial_state: oamm.OmnipoolState):
