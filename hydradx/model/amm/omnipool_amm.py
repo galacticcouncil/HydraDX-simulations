@@ -886,29 +886,6 @@ class OmnipoolState(AMM):
     
         return self
 
-    # def calculate_remove_all_liquidity(self, agent: Agent, tkn_remove):
-    #     delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, 0, 0, 0, 0, 0
-    #     for k in agent.holdings:
-    #         if len(k) > 1 and k[1] == tkn_remove:
-    #             k_split = k[0].split("_")
-    #             if len(k_split) == 1:
-    #                 qa, r, q, s, b, l = self.calculate_remove_liquidity(agent, agent.holdings[k], tkn_remove)
-    #                 delta_qa += qa
-    #                 delta_r += r
-    #                 delta_q += q
-    #                 delta_s += s
-    #                 delta_b += b
-    #                 delta_l += l
-    #             elif k_split[0] == self.unique_id:
-    #                 qa, r, q, s, b, l = self.calculate_remove_liquidity(agent, agent.holdings[k], tkn_remove, int(k_split[1]))
-    #                 delta_qa += qa
-    #                 delta_r += r
-    #                 delta_q += q
-    #                 delta_s += s
-    #                 delta_b += b
-    #                 delta_l += l
-    #     return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
-
     def calculate_remove_liquidity(self, agent: Agent, quantity: float = None, tkn_remove: str = None, nft_id: str = None):
         """
         If quantity is specified and nft_id is specified, remove specified quantity of shares from specified position.
