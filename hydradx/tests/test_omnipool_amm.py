@@ -211,11 +211,13 @@ def test_compare_several_lp_adds_to_single(n):
     delta_R = init_agent.holdings[tkn] / 2
 
     single_add_state_1, single_add_agent_1 = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn)
-    single_add_state_2, single_add_agent_2 = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn, nft_id="id001")
+    single_add_state_2, single_add_agent_2 = oamm.simulate_add_liquidity(initial_state, init_agent, delta_R, tkn,
+                                                                         nft_id="id001")
     multi_add_state, multi_add_agent = initial_state, init_agent
     for i in range(n):
         nft_id = str(i)
-        multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n, tkn, nft_id=nft_id)
+        multi_add_state, multi_add_agent = oamm.simulate_add_liquidity(multi_add_state, multi_add_agent, delta_R / n,
+                                                                       tkn, nft_id=nft_id)
 
     if single_add_state_1.liquidity[tkn] != pytest.approx(multi_add_state.liquidity[tkn], rel=1e-20):
         raise AssertionError(f'Adding liquidity in one go should be equivalent to adding it in {n} steps.')
@@ -382,6 +384,7 @@ def test_remove_liquidity_specified_quantity_unspecified_nft(price_mult: float):
     if not new_state.fail:
         raise AssertionError(f'Removing liquidity with quantity greater than holdings should fail.')
 
+
 @given(st.floats(min_value=0.1, max_value=10))
 def test_remove_liquidity_unspecified_quantity_specified_nft(price_mult: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
@@ -409,6 +412,7 @@ def test_remove_liquidity_unspecified_quantity_specified_nft(price_mult: float):
     if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
         raise AssertionError(f'Remaining protocol shares doesn\'t match.')
 
+
 @given(st.floats(min_value=0.1, max_value=10))
 def test_remove_liquidity_unspecified_quantity_unspecified_nft(price_mult: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
@@ -422,9 +426,9 @@ def test_remove_liquidity_unspecified_quantity_unspecified_nft(price_mult: float
 
     p = price_mult * initial_state.price(initial_state, tkn, 'LRNA')
     s = initial_state.shares[tkn] / 10
-    holdings = {(initial_state.unique_id, tkn): s/2}
+    holdings = {(initial_state.unique_id, tkn): s / 2}
     share_prices = {(initial_state.unique_id, tkn): p}
-    position = OmnipoolLiquidityPosition(tkn, p, s/2, 0, initial_state.unique_id)
+    position = OmnipoolLiquidityPosition(tkn, p, s / 2, 0, initial_state.unique_id)
     init_agent = Agent(holdings=holdings, share_prices=share_prices, nfts={'position': position})
 
     position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
@@ -617,7 +621,7 @@ def test_remove_liquidity_no_fee_different_price(initial_state: oamm.OmnipoolSta
 
 
 @given(st.floats(min_value=1, max_value=100),
-st.floats(min_value=0.1, max_value=0.9))
+       st.floats(min_value=0.1, max_value=0.9))
 def test_remove_liquidity_split(price: float, split: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
     lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
@@ -1666,7 +1670,6 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_prices: list[float], n, trade_size: float, lrna_fees: list[float],
                                  asset_fees: list[float], amp: list[float], decay: list[float]):
-
     init_liquidity = {
         'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
         'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
@@ -2759,7 +2762,8 @@ def test_calculate_buy_from_sell(omnipool: oamm.OmnipoolState):
     usd_lrna_fee=st.floats(min_value=0, max_value=0.1)
 )
 def test_buy_sell_spot(
-        hdx_lrna: float, usd_lrna: float, hdx_asset_fee: float, hdx_lrna_fee: float, usd_asset_fee: float, usd_lrna_fee: float
+        hdx_lrna: float, usd_lrna: float, hdx_asset_fee: float, hdx_lrna_fee: float, usd_asset_fee: float,
+        usd_lrna_fee: float
 ):
     tokens = {
         'HDX': {'liquidity': mpf(1000000000), 'LRNA': hdx_lrna},
