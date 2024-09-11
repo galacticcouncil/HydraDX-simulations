@@ -1099,17 +1099,6 @@ class OmnipoolState(AMM):
         self.current_block.lps[tkn_add] += quantity
     
         return self
-
-    # def remove_all_liquidity(self, agent: Agent, tkn_remove: str):
-    #     agent_assets = list(agent.holdings.keys())
-    #     for k in agent_assets:
-    #         if len(k) > 1 and k[1] == tkn_remove:
-    #             k_split = k[0].split("_")
-    #             if len(k_split) == 1:
-    #                 self.remove_liquidity(agent, agent.holdings[k], tkn_remove)
-    #             elif k[0].split("_")[0] == self.unique_id:
-    #                 self.remove_liquidity(agent, agent.holdings[k], tkn_remove, int(k[0].split("_")[1]))
-    #     return self
     
     def remove_liquidity(self, agent: Agent, quantity: float = None, tkn_remove: str = '', nft_id: str = None):
         """
