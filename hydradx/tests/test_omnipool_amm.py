@@ -1205,7 +1205,6 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
         'HDX': 0,
         'USD': 0,
         'DOT': trader2_holdings['DOT'] - events[0].agents['Trader2'].holdings['DOT']
-        + trader1_holdings['DOT'] - events[0].agents['Trader1'].holdings['DOT'],
     }
 
     vol_out = {
