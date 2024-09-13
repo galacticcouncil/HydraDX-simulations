@@ -11,5 +11,6 @@
 /hydradx/notebooks/Omnipool/data/
 /hydradx/notebooks/Misc/data/
 /hydradx/other tests/.hypothesis/
+/hydradx/model/data/
 /.hypothesis/
 *.env
