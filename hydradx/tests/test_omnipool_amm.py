@@ -188,8 +188,14 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
     initial_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
+    old_state, old_agent = initial_state.copy(), initial_agent.copy()
     # add LP shares to the pool
-    old_state, old_agent = oamm.simulate_add_liquidity(initial_state, initial_agent, 1000, i)
+    old_state.add_liquidity(
+        agent=old_agent,
+        tkn_add=i,
+        quantity=1
+    )
+
     p_init = oamm.lrna_price(old_state, i)
 
     delta_S = -old_agent.holdings[('omnipool', i)]
@@ -206,6 +212,8 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
         raise AssertionError('Delta Q < 0')
     if delta_r <= 0 and delta_r != pytest.approx(0):
         raise AssertionError('Delta R < 0')
+    if initial_agent.holdings[i] != pytest.approx(new_agent.holdings[i], rel=1e-20):
+        raise AssertionError('Agent did not get correct shares back.')
 
     piq = oamm.lrna_price(old_state, i)
     val_withdrawn = piq * delta_r + delta_q
