@@ -1560,33 +1560,52 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
     and then sell at current spot prices
     """
 
-    new_state, new_agent = _turn_off_validations(omnipool), agent.copy()
-    if 'LRNA' not in new_agent.holdings:
-        new_agent.holdings['LRNA'] = 0
-    for tkn in omnipool.asset_list:
-        new_state, new_agent = simulate_remove_liquidity(new_state, new_agent, tkn_remove=tkn)
+    delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
+    nft_ids = []
 
-    agent_holdings = new_agent.holdings
-    lrna_removed = {tkn: omnipool.lrna[tkn] - new_state.lrna[tkn] for tkn in omnipool.lrna}
-    liquidity_removed = {tkn: omnipool.liquidity[tkn] - new_state.liquidity[tkn] for tkn in omnipool.liquidity}
+    for k in agent.holdings:
+        if isinstance(k, tuple) and len(k) == 2 and k[0] == omnipool.unique_id:  # LP shares of correct pool
+            tkn = k[1]
+            dqa, dr, dq, ds, db, dl, ids = omnipool.calculate_remove_liquidity(agent, tkn_remove=tkn)
+            delta_qa += dqa
+            delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
+            delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
+            delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
+            delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
+            delta_l += dl
+            nft_ids += ids
+
+    for nft_id in agent.nfts:
+        if nft_id not in nft_ids and agent.nfts[nft_id].pool_id == omnipool.unique_id:
+            tkn = agent.nfts[nft_id].tkn
+            dqa, dr, dq, ds, db, dl, _ = omnipool.calculate_remove_liquidity(agent, nft_id=nft_id)
+            delta_qa += dqa
+            delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
+            delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
+            delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
+            delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
+            delta_l += dl
+
+    # agent_holdings = new_agent.holdings
+    lrna_removed = {tkn: -delta_q[tkn] if tkn in delta_q else 0 for tkn in omnipool.asset_list}
+    liquidity_removed = {tkn: -delta_r[tkn] if tkn in delta_r else 0 for tkn in omnipool.asset_list}
 
     if 'LRNA' in prices:
         raise ValueError('LRNA price should not be given.')
-
-    if 'LRNA' not in prices and agent_holdings['LRNA'] > 0:
+    lrna_to_sell = delta_qa
+    if 'LRNA' in agent.holdings:
+        lrna_to_sell += agent.holdings['LRNA']
+    if 'LRNA' not in prices and lrna_to_sell > 0:
         lrna_total = omnipool.lrna_total - sum(lrna_removed.values())
         lrna_sells = {
-            tkn: -(omnipool.lrna[tkn] - lrna_removed[tkn]) / lrna_total * agent_holdings['LRNA']
+            tkn: -(omnipool.lrna[tkn] - lrna_removed[tkn]) / lrna_total * lrna_to_sell
             for tkn in omnipool.asset_list
         }
 
-        agent_holdings['LRNA'] = 0
         lrna_profits = dict()
 
         # sell LRNA optimally back to the pool
         for tkn, delta_qa in lrna_sells.items():
-            if tkn not in agent_holdings:
-                agent_holdings[tkn] = 0
             asset_fee = (
                 omnipool.asset_fee[tkn].compute()
                 if hasattr(omnipool, 'asset_fee')
@@ -1597,12 +1616,12 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
                     / (-delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
                     * (1 - asset_fee)
             )
-            agent_holdings[tkn] += lrna_profits[tkn]
+            liquidity_removed[tkn] += lrna_profits[tkn]
 
-    del agent_holdings['LRNA']
+    new_holdings = {tkn: agent.holdings[tkn] for tkn in agent.holdings}
+    for tkn in liquidity_removed:
+        if tkn not in new_holdings:
+            new_holdings[tkn] = 0
+        new_holdings[tkn] += liquidity_removed[tkn]
 
-    for tkn in agent_holdings.keys():
-        if agent_holdings[tkn] > 0 and tkn not in prices:
-            raise ValueError(f'Agent has holdings in {tkn} but no price was given.')
-
-    return value_assets(prices, agent_holdings)
+    return value_assets(prices, new_holdings)
