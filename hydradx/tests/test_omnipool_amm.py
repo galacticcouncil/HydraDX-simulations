@@ -2976,6 +2976,65 @@ def test_fee_application():
         raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
 
 
+def test_cash_out_omnipool_exact():
+    liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+    tkn = 'DOT'
+
+    p = initial_state.price(initial_state, tkn, 'LRNA')
+    s = initial_state.shares[tkn] / 10
+    prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
+    expected_r = initial_state.liquidity[tkn] / 10 * (1 - initial_state.min_withdrawal_fee)
+    expected_cash = expected_r * prices[tkn]
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    cash = cash_out_omnipool(initial_state, init_agent, prices)
+    if cash != pytest.approx(expected_cash, rel=1e-20):
+        raise AssertionError(f'Removed liquidity should be equal to initial liquidity minus final liquidity.')
+
+    p = initial_state.price(initial_state, tkn, 'LRNA') / 2
+    s = initial_state.shares[tkn] / 10
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    cash = cash_out_omnipool(initial_state, init_agent, prices)
+
+    expected_agent_dq_pct = mpf(1) / 30 * (1 - initial_state.min_withdrawal_fee)
+    expected_agent_dq = expected_agent_dq_pct * initial_state.lrna[tkn]
+
+    expected_dr_pct = mpf(1) / 10 * (1 - initial_state.min_withdrawal_fee)
+    expected_dr = expected_dr_pct * initial_state.liquidity[tkn]
+    expected_min_cash = expected_dr * prices[tkn]
+    expected_max_cash = expected_min_cash + expected_agent_dq + initial_state.price(initial_state, 'LRNA', 'USD')
+    expected_cash_out_lrna = 32954
+
+    if expected_agent_dq <= 0:
+        raise AssertionError(f'LRNA change incorrect')
+    if cash <= expected_min_cash:
+        raise AssertionError(f'Cash out should be at least the minimum amount')
+    if cash >= expected_max_cash:
+        raise AssertionError(f'Cash out should be at most the maximum amount')
+    if cash - expected_min_cash != pytest.approx(expected_cash_out_lrna, rel=1e-4):
+        raise AssertionError(f'cash incorrect')
+
+    p = initial_state.price(initial_state, tkn, 'LRNA') * 2
+    s = initial_state.shares[tkn] / 10
+    position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
+    init_agent = Agent(nfts={'position': position})
+    cash = cash_out_omnipool(initial_state, init_agent, prices)
+
+    expected_dr_pct = mpf(2) / 30 * (1 - initial_state.min_withdrawal_fee)
+    expected_dr = expected_dr_pct * initial_state.liquidity[tkn]
+    expected_cash = expected_dr * prices[tkn]
+
+    if cash != pytest.approx(expected_cash, rel=1e-20):
+        raise AssertionError(f'cash incorrect')
+
+
 @given(st.floats(min_value=10.1, max_value=100))
 def test_cash_out_nft_position(price1: float):
     liquidity = {'HDX': mpf(10000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
