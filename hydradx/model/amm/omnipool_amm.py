@@ -96,8 +96,8 @@ class OmnipoolState(AMM):
                 token,
                 liquidity=pool['liquidity'],
                 lrna=lrna,
-                shares=pool['liquidity'],
-                protocol_shares=pool['liquidity'],
+                shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
+                protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
