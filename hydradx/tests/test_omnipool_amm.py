@@ -3114,3 +3114,34 @@ def test_cash_out_multiple_positions_works_with_lrna(price1: float, price2: floa
     dot_value = agent.holdings['DOT'] * spot_prices['DOT']
     lrna_value = agent.holdings['LRNA'] * initial_state.price(initial_state, 'LRNA', 'USD')
     assert dot_value < cash_out < dot_value + lrna_value  # cash_out will be less than dot + lrna due to slippage
+
+
+@given(st.lists(st.floats(min_value=-100000, max_value=100000), min_size=3, max_size=3))
+def test_cash_out_multiple_positions(trade_sizes: list[float]):
+    liquidity = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(100000)}
+    lrna = {'HDX': mpf(1000000), 'USD': mpf(1000000), 'DOT': mpf(1000000)}
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        withdrawal_fee=False
+    )
+
+    lp_quantity = 10000
+    agent1 = Agent(holdings={'DOT': lp_quantity * len(trade_sizes)})
+    agent2 = Agent(holdings={'DOT': 10000000, 'HDX': 10000000})
+    for i, trade in enumerate(trade_sizes):
+        initial_state.add_liquidity(agent1, tkn_add='DOT', quantity=lp_quantity, nft_id=str(i))
+        if trade > 0:
+            initial_state.swap(agent2, tkn_buy='HDX', tkn_sell='DOT', sell_quantity=trade)
+        else:
+            initial_state.swap(agent2, tkn_buy='DOT', tkn_sell='HDX', sell_quantity=-trade)
+
+    spot_prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
+    cash_out_value = cash_out_omnipool(initial_state, agent1, spot_prices)
+    cash_out_state = initial_state.copy()
+    cash_out_agent = agent1.copy()
+    cash_out_state.remove_liquidity(cash_out_agent, tkn_remove='DOT')
+    reference_value = oamm.value_assets(spot_prices, cash_out_agent.holdings)
+    if cash_out_value != pytest.approx(reference_value, 1e-20):
+        raise AssertionError("Cash out not computed correctly.")
