@@ -1590,15 +1590,16 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
     lrna_removed = {tkn: -delta_q[tkn] if tkn in delta_q else 0 for tkn in omnipool.asset_list}
     liquidity_removed = {tkn: -delta_r[tkn] if tkn in delta_r else 0 for tkn in omnipool.asset_list}
 
-    if 'LRNA' in prices:
-        raise ValueError('LRNA price should not be given.')
-    lrna_to_sell = delta_qa
+    # if 'LRNA' in prices:
+    #     raise ValueError('LRNA price should not be given.')
+    agent_lrna = delta_qa
     if 'LRNA' in agent.holdings:
-        lrna_to_sell += agent.holdings['LRNA']
-    if 'LRNA' not in prices and lrna_to_sell > 0:
+        agent_lrna += agent.holdings['LRNA']
+
+    if 'LRNA' not in prices and agent_lrna > 0:
         lrna_total = omnipool.lrna_total - sum(lrna_removed.values())
         lrna_sells = {
-            tkn: -(omnipool.lrna[tkn] - lrna_removed[tkn]) / lrna_total * lrna_to_sell
+            tkn: -(omnipool.lrna[tkn] - lrna_removed[tkn]) / lrna_total * agent_lrna
             for tkn in omnipool.asset_list
         }
 
@@ -1619,6 +1620,7 @@ def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
             liquidity_removed[tkn] += lrna_profits[tkn]
 
     new_holdings = {tkn: agent.holdings[tkn] for tkn in agent.holdings}
+    new_holdings['LRNA'] = agent_lrna
     for tkn in liquidity_removed:
         if tkn not in new_holdings:
             new_holdings[tkn] = 0

@@ -3127,17 +3127,19 @@ def test_cash_out_multiple_positions(trade_sizes: list[float]):
         withdrawal_fee=False
     )
 
-    lp_quantity = 10000
+    lp_quantity = mpf(10000)
     agent1 = Agent(holdings={'DOT': lp_quantity * len(trade_sizes)})
-    agent2 = Agent(holdings={'DOT': 10000000, 'HDX': 10000000})
+    agent2 = Agent(holdings={'DOT': mpf(10000000), 'HDX': mpf(10000000)})
     for i, trade in enumerate(trade_sizes):
         initial_state.add_liquidity(agent1, tkn_add='DOT', quantity=lp_quantity, nft_id=str(i))
         if trade > 0:
-            initial_state.swap(agent2, tkn_buy='HDX', tkn_sell='DOT', sell_quantity=trade)
-        else:
-            initial_state.swap(agent2, tkn_buy='DOT', tkn_sell='HDX', sell_quantity=-trade)
+            initial_state.swap(agent2, tkn_buy='HDX', tkn_sell='DOT', sell_quantity=mpf(trade))
+        elif trade < 0:
+            initial_state.swap(agent2, tkn_buy='DOT', tkn_sell='HDX', sell_quantity=-mpf(trade))
 
     spot_prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
+    spot_prices['LRNA'] = oamm.usd_price(initial_state, 'LRNA')
+
     cash_out_value = cash_out_omnipool(initial_state, agent1, spot_prices)
     cash_out_state = initial_state.copy()
     cash_out_agent = agent1.copy()
