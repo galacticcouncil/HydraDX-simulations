@@ -1031,26 +1031,13 @@ def dca_with_lping(
             sell_quantity=agent.holdings[sell_asset] - init_sell_amt
         )
 
-        # we turn off the withdrawal fee for this remove_liquidity
-        # this is because removing liquidity here is due to a limitation in our implementation,
-        # agents can have only one LP position each in one asset in Omnipool.
-        # In reality someone executing this strategy would simply add liquidity and get a new LP position.
-        withdrawal_fee_cache = pool.withdrawal_fee  # hack to temporarily zero out withdrawal fee
-        pool.withdrawal_fee = False
-        if agent.is_holding((pool.unique_id, buy_asset)):
-            # remove all liquidity in buy_asset
-            pool.remove_liquidity(
-                agent=agent,
-                quantity=agent.holdings[(pool.unique_id, buy_asset)],
-                tkn_remove=buy_asset
-            )
-        pool.withdrawal_fee = withdrawal_fee_cache
-
         # LP the buy asset
+        nft_id = str(len(agent.nfts) + 1)
         pool.add_liquidity(
             agent=agent,
             quantity=agent.holdings[buy_asset] - init_buy_amt,
-            tkn_add=buy_asset
+            tkn_add=buy_asset,
+            nft_id=nft_id
         )
 
         return state

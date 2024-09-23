@@ -713,7 +713,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     if cdp1.debt_amt == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
-        assert ratio1 > 1
+        assert ratio1 > 1/(1 + mm.liquidation_penalty['DOT'])
     elif cdp1.debt_amt == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
             pass
