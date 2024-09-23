@@ -906,7 +906,7 @@ class OmnipoolState(AMM):
         if quantity is not None:
             if nft_id is None:  # remove specified quantity of shares from holdings
                 k = (self.unique_id, tkn_remove)
-                return self._calculate_remove_one_position(
+                delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self._calculate_remove_one_position(
                     quantity=quantity, tkn_remove=tkn_remove, share_price=agent.share_prices[k]
                 )
             else:  # remove specified quantity of shares from specified position
