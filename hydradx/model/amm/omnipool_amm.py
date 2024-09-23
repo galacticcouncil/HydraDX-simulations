@@ -1547,13 +1547,6 @@ def value_assets(prices: dict, assets: dict) -> float:
     ])
 
 
-def _turn_off_validations(omnipool: OmnipoolState) -> OmnipoolState:
-    new_state = omnipool.copy()
-    new_state.remove_liquidity_volatility_threshold = float('inf')
-    new_state.max_withdrawal_per_block = float('inf')
-    return new_state
-
-
 def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
     """
     return the value of the agent's holdings if they withdraw all liquidity
