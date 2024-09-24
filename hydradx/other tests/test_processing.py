@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 import os
 import shutil
 
-def test_get_history_current():
+def test_get_current_balance():
     now = datetime.now(timezone.utc)
     current_dot = processing.get_historical_omnipool_balance(tkn='DOT', date=now)
     print(f"{current_dot} DOT in the pool today.")
