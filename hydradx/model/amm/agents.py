@@ -9,7 +9,8 @@ class Agent:
                  share_prices: dict[str: float] = None,
                  delta_r: dict[str: float] = None,
                  trade_strategy: any = None,
-                 unique_id: str = 'agent'
+                 unique_id: str = 'agent',
+                 nfts: dict[str: any] = None,
                  ):
         """
         holdings should be in the form of:
@@ -29,6 +30,7 @@ class Agent:
         self.trade_strategy = trade_strategy
         self.asset_list = list(self.holdings.keys())
         self.unique_id = unique_id
+        self.nfts = nfts or {}
 
     def __repr__(self):
         precision = 10
@@ -52,7 +54,8 @@ class Agent:
             share_prices={k: v for k, v in self.share_prices.items()},
             delta_r={k: v for k, v in self.delta_r.items()},
             trade_strategy=self.trade_strategy,
-            unique_id=self.unique_id
+            unique_id=self.unique_id,
+            nfts={id: copy.deepcopy(nft) for id, nft in self.nfts.items()}
         )
         copy_self.initial_holdings = {k: v for k, v in self.initial_holdings.items()}
         copy_self.asset_list = [tkn for tkn in self.asset_list]

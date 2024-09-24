@@ -459,6 +459,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
             break
 
 
+@settings(deadline=timedelta(milliseconds=500))
 @given(
     st.integers(min_value=1, max_value=1000000),
     st.floats(min_value=0.00001, max_value=0.99999)
