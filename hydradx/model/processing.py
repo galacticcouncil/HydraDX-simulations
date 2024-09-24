@@ -578,7 +578,7 @@ def load_config(filename, path='archive'):
 
 def get_omnipool_balance_history():
     chunk_size = 10000
-    chunks_per_file = 100
+    chunks_per_file = 10
 
     def insert_data_chunk(position: int, data_list: list):
         query = f"""
@@ -658,10 +658,10 @@ def get_omnipool_balance_history():
             select timestamp, symbol, balance as liquidity 
             from balance_history 
             order by timestamp asc 
-            limit {chunk_size} offset {chunk_size} * {position}
+            limit {chunk_size} offset {chunk_size * position}
             """
         new_data = []
-        while not new_data and position * chunk_size < len(data_list):
+        while not new_data: # and position * chunk_size < len(data_list):
             new_data = query_sqlPad(query)
         # append a line number to each
         new_data = [[position * chunk_size + i] + line for i, line in enumerate(new_data)]
@@ -669,14 +669,21 @@ def get_omnipool_balance_history():
         return data_list
 
     def load_history_file(file_name: str):
-        with open(f'./data/{file_name}', 'r') as file:
-            file_data = json.loads('[' + file.read() + ']')
+        with open(f'./{file_name}', 'r') as file:
+            file_data = json.loads(file.read())
         return file_data
 
     def save_history_file(data_list: list, n: int):
-        with open(f'./data/omnipool_history_{str(n).zfill(2)}', 'w') as file:
-            file.write(',\n'.join([json.dumps(line) for line in
-                                  data_list[chunk_size * chunks_per_file * (n - 1): chunk_size * chunks_per_file * n]]))
+        # navigate to right directory
+        while not os.path.exists("./model"):
+            os.chdir("..")
+        os.chdir("model/data/Omnipool Balance History")
+        filename = f'./omnipool_history_{str(n).zfill(3)}.json'
+        with open(filename, 'w') as file:
+            file.write('['+',\n'.join([
+                json.dumps(line)
+                for line in data_list[chunk_size * chunks_per_file * n: chunk_size * chunks_per_file * (n + 1)]
+            ])+']')
         print(f'Saved {filename}')
 
     def check_errors(data_list):
@@ -706,26 +713,26 @@ def get_omnipool_balance_history():
     # navigate to model directory
     while not os.path.exists("./model"):
         os.chdir("..")
-    os.chdir("model")
+    os.chdir("model/data/Omnipool Balance History")
 
     # load what we have so far
     all_data = []
-    file_ls = os.listdir('./data')
+    file_ls = os.listdir('.')
     for filename in file_ls:
         if filename.startswith('omnipool_history'):
             print(f'loading {filename}')
             all_data += load_history_file(filename)
 
+    all_data = fix_errors(all_data)
     print("Downloading recent transactions...")
 
     # continue downloading and check for errors
     while True:
-        all_data = fix_errors(all_data)
-        file_number = int(len(all_data) / chunk_size / chunks_per_file) + 1
+        file_number = int(len(all_data) / chunk_size / chunks_per_file)
         start_at = int(len(all_data) / chunk_size)
-        for n in range(start_at, file_number * chunks_per_file):
+        for n in range(start_at, (file_number + 1) * chunks_per_file):
             data_length = len(all_data)
-            all_data = insert_data_chunk(position=n, data_list=all_data[:start_at * chunk_size])
+            all_data = insert_data_chunk(position=n, data_list=all_data[:n * chunk_size])
             print(f"{len(all_data)} records retrieved.")
             if len(all_data) % chunk_size != 0 or len(all_data) == data_length:
                 # probably means we're finished. There might be a better way to detect this, but I think it'll do
@@ -800,35 +807,78 @@ def query_sqlPad(query: str):
         print(f"There was a problem with your request: {str(e)}")
 
 
-def get_historical_omnipool_balance(tkn, date):
+def download_history_files():
+    import gdown
+    # navigate to model directory
+    while not os.path.exists("./model"):
+        os.chdir("..")
+    os.chdir("model/data")
+    if not os.path.exists('Omnipool Balance History'):
+        ID = '1pfDcjr5a6kuVUvArk-aX_uXMSL0_QePw'
+        gdown.download_folder(id=ID, quiet=False)
+        os.chdir('Omnipool Balance History')
+        with ZipFile('omnipool_balance_history.zip', 'r') as zipObj:
+            zipObj.extractall()
+        os.remove('omnipool_balance_history.zip')
+        os.chdir('..')
+        # the zip file includes a folder, so we need to move the contents up one level
+        source_folder = 'Omnipool Balance History/Omnipool Balance History/'
+        destination_folder = 'Omnipool Balance History/'
+
+        # Move all files from the inner folder to the outer folder
+        for filename in os.listdir(source_folder):
+            source_file = os.path.join(source_folder, filename)
+            destination_file = os.path.join(destination_folder, filename)
+            os.rename(source_file, destination_file)
+
+        # Remove the now-empty inner folder
+        os.rmdir(source_folder)
+
+
+def get_historical_omnipool_balance(tkn, date=None, block=None):
     """
     get the balance of a particular token on a particular date
     (hopefully) without having to load the entire history or download anything
     """
+
+    # first make sure we have downloaded the available files
+    download_history_files()
+
     import dateutil.parser
     # find the date
     date = dateutil.parser.parse(f"{date}")
     # navigate to model directory
     while not os.path.exists("./model"):
         os.chdir("..")
-    os.chdir("model")
+    os.chdir("model/data/Omnipool Balance History")
 
     # load what we have available
     file_data = []
-    file_ls = os.listdir('./data')
-    for file_name in file_ls[::-1]:
-        if file_name.startswith('omnipool_history'):
-            with open(f'./data/{file_name}') as f:
-                first_line = f.readline()
-                start_date = dateutil.parser.parse(json.loads(first_line.strip()[:-1])[1])
-                if start_date < date:
-                    print(f'loading {file_name}')
-                    with open(f'./data/{file_name}', 'r') as file:
-                        file_data += json.loads('[' + file.read() + ']')
-                    break
-    if not file_data:
-        # have to download more data
-        file_data = get_omnipool_balance_history()
+    def find_data_files():
+        return list(filter(
+            lambda filename: filename.startswith('omnipool_history'),
+            os.listdir('.')
+        ))
+    file_ls = find_data_files()
+    # see if the date or block they want is included in existing data
+    with open(file_ls[-1]) as f:
+        last_line = f.readlines()[-1][:-1]
+        last_date = dateutil.parser.parse(json.loads(last_line)[1])
+        last_block = json.loads(last_line)[0]
+        if date is not None and last_date < date or block is not None and last_block < block:
+            get_omnipool_balance_history()
+            file_data = json.load(open(find_data_files()[-1]))
+        else:
+            for file_name in file_ls[::-1]:
+                with open(f'./{file_name}') as f:
+                    first_line = f.readline()[1:]
+                    start_date = dateutil.parser.parse(json.loads(first_line.strip()[:-1])[1])
+                    start_block= json.loads(first_line.strip()[:-1])[0]
+                    if date is not None and start_date < date or block is not None and start_block < block:
+                        print(f'loading {file_name}')
+                        with open(f'./{file_name}', 'r') as file:
+                            file_data = json.load(file)
+                        break
 
     tkn_data = [line for line in file_data if line[2] == tkn]
     # find the closest date using a binary search
@@ -836,10 +886,11 @@ def get_historical_omnipool_balance(tkn, date):
     right = len(tkn_data) - 1
     while left < right:
         mid = (left + right) // 2
-        if dateutil.parser.parse(tkn_data[mid][1]) < date :
+        if date and dateutil.parser.parse(tkn_data[mid][1]) < date :
+            left = mid + 1
+        elif block and tkn_data[mid][0] < block:
             left = mid + 1
         else:
             right = mid
     print (f"""Retrieved balance of {tkn} on {date}: {dateutil.parser.parse(tkn_data[left][1]).strftime('%Y-%m-%d')}""")
     return tkn_data[left][3]
-
