@@ -10,7 +10,7 @@ from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_amm import price, dynamicadd_asset_fee, dynamicadd_lrna_fee, OmnipoolState, \
-    cash_out_omnipool, OmnipoolLiquidityPosition
+    OmnipoolLiquidityPosition
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 
@@ -1848,8 +1848,9 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
 
 
 @given(omnipool_reasonable_config(remove_liquidity_volatility_threshold=0.01))
-def test_volatility_limit(omnipool: oamm.OmnipoolState):
+def test_volatility_limit(initial_state: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
+    omnipool=initial_state.copy()
     omnipool.add_liquidity(agent, quantity=1000, tkn_add='HDX')
     omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
     omnipool.remove_liquidity(agent, quantity=1000, tkn_remove='HDX')
@@ -2067,8 +2068,8 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = omnipool.cash_out(agent, market_prices)
+    final_value = remove_state.cash_out(remove_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2124,8 +2125,8 @@ def test_add_and_remove_liquidity():
         quantity=add_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = omnipool.cash_out(agent, market_prices)
+    final_value = remove_state.cash_out(remove_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2213,8 +2214,8 @@ def test_add_liquidity_exploit(lp_multiplier, trade_mult):
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = omnipool.cash_out(agent, market_prices)
+    final_value = remove_state.cash_out(remove_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2301,8 +2302,8 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
         quantity=arbed_agent.holdings[('omnipool', 'DOT')]
     )
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    initial_value = omnipool.cash_out(agent, market_prices)
+    final_value = remove_state.cash_out(remove_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2384,8 +2385,8 @@ def test_withdraw_exploit():
     arbed_pool = arb_state.pools['omnipool']
     arbed_agent = arb_state.agents['attacker']
 
-    initial_value = oamm.cash_out_omnipool(omnipool, agent, market_prices)
-    final_value = oamm.cash_out_omnipool(arbed_pool, arbed_agent, market_prices)
+    initial_value = omnipool.cash_out(agent, market_prices)
+    final_value = arbed_pool.cash_out(arbed_agent, market_prices)
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2468,8 +2469,8 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
         sell_quantity=trade_size
     )
 
-    swap_alone_dai = oamm.cash_out_omnipool(swap_alone_state, swap_alone_agent, market_prices)
-    manipulated_dai = oamm.cash_out_omnipool(remove_state, remove_agent, market_prices)
+    swap_alone_dai = swap_alone_state.cash_out(swap_alone_agent, market_prices)
+    manipulated_dai = remove_state.cash_out(remove_agent, market_prices)
     profit = manipulated_dai - swap_alone_dai
     if profit > 0:
         raise
@@ -2560,8 +2561,8 @@ def test_withdraw_manipulation(
     final_state, final_agent = glob.pools['omnipool'], glob.agents['agent']
 
     profit = (
-            oamm.cash_out_omnipool(final_state, final_agent, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
+            final_state.cash_out(final_agent, market_prices)
+            - initial_state.cash_out(initial_agent, market_prices)
     )
 
     # transaction fees will not be less than 1e-6
@@ -2648,8 +2649,8 @@ def test_add_manipulation(
     sell_state, sell_agent = glob.pools['omnipool'], glob.agents['agent']
 
     profit = (
-            oamm.cash_out_omnipool(sell_state, sell_agent, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
+            sell_state.cash_out(sell_agent, market_prices)
+            - initial_state.cash_out(initial_agent, market_prices)
     )
 
     if profit > 0:
@@ -2736,18 +2737,18 @@ def test_trade_manipulation(
     )
 
     lp1_profit = (
-            oamm.cash_out_omnipool(trade_state_1, trade_agent_1, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
+            trade_state_1.cash_out(trade_agent_1, market_prices)
+            - initial_state.cash_out(initial_agent, market_prices)
     )
 
     lp2_profit = (
-            oamm.cash_out_omnipool(trade_state_2, trade_agent_2, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
+            trade_state_2.cash_out(trade_agent_2, market_prices)
+            - initial_state.cash_out(initial_agent, market_prices)
     )
 
     no_lp_profit = (
-            oamm.cash_out_omnipool(trade_state_3, trade_agent_3, market_prices)
-            - oamm.cash_out_omnipool(initial_state, initial_agent, market_prices)
+            trade_state_3.cash_out(trade_agent_3, market_prices)
+            - initial_state.cash_out(initial_agent, market_prices)
     )
 
     if lp1_profit > no_lp_profit and lp1_profit > 0 and trade_state_1.fail == '' and trade_state_3.fail == '':
@@ -2951,7 +2952,7 @@ def test_value_assets_without_equivalency_map():
     )
 
     assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000), 'LRNA': mpf(4000)}
-    val = initial_state.value_assets(assets, stablecoin='USD')
+    val = initial_state.value_assets(assets, numeraire='USD')
     if val != 100 + 2000 + 30000 + 4000:
         raise AssertionError(f'val {val} is incorrect')
 
@@ -2970,7 +2971,7 @@ def test_no_preferred_stablecoin():
 
     # assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000), 'LRNA': mpf(4000)}
     assets = {'HDX': mpf(1000), 'USD': mpf(2000), 'DOT': mpf(3000)}
-    val = initial_state.value_assets(assets, stablecoin='USD')
+    val = initial_state.value_assets(assets, numeraire='USD')
     # if val != 100 + 2000 + 30000 + 4000:
     if val != 100 + 2000 + 30000:
         raise AssertionError(f'val {val} is incorrect')
@@ -3099,7 +3100,7 @@ def test_cash_out_omnipool_exact():
     expected_cash = expected_r * prices[tkn]
     position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
     init_agent = Agent(nfts={'position': position})
-    cash = cash_out_omnipool(initial_state, init_agent, prices)
+    cash = initial_state.cash_out(init_agent, prices)
     if cash != pytest.approx(expected_cash, rel=1e-20):
         raise AssertionError(f'Removed liquidity should be equal to initial liquidity minus final liquidity.')
 
@@ -3107,7 +3108,7 @@ def test_cash_out_omnipool_exact():
     s = initial_state.shares[tkn] / 10
     position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
     init_agent = Agent(nfts={'position': position})
-    cash = cash_out_omnipool(initial_state, init_agent, prices)
+    cash = initial_state.cash_out(init_agent, prices)
 
     expected_agent_dq_pct = mpf(1) / 30 * (1 - initial_state.min_withdrawal_fee)
     expected_agent_dq = expected_agent_dq_pct * initial_state.lrna[tkn]
@@ -3131,7 +3132,7 @@ def test_cash_out_omnipool_exact():
     s = initial_state.shares[tkn] / 10
     position = OmnipoolLiquidityPosition(tkn, p, s, 0, initial_state.unique_id)
     init_agent = Agent(nfts={'position': position})
-    cash = cash_out_omnipool(initial_state, init_agent, prices)
+    cash = initial_state.cash_out(init_agent, prices)
 
     expected_dr_pct = mpf(2) / 30 * (1 - initial_state.min_withdrawal_fee)
     expected_dr = expected_dr_pct * initial_state.liquidity[tkn]
@@ -3157,7 +3158,7 @@ def test_cash_out_nft_position(price1: float):
     delta_r = initial_state.liquidity[tkn] / 5
     nft = OmnipoolLiquidityPosition(tkn, price1, amt1, delta_r, initial_state.unique_id)
     agent = Agent(holdings={}, nfts={'pos1': nft})
-    cash_out = cash_out_omnipool(initial_state, agent, {'DOT': dot_spot_price})
+    cash_out = initial_state.cash_out(agent, {'DOT': dot_spot_price})
 
     state = initial_state.copy()
     state.remove_liquidity(agent, tkn_remove=tkn)
@@ -3185,7 +3186,7 @@ def test_cash_out_nft_position_with_holdings(price1: float, price2: float, r: fl
     prices1 = {(initial_state.unique_id, tkn): price1}
     nft = OmnipoolLiquidityPosition(tkn, price2, amt2, 0, initial_state.unique_id)
     agent = Agent(holdings=holdings1, share_prices=prices1, nfts={'pos1': nft})
-    cash_out = cash_out_omnipool(initial_state, agent, {'DOT': dot_spot_price})
+    cash_out = initial_state.cash_out(agent, {'DOT': dot_spot_price})
 
     state = initial_state.copy()
     state.remove_liquidity(agent, tkn_remove=tkn)
@@ -3213,7 +3214,7 @@ def test_cash_out_multiple_positions_works_with_lrna(price1: float, price2: floa
     nft = OmnipoolLiquidityPosition(tkn, price2, amt2, 0, initial_state.unique_id)
     agent = Agent(holdings=holdings1, share_prices=prices1, nfts={'pos1': nft})
     spot_prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
-    cash_out = cash_out_omnipool(initial_state, agent, spot_prices)
+    cash_out = initial_state.cash_out(agent, spot_prices)
 
     state = initial_state.copy()
     state.remove_liquidity(agent, tkn_remove=tkn)
@@ -3246,7 +3247,7 @@ def test_cash_out_multiple_positions(trade_sizes: list[float]):
     spot_prices = {tkn: initial_state.price(initial_state, tkn, 'USD') for tkn in initial_state.asset_list}
     spot_prices['LRNA'] = oamm.usd_price(initial_state, 'LRNA')
 
-    cash_out_value = cash_out_omnipool(initial_state, agent1, spot_prices)
+    cash_out_value = initial_state.cash_out(agent1, spot_prices)
     cash_out_state = initial_state.copy()
     cash_out_agent = agent1.copy()
     cash_out_state.remove_liquidity(cash_out_agent, tkn_remove='DOT')
