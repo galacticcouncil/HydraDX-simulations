@@ -52,19 +52,13 @@ def test_convex():
         [mpf(10000000), mpf(10000000)]
     ]
 
-    reserves = list(map(np.array, reserves_list + intent_reserves))
+    # reserves = list(map(np.array, reserves_list + intent_reserves))
+    reserves = list(map(np.array, reserves_list))
+    reserves2 = list(map(np.array, intent_reserves))
 
     fees = [0.003] * 3
     # fees = [0.0] * 3
-    fees.extend([0.0]*len(intents))  # intents
-
-    # "Market value" of tokens (say, in a centralized exchange)
-    market_value = [
-        1,
-        0.01,
-        7.5,
-        1
-    ]
+    # fees.extend([0.0]*len(intents))  # intents
 
     profit_value = [1, 0, 0, 0]  # for taking profits in LRNA
 
@@ -82,22 +76,19 @@ def test_convex():
 
     # Build variables
     deltas = [cp.Variable(len(l), nonneg=False) for l in local_indices]
-    # lambdas = [cp.Variable(len(l), nonneg=True) for l in local_indices]
     intent_deltas = [cp.Variable(len(l), nonneg=False) for l in intent_indices]
-    # intent_lambdas = [cp.Variable(len(l), nonneg=True) for l in intent_indices]
 
-    # profits = [A_i @ (L - D) for A_i, D, L in zip(A, deltas + intent_deltas, lambdas + intent_lambdas)]  # assets from AMMs
     profits = [A_i @ (-D) for A_i, D, in zip(A, deltas + intent_deltas)]  # assets from AMMs
 
     psi = cp.sum(profits)
 
     # Objective is to maximize "total market value" of coins out
-    # obj = cp.Maximize(market_value @ psi)
     obj = cp.Maximize(profit_value @ psi)  # take profits in LRNA
 
     # Reserves after trade
-    # new_reserves = [R + (1-f_i) * D - L for R, f_i, D, L in zip(reserves, fees, deltas + intent_deltas, lambdas + intent_lambdas)]
-    new_reserves = [R + (1 - f_i) * D for R, f_i, D in zip(reserves, fees, deltas + intent_deltas)]
+    # new_reserves = [R + (1 - f_i) * D for R, f_i, D in zip(reserves, fees, deltas + intent_deltas)]
+    new_reserves = [R + (1 - f_i) * D for R, f_i, D in zip(reserves, fees, deltas)]
+    new_intent_reserves = [R + D for R, D in zip(reserves2, intent_deltas)]
 
     cons = [
         # Uniswap v2 pools
@@ -111,11 +102,9 @@ def test_convex():
 
     m_amm = len(local_indices)
     for i in range(len(intent_indices)):
-        # cons.append(intent_prices[i] * new_reserves[m_amm+i][0] + new_reserves[m_amm+i][1] == intent_prices[i] * new_reserves[m_amm+i][0] + new_reserves[m_amm+i][1])
         cons.append(intent_prices[i] * intent_deltas[i][0] + intent_deltas[i][1] == 0)
         cons.append(intent_deltas[i][0] <= 0)
-        # cons.append(intent_lambdas[i][1] == 0)
-        cons.append(new_reserves[m_amm+i] >= 0)
+        cons.append(new_intent_reserves[i] >= 0)
 
     # Set up and solve problem
     prob = cp.Problem(obj, cons)
