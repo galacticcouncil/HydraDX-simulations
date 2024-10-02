@@ -2,7 +2,7 @@ from pprint import pprint
 
 import numpy as np
 import cvxpy as cp
-
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
 
 
@@ -26,27 +26,11 @@ def convert_intents(intents, tkn_list):
     return intent_indices, intent_reserves, intent_prices
 
 
-def test_convex():
+def find_solution(state: OmnipoolState, intents: list):
 
-    # Problem data
+    tkn_list = ["LRNA"] + state.asset_list
 
-    intents = [
-        {'sell_quantity': 100, 'buy_limit': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT'},  # selling DOT for $7
-        {'sell_quantity': 1500, 'buy_limit': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX'},  # buying HDX for $0.015
-        {'sell_quantity': 400, 'buy_limit': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT'},  # buying DOT for $8
-        {'sell_quantity': 100, 'buy_limit': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT'},  # selling HDX for $1
-    ]
-
-    asset_list = ["HDX", "DOT", "USDT"]
-    tkn_list = ["LRNA"] + asset_list
-
-
-
-    reserves_list = [
-        [mpf(1000000), mpf(100000000)],  # LRNA, liquidity
-        [mpf(10000000), mpf(10000000/7.5)],  # spot price of DOT is $7.5
-        [mpf(10000000), mpf(10000000)]
-    ]
+    reserves_list = [[state.lrna[tkn], state.liquidity[tkn]] for tkn in state.lrna]
 
     fees = [0.003] * 3
 
@@ -55,7 +39,7 @@ def test_convex():
     # transform data for cvxpy
     intent_indices, intent_reserves, intent_prices = convert_intents(intents, tkn_list)
     global_indices = list(range(len(tkn_list)))
-    local_indices = [[0, i+1] for i in range(len(asset_list))]
+    local_indices = [[0, i+1] for i in range(len(state.asset_list))]
 
     reserves = list(map(np.array, reserves_list))
     reserves2 = list(map(np.array, intent_reserves))
@@ -110,6 +94,25 @@ def test_convex():
         else:  # intent deltas
             intent_deltas[i-1 - amm_ct] = prob.solution.primal_vars[i]
 
-    print(f"Total output value: {prob.value}")
+    return amm_deltas, intent_deltas
+
+def test_convex():
+
+    intents = [
+        {'sell_quantity': 100, 'buy_limit': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT'},  # selling DOT for $7
+        {'sell_quantity': 1500, 'buy_limit': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX'},  # buying HDX for $0.015
+        {'sell_quantity': 400, 'buy_limit': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT'},  # buying DOT for $8
+        {'sell_quantity': 100, 'buy_limit': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT'},  # selling HDX for $1
+    ]
+
+    liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}
+    lrna = {'HDX': mpf(1000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000)}
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        }
+    )
+
+    amm_deltas, intent_deltas = find_solution(initial_state, intents)
     pprint(amm_deltas)
     pprint(intent_deltas)
