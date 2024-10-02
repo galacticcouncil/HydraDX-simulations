@@ -1,10 +1,12 @@
+from pprint import pprint
+
 import numpy as np
 import cvxpy as cp
 
 from mpmath import mp, mpf
 
 
-def convert_intents_to_cvxpy(intents, tkn_list):
+def convert_intents(intents, tkn_list):
     tkn_map = {tkn: i for i, tkn in enumerate(tkn_list)}
 
     intent_indices = []
@@ -30,41 +32,36 @@ def test_convex():
 
     intents = [
         {'sell_quantity': 100, 'buy_limit': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT'},  # selling DOT for $7
-        # {'sell_quantity': 1500, 'buy_limit': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX'}
+        {'sell_quantity': 1500, 'buy_limit': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX'},  # buying HDX for $0.015
+        {'sell_quantity': 400, 'buy_limit': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT'},  # buying DOT for $8
+        {'sell_quantity': 100, 'buy_limit': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT'},  # selling HDX for $1
     ]
 
-    tkn_list = ["LRNA", "HDX", "DOT", "USDT"]
-
-    intent_indices, intent_reserves, intent_prices = convert_intents_to_cvxpy(intents, tkn_list)
-
-    global_indices = list(range(len(tkn_list)))
+    asset_list = ["HDX", "DOT", "USDT"]
+    tkn_list = ["LRNA"] + asset_list
 
 
-    local_indices = [  # AMMs
-        [0, 1],  # HDX
-        [0, 2],  # DOT
-        [0, 3]  # USDT
-    ]
 
     reserves_list = [
-        [mpf(1000000), mpf(100000000)],
+        [mpf(1000000), mpf(100000000)],  # LRNA, liquidity
         [mpf(10000000), mpf(10000000/7.5)],  # spot price of DOT is $7.5
         [mpf(10000000), mpf(10000000)]
     ]
 
-    # reserves = list(map(np.array, reserves_list + intent_reserves))
-    reserves = list(map(np.array, reserves_list))
-    reserves2 = list(map(np.array, intent_reserves))
-
     fees = [0.003] * 3
-    # fees = [0.0] * 3
-    # fees.extend([0.0]*len(intents))  # intents
 
     profit_value = [1, 0, 0, 0]  # for taking profits in LRNA
 
+    # transform data for cvxpy
+    intent_indices, intent_reserves, intent_prices = convert_intents(intents, tkn_list)
+    global_indices = list(range(len(tkn_list)))
+    local_indices = [[0, i+1] for i in range(len(asset_list))]
+
+    reserves = list(map(np.array, reserves_list))
+    reserves2 = list(map(np.array, intent_reserves))
+
     # Build local-global matrices
     n = len(global_indices)
-    m = len(local_indices + intent_indices)
 
     A = []
     for l in local_indices + intent_indices:
@@ -86,28 +83,33 @@ def test_convex():
     obj = cp.Maximize(profit_value @ psi)  # take profits in LRNA
 
     # Reserves after trade
-    # new_reserves = [R + (1 - f_i) * D for R, f_i, D in zip(reserves, fees, deltas + intent_deltas)]
     new_reserves = [R + (1 - f_i) * D for R, f_i, D in zip(reserves, fees, deltas)]
     new_intent_reserves = [R + D for R, D in zip(reserves2, intent_deltas)]
 
-    cons = [
-        # Uniswap v2 pools
-        cp.geo_mean(new_reserves[0]) >= cp.geo_mean(reserves[0]),
-        cp.geo_mean(new_reserves[1]) >= cp.geo_mean(reserves[1]),
-        cp.geo_mean(new_reserves[2]) >= cp.geo_mean(reserves[2]),
 
-        # Arbitrage constraint
-        psi >= 0
-    ]
+    cons = [psi >= 0]  # no negative profits
+    for i in range(len(reserves)):  # AMM invariants must not go down
+        cons.append(cp.geo_mean(new_reserves[i]) >= cp.geo_mean(reserves[i]))  # this doesn't account for fees correctly
 
-    m_amm = len(local_indices)
-    for i in range(len(intent_indices)):
-        cons.append(intent_prices[i] * intent_deltas[i][0] + intent_deltas[i][1] == 0)
-        cons.append(intent_deltas[i][0] <= 0)
-        cons.append(new_intent_reserves[i] >= 0)
+    for i in range(len(intent_indices)):  # intent constraints
+        cons.append(intent_prices[i] * intent_deltas[i][0] + intent_deltas[i][1] == 0)  # sale must be at set price
+        cons.append(intent_deltas[i][0] <= 0)  # cannot buy the sell asset
+        cons.append(new_intent_reserves[i][0] >= 0)  # cannot sell more than you have
 
     # Set up and solve problem
     prob = cp.Problem(obj, cons)
     prob.solve(verbose=True)
 
+    # extract solution
+    amm_ct = len(local_indices)
+    amm_deltas = [None] * amm_ct
+    intent_deltas = [None] * len(intent_indices)
+    for i in (prob.solution.primal_vars):
+        if i-1 < amm_ct:  # AMM deltas
+            amm_deltas[i-1] = prob.solution.primal_vars[i]
+        else:  # intent deltas
+            intent_deltas[i-1 - amm_ct] = prob.solution.primal_vars[i]
+
     print(f"Total output value: {prob.value}")
+    pprint(amm_deltas)
+    pprint(intent_deltas)
