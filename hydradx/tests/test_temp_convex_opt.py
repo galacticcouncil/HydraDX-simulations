@@ -2,8 +2,12 @@ from pprint import pprint
 
 import numpy as np
 import cvxpy as cp
+
+from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
+
+from hydradx.model.amm.omnix import validate_and_execute_solution
 
 
 def convert_intents(intents, tkn_list):
@@ -14,12 +18,8 @@ def convert_intents(intents, tkn_list):
     intent_prices = []
     for intent in intents:
         intent_indices.append([tkn_map[intent['tkn_sell']], tkn_map[intent['tkn_buy']]])
-        if 'sell_quantity' in intent:
-            sell_amt = intent['sell_quantity']
-            buy_amt = intent['buy_limit']
-        else:
-            sell_amt = intent['sell_limit']
-            buy_amt = intent['buy_quantity']
+        sell_amt = intent['sell_quantity']
+        buy_amt = intent['buy_quantity']
         intent_reserves.append([sell_amt, 0])
         intent_prices.append(buy_amt / sell_amt)
 
@@ -98,11 +98,18 @@ def find_solution(state: OmnipoolState, intents: list):
 
 def test_convex():
 
+    agents = [
+        Agent(holdings={'DOT': 100}),
+        Agent(holdings={'USDT': 1500}),
+        Agent(holdings={'USDT': 400}),
+        Agent(holdings={'HDX': 100}),
+    ]
+
     intents = [
-        {'sell_quantity': 100, 'buy_limit': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT'},  # selling DOT for $7
-        {'sell_quantity': 1500, 'buy_limit': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX'},  # buying HDX for $0.015
-        {'sell_quantity': 400, 'buy_limit': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT'},  # buying DOT for $8
-        {'sell_quantity': 100, 'buy_limit': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT'},  # selling HDX for $1
+        {'sell_quantity': 100, 'buy_quantity': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0]},  # selling DOT for $7
+        {'sell_quantity': 1500, 'buy_quantity': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX', 'agent': agents[1]},  # buying HDX for $0.015
+        {'sell_quantity': 400, 'buy_quantity': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[2]},  # buying DOT for $8
+        {'sell_quantity': 100, 'buy_quantity': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT', 'agent': agents[3]},  # selling HDX for $1
     ]
 
     liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}
@@ -114,5 +121,8 @@ def test_convex():
     )
 
     amm_deltas, intent_deltas = find_solution(initial_state, intents)
+
+    assert validate_and_execute_solution(initial_state, intents, intent_deltas)
+
     pprint(amm_deltas)
     pprint(intent_deltas)
