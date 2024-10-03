@@ -67,7 +67,9 @@ def validate_intents(intents: list, intent_deltas: list):
         intent = intents[i]
         sell_amt = -intent_deltas[i][0]
         assert 0 <= sell_amt <= intent['sell_quantity'], "amt processed is not in range"
-        # assert intent_deltas[i][1] / sell_amt >= intent['buy_quantity'] / intent['sell_quantity'], "price is not valid"  #TODO fix this with some tolerance
+        tolerance = 1e-6  # temporarily allowing some tolerance, only for testing purposes
+        if intent_deltas[i][1] / sell_amt < (1 - tolerance) * intent['buy_quantity'] / intent['sell_quantity']:
+            raise Exception("price is not within tolerance")
 
     return True
 
