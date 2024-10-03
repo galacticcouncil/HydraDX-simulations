@@ -29,12 +29,15 @@ def test_convex():
     initial_state = OmnipoolState(
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-        }
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
     )
+    initial_state.last_fee = {tkn: mpf(0.003) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0) for tkn in lrna}
 
-    amm_deltas, intent_deltas = find_solution(initial_state, intents)
+    intent_deltas = find_solution(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state, intents, intent_deltas)
 
-    pprint(amm_deltas)
     pprint(intent_deltas)
