@@ -8,7 +8,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
     process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
 from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool, save_omnipool, load_omnipool
@@ -88,7 +88,7 @@ def test_calculate_arb_amount_bid(
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    orig_price = initial_dex.price('DOT', 'USDT')
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = dex_price * (1 + cex_fee) * price_mult
     bid_quantity = 100000
@@ -177,7 +177,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    orig_price = initial_dex.price('DOT', 'USDT')
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = dex_price / (1 - cex_fee) * price_mult
     bid_quantity = 100000
@@ -445,8 +445,8 @@ def test_process_next_swap(
     bid_multiples = [0.999, 0.99, 0.9, 0.8]
     ask_multiples = [1.001, 1.01, 1.1, 1.2]
 
-    hdxusd_spot = initial_dex.price(initial_dex, 'HDX', 'USDT') * hdxusd_price_mult
-    dotusd_spot = initial_dex.price(initial_dex, 'DOT', 'USDT') * dotusd_price_mult
+    hdxusd_spot = initial_dex.price('HDX', 'USDT') * hdxusd_price_mult
+    dotusd_spot = initial_dex.price('DOT', 'USDT') * dotusd_price_mult
 
     initial_cex = CentralizedMarket(
         order_book={
@@ -504,7 +504,7 @@ def test_process_next_swap(
         }
 
         cex_swap, dex_swap = swap['cex'], swap['dex']
-        dex_spot = initial_dex.price(initial_dex, 'DOT', 'USDT')
+        dex_spot = initial_dex.price('DOT', 'USDT')
         if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
             raise AssertionError('Cex and dex swaps are not in the same pair.')
         cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
@@ -586,7 +586,7 @@ def test_get_arb_swaps(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -603,7 +603,7 @@ def test_get_arb_swaps(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -620,7 +620,7 @@ def test_get_arb_swaps(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -890,7 +890,7 @@ def test_stableswap_router_arbitrage():
             if asset in omnipool.asset_list:
                 # estimate value from omnipool price
                 profit['USD'] += (
-                    profit[asset] * lrna_price(omnipool, asset)
+                    profit[asset] * omnipool.lrna_price(asset)
                     / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
                 )
     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
