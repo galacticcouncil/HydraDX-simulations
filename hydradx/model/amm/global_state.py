@@ -290,10 +290,6 @@ def value_assets(prices: dict, assets: dict) -> float:
         for i in assets.keys()
     ])
 
-
-GlobalState.value_assets = staticmethod(value_assets)
-
-
 def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
     """
         Volatility is in the form of
