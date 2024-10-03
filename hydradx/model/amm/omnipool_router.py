@@ -45,7 +45,7 @@ class OmnipoolRouter:
             denom_subpool_share_price = self.exchanges[denom_pool_id].share_price(denomination)
             denom_adj = denom_pool_id
 
-        return denom_subpool_share_price * self.omnipool.price(self.omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
+        return denom_subpool_share_price * self.omnipool.price(tkn_adj, denom_adj) / tkn_subpool_share_price
 
     def buy_limit(self, tkn_buy, tkn_sell=None):
         return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges.values()])

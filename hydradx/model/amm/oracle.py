@@ -4,7 +4,7 @@ from .amm import AMM
 class Block:
     def __init__(self, input_state: AMM):
         self.liquidity = {tkn: input_state.liquidity[tkn] for tkn in input_state.asset_list}
-        self.price = {tkn: input_state.price(input_state, tkn) for tkn in input_state.asset_list}
+        self.price = {tkn: input_state.price(tkn) for tkn in input_state.asset_list}
         self.volume_in = {tkn: 0 for tkn in input_state.asset_list}
         self.volume_out = {tkn: 0 for tkn in input_state.asset_list}
         self.withdrawals = {tkn: 0 for tkn in input_state.asset_list}

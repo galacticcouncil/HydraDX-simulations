@@ -42,8 +42,7 @@ class AMM:
     def update(self):
         pass
 
-    @staticmethod
-    def price(state, tkn: str, denomination: str = '') -> float:
+    def price(self, tkn: str, denomination: str = '') -> float:
         return 0
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
