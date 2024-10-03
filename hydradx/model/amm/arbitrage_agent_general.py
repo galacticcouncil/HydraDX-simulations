@@ -61,6 +61,10 @@ def get_arb_swaps(
             }
             for ex_name, ex in exchanges.items()
         }
+    else:
+        # copy this so we don't mutate it
+        max_liquidity = {k: {k: v for (k, v) in v.items()} for (k, v) in max_liquidity.items()}
+
     arb_opps = get_arb_opps(exchanges, config, max_liquidity)
     all_swaps = []
     test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
