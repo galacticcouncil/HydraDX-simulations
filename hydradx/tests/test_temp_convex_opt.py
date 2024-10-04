@@ -18,10 +18,10 @@ def test_convex():
     ]
 
     intents = [
-        {'sell_quantity': 100, 'buy_quantity': 700, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0]},  # selling DOT for $7
-        {'sell_quantity': 1500, 'buy_quantity': 100000, 'tkn_sell': 'USDT', 'tkn_buy': 'HDX', 'agent': agents[1]},  # buying HDX for $0.015
-        {'sell_quantity': 400, 'buy_quantity': 50, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[2]},  # buying DOT for $8
-        {'sell_quantity': 100, 'buy_quantity': 100, 'tkn_sell': 'HDX', 'tkn_buy': 'USDT', 'agent': agents[3]},  # selling HDX for $1
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0]},  # selling DOT for $7
+        {'sell_quantity': mpf(1500), 'buy_quantity': mpf(100000), 'tkn_sell': 'USDT', 'tkn_buy': 'HDX', 'agent': agents[1]},  # buying HDX for $0.015
+        {'sell_quantity': mpf(400), 'buy_quantity': mpf(50), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[2]},  # buying DOT for $8
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(100), 'tkn_sell': 'HDX', 'tkn_buy': 'USDT', 'agent': agents[3]},  # selling HDX for $1
     ]
 
     liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}
@@ -33,8 +33,8 @@ def test_convex():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.003) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0) for tkn in lrna}
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     intent_deltas = find_solution(initial_state, intents)
 

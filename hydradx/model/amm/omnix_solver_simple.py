@@ -20,7 +20,7 @@ def convert_intents(intents, tkn_list):
     return intent_indices, intent_reserves, intent_prices
 
 
-def _find_solution_unrounded(state: OmnipoolState, intents: list):
+def _find_solution_unrounded(state: OmnipoolState, intents: list, amm_deltas: list = None):
 
     tkn_list = ["LRNA"] + state.asset_list
 
@@ -59,12 +59,13 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list):
         B.append(B_i)
 
     # Build variables
-    deltas = [cp.Variable(1, nonneg=True) for l in local_indices]
-    lambdas = [cp.Variable(1, nonneg=True) for l in local_indices]
-    lrna_deltas = [cp.Variable(1, nonneg=False) for l in local_indices]
-    intent_deltas = [cp.Variable(1, nonneg=True) for l in intent_indices]
+    deltas = [cp.Variable(1, nonneg=True, name="delta_" + tkn_list[l[1]]) for l in local_indices]
+    lambdas = [cp.Variable(1, nonneg=True, name="lambda_" + tkn_list[l[1]]) for l in local_indices]
+    lrna_deltas = [cp.Variable(1, nonneg=True, name="lrna_delta_" + tkn_list[l[1]]) for l in local_indices]  # net + lambda
+    lrna_lambdas = [cp.Variable(1, nonneg=True, name="lrna_lambda_" + tkn_list[l[1]]) for l in local_indices]
+    intent_deltas = [cp.Variable(1, nonneg=True, name="intent_delta_" + str(i)) for i, l in enumerate(intent_indices)]
 
-    profits = [A_i @ cp.hstack([Q[0], L[0] * (1-l) - D[0]]) for A_i, D, L, Q, l in zip(A, deltas, lambdas, lrna_deltas, lrna_fees)]  # assets from AMMs
+    profits = [A_i @ cp.hstack([(1-l) * qL[0] - qD[0], L[0] - D[0]]) for A_i, D, L, qD, qL, l in zip(A, deltas, lambdas, lrna_deltas, lrna_lambdas, lrna_fees)]  # assets from AMMs
     intent_profits = [B_i @ cp.hstack([D[0], -D[0] * p]) for B_i, D, p in zip(B, intent_deltas, intent_prices)]# assets from intents
     total_profits = profits + intent_profits
 
@@ -74,7 +75,7 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list):
     obj = cp.Maximize(profit_value @ psi)  # take profits in LRNA
 
     # Reserves after trade
-    new_reserves = [R + cp.hstack([-Q[0], D[0] - L[0] / (1 - f_i)]) for R, f_i, D, L, Q in zip(reserves, fees, deltas, lambdas, lrna_deltas)]
+    new_reserves = [R + cp.hstack([qD[0] - qL[0], D[0] - L[0] / (1 - f_i)]) for R, f_i, D, L, qD, qL in zip(reserves, fees, deltas, lambdas, lrna_deltas, lrna_lambdas)]
     new_intent_reserves = [R[0] - D[0] for R, D in zip(reserves2, intent_deltas)]
 
     cons = [psi >= 0]  # no negative profits
@@ -84,21 +85,32 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list):
     for i in range(len(intent_indices)):  # intent constraints
         cons.append(new_intent_reserves[i] >= 0)  # cannot sell more than you have
 
-    # we can constrain total amount in/out by total desired in/out of intents
-    # however these constraints are really only helpful to contain rounding errors
-    max_out = [0] * len(tkn_list)
-    max_in = [0] * len(tkn_list)
-    for intent in intents:
-        sell_amt = intent['sell_quantity']
-        buy_amt = intent['buy_quantity']
-        sell_i = tkn_list.index(intent['tkn_sell'])
-        buy_i = tkn_list.index(intent['tkn_buy'])
-        max_in[sell_i] += sell_amt
-        max_out[buy_i] += buy_amt
+    if amm_deltas is not None:
+        # build pos_indices and neg_indices
+        pos_indices = [i for i, delta in enumerate(amm_deltas) if delta[0] >= 0]  # asset going into AMM, LRNA going out
+        neg_indices = [i for i, delta in enumerate(amm_deltas) if delta[0] < 0]  # asset going out of AMM, LRNA going in
+        for i in pos_indices:
+            cons.append(lambdas[i] == 0)
+            cons.append(lrna_deltas[i] == 0)
+        for i in neg_indices:
+            cons.append(deltas[i] == 0)
+            cons.append(lrna_lambdas[i] == 0)
 
-    for i in range(len(tkn_list)):
-        cons.append(deltas[i-1][0] <= max_in[i])
-        cons.append(lambdas[i-1][0] <= max_out[i])
+    # # we can constrain total amount in/out by total desired in/out of intents
+    # # however these constraints are really only helpful to contain rounding errors
+    # max_out = [0] * len(tkn_list)
+    # max_in = [0] * len(tkn_list)
+    # for intent in intents:
+    #     sell_amt = intent['sell_quantity']
+    #     buy_amt = intent['buy_quantity']
+    #     sell_i = tkn_list.index(intent['tkn_sell'])
+    #     buy_i = tkn_list.index(intent['tkn_buy'])
+    #     max_in[sell_i] += sell_amt
+    #     max_out[buy_i] += buy_amt
+    #
+    # for i in range(len(tkn_list)):
+    #     cons.append(deltas[i-1][0] <= max_in[i])
+    #     cons.append(lambdas[i-1][0] <= max_out[i])
 
     # Set up and solve problem
     prob = cp.Problem(obj, cons)
@@ -106,14 +118,14 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list):
 
     # extract solution
     amm_ct = len(local_indices)
-    amm_deltas = [None] * amm_ct
+    new_amm_deltas = [None] * amm_ct
     exec_intent_deltas = [None] * len(intent_indices)
     for i in range(amm_ct):
-        amm_deltas[i] = prob.solution.primal_vars[i+1] - prob.solution.primal_vars[amm_ct+i+1]
+        new_amm_deltas[i] = prob.var_dict['delta_' + tkn_list[i+1]].value - prob.var_dict['lambda_' + tkn_list[i+1]].value
     for i in range(len(intent_indices)):
-        exec_intent_deltas[i] = -prob.solution.primal_vars[3*amm_ct+i+1]
+        exec_intent_deltas[i] = -prob.var_dict['intent_delta_' + str(i)].value
 
-    return amm_deltas, exec_intent_deltas
+    return new_amm_deltas, exec_intent_deltas
 
 
 def round_solution(intents, intent_deltas, tolerance=0.0001):
@@ -139,5 +151,6 @@ def add_buy_deltas(intents, sell_deltas):
 
 def find_solution(state: OmnipoolState, intents: list):
     amm_deltas, intent_deltas = _find_solution_unrounded(state, intents)
+    amm_deltas, intent_deltas = _find_solution_unrounded(state, intents, amm_deltas)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
