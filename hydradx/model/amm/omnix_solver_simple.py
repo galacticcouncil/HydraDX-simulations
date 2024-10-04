@@ -20,7 +20,10 @@ def convert_intents(intents, tkn_list):
     return intent_indices, intent_reserves, intent_prices
 
 
-def _find_solution_unrounded(state: OmnipoolState, intents: list, amm_deltas: list = None):
+def _find_solution_unrounded(state: OmnipoolState, intents: list, flags: dict = None) -> (dict, list):
+
+    if flags is None:
+        flags = {}
 
     tkn_list = ["LRNA"] + state.asset_list
 
@@ -59,10 +62,29 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list, amm_deltas: li
         B.append(B_i)
 
     # Build variables
-    deltas = [cp.Variable(1, nonneg=True, name="delta_" + tkn_list[l[1]]) for l in local_indices]
-    lambdas = [cp.Variable(1, nonneg=True, name="lambda_" + tkn_list[l[1]]) for l in local_indices]
-    lrna_deltas = [cp.Variable(1, nonneg=True, name="lrna_delta_" + tkn_list[l[1]]) for l in local_indices]  # net + lambda
-    lrna_lambdas = [cp.Variable(1, nonneg=True, name="lrna_lambda_" + tkn_list[l[1]]) for l in local_indices]
+    deltas, lambdas, lrna_deltas, lrna_lambdas = [], [], [], []
+    for tkn in state.asset_list:
+        if tkn not in flags:
+            deltas.append(cp.Variable(1, nonneg=True, name="delta_" + tkn))
+            lambdas.append(cp.Variable(1, nonneg=True, name="lambda_" + tkn))
+            lrna_deltas.append(cp.Variable(1, nonneg=True, name="lrna_delta_" + tkn))
+            lrna_lambdas.append(cp.Variable(1, nonneg=True, name="lrna_lambda_" + tkn))
+        elif flags[tkn] == 1:  # asset going into Omnipool
+            deltas.append(cp.Variable(1, nonneg=True, name="delta_" + tkn))
+            lambdas.append(cp.Constant(np.zeros(1)))
+            lrna_deltas.append(cp.Constant(np.zeros(1)))
+            lrna_lambdas.append(cp.Variable(1, nonneg=True, name="lrna_lambda_" + tkn))
+        elif flags[tkn] == -1:  # asset going out of Omnipool
+            deltas.append(cp.Constant(np.zeros(1)))
+            lambdas.append(cp.Variable(1, nonneg=True, name="lambda_" + tkn))
+            lrna_deltas.append(cp.Variable(1, nonneg=True, name="lrna_delta_" + tkn))
+            lrna_lambdas.append(cp.Constant(np.zeros(1)))
+        else:  # no change in asset
+            deltas.append(cp.Constant(np.zeros(1)))
+            lambdas.append(cp.Constant(np.zeros(1)))
+            lrna_deltas.append(cp.Constant(np.zeros(1)))
+            lrna_lambdas.append(cp.Constant(np.zeros(1)))
+
     intent_deltas = [cp.Variable(1, nonneg=True, name="intent_delta_" + str(i)) for i, l in enumerate(intent_indices)]
 
     profits = [A_i @ cp.hstack([(1-l) * qL[0] - qD[0], L[0] - D[0]]) for A_i, D, L, qD, qL, l in zip(A, deltas, lambdas, lrna_deltas, lrna_lambdas, lrna_fees)]  # assets from AMMs
@@ -80,21 +102,22 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list, amm_deltas: li
 
     cons = [psi >= 0]  # no negative profits
     for i in range(len(reserves)):  # AMM invariants must not go down
-        cons.append(cp.geo_mean(new_reserves[i]) >= cp.geo_mean(reserves[i]))
+        tkn = state.asset_list[i]
+        if tkn not in flags or flags[tkn] != 0:
+            cons.append(cp.geo_mean(new_reserves[i]) >= cp.geo_mean(reserves[i]))
 
     for i in range(len(intent_indices)):  # intent constraints
         cons.append(new_intent_reserves[i] >= 0)  # cannot sell more than you have
 
-    if amm_deltas is not None:
-        # build pos_indices and neg_indices
-        pos_indices = [i for i, delta in enumerate(amm_deltas) if delta[0] >= 0]  # asset going into AMM, LRNA going out
-        neg_indices = [i for i, delta in enumerate(amm_deltas) if delta[0] < 0]  # asset going out of AMM, LRNA going in
-        for i in pos_indices:
-            cons.append(lambdas[i] == 0)
-            cons.append(lrna_deltas[i] == 0)
-        for i in neg_indices:
-            cons.append(deltas[i] == 0)
-            cons.append(lrna_lambdas[i] == 0)
+    # # build pos_indices and neg_indices
+    # pos_indices = [state.asset_list.index(tkn) for tkn in flags if flags[tkn] >= 0]  # asset going into AMM, LRNA going out
+    # neg_indices = [state.asset_list.index(tkn) for tkn in flags if flags[tkn] < 0]  # asset going out of AMM, LRNA going in
+    # for i in pos_indices:
+    #     cons.append(lambdas[i] == 0)
+    #     cons.append(lrna_deltas[i] == 0)
+    # for i in neg_indices:
+    #     cons.append(deltas[i] == 0)
+    #     cons.append(lrna_lambdas[i] == 0)
 
     # # we can constrain total amount in/out by total desired in/out of intents
     # # however these constraints are really only helpful to contain rounding errors
@@ -118,10 +141,13 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list, amm_deltas: li
 
     # extract solution
     amm_ct = len(local_indices)
-    new_amm_deltas = [None] * amm_ct
+    new_amm_deltas = {}
     exec_intent_deltas = [None] * len(intent_indices)
     for i in range(amm_ct):
-        new_amm_deltas[i] = prob.var_dict['delta_' + tkn_list[i+1]].value - prob.var_dict['lambda_' + tkn_list[i+1]].value
+        tkn = tkn_list[i+1]
+        new_amm_deltas[tkn] = 0
+        new_amm_deltas[tkn] += prob.var_dict['delta_' + tkn].value if 'delta_' + tkn in prob.var_dict else 0
+        new_amm_deltas[tkn] -= prob.var_dict['lambda_' + tkn].value if 'lambda_' + tkn in prob.var_dict else 0
     for i in range(len(intent_indices)):
         exec_intent_deltas[i] = -prob.var_dict['intent_delta_' + str(i)].value
 
@@ -142,15 +168,29 @@ def round_solution(intents, intent_deltas, tolerance=0.0001):
     return deltas
 
 
-def add_buy_deltas(intents, sell_deltas):
+def add_buy_deltas(intents, sell_deltas) -> list:
     deltas = []
     for i in range(len(intents)):
         deltas.append([sell_deltas[i], -sell_deltas[i] * intents[i]['buy_quantity'] / intents[i]['sell_quantity']])
     return deltas
 
 
-def find_solution(state: OmnipoolState, intents: list):
+def get_directional_flags(amm_deltas: dict) -> list:
+    flags = {}
+    for tkn in amm_deltas:
+        delta = amm_deltas[tkn]
+        if delta > 0:
+            flags[tkn] = 1
+        elif delta < 0:
+            flags[tkn] = -1
+        else:
+            flags[tkn] = 0
+    return flags
+
+
+def find_solution(state: OmnipoolState, intents: list) -> list:
     amm_deltas, intent_deltas = _find_solution_unrounded(state, intents)
-    amm_deltas, intent_deltas = _find_solution_unrounded(state, intents, amm_deltas)
+    flags = get_directional_flags(amm_deltas)
+    amm_deltas, intent_deltas = _find_solution_unrounded(state, intents, flags)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
