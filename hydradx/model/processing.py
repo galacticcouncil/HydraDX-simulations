@@ -863,6 +863,7 @@ def get_historical_omnipool_balance(tkn, date=None, block=None, end_date=None) -
             os.listdir('.')
         ))
     file_ls = find_data_files()
+    file_ls.sort()
     file_name = ''
     # see if the date or block they want is included in existing data
     with open(file_ls[-1]) as f:
