@@ -718,6 +718,7 @@ def get_omnipool_balance_history():
     # load what we have so far
     all_data = []
     file_ls = os.listdir('.')
+    file_ls.sort()
     for filename in file_ls:
         if filename.startswith('omnipool_history'):
             print(f'loading {filename}')
