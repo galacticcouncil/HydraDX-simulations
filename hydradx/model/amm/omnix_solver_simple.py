@@ -32,7 +32,7 @@ def _find_solution_unrounded(state: OmnipoolState, intents: list, flags: dict = 
     fees = [state.last_fee[tkn] for tkn in state.asset_list]
     lrna_fees = [state.last_lrna_fee[tkn] for tkn in state.asset_list]
 
-    profit_value = [1, 0, 0, 0]  # for taking profits in LRNA
+    profit_value = [1] + [0] * len(state.asset_list)  # for taking profits in LRNA
 
     # transform data for cvxpy
     intent_indices, intent_reserves, intent_prices = convert_intents(intents, tkn_list)
