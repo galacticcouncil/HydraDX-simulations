@@ -99,12 +99,12 @@ def execute_solution(
     # execute swaps against Omnipool
     lrna_deltas = {tkn: 0 for tkn in deltas}
     for tkn in deltas:  # first do sells to accumulate LRNA
-        if deltas[tkn]["in"] > deltas[tkn]["out"]:
+        if tkn != 'LRNA' and deltas[tkn]["in"] > deltas[tkn]["out"]:
             init_lrna = omnipool.lrna[tkn]
             omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
             lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
     for tkn in deltas:  # next sell LRNA back for tokens
-        if deltas[tkn]["in"] < deltas[tkn]["out"]:
+        if tkn != 'LRNA' and deltas[tkn]["in"] < deltas[tkn]["out"]:
             init_lrna = omnipool.lrna[tkn]
             omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
             lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
