@@ -1851,7 +1851,7 @@ def test_LP_delta_r(lp_amount, omnipool: oamm.OmnipoolState):
 def test_volatility_limit(omnipool: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
     omnipool.add_liquidity(agent, quantity=1000, tkn_add='HDX')
-    omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
+    omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=mpf(omnipool.liquidity['HDX'] / 200))
     omnipool.remove_liquidity(agent, quantity=1000, tkn_remove='HDX')
 
     if not omnipool.fail:
