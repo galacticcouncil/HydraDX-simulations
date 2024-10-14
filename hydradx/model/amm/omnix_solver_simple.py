@@ -241,7 +241,7 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
     amm_coefs = sparse.csc_matrix((m, 4*n))
     d_coefs = sparse.identity(m, format='csc')
     A2 = sparse.hstack([amm_coefs, d_coefs], format='csc')
-    b2 = np.array([float(intent['sell_quantity']/state.liquidity[intent['tkn_sell']]) for intent in intents])
+    b2 = np.array([float(intent['sell_quantity']/scaling[intent['tkn_sell']]) for intent in intents])
     cone2 = cb.NonnegativeConeT(m)
 
     # leftover must be higher than required fees
@@ -289,7 +289,7 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
         tkn = tkn_list[i+1]
         new_amm_deltas[tkn] = (x[2*n+i] - x[3*n+i]) * asset_reserves[i]
     for i in range(len(intents)):
-        exec_intent_deltas[i] = -x[4*n+i] * state.liquidity[intents[i]['tkn_sell']]
+        exec_intent_deltas[i] = -x[4*n+i] * scaling[intents[i]['tkn_sell']]
 
     return new_amm_deltas, exec_intent_deltas
 
@@ -338,7 +338,5 @@ def find_solution(state: OmnipoolState, intents: list) -> list:
 
 def find_solution2(state: OmnipoolState, intents: list) -> list:
     amm_deltas, intent_deltas = _find_solution_unrounded2(state, intents)
-    # flags = get_directional_flags(amm_deltas)
-    # amm_deltas, intent_deltas = _find_solution_unrounded(state, intents, flags)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)

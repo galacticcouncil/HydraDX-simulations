@@ -109,7 +109,7 @@ def test_with_lrna_intent():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution(initial_state, intents)
+    intent_deltas = find_solution2(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state, intents, intent_deltas)
 
