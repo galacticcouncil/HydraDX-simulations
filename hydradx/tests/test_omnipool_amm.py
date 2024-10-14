@@ -452,12 +452,12 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
     initial_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
-    old_state, old_agent = initial_state.copy(), initial_agent.copy()
     # add LP shares to the pool
-    old_state.add_liquidity(
-        agent=old_agent,
+    old_state, old_agent = oamm.simulate_add_liquidity(
+        old_agent=initial_agent,
+        old_state=initial_state,
         tkn_add=i,
-        quantity=1
+        quantity=1000
     )
 
     p_init = oamm.lrna_price(old_state, i)
