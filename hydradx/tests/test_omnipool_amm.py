@@ -3,6 +3,7 @@ import math
 
 import pytest
 from hypothesis import given, strategies as st, assume, settings, Verbosity
+import mpmath
 from mpmath import mp, mpf
 
 from hydradx.model import run, processing
@@ -1373,6 +1374,43 @@ def test_dynamic_fees(hdx_price: float):
         raise AssertionError('Asset fee should decrease with time.')
     if not final_usd_lrna_fee < intermediate_usd_lrna_fee:
         raise AssertionError('LRNA fee should decrease with time.')
+
+
+def test_dynamic_fee_multiple_block_update():
+    init_vol_out = mpf(100)
+    init_vol_in = 0
+    W = mpf(0.2)
+    a = 1
+    d = mpf(0.00001)
+    init_liq = mpf(10000)
+    init_liq_oracle = mpf(10000)
+    R = init_liq - init_vol_out
+    num_blocks = 1000
+    init_fee = mpf(0.0025)
+    fee_min = mpf(0.0025)
+    fee_max = mpf(0.1)
+    fee = init_fee
+    vol_out_oracle = init_vol_out
+    vol_in_oracle = init_vol_in
+    liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
+    for i in range(num_blocks):
+        x = (vol_out_oracle - vol_in_oracle) / liquidity_oracle
+        delta_fee = a * x - d
+        fee = min(max(fee + delta_fee, fee_min), fee_max)
+        # oracle updates
+        vol_out_oracle = vol_out_oracle * (1 - W)
+        vol_in_oracle = vol_in_oracle * (1 - W)
+        liquidity_oracle = W * R + (1-W) * liquidity_oracle
+
+
+    vol_out_oracle = init_vol_out
+    vol_in_oracle = init_vol_in
+    liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
+    decays = [mpmath.power(1-W, i) for i in range(num_blocks)]
+    mult = sum([decays[j] / (1 + (liquidity_oracle - R)/R * decays[j]) for j in range(num_blocks)])
+    delta_fee = a * (vol_out_oracle - vol_in_oracle) / R * mult - d * num_blocks
+    fee2 = min(max(init_fee + delta_fee, fee_min), fee_max)
+    assert fee == pytest.approx(fee2, rel=1e-20)
 
 
 @given(
