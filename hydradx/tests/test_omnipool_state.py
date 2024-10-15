@@ -307,7 +307,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
                 agent=withdraw_agent,
                 tkn_sell='LRNA',
                 tkn_buy=tkn,
-                sell_quantity=delta_q
+                sell_quantity=min(delta_q, withdraw_agent.holdings['LRNA'])
             )
             lrna_profits[tkn] = withdraw_agent.holdings[tkn] - agent_holdings
 

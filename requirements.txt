@@ -17,3 +17,5 @@ zipp
 requests~=2.31.0
 python-dotenv
 hydradx-api~=0.3.1
+python-dateutil~=2.8.1
+gdown~=5.2.0

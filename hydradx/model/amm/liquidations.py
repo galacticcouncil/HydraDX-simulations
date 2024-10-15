@@ -1,6 +1,6 @@
 import copy
 
-from hydradx.model.amm.agents import Agent
+from .agents import Agent
 
 
 class CDP:

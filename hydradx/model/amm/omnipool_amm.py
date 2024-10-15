@@ -96,8 +96,8 @@ class OmnipoolState(AMM):
                 token,
                 liquidity=pool['liquidity'],
                 lrna=lrna,
-                shares=pool['liquidity'],
-                protocol_shares=pool['liquidity'],
+                shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
+                protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
@@ -447,9 +447,9 @@ class OmnipoolState(AMM):
             )
 
         elif tkn_sell == 'LRNA':
-            return_val = self.lrna_swap(agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
+            return_val = self._lrna_swap(agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
         elif tkn_buy == 'LRNA':
-            return_val = self.lrna_swap(agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
+            return_val = self._lrna_swap(agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
 
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
@@ -530,7 +530,7 @@ class OmnipoolState(AMM):
             self.current_block.price[tkn_sell] = self.lrna[tkn_sell] / self.liquidity[tkn_sell]
         return return_val
 
-    def lrna_swap(
+    def _lrna_swap(
             self,
             agent: Agent,
             delta_ra: float = 0,
@@ -543,9 +543,10 @@ class OmnipoolState(AMM):
         """
 
         if delta_qa < 0:
+            # selling LRNA
             asset_fee = self.asset_fee[tkn].compute()
-            if -delta_qa + self.lrna[tkn] <= 0:
-                return self.fail_transaction('insufficient lrna in pool', agent)
+            if delta_qa + agent.holdings['LRNA'] < 0:
+                return self.fail_transaction('Agent has insufficient lrna', agent)
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
 
             delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct
@@ -559,6 +560,7 @@ class OmnipoolState(AMM):
             self.liquidity[tkn] += -delta_ra
 
         elif delta_ra > 0:
+            # buying asset
             asset_fee = self.asset_fee[tkn].compute()
             if -delta_ra + self.liquidity[tkn] <= 0:
                 return self.fail_transaction('insufficient assets in pool', agent)
@@ -576,6 +578,7 @@ class OmnipoolState(AMM):
 
         # buying LRNA
         elif delta_qa > 0:
+            # buying LRNA
             lrna_fee = self.lrna_fee[tkn].compute()
             delta_qi = -delta_qa / (1 - lrna_fee)
             if delta_qi + self.lrna[tkn] <= 0:
@@ -583,7 +586,7 @@ class OmnipoolState(AMM):
             delta_ra = -self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
             if agent.holdings[tkn] < -delta_ra:
                 return self.fail_transaction('Agent has insufficient assets', agent)
-            self.lrna[tkn] += delta_qi
+            self.lrna[tkn] += delta_qi  # burn the LRNA fee
             self.liquidity[tkn] += -delta_ra
             # if modify_imbalance:
             #     self.lrna_imbalance += - delta_qi * (q + l) / (q + delta_qi) - delta_qi
@@ -595,8 +598,8 @@ class OmnipoolState(AMM):
             self.lrna["HDX"] += lrna_fee_amt - delta_l
 
         elif delta_ra < 0:
+            # selling asset
             lrna_fee = self.lrna_fee[tkn].compute()
-            # delta_ri = -delta_ra
             if delta_ra > agent.holdings[tkn]:
                 return self.fail_transaction('agent has insufficient assets', agent)
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
@@ -639,7 +642,7 @@ class OmnipoolState(AMM):
                 sub_pool = self.sub_pools[sub_pool_buy_id]
                 # buy a specific quantity of a stableswap asset using LRNA
                 shares_needed = sub_pool.calculate_withdrawal_shares(tkn_remove=tkn_buy, quantity=buy_quantity)
-                self.lrna_swap(agent, delta_ra=shares_needed, tkn=sub_pool.unique_id)
+                self._lrna_swap(agent, delta_ra=shares_needed, tkn=sub_pool.unique_id)
                 if self.fail:
                     # if the swap failed, the transaction failed.
                     return self.fail_transaction(self.fail, agent)
@@ -1112,11 +1115,6 @@ class OmnipoolState(AMM):
         If quantity is unspecified and nft_id is unspecified, remove all liquidity.
         """
 
-        # if i is None:
-        #     k = (self.unique_id, tkn_remove)
-        # else:
-        #     k = (self.unique_id + "_" + str(i), tkn_remove)
-
         k = (self.unique_id, tkn_remove)
         if nft_id is not None:
             if nft_id not in agent.nfts:
@@ -1342,23 +1340,6 @@ def swap_lrna_delta_Ri(state: OmnipoolState, delta_qi: float, i: str) -> float:
 
 def weight_i(state: OmnipoolState, i: str) -> float:
     return state.lrna[i] / state.lrna_total
-
-
-def simulate_swap_lrna(
-        old_state: OmnipoolState,
-        old_agent: Agent,
-        delta_ra: float = 0,
-        delta_qa: float = 0,
-        tkn: str = '',
-        modify_imbalance: bool = True
-) -> tuple[OmnipoolState, Agent]:
-    """Compute new state after LRNA swap"""
-
-    new_state = old_state.copy()
-    new_agent = old_agent.copy()
-
-    new_state.lrna_swap(new_agent, delta_ra, delta_qa, tkn, modify_imbalance)
-    return new_state, new_agent
 
 
 def simulate_swap(

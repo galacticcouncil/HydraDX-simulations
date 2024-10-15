@@ -8,7 +8,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
     process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
 from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool, save_omnipool, load_omnipool
@@ -882,6 +882,17 @@ def test_stableswap_router_arbitrage():
     initial_agent = agent.copy()
     execute_arb(exchanges, agent, swaps)
     profit = calculate_profit(initial_agent, agent, equivalency_map)
+    for asset in profit:
+        if asset not in exchanges['binance'].asset_list and (
+                asset not in equivalency_map or equivalency_map[asset] not in exchanges['binance'].asset_list):
+            if 'USD' not in profit:
+                profit['USD'] = 0
+            if asset in omnipool.asset_list:
+                # estimate value from omnipool price
+                profit['USD'] += (
+                    profit[asset] * lrna_price(omnipool, asset)
+                    / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
+                )
     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
     print(profit_total)
     if profit_total <= 0:
