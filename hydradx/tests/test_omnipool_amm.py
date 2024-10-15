@@ -2027,7 +2027,7 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
 
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
 
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
+    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list + ['LRNA']}
     agent = Agent(holdings=holdings)
 
     swap_state, swap_agent = oamm.simulate_swap(
