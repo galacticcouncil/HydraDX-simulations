@@ -186,32 +186,62 @@ def _calculate_tau_phi(intents: list, tkn_list: list, scaling: dict = None) -> t
     for j, intent in enumerate(intents):
         sell_i = tkn_list.index(intent['tkn_sell'])
         buy_i = tkn_list.index(intent['tkn_buy'])
-        if scaling is not None and intent['tkn_sell'] in scaling:
-            tau[sell_i, j] = scaling[intent['tkn_sell']]
-            phi[buy_i, j] = scaling[intent['tkn_sell']]
+        if scaling is not None:
+            if intent['tkn_sell'] in scaling:
+                tau[sell_i, j] = scaling[intent['tkn_sell']]['asset']
+                phi[buy_i, j] = scaling[intent['tkn_sell']]['asset']
+            elif intent['tkn_sell'] == "LRNA":
+                tau[sell_i, j] = scaling[intent['tkn_sell']]['lrna']
+                phi[buy_i, j] = scaling[intent['tkn_sell']]['lrna']
         else:
             tau[sell_i, j] = 1
             phi[buy_i, j] = 1
     return tau, phi
 
 
+def _calculate_scaling(intents: list, state: OmnipoolState, asset_list: list):
+    scaling = {tkn: {'asset': 0, 'lrna': 0} for tkn in asset_list}
+    for intent in intents:
+        if intent['tkn_sell'] != "LRNA":
+            scaling[intent['tkn_sell']]['asset'] = max(scaling[intent['tkn_sell']]["asset"], intent['sell_quantity'])
+        if intent['tkn_buy'] != "LRNA":
+            scaling[intent['tkn_buy']]['asset'] = max(scaling[intent['tkn_buy']]["asset"], intent['buy_quantity'])
+    for tkn in scaling:
+        if scaling[tkn]["asset"] == 0:
+            scaling[tkn]["asset"] = 1
+        else:
+            scaling[tkn]["asset"] = min(scaling[tkn]["asset"], state.liquidity[tkn])
+        # set scaling for LRNA equal to scaling for asset, adjusted by spot price
+        scaling[tkn]["lrna"] = scaling[tkn]["asset"] * state.lrna[tkn] / state.liquidity[tkn]
+        scaling[tkn]["lrna"] = min(scaling[tkn]["lrna"], state.lrna[tkn])
+    return scaling
+
+
 def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, list):
 
-    tkn_list = ["LRNA"] + state.asset_list
+    asset_list = []
+    for intent in intents:
+        if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
+            asset_list.append(intent['tkn_sell'])
+        if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
+            asset_list.append(intent['tkn_buy'])
 
-    lrna_reserves = [float(state.lrna[tkn]) for tkn in state.asset_list]
-    asset_reserves = [float(state.liquidity[tkn]) for tkn in state.asset_list]
+    tkn_list = ["LRNA"] + asset_list
 
-    fees = [float(state.last_fee[tkn]) for tkn in state.asset_list]  # f_i
-    lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in state.asset_list]  # l_i
+    lrna_reserves = [float(state.lrna[tkn]) for tkn in asset_list]
+    asset_reserves = [float(state.liquidity[tkn]) for tkn in asset_list]
 
-    n = len(state.asset_list)
+    fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
+    lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in asset_list]  # l_i
+
+    n = len(asset_list)
     m = len(intents)
     k = 4 * n + m
 
     # calculate tau, phi
-    scaling = {tkn: state.liquidity[tkn] for tkn in state.liquidity}
-    scaling['LRNA'] = state.lrna_total
+    # scaling = {tkn: state.liquidity[tkn] for tkn in state.liquidity}
+    # scaling['LRNA'] = state.lrna_total
+    scaling = _calculate_scaling(intents, state, asset_list)
     tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
 
     #----------------------------#
@@ -241,7 +271,8 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
     amm_coefs = sparse.csc_matrix((m, 4*n))
     d_coefs = sparse.identity(m, format='csc')
     A2 = sparse.hstack([amm_coefs, d_coefs], format='csc')
-    b2 = np.array([float(intent['sell_quantity']/scaling[intent['tkn_sell']]) for intent in intents])
+    intent_scalars = [scaling[i['tkn_buy']]['lrna'] if i['tkn_sell'] == "LRNA" else scaling[i['tkn_sell']]['asset'] for i in intents]
+    b2 = np.array([float(intents[i]['sell_quantity']/intent_scalars[i]) for i in range(len(intents))])
     cone2 = cb.NonnegativeConeT(m)
 
     # leftover must be higher than required fees
@@ -289,7 +320,7 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
         tkn = tkn_list[i+1]
         new_amm_deltas[tkn] = (x[2*n+i] - x[3*n+i]) * asset_reserves[i]
     for i in range(len(intents)):
-        exec_intent_deltas[i] = -x[4*n+i] * scaling[intents[i]['tkn_sell']]
+        exec_intent_deltas[i] = -x[4 * n + i] * intent_scalars[i]
 
     return new_amm_deltas, exec_intent_deltas
 
