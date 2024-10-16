@@ -219,7 +219,7 @@ def test_with_lrna_intent():
 def test_solver_with_real_omnipool():
     agents = [
         Agent(holdings={'HDX': 100}),
-        Agent(holdings={'CRUST': 5}),
+        Agent(holdings={'CRU': 5}),
     ]
 
     intents = [
