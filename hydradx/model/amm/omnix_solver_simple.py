@@ -223,9 +223,12 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
 
     lrna_reserves = [float(state.lrna[tkn]) for tkn in asset_list]
     asset_reserves = [float(state.liquidity[tkn]) for tkn in asset_list]
+    intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in intents]
 
     fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
     lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in asset_list]  # l_i
+    fee_match = 0.0005
+    assert fee_match <= min(fees)  # breaks otherwise
 
     n = len(asset_list)
     m = len(intents)
@@ -243,13 +246,16 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
 
     P = sparse.csc_matrix((k, k))
 
+    spot_prices = [1] + [float(state.lrna[tkn] / state.liquidity[tkn]) for tkn in asset_list]
+
     delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
-    lambda_lrna_coefs = np.array(lrna_fees) - 1
-    zero_coefs = np.zeros(2 * n)
-    d_coefs = -(tau[0, :].toarray()[0])
+    lambda_lrna_coefs = -np.ones(n)
+    delta_coefs = np.array([spot_prices[i+1] for i in range(n)])
+    lambda_coefs = np.array([(fees[i] - 1) * spot_prices[i+1] for i in range(n)])
+    d_coefs = np.array([sum([(phi[i,j]*intent_prices[j] - tau[i,j])*spot_prices[i] for i in range(n+1)]) for j in range(m)])
 
     # Concatenate the segments to form q
-    q = np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, zero_coefs, d_coefs])
+    q = np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, delta_coefs, lambda_coefs, d_coefs])
 
     #----------------------------#
     #        CONSTRAINTS         #
@@ -269,14 +275,17 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
 
     # leftover must be higher than required fees
     # LRNA
-    A30 = sparse.csc_matrix(q)
+    delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
+    lambda_lrna_coefs = np.array(lrna_fees) - 1
+    zero_coefs = np.zeros(2 * n)
+    d_coefs = -(tau[0, :].toarray()[0])
+    A30 = sparse.csc_matrix(np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, zero_coefs, d_coefs]))
     b30 = np.zeros(1)
     # other assets
-    intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in intents]
     lrna_coefs = sparse.csc_matrix((n, 2*n))
     delta_coefs = sparse.identity(n, format='csc')
-    lambda_coefs = sparse.diags(np.array(fees)-1, format='csc')
-    d_coefs = sparse.csc_matrix([[phi[i,j]*intent_prices[j] - tau[i, j] for j in range(m)] for i in range(1,n+1)])
+    lambda_coefs = sparse.diags(np.array(fees)-fee_match-1, format='csc')
+    d_coefs = sparse.csc_matrix([[1/(1-fee_match)*phi[i,j]*intent_prices[j] - tau[i, j] for j in range(m)] for i in range(1,n+1)])
     A31 = sparse.hstack([lrna_coefs, delta_coefs, lambda_coefs, d_coefs], format='csc')
     b31 = np.zeros(n)
     A3 = sparse.vstack([A30, A31], format='csc')
