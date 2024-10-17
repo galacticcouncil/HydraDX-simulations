@@ -2,7 +2,7 @@ import math
 import copy
 from .global_state import GlobalState
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 from .basilisk_amm import ConstantProductPoolState
 from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
@@ -195,7 +195,7 @@ def withdraw_all(when: int) -> TradeStrategy:
                     pool_id = key
                     tkn = key
                 if pool_id in state.pools:
-                    pool: AMM = state.pools[pool_id]
+                    pool: Exchange = state.pools[pool_id]
                     pool.remove_liquidity(
                         agent=agent,
                         quantity=agent.holdings[key],

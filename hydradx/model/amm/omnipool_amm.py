@@ -3,12 +3,12 @@ from numbers import Number
 from typing import Callable
 
 from .agents import Agent
-from .amm import AMM, FeeMechanism, basic_fee
+from .exchange import Exchange, FeeMechanism, basic_fee
 from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
 
 
-class OmnipoolState(AMM):
+class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
 
     def __init__(self,
@@ -1484,7 +1484,7 @@ def simulate_remove_liquidity(
 # ===============================================================================
 def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
     def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            exchange: Exchange, tkn: str, delta_tkn: float
     ) -> float:
         return (slip_factor * abs(delta_tkn) / (exchange.liquidity[tkn] + delta_tkn)) + minimum_fee
 

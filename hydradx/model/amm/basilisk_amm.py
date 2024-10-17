@@ -1,11 +1,11 @@
 import math
-from .amm import AMM, FeeMechanism, basic_fee
+from .exchange import Exchange, FeeMechanism, basic_fee
 from .agents import Agent
 # when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
 precision_level = 20
 
 
-class ConstantProductPoolState(AMM):
+class ConstantProductPoolState(Exchange):
     def __init__(
             self,
             tokens: dict[str: float],
@@ -36,7 +36,7 @@ class ConstantProductPoolState(AMM):
 
     @staticmethod
     def thorchain_fee() -> FeeMechanism:
-        def fee_function(exchange: AMM, tkn: str, delta_tkn: float):
+        def fee_function(exchange: Exchange, tkn: str, delta_tkn: float):
             return delta_tkn / (delta_tkn + exchange.liquidity[tkn])
 
         return FeeMechanism(fee_function=fee_function, name='Thorchain fee')
@@ -44,7 +44,7 @@ class ConstantProductPoolState(AMM):
     @staticmethod
     def custom_slip_fee(slip_factor: float, minimum: float = 0) -> FeeMechanism:
         def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            exchange: Exchange, tkn: str, delta_tkn: float
         ) -> float:
             fee = (slip_factor * delta_tkn
                    / (delta_tkn + exchange.liquidity[tkn])) + minimum
@@ -238,10 +238,4 @@ def simulate_swap(
         new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity
     )
     return new_state, new_agent
-# 
-# 
-# ConstantProductPoolState.swap = staticmethod(simulate_swap)
-# ConstantProductPoolState.execute_swap = staticmethod(execute_swap)
-# ConstantProductPoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
-# ConstantProductPoolState.add_liquidity = staticmethod(simulate_add_liquidity)
-# ConstantProductPoolState.remove_liquidity = staticmethod(simulate_remove_liquidity)
+

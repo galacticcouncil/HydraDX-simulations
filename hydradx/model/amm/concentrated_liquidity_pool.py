@@ -1,7 +1,7 @@
 from math import sqrt as sqrt
 import math
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 # from mpmath import mp, mpf
 # mp.dps = 50
 
@@ -14,7 +14,7 @@ def price_to_tick(price: float, tick_spacing: int = 1):
     nearest_valid_tick = round(raw_tick / tick_spacing) * tick_spacing
     return nearest_valid_tick
 
-class ConcentratedLiquidityState(AMM):
+class ConcentratedLiquidityState(Exchange):
     def __init__(
             self,
             assets: dict,

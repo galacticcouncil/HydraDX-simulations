@@ -11,7 +11,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model import run
 from hydradx.model import processing
 from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage, invest_and_withdraw
-from hydradx.model.amm.amm import AMM
+from hydradx.model.amm.exchange import Exchange
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -130,7 +130,7 @@ def global_state_config(
 @given(global_state_config())
 def test_simulation(initial_state: GlobalState):
     for a, agent in enumerate(initial_state.agents.values()):
-        pool: AMM = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
+        pool: Exchange = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
         agent.trade_strategy = [
             steady_swaps(pool_id=pool.unique_id, usd_amount=100),
             invest_all(pool_id=pool.unique_id)

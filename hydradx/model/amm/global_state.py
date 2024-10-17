@@ -4,7 +4,7 @@ from typing import Callable
 
 from .agents import Agent
 from .agents import AgentArchiveState
-from .amm import AMM
+from .exchange import Exchange
 from .liquidations import money_market
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
@@ -13,7 +13,7 @@ from .otc import OTC
 class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
-                 pools: dict[str: AMM],
+                 pools: dict[str: Exchange],
                  money_market: money_market = None,
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
@@ -183,7 +183,7 @@ class GlobalState:
                 else:
                     # much less efficient, but works for any pool
                     new_state = self.copy()
-                    new_pool: AMM = new_state.pools[pool_id]
+                    new_pool: Exchange = new_state.pools[pool_id]
                     new_agent = new_state.agents[agent.unique_id]
                     new_pool.remove_liquidity(agent=new_agent, quantity=agent.holdings[key], tkn_remove=tkn)
                     withdraw_holdings = {
@@ -194,7 +194,7 @@ class GlobalState:
         prices = self.market_prices(withdraw_holdings)
         return value_assets(prices, withdraw_holdings)
 
-    def pool_val(self, pool: AMM):
+    def pool_val(self, pool: Exchange):
         """ get the total value of all liquidity in the pool. """
         total = 0
         for asset in pool.asset_list:
