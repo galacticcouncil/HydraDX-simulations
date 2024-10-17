@@ -976,6 +976,7 @@ def get_uniswap_pool_data(tkn_pairs: list[tuple]) -> dict[str, UniswapPool]:
 
     # get all available pools for each token pair at every fee level
     fee_levels = [100, 500, 3000, 10000]
+    fee_levels = [3000]
     pools = {}
     for tkn1, tkn2, fee in [(tkn1, tkn2, fee) for tkn1, tkn2 in tkn_pairs for fee in fee_levels]:
         pool_address = uniswap_pool_contract.functions.getPool(tokens[tkn1].address, tokens[tkn2].address, fee).call()
