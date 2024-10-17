@@ -210,19 +210,50 @@ def _calculate_scaling(intents: list, state: OmnipoolState, asset_list: list):
     return scaling
 
 
-def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, list):
+def _find_solution_unrounded2(state: OmnipoolState, intents: list, flags: dict = None, fee_buffer: float = 0.0001) -> (dict, list):
 
+    intent_directions = {}
     asset_list = []
     for intent in intents:
         if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
             asset_list.append(intent['tkn_sell'])
         if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
             asset_list.append(intent['tkn_buy'])
+        if intent['tkn_sell'] not in intent_directions:
+            intent_directions[intent['tkn_sell']] = "sell"
+        elif intent_directions[intent['tkn_sell']] == "buy":
+            intent_directions[intent['tkn_sell']] = "both"
+        if intent['tkn_buy'] not in intent_directions:
+            intent_directions[intent['tkn_buy']] = "buy"
+        elif intent_directions[intent['tkn_buy']] == "sell":
+            intent_directions[intent['tkn_buy']] = "both"
+
+    n = len(asset_list)
+    m = len(intents)
+    k = 4 * n + m
+
+    if flags is None:
+        flags = {}
+    directions = {}
+    indices_to_keep = list(range(k))
+    for i, tkn in enumerate(asset_list):
+        if tkn in flags and flags[tkn] != 0:
+            directions[tkn] = "buy" if flags[tkn] == 1 else "sell"
+        elif tkn in intent_directions:
+            if intent_directions[tkn] == "sell":
+                directions[tkn] = "buy"
+            elif intent_directions[tkn] == "buy":
+                directions[tkn] = "sell"
+    for tkn in directions:
+        if directions[tkn] == "sell":
+            indices_to_keep.remove(n + asset_list.index(tkn))
+            indices_to_keep.remove(2 * n + asset_list.index(tkn))
+        elif directions[tkn] == "buy":
+            indices_to_keep.remove(asset_list.index(tkn))
+            indices_to_keep.remove(3 * n + asset_list.index(tkn))
 
     tkn_list = ["LRNA"] + asset_list
 
-    lrna_reserves = [float(state.lrna[tkn]) for tkn in asset_list]
-    asset_reserves = [float(state.liquidity[tkn]) for tkn in asset_list]
     intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in intents]
 
     fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
@@ -230,13 +261,7 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
     fee_match = 0.0005
     assert fee_match <= min(fees)  # breaks otherwise
 
-    n = len(asset_list)
-    m = len(intents)
-    k = 4 * n + m
-
     # calculate tau, phi
-    # scaling = {tkn: state.liquidity[tkn] for tkn in state.liquidity}
-    # scaling['LRNA'] = state.lrna_total
     scaling = _calculate_scaling(intents, state, asset_list)
     tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
 
@@ -244,39 +269,42 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
     #          OBJECTIVE         #
     #----------------------------#
 
-    P = sparse.csc_matrix((k, k))
+    k_real = len(indices_to_keep)
+    P_trimmed = sparse.csc_matrix((k_real, k_real))
 
+    scaled_spot_prices = [1] + [float(scaling[tkn] * state.lrna[tkn] / state.liquidity[tkn]) for tkn in asset_list]
     spot_prices = [1] + [float(state.lrna[tkn] / state.liquidity[tkn]) for tkn in asset_list]
 
     delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
     lambda_lrna_coefs = -np.ones(n)
-    delta_coefs = np.array([spot_prices[i+1] for i in range(n)])
-    lambda_coefs = np.array([(fees[i] - 1) * spot_prices[i+1] for i in range(n)])
-    d_coefs = np.array([sum([(phi[i,j]*intent_prices[j] - tau[i,j])*spot_prices[i] for i in range(n+1)]) for j in range(m)])
-
-    # Concatenate the segments to form q
+    delta_coefs = np.array([scaled_spot_prices[i+1] for i in range(n)])
+    lambda_coefs = np.array([(fees[i] - 1) * scaled_spot_prices[i+1] for i in range(n)])
+    d_coefs = np.array([sum([(phi[i,j]*intent_prices[j] - tau[i,j])*scaled_spot_prices[i] for i in range(n+1)]) for j in range(m)])
     q = np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, delta_coefs, lambda_coefs, d_coefs])
+    q_trimmed = np.array([q[i] for i in indices_to_keep])
+
 
     #----------------------------#
     #        CONSTRAINTS         #
     #----------------------------#
 
     # all variables are non-negative
-    A1 = -sparse.identity(k, format='csc')
-    b1 = np.zeros(k)
-    cone1 = cb.NonnegativeConeT(k)
+    A1_trimmed = -sparse.identity(k_real, format='csc')
+    b1_trimmed = np.zeros(k_real)
+    cone1_trimmed = cb.NonnegativeConeT(k_real)
 
     # intents cannot sell more than they have
     amm_coefs = sparse.csc_matrix((m, 4*n))
     d_coefs = sparse.identity(m, format='csc')
     A2 = sparse.hstack([amm_coefs, d_coefs], format='csc')
     b2 = np.array([float(i['sell_quantity']/scaling[i['tkn_sell']]) for i in intents])
+    A2_trimmed = A2[:, indices_to_keep]
     cone2 = cb.NonnegativeConeT(m)
 
     # leftover must be higher than required fees
     # LRNA
     delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
-    lambda_lrna_coefs = np.array(lrna_fees) - 1
+    lambda_lrna_coefs = np.array(lrna_fees) - 1 + fee_buffer
     zero_coefs = np.zeros(2 * n)
     d_coefs = -(tau[0, :].toarray()[0])
     A30 = sparse.csc_matrix(np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, zero_coefs, d_coefs]))
@@ -289,6 +317,7 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
     A31 = sparse.hstack([lrna_coefs, delta_coefs, lambda_coefs, d_coefs], format='csc')
     b31 = np.zeros(n)
     A3 = sparse.vstack([A30, A31], format='csc')
+    A3_trimmed = A3[:, indices_to_keep]
     b3 = np.concatenate([b30, b31])
     cone3 = cb.NonnegativeConeT(n + 1)
 
@@ -303,10 +332,13 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
         A4[3*i+1, 2*n+i] = -scaling[tkn]/state.liquidity[tkn]
         A4[3*i+1, 3*n+i] = -A4[3*i+1, 2*n+i]
         cones4.append(cb.PowerConeT(0.5))
+    A4_trimmed = A4[:, indices_to_keep]
 
-    A = sparse.vstack([A1, A2, A3, A4], format='csc')
-    b = np.concatenate([b1, b2, b3, b4])
-    cones = [cone1, cone2, cone3] + cones4
+    A = sparse.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed], format='csc')
+    b = np.concatenate([b1_trimmed, b2, b3, b4])
+    cones = [cone1_trimmed, cone2, cone3] + cones4
+    q = q_trimmed
+    P = P_trimmed
 
     # solve
     settings = clarabel.DefaultSettings()
@@ -318,11 +350,15 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list) -> (dict, lis
 
     new_amm_deltas = {}
     exec_intent_deltas = [None] * len(intents)
+    x_expanded = [0] * k
+    for i in range(k):
+        if i in indices_to_keep:
+            x_expanded[i] = x[indices_to_keep.index(i)]
     for i in range(n):
         tkn = tkn_list[i+1]
-        new_amm_deltas[tkn] = (x[2*n+i] - x[3*n+i]) * scaling[tkn]
+        new_amm_deltas[tkn] = (x_expanded[2*n+i] - x_expanded[3*n+i]) * scaling[tkn]
     for i in range(len(intents)):
-        exec_intent_deltas[i] = -x[4 * n + i] * scaling[intents[i]['tkn_sell']]
+        exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
 
     return new_amm_deltas, exec_intent_deltas
 
@@ -371,5 +407,7 @@ def find_solution(state: OmnipoolState, intents: list) -> list:
 
 def find_solution2(state: OmnipoolState, intents: list) -> list:
     amm_deltas, intent_deltas = _find_solution_unrounded2(state, intents)
+    flags = get_directional_flags(amm_deltas)
+    amm_deltas, intent_deltas = _find_solution_unrounded2(state, intents, flags)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
