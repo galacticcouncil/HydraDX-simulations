@@ -452,12 +452,12 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
     initial_agent = Agent(
         holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']},
     )
-    old_state, old_agent = initial_state.copy(), initial_agent.copy()
     # add LP shares to the pool
-    old_state.add_liquidity(
-        agent=old_agent,
+    old_state, old_agent = oamm.simulate_add_liquidity(
+        old_agent=initial_agent,
+        old_state=initial_state,
         tkn_add=i,
-        quantity=1
+        quantity=1000
     )
 
     p_init = old_state.lrna_price(i)
@@ -670,10 +670,11 @@ def test_remove_liquidity_split(price: float, split: float):
 
 
 @given(omnipool_config(token_count=3))
+@settings(print_blob=True)
 def test_swap_lrna(initial_state: oamm.OmnipoolState):
     old_state = initial_state
     old_agent = Agent(
-        holdings={token: 1000000 for token in initial_state.asset_list + ['LRNA']}
+        holdings={token: 1000 for token in initial_state.asset_list + ['LRNA']}
     )
     delta_ra = 1000
     delta_qa = -1000
@@ -738,8 +739,6 @@ def test_swap_lrna(initial_state: oamm.OmnipoolState):
     #     raise AssertionError('LRNA imbalance is wrong.')
 
     if reverse_agent.holdings[i] != pytest.approx(old_agent.holdings[i]):
-        print(reverse_agent.holdings[i])
-        print(old_agent.holdings[i])
         raise AssertionError('Agent holdings are wrong.')
 
 
@@ -1852,7 +1851,7 @@ def test_volatility_limit(initial_state: oamm.OmnipoolState):
     agent = Agent(holdings={'HDX': 1000000000})
     omnipool=initial_state.copy()
     omnipool.add_liquidity(agent, quantity=1000, tkn_add='HDX')
-    omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=omnipool.liquidity['HDX'] / 200)
+    omnipool.swap(agent, tkn_sell='HDX', tkn_buy='LRNA', sell_quantity=mpf(omnipool.liquidity['HDX'] / 200))
     omnipool.remove_liquidity(agent, quantity=1000, tkn_remove='HDX')
 
     if not omnipool.fail:
@@ -2029,7 +2028,7 @@ def test_lowering_price(lp_multiplier, price_movement, oracle_mult):
 
     market_prices = {tkn: omnipool.usd_price(tkn) for tkn in omnipool.asset_list}
 
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
+    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list + ['LRNA']}
     agent = Agent(holdings=holdings)
 
     swap_state, swap_agent = oamm.simulate_swap(
@@ -2175,7 +2174,7 @@ def test_add_liquidity_exploit(lp_multiplier, trade_mult):
 
     market_prices = {tkn: omnipool.usd_price(tkn) for tkn in omnipool.asset_list}
 
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
+    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list + ['LRNA']}
     agent = Agent(holdings=holdings)
 
     swap_state, swap_agent = oamm.simulate_swap(
@@ -2263,7 +2262,7 @@ def test_add_liquidity_exploit_sell(lp_multiplier, trade_mult):
 
     market_prices = {tkn: omnipool.usd_price(tkn) for tkn in omnipool.asset_list}
 
-    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list}
+    holdings = {tkn: 1000000000 for tkn in omnipool.asset_list + ['LRNA']}
     agent = Agent(holdings=holdings)
 
     swap_state, swap_agent = oamm.simulate_swap(
@@ -2483,7 +2482,7 @@ def test_swap_exploit(lp_multiplier, trade_mult, oracle_mult):
     st.floats(min_value=1e-8, max_value=0.1),
     st.floats(min_value=0.1, max_value=10.0),
 )
-@settings(print_blob=True, verbosity=Verbosity.verbose)
+# @settings(print_blob=True, verbosity=Verbosity.verbose)
 def test_withdraw_manipulation(
         initial_state: oamm.OmnipoolState,
         price_move: float,
@@ -2499,7 +2498,7 @@ def test_withdraw_manipulation(
     # )}
 
     agent_holdings = {
-        tkn: 10000000 / initial_state.usd_price(tkn) for tkn in initial_state.asset_list
+        tkn: 10000000 / initial_state.usd_price(tkn) for tkn in initial_state.asset_list + ['LRNA']
     }
 
     initial_agent = Agent(
@@ -2592,7 +2591,7 @@ def test_add_manipulation(
     # )}
 
     agent_holdings = {
-        tkn: 1000000 / initial_state.usd_price(tkn) for tkn in initial_state.asset_list
+        tkn: 1000000 / initial_state.usd_price(tkn) for tkn in initial_state.asset_list + ['LRNA']
     }
 
     initial_agent = Agent(

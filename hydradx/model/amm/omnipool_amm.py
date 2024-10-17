@@ -545,8 +545,8 @@ class OmnipoolState(AMM):
         if delta_qa < 0:
             # selling LRNA
             asset_fee = self.asset_fee[tkn].compute()
-            # if delta_qa + agent.holdings[tkn] <= 0:
-            #     return self.fail_transaction('Agent has insufficient lrna', agent)
+            if delta_qa + agent.holdings['LRNA'] < 0:
+                return self.fail_transaction('Agent has insufficient lrna', agent)
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
 
             delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct

@@ -23,6 +23,12 @@ def test_get_balance_last_week():
     last_week_dot = processing.get_historical_omnipool_balance(tkn='DOT', date=last_week)
     print(f"{last_week_dot} DOT in the pool last week.")
 
+def test_get_balance_range():
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7)
+    end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6)
+    range_dot = processing.get_historical_omnipool_balance(tkn='DOT', date=start, end_date=end)
+    print(f"{range_dot} DOT in the pool last week.")
+
 
 def test_download_history_files():
     # rename history folder

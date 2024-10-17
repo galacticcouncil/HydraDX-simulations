@@ -718,6 +718,7 @@ def get_omnipool_balance_history():
     # load what we have so far
     all_data = []
     file_ls = os.listdir('.')
+    file_ls.sort()
     for filename in file_ls:
         if filename.startswith('omnipool_history'):
             print(f'loading {filename}')
@@ -835,10 +836,11 @@ def download_history_files():
         os.rmdir(source_folder)
 
 
-def get_historical_omnipool_balance(tkn, date=None, block=None):
+def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or dict[str: float]:
     """
-    get the balance of a particular token on a particular date
+    get the balance of a particular token on a particular date or range of dates
     (hopefully) without having to load the entire history or download anything
+    but also load or download what's necessary to get the data
     """
 
     # first make sure we have downloaded the available files
@@ -847,6 +849,7 @@ def get_historical_omnipool_balance(tkn, date=None, block=None):
     import dateutil.parser
     # find the date
     date = dateutil.parser.parse(f"{date}")
+    end_date = dateutil.parser.parse(f"{end_date}") if end_date else None
     # navigate to model directory
     while not os.path.exists("./model"):
         os.chdir("..")
@@ -860,21 +863,24 @@ def get_historical_omnipool_balance(tkn, date=None, block=None):
             os.listdir('.')
         ))
     file_ls = find_data_files()
+    file_ls.sort()
+    file_name = ''
     # see if the date or block they want is included in existing data
     with open(file_ls[-1]) as f:
         last_line = f.readlines()[-1][:-1]
         last_date = dateutil.parser.parse(json.loads(last_line)[1])
         last_block = json.loads(last_line)[0]
-        if date is not None and last_date < date or block is not None and last_block < block:
+        if date is not None and last_date < date or end_date is not None and last_date < end_date:
             get_omnipool_balance_history()
             file_data = json.load(open(find_data_files()[-1]))
         else:
-            for file_name in file_ls[::-1]:
+            for name in file_ls[::-1]:
+                file_name = name
                 with open(f'./{file_name}') as f:
                     first_line = f.readline()[1:]
                     start_date = dateutil.parser.parse(json.loads(first_line.strip()[:-1])[1])
                     start_block= json.loads(first_line.strip()[:-1])[0]
-                    if date is not None and start_date < date or block is not None and start_block < block:
+                    if date is not None and start_date < date:
                         print(f'loading {file_name}')
                         with open(f'./{file_name}', 'r') as file:
                             file_data = json.load(file)
@@ -888,9 +894,20 @@ def get_historical_omnipool_balance(tkn, date=None, block=None):
         mid = (left + right) // 2
         if date and dateutil.parser.parse(tkn_data[mid][1]) < date :
             left = mid + 1
-        elif block and tkn_data[mid][0] < block:
-            left = mid + 1
         else:
             right = mid
-    print (f"""Retrieved balance of {tkn} on {date}: {dateutil.parser.parse(tkn_data[left][1]).strftime('%Y-%m-%d')}""")
-    return tkn_data[left][3]
+    if not end_date:
+        print(f"Retrieved balance of {tkn} on {date.strftime('%Y-%m-%d')}: {tkn_data[left][3]}")
+        return tkn_data[left][3]
+    else:
+        # find the end block
+        end = left
+        while dateutil.parser.parse(tkn_data[end][1]) < end_date:
+            end += 1
+            if end >= len(tkn_data):
+                # load the next file
+                file_name = file_ls[file_ls.index(file_name) + 1]
+                with open(file_name) as f:
+                    tkn_data += [line for line in json.load(f) if line[2] == tkn]
+        print(f"Retrieved balance of {tkn} from {date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}.")
+        return {data[1]: data[3] for data in tkn_data[left:end]}
