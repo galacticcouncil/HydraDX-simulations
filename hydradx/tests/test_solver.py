@@ -6,7 +6,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
 
 from hydradx.model.amm.omnix import validate_and_execute_solution
-from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2
+from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2, find_solution3
 
 
 def test_single_trade_settles():
@@ -29,7 +29,7 @@ def test_single_trade_settles():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution2(initial_state, intents)
+    intent_deltas = find_solution3(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state, intents, intent_deltas)
     assert intent_deltas[0][0] == -init_intents[0]['sell_quantity']
@@ -256,8 +256,10 @@ def test_solver_with_real_omnipool():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution2(initial_state, intents)
+    intent_deltas = find_solution3(initial_state, intents)
 
-    assert validate_and_execute_solution(initial_state, intents, intent_deltas)
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    intent_deltas2 = [[-mpf(100), mpf(1.149)], [0, 0]]
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas2)
 
     pprint(intent_deltas)
