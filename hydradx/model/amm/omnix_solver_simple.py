@@ -526,9 +526,9 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
         b4 = np.append(b4, b4i)
     A4_trimmed = A4[:, indices_to_keep]
 
-    # A5: inequality constraints on fees
+    # A5: inequality constraints on comparison of lrna_lambda to yi, lambda to xi
     # A6: inequality constraints on xi, yi
-    # A7: equality constraints on fees
+    # A7: equality constraints on lrna_lambda to yi, lambda to xi, if known
     A5 = sparse.csc_matrix((0, k))
     A6 = sparse.csc_matrix((0, k))
     A7 = sparse.csc_matrix((0, k))
