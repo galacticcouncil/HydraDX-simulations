@@ -419,9 +419,8 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     # calculate tau, phi
     scaling, net_supply, net_demand = _calculate_scaling(intents, state, asset_list)
     tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
-    epsilon = 1e-5
-    linearize_tkn = {t: max([net_supply[t], net_demand[t]]) <= epsilon * state.liquidity[t] for t in asset_list}
-    # linearize_tkn = {t: False for t in asset_list}
+    epsilon_cutoff = 1e-5
+    epsilon_tkn = {t: max([net_supply[t], net_demand[t]]) / state.liquidity[t] for t in asset_list}
 
     #----------------------------#
     #          OBJECTIVE         #
@@ -507,9 +506,9 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     cones4 = []
     for i in range(n):  # affected rows are 3i through 3i+2
         tkn = asset_list[i]
-        if linearize_tkn[tkn]:  # linearize the AMM constraint
-            c1 = 1 / (1 + epsilon)
-            c2 = 1 / (1 - epsilon)
+        if epsilon_tkn[tkn] <= epsilon_cutoff:  # linearize the AMM constraint
+            c1 = 1 / (1 + epsilon_tkn[tkn])
+            c2 = 1 / (1 - epsilon_tkn[tkn])
             A4i = sparse.csc_matrix((2, k))
             b4i = np.zeros(2)
             A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
