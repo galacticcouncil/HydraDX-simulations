@@ -453,11 +453,11 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     #----------------------------#
 
     # intent variables are non-negative
-    amm_coefs = sparse.csc_matrix((m,4*n))
-    d_coefs = -sparse.identity(m, format='csc')
-    A1 = sparse.hstack([amm_coefs, d_coefs])
-    b1 = np.zeros(m)
-    cone1 = cb.NonnegativeConeT(m)
+    diff_coefs = sparse.csc_matrix((2*n + m,2*n))
+    nonzero_coefs = -sparse.identity(2 * n + m, format='csc')
+    A1 = sparse.hstack([diff_coefs, nonzero_coefs])
+    b1 = np.zeros(2 * n + m)
+    cone1 = cb.NonnegativeConeT(2 * n + m)
     A1_trimmed = A1[:, indices_to_keep]
 
     # intents cannot sell more than they have
@@ -535,13 +535,11 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     for i in range(n):
         tkn = asset_list[i]
         if tkn not in directions:
-            A5i = sparse.csc_matrix((4, k))
-            A5i[0, 2*n+i] = -1  # lrna_lambda >= 0
-            A5i[1, 3*n+i] = -1  # lambda >= 0
-            A5i[2, i] = -1  # lrna_lambda + yi >= 0
-            A5i[2, 2*n+i] = -1  # lrna_lambda + yi >= 0
-            A5i[3, n+i] = -1  # lambda + xi >= 0
-            A5i[3, 3*n+i] = -1  # lambda + xi >= 0
+            A5i = sparse.csc_matrix((2, k))
+            A5i[0, i] = -1  # lrna_lambda + yi >= 0
+            A5i[0, 2*n+i] = -1  # lrna_lambda + yi >= 0
+            A5i[1, n+i] = -1  # lambda + xi >= 0
+            A5i[1, 3*n+i] = -1  # lambda + xi >= 0
             A5 = sparse.vstack([A5, A5i])
         else:
             A6i = sparse.csc_matrix((2, k))
