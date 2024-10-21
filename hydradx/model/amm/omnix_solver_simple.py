@@ -193,12 +193,16 @@ def _calculate_tau_phi(intents: list, tkn_list: list, scaling: dict) -> tuple:
 
 def _calculate_scaling(intents: list, state: OmnipoolState, asset_list: list):
     scaling = {tkn: 0 for tkn in asset_list}
+    net_supply = {tkn: 0 for tkn in asset_list + ['LRNA']}
+    net_demand = {tkn: 0 for tkn in asset_list}
     scaling["LRNA"] = float('inf')
     for intent in intents:
         if intent['tkn_sell'] != "LRNA":
             scaling[intent['tkn_sell']] = max(scaling[intent['tkn_sell']], intent['sell_quantity'])
         if intent['tkn_buy'] != "LRNA":
             scaling[intent['tkn_buy']] = max(scaling[intent['tkn_buy']], intent['buy_quantity'])
+        net_supply[intent['tkn_sell']] += intent['sell_quantity']
+        net_demand[intent['tkn_buy']] += intent['buy_quantity']
     for tkn in asset_list:
         if scaling[tkn] == 0:
             scaling[tkn] = 1
@@ -207,7 +211,7 @@ def _calculate_scaling(intents: list, state: OmnipoolState, asset_list: list):
         # set scaling for LRNA equal to scaling for asset, adjusted by spot price
         scalar = scaling[tkn] * state.lrna[tkn] / state.liquidity[tkn]
         scaling["LRNA"] = min(scaling["LRNA"], scalar)
-    return scaling
+    return scaling, net_supply, net_demand
 
 
 def _find_solution_unrounded2(state: OmnipoolState, intents: list, flags: dict = None, fee_buffer: float = 0.0001) -> (dict, list):
@@ -413,8 +417,11 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     assert fee_match <= min(fees)  # breaks otherwise
 
     # calculate tau, phi
-    scaling = _calculate_scaling(intents, state, asset_list)
+    scaling, net_supply, net_demand = _calculate_scaling(intents, state, asset_list)
     tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
+    epsilon = 1e-5
+    linearize_tkn = {t: max([net_supply[t], net_demand[t]]) <= epsilon * state.liquidity[t] for t in asset_list}
+    # linearize_tkn = {t: False for t in asset_list}
 
     #----------------------------#
     #          OBJECTIVE         #
@@ -495,18 +502,29 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     cone3 = cb.NonnegativeConeT(n + 1)
 
     # AMM invariants must not go down
-    A4 = sparse.csc_matrix((3 * n, k))
-    b4 = np.ones(3 * n)
+    A4 = sparse.csc_matrix((0, k))
+    b4 = np.array([])
     cones4 = []
     for i in range(n):  # affected rows are 3i through 3i+2
         tkn = asset_list[i]
-        # A4[3*i, i] = -scaling["LRNA"]/state.lrna[tkn]
-        # A4[3*i, n+i] = -A4[3*i, i]
-        # A4[3*i+1, 2*n+i] = -scaling[tkn]/state.liquidity[tkn]
-        # A4[3*i+1, 3*n+i] = -A4[3*i+1, 2*n+i]
-        A4[3*i, i] = -scaling["LRNA"]/state.lrna[tkn]
-        A4[3*i, n+i] = -scaling[tkn]/state.liquidity[tkn]
-        cones4.append(cb.PowerConeT(0.5))
+        if linearize_tkn[tkn]:  # linearize the AMM constraint
+            c1 = 1 / (1 + epsilon)
+            c2 = 1 / (1 - epsilon)
+            A4i = sparse.csc_matrix((2, k))
+            b4i = np.zeros(2)
+            A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
+            A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c1
+            A4i[1, i] = -scaling["LRNA"]/state.lrna[tkn]
+            A4i[1, n + i] = -scaling[tkn] / state.liquidity[tkn] * c2
+            cones4.append(cb.NonnegativeConeT(2))
+        else:  # full AMM constraint
+            A4i = sparse.csc_matrix((3, k))
+            b4i = np.ones(3)
+            A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
+            A4i[1, n+i] = -scaling[tkn]/state.liquidity[tkn]
+            cones4.append(cb.PowerConeT(0.5))
+        A4 = sparse.vstack([A4, A4i])
+        b4 = np.append(b4, b4i)
     A4_trimmed = A4[:, indices_to_keep]
 
     # A5: inequality constraints on fees
