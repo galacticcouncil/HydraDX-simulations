@@ -491,15 +491,26 @@ def _find_solution_unrounded3(
     for i in range(n):
         tkn = asset_list[i]
         if epsilon_tkn[tkn] <= epsilon:  # linearize the AMM constraint
-            c1 = 1 / (1 + epsilon_tkn[tkn])
-            c2 = 1 / (1 - epsilon_tkn[tkn])
-            A4i = sparse.csc_matrix((2, k))
-            b4i = np.zeros(2)
-            A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
-            A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c1
-            A4i[1, i] = -scaling["LRNA"]/state.lrna[tkn]
-            A4i[1, n + i] = -scaling[tkn] / state.liquidity[tkn] * c2
-            cones4.append(cb.NonnegativeConeT(2))
+            if tkn not in directions:
+                c1 = 1 / (1 + epsilon_tkn[tkn])
+                c2 = 1 / (1 - epsilon_tkn[tkn])
+                A4i = sparse.csc_matrix((2, k))
+                b4i = np.zeros(2)
+                A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
+                A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c1
+                A4i[1, i] = -scaling["LRNA"]/state.lrna[tkn]
+                A4i[1, n + i] = -scaling[tkn] / state.liquidity[tkn] * c2
+                cones4.append(cb.NonnegativeConeT(2))
+            else:
+                if directions[tkn] == "sell":
+                    c = 1 / (1 - epsilon_tkn[tkn])
+                else:
+                    c = 1 / (1 + epsilon_tkn[tkn])
+                A4i = sparse.csc_matrix((1, k))
+                b4i = np.zeros(1)
+                A4i[0, i] = -scaling["LRNA"] / state.lrna[tkn]
+                A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c
+                cones4.append(cb.ZeroConeT(1))
         else:  # full AMM constraint
             A4i = sparse.csc_matrix((3, k))
             b4i = np.ones(3)
@@ -630,9 +641,9 @@ def find_solution2(state: OmnipoolState, intents: list) -> list:
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
 
-def find_solution3(state: OmnipoolState, intents: list) -> list:
-    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents)
+def find_solution3(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -> list:
+    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, epsilon = epsilon)
     flags = get_directional_flags(amm_deltas)
-    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, flags)
+    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, flags, epsilon = epsilon)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
