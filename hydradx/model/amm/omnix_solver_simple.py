@@ -367,7 +367,13 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list, flags: dict =
     return new_amm_deltas, exec_intent_deltas
 
 
-def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict = None, fee_buffer: float = 0.0001) -> (dict, list):
+def _find_solution_unrounded3(
+        state: OmnipoolState,
+        intents: list,
+        flags: dict = None,
+        epsilon: float = 1e-5,
+        fee_buffer: float = 0.0001
+) -> (dict, list):
 
     intent_directions = {}
     asset_list = []
@@ -403,9 +409,9 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
                 directions[tkn] = "sell"
     for tkn in directions:
         if directions[tkn] == "sell":
-            indices_to_keep.remove(2 * n + asset_list.index(tkn))  # c_i fees are zero
+            indices_to_keep.remove(2 * n + asset_list.index(tkn))  # lrna_lambda_i is zero
         elif directions[tkn] == "buy":
-            indices_to_keep.remove(3 * n + asset_list.index(tkn))  # a_i fees are zero
+            indices_to_keep.remove(3 * n + asset_list.index(tkn))  # lambda_i is zero
 
     tkn_list = ["LRNA"] + asset_list
 
@@ -419,7 +425,6 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     # calculate tau, phi
     scaling, net_supply, net_demand = _calculate_scaling(intents, state, asset_list)
     tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
-    epsilon_cutoff = 1e-5
     epsilon_tkn = {t: max([net_supply[t], net_demand[t]]) / state.liquidity[t] for t in asset_list}
 
     #----------------------------#
@@ -428,25 +433,14 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
 
     k_real = len(indices_to_keep)
     P_trimmed = sparse.csc_matrix((k_real, k_real))
-    # P = sparse.csc_matrix((k,k))
 
-    scaled_spot_prices = [1] + [float(scaling[tkn] * state.lrna[tkn] / state.liquidity[tkn]) for tkn in asset_list]
-    spot_prices = [1] + [float(state.lrna[tkn] / state.liquidity[tkn]) for tkn in asset_list]
-
-    # delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
-    # lambda_lrna_coefs = -np.ones(n)
-    # delta_coefs = np.array([scaled_spot_prices[i+1] for i in range(n)])
-    # lambda_coefs = np.array([(fees[i] - 1) * scaled_spot_prices[i+1] for i in range(n)])
     y_coefs = np.ones(n)
     x_coefs = np.zeros(n)
     lrna_lambda_coefs = np.array(lrna_fees)
     lambda_coefs = np.zeros(n)
-    # d_coefs = np.array([sum([(phi[i,j]*intent_prices[j] - tau[i,j])*scaled_spot_prices[i] for i in range(n+1)]) for j in range(m)])
     d_coefs = np.array([-tau[0,j] for j in range(m)])
-    # q = np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, delta_coefs, lambda_coefs, d_coefs])
     q = np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs])
     q_trimmed = np.array([q[i] for i in indices_to_keep])
-
 
     #----------------------------#
     #        CONSTRAINTS         #
@@ -470,29 +464,19 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
 
     # leftover must be higher than required fees
     # LRNA
-    # delta_lrna_coefs = np.ones(n)  # need to multiply by each Qi
-    # lambda_lrna_coefs = np.array(lrna_fees) - 1 + fee_buffer
-    # zero_coefs = np.zeros(2 * n)
     y_coefs = np.ones(n)
     x_coefs = np.zeros(n)
     lrna_lambda_coefs = np.array(lrna_fees)
     lambda_coefs = np.zeros(n)
     d_coefs = -(tau[0, :].toarray()[0])
-    # A30 = sparse.csc_matrix(np.concatenate([delta_lrna_coefs, lambda_lrna_coefs, zero_coefs, d_coefs]))
     A30 = sparse.csc_matrix(np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs]))
     b30 = np.zeros(1)
     # other assets
-    # lrna_coefs = sparse.csc_matrix((n, 2*n))
-    # delta_coefs = sparse.identity(n, format='csc')
-    # lambda_coefs = sparse.diags(np.array(fees)-fee_match-1, format='csc')
     y_coefs = sparse.csc_matrix((n,n))
     x_coefs = sparse.identity(n, format='csc')
-    # c_coefs = sparse.csc_matrix((n,n))
-    # a_coefs = sparse.diags(1 - fee_match/np.array(fees), format='csc')
     lrna_lambda_coefs = sparse.csc_matrix((n,n))
     lambda_coefs = sparse.diags(np.array(fees)-fee_match, format='csc')
     d_coefs = sparse.csc_matrix([[1/(1-fee_match)*phi[i,j]*intent_prices[j] - tau[i, j] for j in range(m)] for i in range(1,n+1)])
-    # A31 = sparse.hstack([lrna_coefs, delta_coefs, lambda_coefs, d_coefs], format='csc')
     A31 = sparse.hstack([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs])
     b31 = np.zeros(n)
     A3 = sparse.vstack([A30, A31], format='csc')
@@ -504,9 +488,9 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     A4 = sparse.csc_matrix((0, k))
     b4 = np.array([])
     cones4 = []
-    for i in range(n):  # affected rows are 3i through 3i+2
+    for i in range(n):
         tkn = asset_list[i]
-        if epsilon_tkn[tkn] <= epsilon_cutoff:  # linearize the AMM constraint
+        if epsilon_tkn[tkn] <= epsilon:  # linearize the AMM constraint
             c1 = 1 / (1 + epsilon_tkn[tkn])
             c2 = 1 / (1 - epsilon_tkn[tkn])
             A4i = sparse.csc_matrix((2, k))
@@ -527,10 +511,10 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     A4_trimmed = A4[:, indices_to_keep]
 
     # A5: inequality constraints on comparison of lrna_lambda to yi, lambda to xi
-    # A6: inequality constraints on xi, yi
-    # A7: equality constraints on lrna_lambda to yi, lambda to xi, if known
     A5 = sparse.csc_matrix((0, k))
+    # A6: inequality constraints on xi, yi
     A6 = sparse.csc_matrix((0, k))
+    # A7: equality constraints on lrna_lambda to yi, lambda to xi, if known
     A7 = sparse.csc_matrix((0, k))
     for i in range(n):
         tkn = asset_list[i]
@@ -569,62 +553,6 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
     cone6 = cb.NonnegativeConeT(A6.shape[0])
     cone7 = cb.ZeroConeT(A7.shape[0])
 
-
-    # y_coefs = -sparse.diags(np.array(lrna_fees), format='csc')
-    # x_coefs = sparse.csc_matrix((n,n))
-    # c_coefs = -sparse.identity(n, format='csc')
-    # a_coefs = sparse.csc_matrix((n,n))
-    # d_coefs = sparse.csc_matrix((n,m))
-    # A5y = sparse.hstack([y_coefs, x_coefs, c_coefs, a_coefs, d_coefs])
-    # y_coefs = sparse.csc_matrix((n,n))
-    # x_coefs = -sparse.diags(np.array(fees), format='csc')
-    # c_coefs = sparse.csc_matrix((n,n))
-    # a_coefs = -sparse.identity(n, format='csc')
-    # d_coefs = sparse.csc_matrix((n,m))
-    # A5x = sparse.hstack([y_coefs, x_coefs, c_coefs, a_coefs, d_coefs])
-    # A5 = sparse.vstack([A5y, A5x])
-    # b5 = np.zeros(2*n)
-    # cone5 = cb.NonnegativeConeT(2*n)
-    #
-    # A6 = sparse.csc_matrix((0,k))
-    # A7 = sparse.csc_matrix((0,k))
-    # for i in range(n):
-    #     tkn = asset_list[i]
-    #     if tkn in directions:
-    #         if directions[tkn] == "buy":
-    #             A6i = sparse.csc_matrix((2,k))
-    #             A6i[0,i] = 1  # y coef, yi <= 0
-    #             A6i[1,n+i] = -1  # x coef, xi >= 0
-    #             A7i = sparse.csc_matrix((2,k))
-    #             A7i[0,i] = lrna_fees[i]  # y coef, yi * li + ci = 0
-    #             A7i[0,2*n+i] = 1  # c coef, yi * li + ci = 0
-    #             A7i[1,3*n+i] = 1  # a coef, ai = 0
-    #         else:
-    #             A6i = sparse.csc_matrix((2,k))
-    #             A6i[0,i] = -1  # y coef, yi >= 0
-    #             A6i[1,n+i] = 1  # x coef, xi <= 0
-    #             A7i = sparse.csc_matrix((2,k))
-    #             A7i[0,n+i] = fees[i] # x coef, xi * fi + ai = 0
-    #             A7i[0,3*n+i] = 1  # a coef, xi * fi + ai = 0
-    #             A7i[1,2*n+i] = 1  # c coef, ci = 0
-    #         A6 = sparse.vstack([A6, A6i])
-    #         A7 = sparse.vstack([A7, A7i])
-    # b6 = np.zeros(A6.shape[0])
-    # b7 = np.zeros(A7.shape[0])
-    # cone6 = cb.NonnegativeConeT(A6.shape[0])
-    # cone7 = cb.ZeroConeT(A7.shape[0])
-
-
-    # A = sparse.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed], format='csc')
-    # b = np.concatenate([b1_trimmed, b2, b3, b4])
-    # cones = [cone1_trimmed, cone2, cone3] + cones4
-    # q = q_trimmed
-    # P = P_trimmed
-
-    A = sparse.vstack([A1, A2, A3, A4, A5, A6], format='csc')
-    b = np.concatenate([b1, b2, b3, b4, b5, b6])
-    cones = [cone1, cone2, cone3] + cones4 + [cone5, cone6]
-
     A = sparse.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A5_trimmed, A6_trimmed, A7_trimmed], format='csc')
     b = np.concatenate([b1, b2, b3, b4, b5, b6, b7])
     cones = [cone1, cone2, cone3] + cones4 + [cone5, cone6, cone7]
@@ -645,11 +573,9 @@ def _find_solution_unrounded3(state: OmnipoolState, intents: list, flags: dict =
             x_expanded[i] = x[indices_to_keep.index(i)]
     for i in range(n):
         tkn = tkn_list[i+1]
-        # new_amm_deltas[tkn] = (x_expanded[2*n+i] - x_expanded[3*n+i]) * scaling[tkn]
         new_amm_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
 
     for i in range(len(intents)):
-        # exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
         exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
 
     return new_amm_deltas, exec_intent_deltas
