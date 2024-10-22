@@ -6,7 +6,7 @@ from hypothesis import given, strategies as st
 
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, cash_out_omnipool, dynamicadd_asset_fee
+from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, dynamicadd_asset_fee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
 from hydradx.model.processing import get_omnipool, save_omnipool, load_omnipool
@@ -162,7 +162,7 @@ def test_cash_out_no_liquidity(omnipool: OmnipoolState, market: dict, holdings: 
     asset_list = list(market.keys())
     holdings_dict = {tkn: holdings[i] for i, tkn in enumerate(asset_list)}
     agent = Agent(holdings=holdings_dict, )
-    cash = cash_out_omnipool(omnipool, agent, market)
+    cash = omnipool.cash_out(agent, market)
     if cash != sum([holdings_dict[tkn] * market[tkn] for tkn in asset_list]):
         raise AssertionError('Cash out failed: {} != {}'.format(
             cash, sum([holdings_dict[tkn] * market[tkn] for tkn in asset_list])))
@@ -177,7 +177,7 @@ def test_cash_out_only_liquidity_at_spot(omnipool: OmnipoolState, pct_list: list
     market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in asset_list}
     agent = Agent(holdings=holdings,
                   share_prices={(omnipool.unique_id, tkn): oamm.price(omnipool, tkn) for tkn in asset_list})
-    cash = cash_out_omnipool(omnipool, agent, market)
+    cash = omnipool.cash_out(agent, market)
     min_withdrawal_fee = 0.0001
     res = sum([pct_list[i] * omnipool.liquidity[tkn] * market[tkn] * (1 - min_withdrawal_fee) for i, tkn in
                enumerate(asset_list)])
@@ -216,8 +216,8 @@ def test_cash_out_one_asset_only_liquidity(omnipool: OmnipoolState, pct_list: li
     omnipool.swap(trader, "HDX", held_asset, sell_quantity=trade_size)
 
     market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in asset_list}
-    cash = cash_out_omnipool(omnipool, lp_agent, market)
-    cash_usdlp = cash_out_omnipool(omnipool, usdlp_agent, market)
+    cash = omnipool.cash_out(lp_agent, market)
+    cash_usdlp = omnipool.cash_out(usdlp_agent, market)
 
     final_price = oamm.price(omnipool, held_asset)
     final_usd_price = oamm.price(omnipool, omnipool.stablecoin)
@@ -248,7 +248,7 @@ def test_cash_out_lrna(omnipool: OmnipoolState):
     initial_lrna = 1000
     agent = Agent(holdings={'LRNA': initial_lrna})
     market = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-    cash = cash_out_omnipool(omnipool, agent, market)
+    cash = omnipool.cash_out(agent, market)
     if cash == 0:
         raise ValueError("Cash out should not be zero")
     # minus slippage, cash should be 1 / lrna_price('USD') * initial_lrna
@@ -265,7 +265,7 @@ def test_cash_out_lrna(omnipool: OmnipoolState):
 
     market['newcoin'] = oamm.usd_price(omnipool, 'newcoin')
 
-    if cash_out_omnipool(omnipool, agent, market) <= cash:
+    if omnipool.cash_out(agent, market) <= cash:
         raise ValueError("Cash out should be higher after adding new token")
 
 
@@ -284,7 +284,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
         agent.share_prices[('omnipool', tkn)] = oamm.lrna_price(omnipool, tkn) * share_price_ratio
 
     market_prices = {tkn: oamm.usd_price(omnipool, tkn) for tkn in omnipool.asset_list}
-    cash_out = oamm.cash_out_omnipool(omnipool, agent, market_prices)
+    cash_out = omnipool.cash_out(agent, market_prices)
 
     withdraw_state, withdraw_agent = omnipool.copy(), agent.copy()
     for tkn in omnipool.asset_list:

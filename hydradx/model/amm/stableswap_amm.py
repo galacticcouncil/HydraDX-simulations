@@ -1,10 +1,10 @@
 import copy
 
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 
 
-class StableSwapPoolState(AMM):
+class StableSwapPoolState(Exchange):
     unique_id: str = 'stableswap'
 
     def __init__(

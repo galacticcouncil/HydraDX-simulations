@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
 
-from .amm.amm import basic_fee
+from .amm.exchange import basic_fee
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.omnipool_amm import OmnipoolState

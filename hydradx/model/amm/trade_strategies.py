@@ -2,7 +2,7 @@ import math
 import copy
 from .global_state import GlobalState
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 from .basilisk_amm import ConstantProductPoolState
 from .omnipool_amm import OmnipoolState
 from . import omnipool_amm as oamm
@@ -195,7 +195,7 @@ def withdraw_all(when: int) -> TradeStrategy:
                     pool_id = key
                     tkn = key
                 if pool_id in state.pools:
-                    pool: AMM = state.pools[pool_id]
+                    pool: Exchange = state.pools[pool_id]
                     pool.remove_liquidity(
                         agent=agent,
                         quantity=agent.holdings[key],
@@ -502,8 +502,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
             asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
             if arb_precision < 2:
-                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
+                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
 
                 if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
                     skip_ct += 1
@@ -926,7 +926,7 @@ def price_manipulation_multiple_blocks(
                 if state.time_step > 85:
                     er = 1
                 if (
-                        oamm.usd_price(omnipool, self.attack_asset) / oamm.usd_price(omnipool, self.trade_asset)
+                        omnipool.usd_price(self.attack_asset) / omnipool.usd_price(self.trade_asset)
                         <= state.external_market[self.attack_asset] / state.external_market[self.trade_asset] * 1.00001
                         or agent.holdings[self.attack_asset] == 0
                 ):

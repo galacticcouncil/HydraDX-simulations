@@ -24,7 +24,7 @@ class FeeMechanism:
         )
 
 
-class AMM:
+class Exchange:
     unique_id: str
     asset_list: list[str]
     liquidity: dict[str: float]
@@ -42,8 +42,7 @@ class AMM:
     def update(self):
         pass
 
-    @staticmethod
-    def price(state, tkn: str, denomination: str = '') -> float:
+    def price(self, tkn: str, denomination: str = '') -> float:
         return 0
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
@@ -116,7 +115,7 @@ class AMM:
 
 def basic_fee(f: float = 0) -> FeeMechanism:
     def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            exchange: Exchange, tkn: str, delta_tkn: float
     ) -> float:
         return f
     f_mech = FeeMechanism(fee_function, f"{f * 100}%")

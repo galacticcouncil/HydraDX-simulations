@@ -3,12 +3,12 @@ from numbers import Number
 from typing import Callable
 
 from .agents import Agent
-from .amm import AMM, FeeMechanism, basic_fee
+from .exchange import Exchange, FeeMechanism, basic_fee
 from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
 
 
-class OmnipoolState(AMM):
+class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
 
     def __init__(self,
@@ -260,7 +260,7 @@ class OmnipoolState(AMM):
         liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.liquidity}
         weight_cap = {tkn: round(self.weight_cap[tkn], precision) for tkn in self.weight_cap}
         usd_prices = (
-            {tkn: round(usd_price(self, tkn), precision) for tkn in self.asset_list}
+            {tkn: round(self.usd_price(tkn), precision) for tkn in self.asset_list}
             if self.stablecoin is not None
             else {tkn: 'N/A' for tkn in self.asset_list}
         )
@@ -370,7 +370,7 @@ class OmnipoolState(AMM):
         elif tkn_sell not in self.asset_list + ['LRNA']:
             return 0
         else:
-            return price(self, tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
+            return self.price(tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
         if fee is None:
@@ -405,7 +405,7 @@ class OmnipoolState(AMM):
         elif tkn_sell not in self.asset_list + ["LRNA"]:
             return 0
         else:
-            return price(self, tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
+            return self.price(tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
 
     def get_sub_pool(self, tkn: str):
         # if asset in not in omnipool, return the ID of the sub_pool where it can be found
@@ -972,7 +972,7 @@ class OmnipoolState(AMM):
             raise AssertionError(f"Invalid token name: {tkn_remove}")
 
         # determine if they should get some LRNA back as well as the asset they invested
-        piq = lrna_price(self, tkn_remove)
+        piq = self.lrna_price(tkn_remove)
         p0 = share_price
         mult = (piq - p0) / (piq + p0)
 
@@ -1018,7 +1018,7 @@ class OmnipoolState(AMM):
         if quantity <= 0:
             return self.fail_transaction('Quantity must be non-negative.', agent)
 
-        delta_Q = lrna_price(self, tkn_add) * quantity
+        delta_Q = self.lrna_price(tkn_add) * quantity
 
         if nft_id is None and (self.unique_id, tkn_add) in agent.holdings:
             return self.fail_transaction(
@@ -1039,7 +1039,7 @@ class OmnipoolState(AMM):
             )
 
         if self.tvl_cap < float('inf'):
-            if (self.total_value_locked() + quantity * usd_price(self, tkn_add)) > self.tvl_cap:
+            if (self.total_value_locked() + quantity * self.usd_price(tkn_add)) > self.tvl_cap:
                 return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
 
         # assert quantity > 0, f"delta_R must be positive: {quantity}"
@@ -1077,7 +1077,7 @@ class OmnipoolState(AMM):
         self.shares[tkn_add] += shares_added
 
         # L update: LRNA fees to be burned before they will start to accumulate again
-        delta_L = quantity * lrna_price(self, tkn_add) * self.lrna_imbalance / self.lrna_total
+        delta_L = quantity * self.lrna_price(tkn_add) * self.lrna_imbalance / self.lrna_total
         self.lrna_imbalance += delta_L
 
         # LRNA add (mint)
@@ -1094,10 +1094,10 @@ class OmnipoolState(AMM):
             # shares go to provisioning agent
             agent.holdings[k] += shares_added
             # set price at which liquidity was added
-            agent.share_prices[k] = lrna_price(self, tkn_add)
+            agent.share_prices[k] = self.lrna_price(tkn_add)
             agent.delta_r[k] = quantity
         else:
-            lp_position = OmnipoolLiquidityPosition(tkn_add, lrna_price(self, tkn_add), shares_added, quantity,
+            lp_position = OmnipoolLiquidityPosition(tkn_add, self.lrna_price(tkn_add), shares_added, quantity,
                                                     self.unique_id)
             agent.nfts[nft_id] = lp_position
 
@@ -1215,21 +1215,59 @@ class OmnipoolState(AMM):
         self.current_block.withdrawals[tkn_remove] += abs(delta_s)
         return self
 
-    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None,
-                     stablecoin: str = None) -> float:
-        # assets is a dict of token: quantity
-        # returns the value of the assets in USD
-        if stablecoin is None:
+    def price(self, tkn: str, denominator: str = '') -> float:
+        """
+        price of an asset i denominated in j, according to current market conditions in the omnipool
+        """
+        if tkn not in self.asset_list + ['LRNA']:
+            return 0
+        elif tkn == denominator:
+            return 1
+        elif not denominator or denominator == 'LRNA':
+            return self.lrna_price(tkn)
+        elif denominator not in self.asset_list:
+            return 0
+        elif tkn == 'LRNA':
+            return 1 / self.lrna_price(denominator)
+        elif self.liquidity[tkn] == 0:
+            return 0
+        return self.lrna[tkn] / self.liquidity[tkn] / self.lrna[denominator] * self.liquidity[denominator]
+
+    def usd_price(self, tkn, usd_asset=None):
+        if usd_asset is None:
             if self.stablecoin is None:
                 raise ValueError('no stablecoin set or provided as argument')
             else:
-                stablecoin = self.stablecoin
+                usd_asset = self.stablecoin
+        if tkn == 'LRNA':
+            return 1 / self.lrna_price(usd_asset)
+        else:
+            return self.lrna_price(tkn) / self.lrna_price(usd_asset)
+
+    def lrna_price(self, tkn: str, fee: float = 0) -> float:
+        """Price of i denominated in LRNA"""
+        if tkn == "LRNA":
+            return 1
+        elif self.liquidity[tkn] == 0:
+            return 0
+        else:
+            return (self.lrna[tkn] / self.liquidity[tkn]) * (1 - fee)
+        
+    def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None,
+                     numeraire: str = None) -> float:
+        # assets is a dict of token: quantity
+        # returns the value of the assets in USD
+        if numeraire is None:
+            if self.stablecoin is None:
+                raise ValueError('no stablecoin set or provided as argument')
+            else:
+                numeraire = self.stablecoin
         if equivalency_map is None:
             equivalency_map = {}
-        usd_synonyms = [stablecoin]
+        numeraire_synonyms = [numeraire]
         for eq in equivalency_map:
             if equivalency_map[eq] == 'USD':
-                usd_synonyms.append(eq)
+                numeraire_synonyms.append(eq)
         value = 0
         for tkn in assets:
             equivalents = [tkn]
@@ -1239,15 +1277,89 @@ class OmnipoolState(AMM):
                 if equivalency_map[eq] in equivalents:
                     equivalents.append(eq)
             tkn_value = 0
-            for usd in usd_synonyms:
+            for numeraire_tkn in numeraire_synonyms:
                 for eq in equivalents:
-                    if self.sell_spot(eq, usd) > 0:
-                        tkn_value += assets[tkn] * price(self, eq, usd)
+                    if self.sell_spot(eq, numeraire_tkn) > 0:
+                        tkn_value += assets[tkn] * self.price(eq, numeraire_tkn)
                         break
                 if tkn_value != 0:
                     break
             value += tkn_value
         return value
+
+    def cash_out(self, agent: Agent, prices) -> float:
+        """
+        return the value of the agent's holdings if they withdraw all liquidity
+        and then sell at current spot prices
+        """
+
+        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
+        nft_ids = []
+
+        for k in agent.holdings:
+            if isinstance(k, tuple) and len(k) == 2 and k[0] == self.unique_id:  # LP shares of correct pool
+                tkn = k[1]
+                dqa, dr, dq, ds, db, dl, ids = self.calculate_remove_liquidity(agent, tkn_remove=tkn)
+                delta_qa += dqa
+                delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
+                delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
+                delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
+                delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
+                delta_l += dl
+                nft_ids += ids
+
+        for nft_id in agent.nfts:
+            if nft_id not in nft_ids and agent.nfts[nft_id].pool_id == self.unique_id:
+                tkn = agent.nfts[nft_id].tkn
+                dqa, dr, dq, ds, db, dl, _ = self.calculate_remove_liquidity(agent, nft_id=nft_id)
+                delta_qa += dqa
+                delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
+                delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
+                delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
+                delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
+                delta_l += dl
+
+        # agent_holdings = new_agent.holdings
+        lrna_removed = {tkn: -delta_q[tkn] if tkn in delta_q else 0 for tkn in self.asset_list}
+        liquidity_removed = {tkn: -delta_r[tkn] if tkn in delta_r else 0 for tkn in self.asset_list}
+
+        # if 'LRNA' in prices:
+        #     raise ValueError('LRNA price should not be given.')
+        agent_lrna = delta_qa
+        if 'LRNA' in agent.holdings:
+            agent_lrna += agent.holdings['LRNA']
+
+        if 'LRNA' not in prices and agent_lrna > 0:
+            lrna_total = self.lrna_total - sum(lrna_removed.values())
+            lrna_sells = {
+                tkn: -(self.lrna[tkn] - lrna_removed[tkn]) / lrna_total * agent_lrna
+                for tkn in self.asset_list
+            }
+
+            lrna_profits = dict()
+
+            # sell LRNA optimally back to the pool
+            for tkn, delta_qa in lrna_sells.items():
+                asset_fee = (
+                    self.asset_fee[tkn].compute()
+                    if hasattr(self, 'asset_fee')
+                    else self.last_fee[tkn]
+                )
+                lrna_profits[tkn] = (
+                        -(self.liquidity[tkn] - liquidity_removed[tkn]) * delta_qa
+                        / (-delta_qa + self.lrna[tkn] - lrna_removed[tkn])
+                        * (1 - asset_fee)
+                )
+                liquidity_removed[tkn] += lrna_profits[tkn]
+
+        new_holdings = {tkn: agent.holdings[tkn] for tkn in agent.holdings}
+        new_holdings['LRNA'] = agent_lrna
+        for tkn in liquidity_removed:
+            if tkn not in new_holdings:
+                new_holdings[tkn] = 0
+            new_holdings[tkn] += liquidity_removed[tkn]
+
+        return value_assets(prices, new_holdings)
 
 
 class OmnipoolLiquidityPosition:
@@ -1281,48 +1393,10 @@ class OmnipoolArchiveState:
         # record these for analysis later
         self.last_fee = {k: v for (k, v) in state.last_fee.items()}
         self.last_lrna_fee = {k: v for (k, v) in state.last_lrna_fee.items()}
-
-
-# Works with OmnipoolState *or* OmnipoolArchiveState
-def price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, denominator: str = '') -> float:
-    """
-    price of an asset i denominated in j, according to current market conditions in the omnipool
-    """
-    if tkn not in state.asset_list + ['LRNA']:
-        return 0
-    elif tkn == denominator:
-        return 1
-    elif not denominator or denominator == 'LRNA':
-        return lrna_price(state, tkn)
-    elif denominator not in state.asset_list:
-        return 0
-    elif tkn == 'LRNA':
-        return 1 / lrna_price(state, denominator)
-    elif state.liquidity[tkn] == 0:
-        return 0
-    return state.lrna[tkn] / state.liquidity[tkn] / state.lrna[denominator] * state.liquidity[denominator]
-
-
-def usd_price(state: OmnipoolState or OmnipoolArchiveState, tkn, usd_asset=None):
-    if usd_asset is None:
-        if state.stablecoin is None:
-            raise ValueError('no stablecoin set or provided as argument')
-        else:
-            usd_asset = state.stablecoin
-    if tkn == 'LRNA':
-        return 1 / state.lrna_price(state, usd_asset)
-    else:
-        return price(state, tkn) / price(state, usd_asset)
-
-
-def lrna_price(state: OmnipoolState or OmnipoolArchiveState, tkn: str, fee: float = 0) -> float:
-    """Price of i denominated in LRNA"""
-    if tkn == "LRNA":
-        return 1
-    elif state.liquidity[tkn] == 0:
-        return 0
-    else:
-        return (state.lrna[tkn] / state.liquidity[tkn]) * (1 - fee)
+        # borrow some methods from parent
+        self.lrna_price = OmnipoolState.lrna_price
+        self.price = OmnipoolState.price
+        self.usd_price = OmnipoolState.usd_price
 
 
 def asset_invariant(state: OmnipoolState, i: str) -> float:
@@ -1405,21 +1479,12 @@ def simulate_remove_liquidity(
     return new_state, new_agent
 
 
-OmnipoolArchiveState.usd_price = staticmethod(usd_price)
-OmnipoolArchiveState.lrna_price = staticmethod(lrna_price)
-OmnipoolArchiveState.price = staticmethod(price)
-
-OmnipoolState.usd_price = staticmethod(usd_price)
-OmnipoolState.lrna_price = staticmethod(lrna_price)
-OmnipoolState.price = staticmethod(price)
-
-
 # ===============================================================================
 # fee mechanisms
 # ===============================================================================
 def slip_fee(slip_factor: float, minimum_fee: float = 0) -> FeeMechanism:
     def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            exchange: Exchange, tkn: str, delta_tkn: float
     ) -> float:
         return (slip_factor * abs(delta_tkn) / (exchange.liquidity[tkn] + delta_tkn)) + minimum_fee
 
@@ -1526,78 +1591,3 @@ def value_assets(prices: dict, assets: dict) -> float:
         assets[i] * prices[i] if i in prices else 0
         for i in assets.keys()
     ])
-
-
-def cash_out_omnipool(omnipool: OmnipoolState, agent: Agent, prices) -> float:
-    """
-    return the value of the agent's holdings if they withdraw all liquidity
-    and then sell at current spot prices
-    """
-
-    delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
-    nft_ids = []
-
-    for k in agent.holdings:
-        if isinstance(k, tuple) and len(k) == 2 and k[0] == omnipool.unique_id:  # LP shares of correct pool
-            tkn = k[1]
-            dqa, dr, dq, ds, db, dl, ids = omnipool.calculate_remove_liquidity(agent, tkn_remove=tkn)
-            delta_qa += dqa
-            delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
-            delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
-            delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
-            delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
-            delta_l += dl
-            nft_ids += ids
-
-    for nft_id in agent.nfts:
-        if nft_id not in nft_ids and agent.nfts[nft_id].pool_id == omnipool.unique_id:
-            tkn = agent.nfts[nft_id].tkn
-            dqa, dr, dq, ds, db, dl, _ = omnipool.calculate_remove_liquidity(agent, nft_id=nft_id)
-            delta_qa += dqa
-            delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
-            delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
-            delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
-            delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
-            delta_l += dl
-
-    # agent_holdings = new_agent.holdings
-    lrna_removed = {tkn: -delta_q[tkn] if tkn in delta_q else 0 for tkn in omnipool.asset_list}
-    liquidity_removed = {tkn: -delta_r[tkn] if tkn in delta_r else 0 for tkn in omnipool.asset_list}
-
-    # if 'LRNA' in prices:
-    #     raise ValueError('LRNA price should not be given.')
-    agent_lrna = delta_qa
-    if 'LRNA' in agent.holdings:
-        agent_lrna += agent.holdings['LRNA']
-
-    if 'LRNA' not in prices and agent_lrna > 0:
-        lrna_total = omnipool.lrna_total - sum(lrna_removed.values())
-        lrna_sells = {
-            tkn: -(omnipool.lrna[tkn] - lrna_removed[tkn]) / lrna_total * agent_lrna
-            for tkn in omnipool.asset_list
-        }
-
-        lrna_profits = dict()
-
-        # sell LRNA optimally back to the pool
-        for tkn, delta_qa in lrna_sells.items():
-            asset_fee = (
-                omnipool.asset_fee[tkn].compute()
-                if hasattr(omnipool, 'asset_fee')
-                else omnipool.last_fee[tkn]
-            )
-            lrna_profits[tkn] = (
-                    -(omnipool.liquidity[tkn] - liquidity_removed[tkn]) * delta_qa
-                    / (-delta_qa + omnipool.lrna[tkn] - lrna_removed[tkn])
-                    * (1 - asset_fee)
-            )
-            liquidity_removed[tkn] += lrna_profits[tkn]
-
-    new_holdings = {tkn: agent.holdings[tkn] for tkn in agent.holdings}
-    new_holdings['LRNA'] = agent_lrna
-    for tkn in liquidity_removed:
-        if tkn not in new_holdings:
-            new_holdings[tkn] = 0
-        new_holdings[tkn] += liquidity_removed[tkn]
-
-    return value_assets(prices, new_holdings)
