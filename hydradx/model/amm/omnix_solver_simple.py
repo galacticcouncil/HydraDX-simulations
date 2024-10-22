@@ -1,9 +1,11 @@
+import copy
 import math
 
 import clarabel
 import numpy as np
 import cvxpy as cp
 import clarabel as cb
+import highspy
 from scipy import sparse
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -590,6 +592,167 @@ def _find_solution_unrounded3(
         exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
 
     return new_amm_deltas, exec_intent_deltas
+
+
+def _solve_inclusion_problem(
+        state: OmnipoolState,
+        intents: list,
+        # old_IC,
+        # old_IC_upper,
+        # old_S,
+        # old_s
+):
+
+    asset_list = []
+    for intent in intents:
+        if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
+            asset_list.append(intent['tkn_sell'])
+        if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
+            asset_list.append(intent['tkn_buy'])
+    tkn_list = ["LRNA"] + asset_list
+
+    partial_intents = [i for i in intents if i['partial']]
+    full_intents = [i for i in intents if not i['partial']]
+    n = len(asset_list)
+    m = len(partial_intents)
+    r = len(full_intents)
+    k = 4 * n + m + r
+
+    fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
+    lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in asset_list]  # l_i
+    fee_match = 0.0005
+    assert fee_match <= min(fees)  # breaks otherwise
+
+    partial_intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in partial_intents]
+    full_intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in full_intents]
+
+    # calculate tau, phi
+    scaling, net_supply, net_demand = _calculate_scaling(intents, state, asset_list)
+    tau1, phi1 = _calculate_tau_phi(partial_intents, tkn_list, scaling)
+    tau2, phi2 = _calculate_tau_phi(full_intents, tkn_list, scaling)
+    tau = sparse.hstack([tau1, tau2]).toarray()
+    phi = sparse.hstack([phi1, phi2]).toarray()
+    # epsilon_tkn = {t: max([net_supply[t], net_demand[t]]) / state.liquidity[t] for t in asset_list}
+
+    # we start with the 4n + m variables from the initial problem
+    # then we add r indicator variables for the r non-partial intents
+    #----------------------------#
+    #          OBJECTIVE         #
+    #----------------------------#
+
+    y_coefs = np.ones(n)
+    x_coefs = np.zeros(n)
+    lrna_lambda_coefs = np.array(lrna_fees)
+    lambda_coefs = np.zeros(n)
+    d_coefs = np.array([-tau[0,j] for j in range(m)])
+    I_coefs = np.array([-tau[0,m+l]*full_intents[l]['sell_quantity']/scaling["LRNA"] for l in range(r)])
+    c = np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs, I_coefs])
+
+    # bounds on variables
+    # y, x are unbounded
+    # lrna_lambda, lambda >= 0
+    # 0 <= d <= max
+    # 0 <= I <= 1
+
+    inf = highspy.kHighsInf
+
+    lower = np.array([-inf] * 2 * n + [0] * (2 * n + m + r))
+    partial_intent_sell_amts = [i['sell_quantity']/scaling[i['tkn_sell']] for i in partial_intents]
+    upper = np.array([inf] * 4 * n + partial_intent_sell_amts + [1] * r)
+
+    # we will temporarily assume a 0 solution is latest, and linearize g() around that.
+    s = np.zeros(n)
+    S = np.zeros((n, k))
+    S_upper = np.zeros(n)
+    S_lower = np.array([-inf]*n)
+    for i in range(n):
+        S[i, i] = -scaling["LRNA"] * state.liquidity[asset_list[i]]
+        S[i, n+i] = -scaling[asset_list[i]] * state.lrna[asset_list[i]]
+
+    # for now we will not include any integer cuts
+
+    # asset leftover must be above zero
+    A3 = np.zeros((n+1, k))
+    A3[0, :] = c
+    for i in range(n):
+        A3[i+1, n+i] = 1
+        A3[i+1, 3*n+i] = fees[i] - fee_match
+        for j in range(m):
+            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] * partial_intent_prices[j] - tau[i+1, j]
+        for l in range(r):
+            buy_amt = 1 / (1 - fee_match) * phi[i+1, l] * full_intents[l]['buy_quantity'] * scaling[full_intents[l]['tkn_buy']] / scaling[full_intents[l]['tkn_sell']]
+            sell_amt = tau[i + 1, l] * full_intents[l]['sell_quantity']
+            A3[i+1, 4*n+m+l] = (buy_amt - sell_amt)/scaling[asset_list[i]]
+    A3_upper = np.zeros(n+1)
+    A3_lower = np.array([-inf]*(n+1))
+
+    # sum of lrna_lambda and y_i should be non-negative
+    # sum of lambda and x_i should be non-negative
+    A5 = np.zeros((2 * n, k))
+    for i in range(n):
+        A5[i, i] = 1
+        A5[i, 2 * n + i] = 1
+        A5[n + i, n + i] = 1
+        A5[n + i, 3 * n + i] = 1
+    A5_upper = np.array([inf] * 2 * n)
+    A5_lower = np.zeros(2 * n)
+
+    A = np.vstack([S, A3, A5])
+    A_upper = np.concatenate([S_upper, A3_upper, A5_upper])
+    A_lower = np.concatenate([S_lower, A3_lower, A5_lower])
+
+    nonzeros = []
+    start = [0]
+    a = []
+    for i in range(A.shape[0]):
+        row_nonzeros = np.where(A[i, :] != 0)[0]
+        nonzeros.extend(row_nonzeros)
+        start.append(len(nonzeros))
+        a.extend(A[i, row_nonzeros])
+    h = highspy.Highs()
+    lp = highspy.HighsLp()
+
+    lp.num_col_ = k
+    lp.num_row_ = A.shape[0]
+
+    lp.col_cost_ = c
+    lp.col_lower_ = lower
+    lp.col_upper_ = upper
+    lp.row_lower_ = A_lower
+    lp.row_upper_ = A_upper
+
+    lp.a_matrix_.format_ = highspy.MatrixFormat.kRowwise
+    lp.a_matrix_.start_ = start
+    lp.a_matrix_.index_ = nonzeros
+    lp.a_matrix_.value_ = a
+
+    lp.integrality_ = np.array([highspy.HighsVarType.kContinuous] * (4*n + m) + [highspy.HighsVarType.kInteger] * r)
+
+    h.passModel(lp)
+    h.run()
+    solution = h.getSolution()
+    info = h.getInfo()
+    basis = h.getBasis()
+
+    x_expanded = solution.col_value
+
+    new_amm_deltas = {}
+    exec_partial_intent_deltas = [None] * len(partial_intents)
+    exec_full_intent_flags = [None] * len(full_intents)
+
+    for i in range(n):
+        tkn = tkn_list[i+1]
+        new_amm_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
+
+    for i in range(m):
+        exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
+    for i in range(r):
+        exec_full_intent_flags[i] = x_expanded[4 * n + m + i]
+
+    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags
+
+
+
 
 
 def round_solution(intents, intent_deltas, tolerance=0.0001):
