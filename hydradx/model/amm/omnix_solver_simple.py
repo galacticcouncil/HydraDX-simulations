@@ -379,13 +379,15 @@ def _find_solution_unrounded3(
         fee_buffer: float = 0.0001
 ) -> (dict, list):
 
-    intent_directions = {}
     asset_list = []
-    for intent in partial_intents + full_intents:  # TODO update direction logic to take advantage of known full intents
+    for intent in partial_intents + full_intents:
         if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
             asset_list.append(intent['tkn_sell'])
-        if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
+        if intent['tkn_buy'] != "LRNA" and intent['tkn_buy'] not in asset_list:
             asset_list.append(intent['tkn_buy'])
+
+    intent_directions = {}
+    for intent in partial_intents:
         if intent['tkn_sell'] not in intent_directions:
             intent_directions[intent['tkn_sell']] = "sell"
         elif intent_directions[intent['tkn_sell']] == "buy":
@@ -394,6 +396,24 @@ def _find_solution_unrounded3(
             intent_directions[intent['tkn_buy']] = "buy"
         elif intent_directions[intent['tkn_buy']] == "sell":
             intent_directions[intent['tkn_buy']] = "both"
+
+    known_flow = {tkn: 0 for tkn in ["LRNA"] + asset_list}
+    for i, intent in enumerate(full_intents):
+        if I[i] > 0.5:
+            known_flow[intent['tkn_sell']] += intent["sell_quantity"]
+            known_flow[intent['tkn_buy']] -= intent["buy_quantity"]
+    for tkn in asset_list:
+        if known_flow[tkn] > 0:  # net agent is selling tkn
+            if tkn not in intent_directions:
+                intent_directions[tkn] = "sell"
+            elif intent_directions[tkn] == "buy":
+                intent_directions[tkn] = "both"
+        elif known_flow[tkn] < 0:  # net agent is buying tkn
+            if tkn not in intent_directions:
+                intent_directions[tkn] = "buy"
+            elif intent_directions[tkn] == "sell":
+                intent_directions[tkn] = "both"
+
 
     n = len(asset_list)
     if I is None:  # run all intents as though they are partial
@@ -429,7 +449,8 @@ def _find_solution_unrounded3(
     fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
     lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in asset_list]  # l_i
     fee_match = 0.0005
-    assert fee_match <= min(fees)  # breaks otherwise
+    if len(fees) > 0:
+        assert fee_match <= min(fees)  # breaks otherwise
 
     # calculate tau, phi
     scaling, net_supply, net_demand = _calculate_scaling(partial_intents + full_intents, state, asset_list)
@@ -625,7 +646,7 @@ def _solve_inclusion_problem(
     for intent in intents:
         if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
             asset_list.append(intent['tkn_sell'])
-        if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
+        if intent['tkn_buy'] != "LRNA" and intent['tkn_buy'] not in asset_list:
             asset_list.append(intent['tkn_buy'])
     tkn_list = ["LRNA"] + asset_list
 
@@ -785,8 +806,8 @@ def _solve_inclusion_problem(
 
     for i in range(m):
         exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
-    for i in range(r):
-        exec_full_intent_flags[i] = x_expanded[4 * n + m + i]
+
+    exec_full_intent_flags = [1 if x_expanded[4 * n + m + i] > 0.5 else 0 for i in range(r)]
 
     save_A = np.vstack([old_A, S])
     save_A_upper = np.concatenate([old_A_upper, S_upper])
@@ -853,27 +874,34 @@ def find_solution3(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -
 
 
 def find_solution_outer_approx(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -> list:
+    if len(intents) == 0:
+        return []
     partial_intent_indices = [i for i in range(len(intents)) if intents[i]['partial']]
     full_intent_indices = [i for i in range(len(intents)) if not intents[i]['partial']]
     partial_intents = [intents[i] for i in partial_intent_indices]
     full_intents = [intents[i] for i in full_intent_indices]
 
+    asset_list = []
+    for intent in intents:
+        if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
+            asset_list.append(intent['tkn_sell'])
+        if intent['tkn_buy'] != "LRNA" and intent['tkn_buy'] not in asset_list:
+            asset_list.append(intent['tkn_buy'])
+
     m = len(partial_intents)
     r = len(full_intents)
     inf = highspy.kHighsInf
-    # find initial solution as though all intents are partial
-    amm_deltas, intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents + full_intents, epsilon=epsilon)
-    n = len(amm_deltas)
+    n = len(asset_list)
     k_milp = 4 * n + m + r
     # get initial I values
-    indicators = [1 if -intent_deltas[m + l] >= full_intents[l]['sell_quantity'] / 2 else 0 for l in range(r)]
+    indicators = [0]*r
     # set Z_L = -inf, Z_U = inf
     Z_L = -inf
     Z_U = inf
     milp_obj = -inf
     new_A, new_A_upper, new_A_lower = np.zeros((0, k_milp)), np.array([]), np.array([])
     # loop until linearization has no solution:
-    for _i in range(10):
+    for _i in range(50):
         # - update I^(K+1), Z_L
         Z_L = max(Z_L, milp_obj)
         # - do NLP solve given I values, update x^K
@@ -903,8 +931,11 @@ def find_solution_outer_approx(state: OmnipoolState, intents: list, epsilon: flo
         if not valid:
             break
 
+    if valid == True:  # this means we did not get to a solution
+        return [[0,0]]*len(intents)
+
     flags = get_directional_flags(best_amm_deltas)
-    best_amm_deltas, best_intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents, full_intents, I=y_best, epsilon = epsilon)
+    best_amm_deltas, best_intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents, full_intents, I=y_best, flags=flags, epsilon = epsilon)
     sell_deltas = round_solution(partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(partial_intents, sell_deltas)
     full_deltas_with_buys = [[-full_intents[l]['sell_quantity'], full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
@@ -914,7 +945,3 @@ def find_solution_outer_approx(state: OmnipoolState, intents: list, epsilon: flo
     for i in range(len(full_intent_indices)):
         deltas[full_intent_indices[i]] = full_deltas_with_buys[i]
     return deltas
-
-    print(Z_U)
-    print(x_best)
-    print(y_best)
