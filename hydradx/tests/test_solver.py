@@ -12,10 +12,12 @@ from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2,
 def test_single_trade_settles():
     agents = [Agent(holdings={'DOT': 100})]
 
-    init_intents = [  # selling DOT for $7
-        {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0]}
+    init_intents_partial = [  # selling DOT for $7
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True}
     ]
-    intents = copy.deepcopy(init_intents)
+    init_intents_full = [  # selling DOT for $7
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False}
+    ]
 
     liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}  # DOT price is $7.50
     lrna = {'HDX': mpf(1000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000)}
@@ -29,20 +31,28 @@ def test_single_trade_settles():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution3(initial_state, intents)
+    intents = copy.deepcopy(init_intents_partial)
+    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
+    assert intent_deltas[0][0] == -init_intents_partial[0]['sell_quantity']
+    assert intent_deltas[0][1] == init_intents_partial[0]['buy_quantity']
 
-    assert validate_and_execute_solution(initial_state, intents, intent_deltas)
-    assert intent_deltas[0][0] == -init_intents[0]['sell_quantity']
-    assert intent_deltas[0][1] == init_intents[0]['buy_quantity']
+    intents = copy.deepcopy(init_intents_full)
+    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
+    assert intent_deltas[0][0] == -init_intents_full[0]['sell_quantity']
+    assert intent_deltas[0][1] == init_intents_full[0]['buy_quantity']
 
 
 def test_single_trade_does_not_settle():
-    agents = [Agent(holdings={'DOT': 100})]
+    agents = [Agent(holdings={'DOT': 100, 'USDT': 0})]
 
-    init_intents = [  # selling DOT for $8
-        {'sell_quantity': mpf(100), 'buy_quantity': mpf(800), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0]}
+    init_intents_partial = [  # selling DOT for $8
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(800), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True}
     ]
-    intents = copy.deepcopy(init_intents)
+    init_intents_full = [  # selling DOT for $8
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(800), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False}
+    ]
 
     liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}  # DOT price is $7.50
     lrna = {'HDX': mpf(1000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000)}
@@ -56,8 +66,15 @@ def test_single_trade_does_not_settle():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution2(initial_state, intents)
+    intents = copy.deepcopy(init_intents_partial)
+    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
+    assert intent_deltas[0][0] == 0
+    assert intent_deltas[0][1] == 0
 
+    intents = copy.deepcopy(init_intents_full)
+    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 

@@ -112,10 +112,11 @@ def execute_solution(
 
     # transfer assets out to intent agents
     for transfer in transfers:
-        pool_agent.holdings[transfer['tkn_buy']] -= transfer['buy_quantity']
-        if transfer['tkn_buy'] not in transfer['agent'].holdings:
-            transfer['agent'].holdings[transfer['tkn_buy']] = 0
-        transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
+        if transfer['buy_quantity'] > 0:
+            pool_agent.holdings[transfer['tkn_buy']] -= transfer['buy_quantity']
+            if transfer['tkn_buy'] not in transfer['agent'].holdings:
+                transfer['agent'].holdings[transfer['tkn_buy']] = 0
+            transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
 
     return pool_agent, lrna_deltas
 
