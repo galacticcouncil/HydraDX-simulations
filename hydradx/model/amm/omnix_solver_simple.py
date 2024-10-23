@@ -852,7 +852,11 @@ def find_solution3(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -
     return add_buy_deltas(intents, sell_deltas)
 
 
-def find_solution_outer_approx(state: OmnipoolState, partial_intents: list, full_intents: list, epsilon: float = 1e-5) -> list:
+def find_solution_outer_approx(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -> list:
+    partial_intent_indices = [i for i in range(len(intents)) if intents[i]['partial']]
+    full_intent_indices = [i for i in range(len(intents)) if not intents[i]['partial']]
+    partial_intents = [intents[i] for i in partial_intent_indices]
+    full_intents = [intents[i] for i in full_intent_indices]
 
     m = len(partial_intents)
     r = len(full_intents)
@@ -904,7 +908,12 @@ def find_solution_outer_approx(state: OmnipoolState, partial_intents: list, full
     sell_deltas = round_solution(partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(partial_intents, sell_deltas)
     full_deltas_with_buys = [[-full_intents[l]['sell_quantity'], full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
-    return partial_deltas_with_buys, full_deltas_with_buys
+    deltas = [None] * len(intents)
+    for i in range(len(partial_intent_indices)):
+        deltas[partial_intent_indices[i]] = partial_deltas_with_buys[i]
+    for i in range(len(full_intent_indices)):
+        deltas[full_intent_indices[i]] = full_deltas_with_buys[i]
+    return deltas
 
     print(Z_U)
     print(x_best)

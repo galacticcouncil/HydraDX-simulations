@@ -420,12 +420,7 @@ def test_full_solver():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    partial_intents = [i for i in intents if i['partial']]
-    full_intents = [i for i in intents if not i['partial']]
-    partial_intent_deltas, full_intent_deltas = find_solution_outer_approx(initial_state, partial_intents, full_intents)
-    intent_deltas = partial_intent_deltas + full_intent_deltas
-    intents = partial_intents + full_intents
-    # pprint(intent_deltas)
+    intent_deltas = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
 
