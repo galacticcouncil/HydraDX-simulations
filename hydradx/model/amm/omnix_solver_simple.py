@@ -189,7 +189,7 @@ def _calculate_tau_phi(intents: list, tkn_list: list, scaling: dict) -> tuple:
         sell_i = tkn_list.index(intent['tkn_sell'])
         buy_i = tkn_list.index(intent['tkn_buy'])
         tau[sell_i, j] = 1
-        phi[buy_i, j] = scaling[intent['tkn_sell']] / scaling[intent['tkn_buy']]
+        phi[buy_i, j] = 1
     return tau, phi
 
 
@@ -371,7 +371,9 @@ def _find_solution_unrounded2(state: OmnipoolState, intents: list, flags: dict =
 
 def _find_solution_unrounded3(
         state: OmnipoolState,
-        intents: list,
+        partial_intents: list,
+        full_intents: list = [],
+        I: list = None,
         flags: dict = None,
         epsilon: float = 1e-5,
         fee_buffer: float = 0.0001
@@ -379,7 +381,7 @@ def _find_solution_unrounded3(
 
     intent_directions = {}
     asset_list = []
-    for intent in intents:
+    for intent in partial_intents + full_intents:  # TODO update direction logic to take advantage of known full intents
         if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
             asset_list.append(intent['tkn_sell'])
         if intent['tkn_sell'] != "LRNA" and intent['tkn_buy'] not in asset_list:
@@ -394,7 +396,12 @@ def _find_solution_unrounded3(
             intent_directions[intent['tkn_buy']] = "both"
 
     n = len(asset_list)
-    m = len(intents)
+    if I is None:  # run all intents as though they are partial
+        assert full_intents == []
+    else:
+        assert len(I) == len(full_intents)
+    m = len(partial_intents)
+    r = len(full_intents)
     k = 4 * n + m
 
     if flags is None:
@@ -417,7 +424,7 @@ def _find_solution_unrounded3(
 
     tkn_list = ["LRNA"] + asset_list
 
-    intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in intents]
+    partial_intent_prices = [float(intent['buy_quantity'] / intent['sell_quantity']) for intent in partial_intents]
 
     fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
     lrna_fees = [float(state.last_lrna_fee[tkn]) for tkn in asset_list]  # l_i
@@ -425,8 +432,11 @@ def _find_solution_unrounded3(
     assert fee_match <= min(fees)  # breaks otherwise
 
     # calculate tau, phi
-    scaling, net_supply, net_demand = _calculate_scaling(intents, state, asset_list)
-    tau, phi = _calculate_tau_phi(intents, tkn_list, scaling)
+    scaling, net_supply, net_demand = _calculate_scaling(partial_intents + full_intents, state, asset_list)
+    tau1, phi1 = _calculate_tau_phi(partial_intents, tkn_list, scaling)
+    tau2, phi2 = _calculate_tau_phi(full_intents, tkn_list, scaling)
+    tau = sparse.hstack([tau1, tau2])
+    phi = sparse.hstack([phi1, phi2])
     epsilon_tkn = {t: max([net_supply[t], net_demand[t]]) / state.liquidity[t] for t in asset_list}
 
     #----------------------------#
@@ -441,6 +451,7 @@ def _find_solution_unrounded3(
     lrna_lambda_coefs = np.array(lrna_fees)
     lambda_coefs = np.zeros(n)
     d_coefs = np.array([-tau[0,j] for j in range(m)])
+    objective_I_coefs = np.array([-tau[0,m+l]*full_intents[l]['sell_quantity']/scaling["LRNA"] for l in range(r)])
     q = np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs])
     q_trimmed = np.array([q[i] for i in indices_to_keep])
 
@@ -460,7 +471,7 @@ def _find_solution_unrounded3(
     amm_coefs = sparse.csc_matrix((m, 4*n))
     d_coefs = sparse.identity(m, format='csc')
     A2 = sparse.hstack([amm_coefs, d_coefs], format='csc')
-    b2 = np.array([float(i['sell_quantity']/scaling[i['tkn_sell']]) for i in intents])
+    b2 = np.array([float(i['sell_quantity']/scaling[i['tkn_sell']]) for i in partial_intents])
     A2_trimmed = A2[:, indices_to_keep]
     cone2 = cb.NonnegativeConeT(m)
 
@@ -470,20 +481,25 @@ def _find_solution_unrounded3(
     x_coefs = np.zeros(n)
     lrna_lambda_coefs = np.array(lrna_fees)
     lambda_coefs = np.zeros(n)
-    d_coefs = -(tau[0, :].toarray()[0])
+    d_coefs = -(tau1[0, :].toarray()[0])
+    I_coefs_lrna = sparse.csc_matrix(np.array([[-tau[0,m+l]*float(full_intents[l]['sell_quantity']/scaling["LRNA"]) for l in range(r)]]))
     A30 = sparse.csc_matrix(np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs]))
-    b30 = np.zeros(1)
+
     # other assets
     y_coefs = sparse.csc_matrix((n,n))
     x_coefs = sparse.identity(n, format='csc')
     lrna_lambda_coefs = sparse.csc_matrix((n,n))
     lambda_coefs = sparse.diags(np.array(fees)-fee_match, format='csc')
-    d_coefs = sparse.csc_matrix([[1/(1-fee_match)*phi[i,j]*intent_prices[j] - tau[i, j] for j in range(m)] for i in range(1,n+1)])
+    d_coefs = sparse.csc_matrix([[1/(1-fee_match)*phi[i,j]*partial_intent_prices[j]*float(scaling[partial_intents[j]['tkn_sell']]/scaling[partial_intents[j]['tkn_buy']]) - tau[i, j] for j in range(m)] for i in range(1,n+1)])
+    I_coefs = sparse.csc_matrix([[float((1 / (1 - fee_match) * phi[i, m+l] * full_intents[l]['buy_quantity'] - tau[i, m+l] * full_intents[l]['sell_quantity'])/scaling[tkn_list[i]]) for l in range(r)] for i in range(1,n+1)])
     A31 = sparse.hstack([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs])
-    b31 = np.zeros(n)
+
     A3 = sparse.vstack([A30, A31], format='csc')
     A3_trimmed = A3[:, indices_to_keep]
-    b3 = np.concatenate([b30, b31])
+    if r == 0:
+        b3 = np.zeros(n+1)
+    else:
+        b3 = -sparse.vstack([I_coefs_lrna, I_coefs], format='csc') @ I
     cone3 = cb.NonnegativeConeT(n + 1)
 
     # AMM invariants must not go down
@@ -579,7 +595,7 @@ def _find_solution_unrounded3(
     s = solution.s
 
     new_amm_deltas = {}
-    exec_intent_deltas = [None] * len(intents)
+    exec_intent_deltas = [None] * len(partial_intents)
     x_expanded = [0] * k
     for i in range(k):
         if i in indices_to_keep:
@@ -588,19 +604,21 @@ def _find_solution_unrounded3(
         tkn = tkn_list[i+1]
         new_amm_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
 
-    for i in range(len(intents)):
-        exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
+    for i in range(len(partial_intents)):
+        exec_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[partial_intents[i]['tkn_sell']]
 
-    return new_amm_deltas, exec_intent_deltas
+    return new_amm_deltas, exec_intent_deltas, x_expanded, solution.obj_val + (objective_I_coefs @ I if I is not None else 0)
 
 
 def _solve_inclusion_problem(
         state: OmnipoolState,
         intents: list,
-        # old_IC,
-        # old_IC_upper,
-        # old_S,
-        # old_s
+        x: np.array = None,  # NLP solution
+        upper_bound: float = None,
+        lower_bound: float = None,
+        old_A = None,
+        old_A_upper = None,
+        old_A_lower = None,
 ):
 
     asset_list = []
@@ -656,20 +674,28 @@ def _solve_inclusion_problem(
 
     inf = highspy.kHighsInf
 
+    if upper_bound is None:
+        upper_bound = inf
+    if lower_bound is None:
+        lower_bound = -inf
+
     lower = np.array([-inf] * 2 * n + [0] * (2 * n + m + r))
     partial_intent_sell_amts = [i['sell_quantity']/scaling[i['tkn_sell']] for i in partial_intents]
     upper = np.array([inf] * 4 * n + partial_intent_sell_amts + [1] * r)
 
     # we will temporarily assume a 0 solution is latest, and linearize g() around that.
-    s = np.zeros(n)
     S = np.zeros((n, k))
     S_upper = np.zeros(n)
     S_lower = np.array([-inf]*n)
+    grads = np.zeros(2*n)
     for i in range(n):
-        S[i, i] = -scaling["LRNA"] * state.liquidity[asset_list[i]]
-        S[i, n+i] = -scaling[asset_list[i]] * state.lrna[asset_list[i]]
-
-    # for now we will not include any integer cuts
+        grads[i] = -scaling["LRNA"] * state.liquidity[asset_list[i]] - scaling["LRNA"] * scaling[asset_list[i]] * x[n+i]
+        grads[n+i] = -scaling[asset_list[i]] * state.lrna[asset_list[i]] - scaling["LRNA"] * scaling[asset_list[i]] * x[i]
+        S[i, i] = grads[i]
+        S[i, n+i] = grads[n+i]
+        S_upper[i] = (grads[i] * x[n+i] + grads[n+i] * x[n+i] + scaling["LRNA"] * state.liquidity[asset_list[i]] * x[i]
+                + scaling[asset_list[i]] * state.lrna[asset_list[i]] * x[n+i]
+                + scaling["LRNA"] * scaling[asset_list[i]] * x[i] * x[n+i])
 
     # asset leftover must be above zero
     A3 = np.zeros((n+1, k))
@@ -678,10 +704,10 @@ def _solve_inclusion_problem(
         A3[i+1, n+i] = 1
         A3[i+1, 3*n+i] = fees[i] - fee_match
         for j in range(m):
-            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] * partial_intent_prices[j] - tau[i+1, j]
+            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] *scaling[intents[j]['tkn_sell']]/scaling[intents[j]['tkn_buy']] * partial_intent_prices[j] - tau[i+1, j]
         for l in range(r):
-            buy_amt = 1 / (1 - fee_match) * phi[i+1, l] * full_intents[l]['buy_quantity'] * scaling[full_intents[l]['tkn_buy']] / scaling[full_intents[l]['tkn_sell']]
-            sell_amt = tau[i + 1, l] * full_intents[l]['sell_quantity']
+            buy_amt = 1 / (1 - fee_match) * phi[i+1, m+l] * full_intents[l]['buy_quantity']
+            sell_amt = tau[i + 1, m+l] * full_intents[l]['sell_quantity']
             A3[i+1, 4*n+m+l] = (buy_amt - sell_amt)/scaling[asset_list[i]]
     A3_upper = np.zeros(n+1)
     A3_lower = np.array([-inf]*(n+1))
@@ -697,9 +723,22 @@ def _solve_inclusion_problem(
     A5_upper = np.array([inf] * 2 * n)
     A5_lower = np.zeros(2 * n)
 
-    A = np.vstack([S, A3, A5])
-    A_upper = np.concatenate([S_upper, A3_upper, A5_upper])
-    A_lower = np.concatenate([S_lower, A3_lower, A5_lower])
+    # optimized value must be lower than best we have so far, higher than lower bound
+    A8 = np.zeros((1, k))
+    A8[0, :] = c
+    A8_upper = np.array([upper_bound])
+    A8_lower = np.array([lower_bound])
+
+    if old_A is None:
+        old_A = np.zeros((0, k))
+    if old_A_upper is None:
+        old_A_upper = np.array([])
+    if old_A_lower is None:
+        old_A_lower = np.array([])
+    assert len(old_A_upper) == len(old_A_lower) == old_A.shape[0]
+    A = np.vstack([old_A, S, A3, A5, A8])
+    A_upper = np.concatenate([old_A_upper, S_upper, A3_upper, A5_upper, A8_upper])
+    A_lower = np.concatenate([old_A_lower, S_lower, A3_lower, A5_lower, A8_lower])
 
     nonzeros = []
     start = [0]
@@ -749,10 +788,11 @@ def _solve_inclusion_problem(
     for i in range(r):
         exec_full_intent_flags[i] = x_expanded[4 * n + m + i]
 
-    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags
+    save_A = np.vstack([old_A, S])
+    save_A_upper = np.concatenate([old_A_upper, S_upper])
+    save_A_lower = np.concatenate([old_A_lower, S_lower])
 
-
-
+    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, c @ x_expanded, solution.value_valid
 
 
 def round_solution(intents, intent_deltas, tolerance=0.0001):
@@ -807,6 +847,65 @@ def find_solution2(state: OmnipoolState, intents: list) -> list:
 def find_solution3(state: OmnipoolState, intents: list, epsilon: float = 1e-5) -> list:
     amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, epsilon = epsilon)
     flags = get_directional_flags(amm_deltas)
-    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, flags, epsilon = epsilon)
+    amm_deltas, intent_deltas = _find_solution_unrounded3(state, intents, flags = flags, epsilon = epsilon)
     sell_deltas = round_solution(intents, intent_deltas)
     return add_buy_deltas(intents, sell_deltas)
+
+
+def find_solution_outer_approx(state: OmnipoolState, partial_intents: list, full_intents: list, epsilon: float = 1e-5) -> list:
+
+    m = len(partial_intents)
+    r = len(full_intents)
+    inf = highspy.kHighsInf
+    # find initial solution as though all intents are partial
+    amm_deltas, intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents + full_intents, epsilon=epsilon)
+    n = len(amm_deltas)
+    k_milp = 4 * n + m + r
+    # get initial I values
+    indicators = [1 if -intent_deltas[m + l] >= full_intents[l]['sell_quantity'] / 2 else 0 for l in range(r)]
+    # set Z_L = -inf, Z_U = inf
+    Z_L = -inf
+    Z_U = inf
+    milp_obj = -inf
+    new_A, new_A_upper, new_A_lower = np.zeros((0, k_milp)), np.array([]), np.array([])
+    # loop until linearization has no solution:
+    for _i in range(10):
+        # - update I^(K+1), Z_L
+        Z_L = max(Z_L, milp_obj)
+        # - do NLP solve given I values, update x^K
+        amm_deltas, intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents, full_intents, I=indicators, epsilon=epsilon)
+        if obj < Z_U:  # - update Z_U, y*, x*
+            Z_U = obj
+            x_best = x
+            y_best = indicators
+            best_amm_deltas = amm_deltas
+            best_intent_deltas = intent_deltas
+        # - get new cone constraint from I^K
+        BK = np.where(np.array(indicators) == 1)[0] + 4 * n + m
+        NK = np.where(np.array(indicators) == 0)[0] + 4 * n + m
+        IC_A = np.zeros((1, k_milp))
+        IC_A[0, BK] = 1
+        IC_A[0, NK] = -1
+        IC_upper = np.array([len(BK) - 1])
+        IC_lower = np.array([-inf])
+
+        # - add cone constraint to A, A_upper, A_lower
+        A = np.vstack([new_A, IC_A])
+        A_upper = np.concatenate([new_A_upper, IC_upper])
+        A_lower = np.concatenate([new_A_lower, IC_lower])
+
+        # - do MILP solve
+        amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid = _solve_inclusion_problem(state, partial_intents + full_intents, x, Z_U, Z_L, A, A_upper, A_lower)
+        if not valid:
+            break
+
+    flags = get_directional_flags(best_amm_deltas)
+    best_amm_deltas, best_intent_deltas, x, obj = _find_solution_unrounded3(state, partial_intents, full_intents, I=y_best, epsilon = epsilon)
+    sell_deltas = round_solution(partial_intents, best_intent_deltas)
+    partial_deltas_with_buys = add_buy_deltas(partial_intents, sell_deltas)
+    full_deltas_with_buys = [[-full_intents[l]['sell_quantity'], full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
+    return partial_deltas_with_buys, full_deltas_with_buys
+
+    print(Z_U)
+    print(x_best)
+    print(y_best)

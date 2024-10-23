@@ -6,8 +6,8 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
 
 from hydradx.model.amm.omnix import validate_and_execute_solution
-from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2, find_solution3
-
+from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2, find_solution3, \
+    _find_solution_unrounded3, add_buy_deltas, round_solution, find_solution_outer_approx
 
 def test_single_trade_settles():
     agents = [Agent(holdings={'DOT': 100})]
@@ -265,6 +265,66 @@ def test_solver_with_real_omnipool():
     pprint(intent_deltas)
 
 
+def test_solver_with_real_omnipool_one_full():
+    agents = [
+        Agent(holdings={'HDX': 100}),
+        Agent(holdings={'HDX': 100}),
+    ]
+
+    intents = [
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149711278057), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0]},
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': False},
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1],
+         'partial': True},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.25359), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU',
+        #  'agent': agents[0]},
+        # {'sell_quantity': mpf(1.25361), 'buy_quantity': mpf(100), 'tkn_sell': 'CRU', 'tkn_buy': 'HDX',
+        #  'agent': agents[1]}
+    ]
+
+    partial_intents = [i for i in intents if i['partial']]
+    full_intents = [i for i in intents if not i['partial']]
+
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+                 'WETH': mpf(897.820372708098), '2-Pool': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+            'WETH': mpf(82979.9927924809), '2-Pool': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    full_intent_indicators = [1]
+    # full_intent_indicators = []
+
+    amm_deltas, sell_deltas = _find_solution_unrounded3(initial_state, partial_intents, full_intents, I=full_intent_indicators)
+    for i in full_intents:
+        if full_intent_indicators.pop(0) == 1:
+            sell_deltas.append(-i['sell_quantity'])
+
+    sell_deltas = round_solution(partial_intents + full_intents, sell_deltas)
+    intent_deltas = add_buy_deltas(partial_intents + full_intents, sell_deltas)
+
+
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(partial_intents + full_intents), intent_deltas)
+
+    pprint(intent_deltas)
+
+
 def test_MIP_solver_with_real_omnipool():
     from hydradx.model.amm.omnix_solver_simple import _solve_inclusion_problem
     agents = [
@@ -317,56 +377,56 @@ def test_MIP_solver_with_real_omnipool():
     pprint(intent_deltas)
 
 
-def test_MIP_solver():
-    import highspy
-    import numpy as np
+def test_full_solver():
+    from hydradx.model.amm.omnix_solver_simple import _solve_inclusion_problem
+    agents = [
+        Agent(holdings={'HDX': 100}),
+        Agent(holdings={'HDX': 100}),
+    ]
 
-    # Create HiGHS model
-    h = highspy.Highs()
-    lp = highspy.HighsLp()
-    inf = highspy.kHighsInf
+    intents = [
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149711278057), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0]},
+        # {'sell_quantity': mpf(1.149711278057), 'buy_quantity': mpf(100), 'tkn_sell': 'CRU', 'tkn_buy': 'HDX', 'agent': agents[1]},
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': False},
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1], 'partial': True},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(200.0), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1],
+        #  'partial': True},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.25359), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU',
+        #  'agent': agents[0]},
+        # {'sell_quantity': mpf(1.25361), 'buy_quantity': mpf(100), 'tkn_sell': 'CRU', 'tkn_buy': 'HDX',
+        #  'agent': agents[1]}
+    ]
 
-    lp.num_col_ = 2
-    lp.num_row_ = 3
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+                 'WETH': mpf(897.820372708098), '2-Pool': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+            'WETH': mpf(82979.9927924809), '2-Pool': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
 
-    lp.col_cost_ = np.array([1, 1], dtype=np.double)  # c^T
-    lp.col_lower_ = np.array([0, 1], dtype=np.double)  # l
-    lp.col_upper_ = np.array([4, inf], dtype=np.double)  # u
-    lp.row_lower_ = np.array([-inf, 5, 6], dtype=np.double)  # L
-    lp.row_upper_ = np.array([7, 15, inf], dtype=np.double)  # U
-    # In a HighsLp instsance, the number of nonzeros is given by a fictitious final start
-    lp.a_matrix_.start_ = np.array([0, 2, 5])
-    lp.a_matrix_.index_ = np.array([1, 2, 0, 1, 2])
-    lp.a_matrix_.value_ = np.array([1, 3, 1, 2, 2], dtype=np.double)
-    h.passModel(lp)
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    h.version()
+    partial_intents = [i for i in intents if i['partial']]
+    full_intents = [i for i in intents if not i['partial']]
+    partial_intent_deltas, full_intent_deltas = find_solution_outer_approx(initial_state, partial_intents, full_intents)
+    intent_deltas = partial_intent_deltas + full_intent_deltas
+    intents = partial_intents + full_intents
+    # pprint(intent_deltas)
 
-    output_flag = h.getOptionValue("output_flag")
-    print("output_flag:", output_flag)
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
 
-    output_flag = h.getOptionValue("log_to_console")
-    print("log_to_console:", output_flag)
-
-    output_flag = h.getOptionValue("log_dev_level")
-    print("log_dev_level:", output_flag)
-
-    h.setOptionValue('output_flag', False)
-
-    h.setOptionValue('log_dev_level', 1)
-
-    h.setOptionValue('output_flag', True)
-
-    h.run()
-
-    solution = h.getSolution()
-    basis = h.getBasis()
-    info = h.getInfo()
-    model_status = h.getModelStatus()
-    print('Model status = ', h.modelStatusToString(model_status))
-    print()
-    print('Optimal objective = ', info.objective_function_value)
-    print('Iteration count = ', info.simplex_iteration_count)
-    print('Primal solution status = ', h.solutionStatusToString(info.primal_solution_status))
-    print('Dual solution status = ', h.solutionStatusToString(info.dual_solution_status))
-    print('Basis validity = ', h.basisValidityToString(info.basis_validity))
+    pprint(intent_deltas)
