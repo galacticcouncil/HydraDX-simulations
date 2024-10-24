@@ -30,7 +30,7 @@ class OmnipoolRouter:
     def price_route(self, tkn: str, denomination: str, tkn_pool_id: str, denom_pool_id: str) -> float:
         if tkn_pool_id == denom_pool_id:
             if tkn_pool_id == self.omnipool_id:  # This is necessary because Omnipool has wrong price signature
-                return self.omnipool.price(self.omnipool, tkn, denomination)
+                return self.omnipool.price(tkn, denomination)
             else:
                 return self.exchanges[tkn_pool_id].price(tkn, denomination)
 
@@ -181,7 +181,7 @@ class OmnipoolRouter:
             if buy_quantity:
                 # buy a specific quantity of a stableswap asset using LRNA
                 shares_needed = stable_pool.calculate_withdrawal_shares(tkn_remove=tkn_buy, quantity=buy_quantity)
-                omnipool.lrna_swap(agent, delta_ra=shares_needed, tkn=buy_pool_id)
+                omnipool.swap(agent, tkn_sell='LRNA', buy_quantity=shares_needed, tkn_buy=buy_pool_id)
                 if omnipool.fail:
                     # if the swap failed, the transaction failed.
                     return self.fail_transaction(omnipool.fail)

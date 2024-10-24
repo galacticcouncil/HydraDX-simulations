@@ -92,7 +92,7 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
         new_value += new_holdings[asset] * external_market[asset]
 
         # Trading should bring pool to market price
-        if oamm.usd_price(omnipool, asset) != pytest.approx(external_market[asset], rel=1e-15):
+        if omnipool.usd_price(asset) != pytest.approx(external_market[asset], rel=1e-15):
             raise
 
     # Trading should be profitable
@@ -220,8 +220,8 @@ def test_dca_with_lping(
     }
     max_shares_per_block = holdings[('omnipool', sell_tkn)] * shares_mult
     share_prices = {
-        ('omnipool', sell_tkn): omnipool.lrna_price(omnipool, sell_tkn) * price_mults[0],
-        ('omnipool', buy_tkn): omnipool.lrna_price(omnipool, buy_tkn) * price_mults[1]
+        ('omnipool', sell_tkn): omnipool.lrna_price(sell_tkn) * price_mults[0],
+        ('omnipool', buy_tkn): omnipool.lrna_price(buy_tkn) * price_mults[1]
     }
 
     agent = Agent(holdings=holdings, unique_id=trader_id, share_prices=share_prices)

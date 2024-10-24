@@ -510,7 +510,7 @@ def find_partial_otc_sell_amount(omnipool, otc):
     sell_asset = otc.sell_asset
 
     # if no arbitrage can happen at spot price, we cannot even partially satisfy the OTC order
-    if omnipool.price(omnipool, buy_asset, sell_asset) > otc.price:
+    if omnipool.price(buy_asset, sell_asset) > otc.price:
         return 0
 
     sell_amt = otc.sell_amount

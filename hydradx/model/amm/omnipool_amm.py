@@ -22,7 +22,6 @@ class OmnipoolState(Exchange):
                  update_function: Callable = None,
                  last_asset_fee: dict or float = None,
                  last_lrna_fee: dict or float = None,
-                 imbalance: float = 0.0,
                  last_oracle_values: dict = None,
                  max_withdrawal_per_block: float = 1,
                  max_lp_per_block: float = float('inf'),
@@ -64,7 +63,6 @@ class OmnipoolState(Exchange):
         self.weight_cap = {}
         self.default_asset_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
         self.default_lrna_fee = asset_fee if isinstance(asset_fee, Number) else 0.0
-        self.lrna_imbalance = imbalance  # AKA "L"
         self.tvl_cap = tvl_cap
         if preferred_stablecoin is None and "USD" in tokens:
             self.stablecoin = "USD"
@@ -269,7 +267,6 @@ class OmnipoolState(Exchange):
             f'Omnipool: {self.unique_id}\n'
             f'********************************\n'
             f'tvl cap: {self.tvl_cap}\n'
-            f'LRNA imbalance: {self.lrna_imbalance}\n'
             f'lrna fee:\n\n'
             f'{newline.join(["    " + tkn + ": " + self.lrna_fee[tkn].name for tkn in self.asset_list])}\n\n'
             f'asset fee:\n\n'
@@ -421,12 +418,7 @@ class OmnipoolState(Exchange):
             agent: Agent,
             tkn_buy: str, tkn_sell: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0,
-            modify_imbalance: bool = True,  # this is a hack to avoid modifying the imbalance for arbitrager LRNA swaps,
-            # since those would not actually be executed as LRNA swaps
-            # note that we still apply the imbalance modification due to LRNA fee
-            # collection, we just don't apply the imbalance modification from
-            # the sale of LRNA back to the pool.
+            sell_quantity: float = 0
     ):
         """
         execute swap in place (modify and return self and agent)
@@ -447,9 +439,9 @@ class OmnipoolState(Exchange):
             )
 
         elif tkn_sell == 'LRNA':
-            return_val = self._lrna_swap(agent, buy_quantity, -sell_quantity, tkn_buy, modify_imbalance)
+            return_val = self._lrna_swap(agent, buy_quantity, -sell_quantity, tkn_buy)
         elif tkn_buy == 'LRNA':
-            return_val = self._lrna_swap(agent, -sell_quantity, buy_quantity, tkn_sell, modify_imbalance)
+            return_val = self._lrna_swap(agent, -sell_quantity, buy_quantity, tkn_sell)
 
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
@@ -484,8 +476,7 @@ class OmnipoolState(Exchange):
                 tkn_buy] * self.lrna_mint_pct
             delta_Qj = delta_Qt + delta_Qm
             delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
-            delta_L = min(-delta_Qi * lrna_fee, -self.lrna_imbalance)
-            delta_QH = -lrna_fee * delta_Qi - delta_L
+            delta_QH = -lrna_fee * delta_Qi
 
             if self.liquidity[i] + sell_quantity > 10 ** 12:
                 return self.fail_transaction('Asset liquidity cannot exceed 10 ^ 12.', agent)
@@ -510,7 +501,6 @@ class OmnipoolState(Exchange):
             self.liquidity[i] += delta_Ri
             self.liquidity[j] += -buy_quantity or delta_Rj
             self.lrna['HDX'] += delta_QH
-            self.lrna_imbalance += delta_L
 
             if j not in agent.holdings:
                 agent.holdings[j] = 0
@@ -552,10 +542,6 @@ class OmnipoolState(Exchange):
             delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct
             delta_q = delta_qm - delta_qa
 
-            if modify_imbalance:
-                q = self.lrna_total
-                self.lrna_imbalance += -delta_q * (q + self.lrna_imbalance) / (q + delta_q) - delta_q
-
             self.lrna[tkn] += delta_q
             self.liquidity[tkn] += -delta_ra
 
@@ -568,10 +554,6 @@ class OmnipoolState(Exchange):
             delta_qa = -self.lrna[tkn] * delta_ra / denom
             delta_qm = -asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
             delta_q = -delta_qa + delta_qm
-
-            if modify_imbalance:
-                q = self.lrna_total
-                self.lrna_imbalance -= delta_q * (q + self.lrna_imbalance) / (q + delta_q) + delta_q
 
             self.lrna[tkn] += delta_q
             self.liquidity[tkn] -= delta_ra
@@ -593,9 +575,7 @@ class OmnipoolState(Exchange):
 
             # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
             lrna_fee_amt = -(delta_qa + delta_qi)
-            delta_l = min(-self.lrna_imbalance, lrna_fee_amt)
-            self.lrna_imbalance += delta_l
-            self.lrna["HDX"] += lrna_fee_amt - delta_l
+            self.lrna["HDX"] += lrna_fee_amt
 
         elif delta_ra < 0:
             # selling asset
@@ -611,9 +591,7 @@ class OmnipoolState(Exchange):
 
             # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
             lrna_fee_amt = -(delta_qa + delta_qi)
-            delta_l = min(-self.lrna_imbalance, lrna_fee_amt)
-            self.lrna_imbalance += delta_l
-            self.lrna["HDX"] += lrna_fee_amt - delta_l
+            self.lrna["HDX"] += lrna_fee_amt
 
         else:
             return self.fail_transaction('All deltas are zero.', agent)
@@ -905,21 +883,21 @@ class OmnipoolState(Exchange):
             else:
                 tkn_remove = agent.nfts[nft_id].tkn
 
-        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l, nft_ids = 0, 0, 0, 0, 0, 0, []
+        delta_qa, delta_r, delta_q, delta_s, delta_b, nft_ids = 0, 0, 0, 0, 0, []
         if quantity is not None:
             if nft_id is None:  # remove specified quantity of shares from holdings
                 k = (self.unique_id, tkn_remove)
-                delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self._calculate_remove_one_position(
+                delta_qa, delta_r, delta_q, delta_s, delta_b = self._calculate_remove_one_position(
                     quantity=quantity, tkn_remove=tkn_remove, share_price=agent.share_prices[k]
                 )
             else:  # remove specified quantity of shares from specified position
-                delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self._calculate_remove_one_position(
+                delta_qa, delta_r, delta_q, delta_s, delta_b = self._calculate_remove_one_position(
                     quantity=quantity, tkn_remove=tkn_remove, share_price=agent.nfts[nft_id].price
                 )
                 nft_ids = [nft_id]
         else:
             if nft_id is not None:  # remove specified position
-                delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = self._calculate_remove_one_position(
+                delta_qa, delta_r, delta_q, delta_s, delta_b = self._calculate_remove_one_position(
                     quantity=agent.nfts[nft_id].shares, tkn_remove=tkn_remove, share_price=agent.nfts[nft_id].price
                 )
                 nft_ids = [nft_id]
@@ -929,7 +907,7 @@ class OmnipoolState(Exchange):
                     if isinstance(nft, OmnipoolLiquidityPosition):
                         if nft.pool_id == self.unique_id and nft.tkn == tkn_remove:
                             nft_ids.append(nft_id)
-                            dqa, dr, dq, ds, db, dl = self._calculate_remove_one_position(
+                            dqa, dr, dq, ds, db = self._calculate_remove_one_position(
                                 quantity=nft.shares, tkn_remove=tkn_remove, share_price=nft.price
                             )
                             delta_qa += dqa
@@ -937,9 +915,8 @@ class OmnipoolState(Exchange):
                             delta_q += dq
                             delta_s += ds
                             delta_b += db
-                            delta_l += dl
                 if (self.unique_id, tkn_remove) in agent.holdings:
-                    dqa, dr, dq, ds, db, dl = self._calculate_remove_one_position(
+                    dqa, dr, dq, ds, db = self._calculate_remove_one_position(
                         quantity=agent.holdings[(self.unique_id, tkn_remove)], tkn_remove=tkn_remove,
                         share_price=agent.share_prices[(self.unique_id, tkn_remove)]
                     )
@@ -948,8 +925,7 @@ class OmnipoolState(Exchange):
                     delta_q += dq
                     delta_s += ds
                     delta_b += db
-                    delta_l += dl
-        return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l, nft_ids
+        return delta_qa, delta_r, delta_q, delta_s, delta_b, nft_ids
 
     def _calculate_remove_one_position(self, quantity, tkn_remove, share_price):
         """
@@ -1002,9 +978,8 @@ class OmnipoolState(Exchange):
             delta_q *= 1 - fee
 
         # L update: LRNA fees to be burned before they will start to accumulate again
-        delta_l = delta_r * piq * self.lrna_imbalance / self.lrna_total
 
-        return delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
+        return delta_qa, delta_r, delta_q, delta_s, delta_b
 
     def add_liquidity(
             self,
@@ -1075,10 +1050,6 @@ class OmnipoolState(Exchange):
         else:
             shares_added = delta_Q
         self.shares[tkn_add] += shares_added
-
-        # L update: LRNA fees to be burned before they will start to accumulate again
-        delta_L = quantity * self.lrna_price(tkn_add) * self.lrna_imbalance / self.lrna_total
-        self.lrna_imbalance += delta_L
 
         # LRNA add (mint)
         self.lrna[tkn_add] += delta_Q
@@ -1163,9 +1134,7 @@ class OmnipoolState(Exchange):
                     )
 
         val = self.calculate_remove_liquidity(agent, quantity, tkn_remove, nft_id)
-        delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = val[:6]
-        if len(val) == 7:
-            nft_ids = val[6]
+        delta_qa, delta_r, delta_q, delta_s, delta_b, nft_ids = val[:6]
 
         max_remove = (
                 self.max_withdrawal_per_block * self.shares[tkn_remove] - self.current_block.withdrawals[tkn_remove]
@@ -1183,7 +1152,6 @@ class OmnipoolState(Exchange):
         self.shares[tkn_remove] += delta_s
         self.protocol_shares[tkn_remove] += delta_b
         self.lrna[tkn_remove] += delta_q
-        self.lrna_imbalance += delta_l
 
         # distribute tokens to agent
         if delta_qa > 0:
@@ -1299,25 +1267,23 @@ class OmnipoolState(Exchange):
         for k in agent.holdings:
             if isinstance(k, tuple) and len(k) == 2 and k[0] == self.unique_id:  # LP shares of correct pool
                 tkn = k[1]
-                dqa, dr, dq, ds, db, dl, ids = self.calculate_remove_liquidity(agent, tkn_remove=tkn)
+                dqa, dr, dq, ds, db, ids = self.calculate_remove_liquidity(agent, tkn_remove=tkn)
                 delta_qa += dqa
                 delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
                 delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
                 delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
                 delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
-                delta_l += dl
                 nft_ids += ids
 
         for nft_id in agent.nfts:
             if nft_id not in nft_ids and agent.nfts[nft_id].pool_id == self.unique_id:
                 tkn = agent.nfts[nft_id].tkn
-                dqa, dr, dq, ds, db, dl, _ = self.calculate_remove_liquidity(agent, nft_id=nft_id)
+                dqa, dr, dq, ds, db, _ = self.calculate_remove_liquidity(agent, nft_id=nft_id)
                 delta_qa += dqa
                 delta_r[tkn] = dr + (delta_r[tkn] if tkn in delta_r else 0)
                 delta_q[tkn] = dq + (delta_q[tkn] if tkn in delta_q else 0)
                 delta_s[tkn] = ds + (delta_s[tkn] if tkn in delta_s else 0)
                 delta_b[tkn] = db + (delta_b[tkn] if tkn in delta_b else 0)
-                delta_l += dl
 
         # agent_holdings = new_agent.holdings
         lrna_removed = {tkn: -delta_q[tkn] if tkn in delta_q else 0 for tkn in self.asset_list}
@@ -1382,7 +1348,6 @@ class OmnipoolArchiveState:
         self.lrna_total = sum(state.lrna.values())
         self.shares = {k: v for (k, v) in state.shares.items()}
         self.protocol_shares = {k: v for (k, v) in state.protocol_shares.items()}
-        self.lrna_imbalance = state.lrna_imbalance
         self.fail = state.fail
         self.stablecoin = state.stablecoin
         # self.sub_pools = copy.deepcopy(self.sub_pools)

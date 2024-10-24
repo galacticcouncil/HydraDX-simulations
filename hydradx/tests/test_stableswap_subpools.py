@@ -296,14 +296,6 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
     )
     ri_arb = initial_state.liquidity[stable_pool.unique_id] * initial_state.lrna_total / new_state.lrna_total
 
-    if (
-            (initial_state.lrna[stable_pool.unique_id] + initial_state.lrna_imbalance
-             * (initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)) * ri_arb
-    ) != pytest.approx(
-        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total))
-        * initial_state.liquidity[stable_pool.unique_id]
-    ):
-        raise AssertionError("LRNA imbalance incorrect.")
     execution_price = (
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
