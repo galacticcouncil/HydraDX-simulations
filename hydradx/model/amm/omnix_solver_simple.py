@@ -492,9 +492,10 @@ def _find_solution_unrounded3(
     diff_coefs = sparse.csc_matrix((2*n + m,2*n))
     nonzero_coefs = -sparse.identity(2 * n + m, format='csc')
     A1 = sparse.hstack([diff_coefs, nonzero_coefs])
-    b1 = np.zeros(2 * n + m)
-    cone1 = cb.NonnegativeConeT(2 * n + m)
-    A1_trimmed = A1[:, indices_to_keep]
+    rows_to_keep = [i for i in range(2*n+m) if 2*n+i in indices_to_keep]
+    A1_trimmed = A1[:, indices_to_keep][rows_to_keep, :]
+    b1 = np.zeros(A1_trimmed.shape[0])
+    cone1 = cb.NonnegativeConeT(A1_trimmed.shape[0])
 
     # intents cannot sell more than they have
     amm_coefs = sparse.csc_matrix((m, 4*n))
@@ -620,6 +621,7 @@ def _find_solution_unrounded3(
 
     # solve
     settings = clarabel.DefaultSettings()
+    settings.max_step_fraction = 0.95
     solver = clarabel.DefaultSolver(P_trimmed, q_trimmed, A, b, cones, settings)
     solution = solver.solve()
     x = solution.x
