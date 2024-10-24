@@ -66,10 +66,15 @@ def validate_intents(intents: list, intent_deltas: list):
     for i in range(len(intents)):
         intent = intents[i]
         sell_amt = -intent_deltas[i][0]
+        buy_amt = intent_deltas[i][1]
         if not 0 <= sell_amt <= intent['sell_quantity']:
             raise Exception("amt processed is not in range")
+        if intent['partial'] == False and sell_amt not in [0, intent['sell_quantity']]:
+            raise Exception("intent should not be partially executed")
+        if intent['partial'] == False and 0 < buy_amt < intent['buy_quantity']:
+            raise Exception("intent should not be partially executed")
         tolerance = 1e-6  # temporarily allowing some tolerance, only for testing purposes
-        if sell_amt > 0 and intent_deltas[i][1] / sell_amt < (1 - tolerance) * intent['buy_quantity'] / intent['sell_quantity']:
+        if sell_amt > 0 and buy_amt / sell_amt < (1 - tolerance) * intent['buy_quantity'] / intent['sell_quantity']:
             raise Exception("price is not within tolerance")
 
     return True
@@ -92,10 +97,13 @@ def execute_solution(
 
     # transfer assets in from agents whose intents are being executed
     for transfer in transfers:
-        if transfer['tkn_sell'] not in pool_agent.holdings:
-            pool_agent.holdings[transfer['tkn_sell']] = 0
-        pool_agent.holdings[transfer['tkn_sell']] += transfer['sell_quantity']
-        transfer['agent'].holdings[transfer['tkn_sell']] -= transfer['sell_quantity']
+        if transfer['sell_quantity'] > 0:
+            if transfer['tkn_sell'] not in pool_agent.holdings:
+                pool_agent.holdings[transfer['tkn_sell']] = 0
+            pool_agent.holdings[transfer['tkn_sell']] += transfer['sell_quantity']
+            transfer['agent'].holdings[transfer['tkn_sell']] -= transfer['sell_quantity']
+        elif transfer['sell_quantity'] < 0:
+            raise Exception("sell quantity is negative")
 
     # execute swaps against Omnipool
     lrna_deltas = {tkn: 0 for tkn in deltas}
@@ -117,6 +125,8 @@ def execute_solution(
             if transfer['tkn_buy'] not in transfer['agent'].holdings:
                 transfer['agent'].holdings[transfer['tkn_buy']] = 0
             transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
+        elif transfer['buy_quantity'] < 0:
+            raise Exception("buy quantity is negative")
 
     return pool_agent, lrna_deltas
 

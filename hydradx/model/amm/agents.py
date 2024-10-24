@@ -65,6 +65,8 @@ class Agent:
     def is_holding(self, tkn, amt=None):
         if amt is None:
             return tkn in self.holdings and self.holdings[tkn] > 0
+        elif amt == 0:
+            return True
         else:
             return tkn in self.holdings and self.holdings[tkn] >= amt
 
