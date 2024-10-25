@@ -544,10 +544,10 @@ def _find_solution_unrounded3(
                 c2 = 1 / (1 - epsilon_tkn[tkn])
                 A4i = sparse.csc_matrix((2, k))
                 b4i = np.zeros(2)
-                A4i[0, i] = -state.liquidity[tkn]/scaling[tkn]
-                A4i[0, n + i] = -state.lrna[tkn]/scaling["LRNA"] * c1
-                A4i[1, i] = -state.liquidity[tkn]/scaling[tkn]
-                A4i[1, n + i] = -state.lrna[tkn]/scaling["LRNA"] * c2
+                A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
+                A4i[0, n + i] = -scaling[tkn]/state.liquidity[tkn] * c1
+                A4i[1, i] = -scaling["LRNA"]/state.lrna[tkn]
+                A4i[1, n + i] = -scaling[tkn]/state.liquidity[tkn] * c2
                 cones4.append(cb.NonnegativeConeT(2))
             else:
                 if directions[tkn] == "sell":
@@ -556,17 +556,14 @@ def _find_solution_unrounded3(
                     c = 1 / (1 + epsilon_tkn[tkn])
                 A4i = sparse.csc_matrix((1, k))
                 b4i = np.zeros(1)
-                A4i[0, i] = -state.liquidity[tkn]/scaling[tkn]
-                A4i[0, n+i] = -state.lrna[tkn]/scaling["LRNA"] * c
+                A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
+                A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c
                 cones4.append(cb.ZeroConeT(1))
         else:  # full AMM constraint
             A4i = sparse.csc_matrix((3, k))
-            b4i = np.array(
-                [state.lrna[tkn] / scaling["LRNA"], state.liquidity[tkn] / scaling[tkn],
-                 mpmath.sqrt(state.lrna[tkn]*state.liquidity[tkn] / (scaling["LRNA"]*scaling[tkn]))]
-            )
-            A4i[0, i] = -1
-            A4i[1, n+i] = -1
+            b4i = np.ones(3)
+            A4i[0, i] = -scaling["LRNA"] / state.lrna[tkn]
+            A4i[1, n + i] = -scaling[tkn] / state.liquidity[tkn]
             cones4.append(cb.PowerConeT(0.5))
         A4 = sparse.vstack([A4, A4i])
         b4 = np.append(b4, b4i)
@@ -965,7 +962,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, epsilon
     epsilon_tkn_ls = [(max([net_supply[t], net_demand[t]]) / state.liquidity[t], t) for t in asset_list]
     epsilon_tkn_ls.sort()
     loc = bisect.bisect_right([x[0] for x in epsilon_tkn_ls], epsilon)
-    while status != "Solved" and loc < len(epsilon_tkn_ls):
+    while status != "Solved" and loc < len(epsilon_tkn_ls) and epsilon_tkn_ls[loc][0] < 1e-4:
         # force linearization of asset with smallest epsilon
         linearize.append(epsilon_tkn_ls[loc][1])
         loc += 1
@@ -973,11 +970,11 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, epsilon
                                                                                         full_intents, I=y_best,
                                                                                         flags=flags, epsilon=epsilon,
                                                                                         force_linear = linearize)
-    if status != "Solved":
-        if obj > 0:
-            return [[0,0]]*len(intents)  # no solution found
-        else:
-            raise
+    # if status != "Solved":
+    #     if obj > 0:
+    #         return [[0,0]]*len(intents)  # no solution found
+    #     else:
+    #         raise
     sell_deltas = round_solution(partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(partial_intents, sell_deltas)
     full_deltas_with_buys = [[-full_intents[l]['sell_quantity'], full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
