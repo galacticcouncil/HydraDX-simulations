@@ -2,7 +2,7 @@ import copy
 from pprint import pprint
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings, Verbosity, reproduce_failure
+from hypothesis import given, strategies as st, assume, settings, Verbosity, Phase
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -378,7 +378,6 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
 
 @given(st.floats(min_value=1e-10, max_value=1e-5))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
-# @reproduce_failure('6.39.6', b'AAC1AQABAAA=')
 def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that rounding errors don't screw up small trades
 
     liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
@@ -468,7 +467,7 @@ def test_solver_with_real_omnipool_one_full():
     full_intent_indicators = [1]
     # full_intent_indicators = []
 
-    amm_deltas, sell_deltas, _, _, _ = _find_solution_unrounded3(initial_state, partial_intents, full_intents, I=full_intent_indicators)
+    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded3(initial_state, partial_intents, full_intents, I=full_intent_indicators)
     for i in full_intents:
         if full_intent_indicators.pop(0) == 1:
             sell_deltas.append(-i['sell_quantity'])
@@ -536,8 +535,7 @@ def test_full_solver():
         st.lists(st.integers(min_value=0, max_value=17), min_size=3, max_size=3),
         st.lists(st.booleans(), min_size=3, max_size=3)
        )
-@settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None)
-# @reproduce_failure('6.39.6', b'AXicY2BABszlscs+yFxhYI+ACqh/Y1gIojn/x4H5jEAMAKm4BuI=')
+@settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None, phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
 def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, partial_flags):
 
     liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),

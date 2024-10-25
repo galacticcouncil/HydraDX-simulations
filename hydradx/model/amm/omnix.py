@@ -2,6 +2,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 import copy
 from mpmath import mp, mpf
+import math
 
 
 def validate_solution(
@@ -110,12 +111,14 @@ def execute_solution(
     for tkn in deltas:  # first do sells to accumulate LRNA
         if tkn != 'LRNA' and deltas[tkn]["in"] > deltas[tkn]["out"]:
             init_lrna = omnipool.lrna[tkn]
-            omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
+            sell_amt = math.nextafter(deltas[tkn]["out"] - deltas[tkn]["in"], math.inf)  # need to round this down (in abs)
+            omnipool.lrna_swap(pool_agent, delta_ra=sell_amt, tkn=tkn)
             lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
     for tkn in deltas:  # next sell LRNA back for tokens
         if tkn != 'LRNA' and deltas[tkn]["in"] < deltas[tkn]["out"]:
             init_lrna = omnipool.lrna[tkn]
-            omnipool.lrna_swap(pool_agent, delta_ra=deltas[tkn]["out"] - deltas[tkn]["in"], tkn=tkn)
+            buy_amt = math.nextafter(deltas[tkn]["out"] - deltas[tkn]["in"], math.inf)  # need to round this up
+            omnipool.lrna_swap(pool_agent, delta_ra=buy_amt, tkn=tkn)
             lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
 
     # transfer assets out to intent agents
