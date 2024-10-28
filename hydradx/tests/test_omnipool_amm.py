@@ -10,7 +10,7 @@ from hydradx.model import run, processing
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import dynamicadd_asset_fee, dynamicadd_lrna_fee, OmnipoolState, \
+from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, \
     OmnipoolLiquidityPosition
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
@@ -1249,27 +1249,29 @@ def test_dynamic_fees(hdx_price: float):
         oracles={
             'mid': 100
         },
-        asset_fee=oamm.dynamicadd_asset_fee(
+        asset_fee=DynamicFee(
             minimum=0.0025,
             amplification=10,
             raise_oracle_name='mid',
             decay=0.0005,
-            fee_max=0.40
+            maximum=0.40,
+            current={'R1': 0.1}
         ),
-        lrna_fee=oamm.dynamicadd_lrna_fee(
+        lrna_fee=DynamicFee(
             minimum=0.0005,
             amplification=10,
             raise_oracle_name='mid',
             decay=0.0001,
-            fee_max=0.10
-        ), last_asset_fee={'R1': 0.1}, last_lrna_fee={'R1': 0.1}
+            maximum=0.10,
+            current={'R1': 0.1}
+        )
     )
-    initial_hdx_fee = initial_state.asset_fee['HDX'].compute('HDX', 10000)
-    initial_usd_fee = initial_state.asset_fee['USD'].compute('USD', 10000)
-    initial_usd_lrna_fee = initial_state.lrna_fee['USD'].compute('USD', 10000)
-    initial_hdx_lrna_fee = initial_state.lrna_fee['HDX'].compute('HDX', 10000)
-    initial_R1_fee = initial_state.asset_fee['R1'].compute('R1', 10000)
-    initial_R1_lrna_fee = initial_state.lrna_fee['R1'].compute('R1', 10000)
+    initial_hdx_fee = initial_state.asset_fee('HDX')
+    initial_usd_fee = initial_state.asset_fee('USD')
+    initial_usd_lrna_fee = initial_state.lrna_fee('USD')
+    initial_hdx_lrna_fee = initial_state.lrna_fee('HDX')
+    initial_R1_fee = initial_state.asset_fee('R1')
+    initial_R1_lrna_fee = initial_state.lrna_fee('R1')
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
@@ -1605,57 +1607,25 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         oracles={
             'oracle': n
         },
-        asset_fee={
-            'HDX': dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ),
-            'USD': dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ),
-            'DOT': dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ),
-        },
-        lrna_fee={
-            'HDX': dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ),
-            'USD': dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ),
-            'DOT': dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ),
-        },
+        asset_fee=DynamicFee(
+            minimum=asset_fee_params['minimum'],
+            amplification=asset_fee_params['amplification'],
+            raise_oracle_name=asset_fee_params['raise_oracle_name'],
+            decay=asset_fee_params['decay'],
+            maximum=asset_fee_params['fee_max'],
+            current=copy.deepcopy(init_lrna_fees)
+        ),
+        lrna_fee=DynamicFee(
+            minimum=lrna_fee_params['minimum'],
+            amplification=lrna_fee_params['amplification'],
+            raise_oracle_name=lrna_fee_params['raise_oracle_name'],
+            decay=lrna_fee_params['decay'],
+            maximum=lrna_fee_params['fee_max'],
+            current=copy.deepcopy(init_asset_fees)
+        ),
         last_oracle_values={
             'oracle': copy.deepcopy(init_oracle)
         },
-        last_lrna_fee=copy.deepcopy(init_lrna_fees),
-        last_asset_fee=copy.deepcopy(init_asset_fees),
     )
 
     initial_state = GlobalState(
@@ -1745,29 +1715,25 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         oracles={
             'oracle': n
         },
-        asset_fee={
-            tkn: dynamicadd_asset_fee(
-                minimum=asset_fee_params['minimum'],
-                amplification=asset_fee_params['amplification'],
-                raise_oracle_name=asset_fee_params['raise_oracle_name'],
-                decay=asset_fee_params['decay'],
-                fee_max=asset_fee_params['fee_max'],
-            ) for tkn in init_liquidity
-        },
-        lrna_fee={
-            tkn: dynamicadd_lrna_fee(
-                minimum=lrna_fee_params['minimum'],
-                amplification=lrna_fee_params['amplification'],
-                raise_oracle_name=lrna_fee_params['raise_oracle_name'],
-                decay=lrna_fee_params['decay'],
-                fee_max=lrna_fee_params['fee_max'],
-            ) for tkn in init_liquidity
-        },
+        asset_fee=DynamicFee(
+            minimum=asset_fee_params['minimum'],
+            amplification=asset_fee_params['amplification'],
+            raise_oracle_name=asset_fee_params['raise_oracle_name'],
+            decay=asset_fee_params['decay'],
+            maximum=asset_fee_params['fee_max'],
+            current=copy.deepcopy(init_lrna_fees)
+        ),
+        lrna_fee=DynamicFee(
+            minimum=lrna_fee_params['minimum'],
+            amplification=lrna_fee_params['amplification'],
+            raise_oracle_name=lrna_fee_params['raise_oracle_name'],
+            decay=lrna_fee_params['decay'],
+            maximum=lrna_fee_params['fee_max'],
+            current=copy.deepcopy(init_asset_fees)
+        ),
         last_oracle_values={
             'oracle': copy.deepcopy(init_oracle)
-        },
-        last_lrna_fee=copy.deepcopy(init_lrna_fees),
-        last_asset_fee=copy.deepcopy(init_asset_fees),
+        }
     )
 
     trader_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
