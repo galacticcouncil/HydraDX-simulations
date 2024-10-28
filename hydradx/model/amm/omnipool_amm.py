@@ -175,12 +175,16 @@ class OmnipoolState(Exchange):
     def lrna_fee(self, value: DynamicFee or dict or float):
         if isinstance(value, DynamicFee):
             self._lrna_fee = value
-            self._lrna_fee.current = self.last_lrna_fee or {tkn: self._lrna_fee.minimum for tkn in self.asset_list}
+            if not value.current:
+                self._lrna_fee.current = self.last_lrna_fee or {tkn: self._lrna_fee.minimum for tkn in self.asset_list}
         elif isinstance(value, dict):
             self._lrna_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                current={value[tkn] if tkn in value else self.last_lrna_fee[tkn] for tkn in self.asset_list}
+                current={
+                    tkn: value[tkn] if tkn in value else (
+                        self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum
+                    ) for tkn in self.asset_list}
             )
         else:
             self._lrna_fee = DynamicFee(
@@ -211,12 +215,16 @@ class OmnipoolState(Exchange):
     def asset_fee(self, value):
         if isinstance(value, DynamicFee):
             self._asset_fee = value
-            self._asset_fee.current = self.last_lrna_fee or {tkn: self._lrna_fee.minimum for tkn in self.asset_list}
+            if not value.current:
+                self._asset_fee.current = self.last_fee or {tkn: self._asset_fee.minimum for tkn in self.asset_list}
         elif isinstance(value, dict):
             self._asset_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                current={value[tkn] if tkn in value else self.last_lrna_fee[tkn] for tkn in self.asset_list}
+                current={
+                    tkn: value[tkn] if tkn in value else (
+                        self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum
+                    ) for tkn in self.asset_list}
             )
         else:
             self._asset_fee = DynamicFee(
@@ -254,8 +262,8 @@ class OmnipoolState(Exchange):
         self.shares[tkn] = shares
         self.protocol_shares[tkn] = protocol_shares or shares
         self.weight_cap[tkn] = weight_cap
-        self._lrna_fee.current[tkn] = self._lrna_fee.minimum
-        self._asset_fee.current[tkn] = self._asset_fee.minimum
+        if tkn not in self._lrna_fee.current: self._lrna_fee.current[tkn] = self._lrna_fee.minimum
+        if tkn not in self._asset_fee.current: self._asset_fee.current[tkn] = self._asset_fee.minimum
         if hasattr(self, 'current_block'):
             self.current_block.price[tkn] = self.lrna[tkn] / self.liquidity[tkn]
             self.current_block.liquidity[tkn] = self.liquidity[tkn]
