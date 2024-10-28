@@ -481,9 +481,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
         lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
-        usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_fee = omnipool.asset_fee(tkn=omnipool.stablecoin)
         # usd_fee = omnipool.last_fee[omnipool.stablecoin]
-        usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_LRNA_fee = omnipool.lrna_fee(tkn=omnipool.stablecoin)
         # usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
@@ -497,9 +497,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            asset_fee = omnipool.asset_fee(tkn=asset)
             # asset_fee = omnipool.last_fee[asset]
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            asset_LRNA_fee = omnipool.lrna_fee(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
             if arb_precision < 2:
                 low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
