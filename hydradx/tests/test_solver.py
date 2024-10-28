@@ -376,7 +376,7 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
     assert intent_deltas[1][0] == 0
     assert intent_deltas[1][1] == 0
 
-@given(st.floats(min_value=1e-10, max_value=1e-5))
+@given(st.floats(min_value=1e-10, max_value=1e-3))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that rounding errors don't screw up small trades
 
@@ -404,7 +404,7 @@ def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that roundi
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     buy_tkn = 'DOT'
-    selL_tkn = 'CRU'
+    selL_tkn = '2-Pool'
     buy_amt = trade_size_pct * liquidity[buy_tkn]
     price = initial_state.price(initial_state, buy_tkn, selL_tkn)
     sell_amt = buy_amt * price * 1.01
@@ -475,7 +475,8 @@ def test_solver_with_real_omnipool_one_full():
     sell_deltas = round_solution(partial_intents + full_intents, sell_deltas)
     intent_deltas = add_buy_deltas(partial_intents + full_intents, sell_deltas)
 
-
+    assert sell_deltas[0] == -100
+    assert sell_deltas[1] == -100
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(partial_intents + full_intents), intent_deltas)
 
     pprint(intent_deltas)

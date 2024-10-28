@@ -385,7 +385,6 @@ def _find_solution_unrounded3(
         full_intents: list = None,
         I: list = None,
         flags: dict = None,
-        epsilon: float = 1e-5,
         force_linear: list = None,
         buffer_fee: float = 0.0
 ) -> (dict, list):
@@ -548,7 +547,7 @@ def _find_solution_unrounded3(
     cones4 = []
     for i in range(n):
         tkn = asset_list[i]
-        if epsilon_tkn[tkn] <= epsilon or tkn in force_linear:  # linearize the AMM constraint
+        if epsilon_tkn[tkn] <= 1e-6:  # linearize the AMM constraint
             if tkn not in directions:
                 c1 = 1 / (1 + epsilon_tkn[tkn])
                 c2 = 1 / (1 - epsilon_tkn[tkn])
@@ -569,6 +568,13 @@ def _find_solution_unrounded3(
                 A4i[0, i] = -scaling["LRNA"]/state.lrna[tkn]
                 A4i[0, n+i] = -scaling[tkn]/state.liquidity[tkn] * c
                 cones4.append(cb.ZeroConeT(1))
+        elif epsilon_tkn[tkn] <= 1e-3:  # quadratic approximation to in-given-out function
+            A4i = sparse.csc_matrix((3, k))
+            A4i[1,i] = -scaling["LRNA"]/state.lrna[tkn]
+            A4i[1,n+i] = -scaling[tkn]/state.liquidity[tkn]
+            A4i[2,n+i] = -scaling[tkn]/state.liquidity[tkn]
+            b4i = np.array([1, 0, 0])
+            cones4.append(cb.PowerConeT(0.5))
         else:  # full AMM constraint
             A4i = sparse.csc_matrix((3, k))
             b4i = np.ones(3)
@@ -943,7 +949,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, epsilon
         # - update I^(K+1), Z_L
         Z_L = max(Z_L, milp_obj)
         # - do NLP solve given I values, update x^K
-        amm_deltas, intent_deltas, x, obj, dual_obj, status = _find_solution_unrounded3(state, partial_intents, full_intents, I=indicators, epsilon=epsilon, buffer_fee=buffer_fee)
+        amm_deltas, intent_deltas, x, obj, dual_obj, status = _find_solution_unrounded3(state, partial_intents, full_intents, I=indicators, buffer_fee=buffer_fee)
         if obj < Z_U and dual_obj < 0:  # - update Z_U, y*, x*
             Z_U = obj
             x_best = x
@@ -996,8 +1002,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, epsilon
             break  # no partial intents are executed, nothing more can be improved
 
         amm_deltas, intent_deltas, x, obj, dual_obj, temp_status = _find_solution_unrounded3(state, new_partial_intents,
-                                                                                        full_intents, I=y_best,
-                                                                                        epsilon=epsilon)
+                                                                                        full_intents, I=y_best)
         if temp_status in ['PrimalInfeasible', 'DualInfeasible']:
             # the better scaling revealed that there is no actual solution
             return [[0,0]]*len(intents)
@@ -1015,25 +1020,25 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, epsilon
     flags = get_directional_flags(best_amm_deltas)
     best_amm_deltas, best_intent_deltas, x, obj, dual_obj, status = _find_solution_unrounded3(state, new_partial_intents,
                                                                                     full_intents, I=y_best,
-                                                                                    flags=flags, epsilon=epsilon)
-    linearize = []
-    _, max_in, max_out = _calculate_scaling(new_partial_intents, full_intents, y_best, state, asset_list)
-    epsilon_tkn_ls = [(max([abs(max_in[t]), abs(max_out[t])]) / state.liquidity[t], t) for t in asset_list]
-    epsilon_tkn_ls.sort()
-    loc = bisect.bisect_right([x[0] for x in epsilon_tkn_ls], epsilon)
-    while status != "Solved" and loc < len(epsilon_tkn_ls) and epsilon_tkn_ls[loc][0] < 1e-4:
-        # force linearization of asset with smallest epsilon
-        linearize.append(epsilon_tkn_ls[loc][1])
-        loc += 1
-        best_amm_deltas, best_intent_deltas, x, obj, dual_obj, status = _find_solution_unrounded3(state, new_partial_intents,
-                                                                                        full_intents, I=y_best,
-                                                                                        flags=flags, epsilon=epsilon,
-                                                                                        force_linear = linearize)
-    # if status != "Solved":
-    #     if obj > 0:
-    #         return [[0,0]]*len(intents)  # no solution found
-    #     else:
-    #         raise
+                                                                                    flags=flags)
+    # linearize = []
+    # _, max_in, max_out = _calculate_scaling(new_partial_intents, full_intents, y_best, state, asset_list)
+    # epsilon_tkn_ls = [(max([abs(max_in[t]), abs(max_out[t])]) / state.liquidity[t], t) for t in asset_list]
+    # epsilon_tkn_ls.sort()
+    # loc = bisect.bisect_right([x[0] for x in epsilon_tkn_ls], epsilon)
+    # while status != "Solved" and loc < len(epsilon_tkn_ls) and epsilon_tkn_ls[loc][0] < 0:
+    #     # force linearization of asset with smallest epsilon
+    #     linearize.append(epsilon_tkn_ls[loc][1])
+    #     loc += 1
+    #     best_amm_deltas, best_intent_deltas, x, obj, dual_obj, status = _find_solution_unrounded3(state, new_partial_intents,
+    #                                                                                     full_intents, I=y_best,
+    #                                                                                     flags=flags, epsilon=epsilon,
+    #                                                                                     force_linear = linearize)
+    if status not in ["Solved", "AlmostSolved"]:
+        if obj > 0:
+            return [[0,0]]*len(intents)  # no solution found
+        else:
+            raise
     sell_deltas = round_solution(new_partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(new_partial_intents, sell_deltas)
     full_deltas_with_buys = [[-full_intents[l]['sell_quantity'], full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
