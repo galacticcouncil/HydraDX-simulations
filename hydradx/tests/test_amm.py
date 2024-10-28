@@ -444,7 +444,7 @@ def test_omnipool_arbitrage():
     import random
 
     from hydradx.model import run
-    from hydradx.model.amm.omnipool_amm import OmnipoolState, dynamicadd_lrna_fee
+    from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
     from hydradx.model.amm.agents import Agent
     from hydradx.model.amm.trade_strategies import omnipool_arbitrage, random_swaps
     from hydradx.model.amm.global_state import GlobalState, value_assets
@@ -480,12 +480,12 @@ def test_omnipool_arbitrage():
                     'medium': 40,
                     'long': 160
                 },
-                lrna_fee=dynamicadd_lrna_fee(
+                lrna_fee=DynamicFee(
                     minimum=0.0025,
                     amplification=10,
                     raise_oracle_name='medium',
                     decay=0.00001,
-                    fee_max=0.1,
+                    maximum=0.1,
                 ),
                 asset_fee=0,
                 preferred_stablecoin='USD'
