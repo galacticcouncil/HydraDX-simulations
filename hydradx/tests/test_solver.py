@@ -2,15 +2,16 @@ import copy
 from pprint import pprint
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings, Verbosity, Phase
+from hypothesis import given, strategies as st, assume, settings, Verbosity, Phase, reproduce_failure
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
 
 from hydradx.model.amm.omnix import validate_and_execute_solution
-from hydradx.model.amm.omnix_solver_simple import find_solution, find_solution2, find_solution3, \
-    _find_solution_unrounded3, add_buy_deltas, round_solution, find_solution_outer_approx, _solve_inclusion_problem
+from hydradx.model.amm.omnix_solver_simple import find_solution, \
+    _find_solution_unrounded, add_buy_deltas, round_solution, find_solution_outer_approx, _solve_inclusion_problem, \
+    ICEProblem
 
 
 def test_single_trade_settles():
@@ -428,18 +429,11 @@ def test_solver_with_real_omnipool_one_full():
     ]
 
     intents = [
-        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149711278057), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0]},
-        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': False},
+        {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0],
+         'partial': False},
         {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1],
          'partial': True},
-        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.25359), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU',
-        #  'agent': agents[0]},
-        # {'sell_quantity': mpf(1.25361), 'buy_quantity': mpf(100), 'tkn_sell': 'CRU', 'tkn_buy': 'HDX',
-        #  'agent': agents[1]}
     ]
-
-    partial_intents = [i for i in intents if i['partial']]
-    full_intents = [i for i in intents if not i['partial']]
 
     liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
                  'WETH': mpf(897.820372708098), '2-Pool': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
@@ -465,19 +459,20 @@ def test_solver_with_real_omnipool_one_full():
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     full_intent_indicators = [1]
-    # full_intent_indicators = []
 
-    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded3(initial_state, partial_intents, full_intents, I=full_intent_indicators)
-    for i in full_intents:
+    p = ICEProblem(initial_state, intents, min_partial = 0)
+
+    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded(p, I=full_intent_indicators)
+    for i in p.full_intents:
         if full_intent_indicators.pop(0) == 1:
             sell_deltas.append(-i['sell_quantity'])
 
-    sell_deltas = round_solution(partial_intents + full_intents, sell_deltas)
-    intent_deltas = add_buy_deltas(partial_intents + full_intents, sell_deltas)
+    sell_deltas = round_solution(p.partial_intents + p.full_intents, sell_deltas)
+    intent_deltas = add_buy_deltas(p.partial_intents + p.full_intents, sell_deltas)
 
     assert sell_deltas[0] == -100
     assert sell_deltas[1] == -100
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(partial_intents + full_intents), intent_deltas)
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(p.partial_intents + p.full_intents), intent_deltas)
 
     pprint(intent_deltas)
 
@@ -537,6 +532,7 @@ def test_full_solver():
         st.lists(st.booleans(), min_size=3, max_size=3)
        )
 @settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None, phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
+# @reproduce_failure('6.39.6', b'AXicY2AgGQAAADMAAQ==')
 def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, partial_flags):
 
     liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
