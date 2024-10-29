@@ -461,8 +461,9 @@ def test_solver_with_real_omnipool_one_full():
     full_intent_indicators = [1]
 
     p = ICEProblem(initial_state, intents, min_partial = 0)
+    p.set_up_problem(I = full_intent_indicators)
 
-    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded(p, I=full_intent_indicators)
+    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded(p)
     for i in p.full_intents:
         if full_intent_indicators.pop(0) == 1:
             sell_deltas.append(-i['sell_quantity'])
@@ -532,7 +533,6 @@ def test_full_solver():
         st.lists(st.booleans(), min_size=3, max_size=3)
        )
 @settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None, phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
-# @reproduce_failure('6.39.6', b'AXicY2AgGQAAADMAAQ==')
 def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, partial_flags):
 
     liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
