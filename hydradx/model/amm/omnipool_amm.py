@@ -21,7 +21,7 @@ class DynamicFee:
         self.maximum = maximum
         self.raise_oracle_name = raise_oracle_name
         # force compute on first call
-        self.time_step = 0
+        self.time_step = -1
         if current is None:
             self.current = {}
         else:
@@ -190,11 +190,13 @@ class OmnipoolState(Exchange):
             self._lrna_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                current=self.last_lrna_fee
+                minimum=value,
+                maximum=value,
+                current={tkn: value for tkn in self.asset_list}
             )
 
         def get_fee(tkn):
-            return self._asset_fee.compute(
+            return self._lrna_fee.compute(
                 tkn=tkn,
                 time_step=self.time_step,
                 net_volume=self.current_block.volume_in[tkn] - self.current_block.volume_out[tkn],
@@ -230,7 +232,9 @@ class OmnipoolState(Exchange):
             self._asset_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                current=self.last_lrna_fee
+                minimum=value,
+                maximum=value,
+                current={tkn: value for tkn in self.asset_list}
             )
 
         def get_fee(tkn):
