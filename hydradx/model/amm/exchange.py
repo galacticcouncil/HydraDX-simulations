@@ -96,17 +96,6 @@ class Exchange:
     def value_assets(self, assets: dict[str: float], **kwargs) -> float:
         return 0
 
-    def __setattr__(self, key, value):
-        if hasattr(self, key):
-            if isinstance(self.__getattribute__(key), FeeMechanism):
-                if not isinstance(value, FeeMechanism):
-                    super().__setattr__(key, basic_fee(value))
-                    return
-                else:
-                    super().__setattr__(key, value.assign(self))
-                    return
-        super().__setattr__(key, value)
-
     def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
         pass
 
