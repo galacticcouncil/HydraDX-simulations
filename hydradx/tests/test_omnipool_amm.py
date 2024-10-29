@@ -916,9 +916,9 @@ def test_buy_with_lrna_mint(
         asset_fee: float
 ):
     asset_dict = {
-        'HDX': {'liquidity': hdx_liquidity, 'LRNA': hdx_lrna},
-        'DOT': {'liquidity': dot_liquidity, 'LRNA': dot_lrna},
-        'USD': {'liquidity': usd_liquidity, 'LRNA': usd_lrna},
+        'HDX': {'liquidity': mpf(hdx_liquidity), 'LRNA': mpf(hdx_lrna)},
+        'DOT': {'liquidity': mpf(dot_liquidity), 'LRNA': mpf(dot_lrna)},
+        'USD': {'liquidity': mpf(usd_liquidity), 'LRNA': mpf(usd_lrna)},
     }
 
     initial_state = oamm.OmnipoolState(
@@ -1325,8 +1325,8 @@ def test_dynamic_fee_multiple_block_update():
     init_vol_out = mpf(100)
     init_vol_in = 0
     W = mpf(0.2)
-    a = 1
-    d = mpf(0.00001)
+    amplification = 1
+    decay = mpf(0.00001)
     init_liq = mpf(10000)
     init_liq_oracle = mpf(10000)
     R = init_liq - init_vol_out
@@ -1340,20 +1340,19 @@ def test_dynamic_fee_multiple_block_update():
     liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
     for i in range(num_blocks):
         x = (vol_out_oracle - vol_in_oracle) / liquidity_oracle
-        delta_fee = a * x - d
+        delta_fee = amplification * x - decay
         fee = min(max(fee + delta_fee, fee_min), fee_max)
         # oracle updates
         vol_out_oracle = vol_out_oracle * (1 - W)
         vol_in_oracle = vol_in_oracle * (1 - W)
         liquidity_oracle = W * R + (1-W) * liquidity_oracle
 
-
     vol_out_oracle = init_vol_out
     vol_in_oracle = init_vol_in
     liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
     decays = [mpmath.power(1-W, i) for i in range(num_blocks)]
     mult = sum([decays[j] / (1 + (liquidity_oracle - R)/R * decays[j]) for j in range(num_blocks)])
-    delta_fee = a * (vol_out_oracle - vol_in_oracle) / R * mult - d * num_blocks
+    delta_fee = amplification * (vol_out_oracle - vol_in_oracle) / R * mult - decay * num_blocks
     fee2 = min(max(init_fee + delta_fee, fee_min), fee_max)
     assert fee == pytest.approx(fee2, rel=1e-20)
 
@@ -1669,6 +1668,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_prices: list[float], n, trade_size: float, lrna_fees: list[float],
                                  asset_fees: list[float], amp: list[float], decay: list[float]):
+    assume(trade_size != 0)
     init_liquidity = {
         'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
         'USD': {'liquidity': liquidity[1], 'LRNA': lrna[1]},
@@ -2331,7 +2331,7 @@ def test_fee_application():
         tkn_sell='HDX',
         tkn_buy='LRNA'
     )
-    lrna_fee = sell_lrna_agent.holdings['LRNA'] * initial_state.lrna_fee['HDX'].compute()
+    lrna_fee = sell_lrna_agent.holdings['LRNA'] * initial_state.lrna_fee('HDX')
     sell_lrna_state.lrna['HDX'] += lrna_fee
     sell_lrna_agent.holdings['LRNA'] -= lrna_fee
     sell_lrna_state.swap(
@@ -2340,7 +2340,7 @@ def test_fee_application():
         tkn_buy='USD',
         tkn_sell='LRNA'
     )
-    asset_fee = sell_lrna_agent.holdings['USD'] * initial_state.asset_fee['USD'].compute()
+    asset_fee = sell_lrna_agent.holdings['USD'] * initial_state.asset_fee('USD')
     sell_lrna_state.liquidity['USD'] += asset_fee
     sell_lrna_agent.holdings['USD'] -= asset_fee
     buy_quantity_2 = sell_lrna_agent.holdings['USD']
