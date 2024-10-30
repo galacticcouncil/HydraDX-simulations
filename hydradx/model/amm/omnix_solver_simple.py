@@ -566,7 +566,6 @@ def _solve_inclusion_problem(
         old_A_upper = None,
         old_A_lower = None
 ):
-    state = p.omnipool
     asset_list = p.asset_list
     tkn_list = ["LRNA"] + asset_list
     n, m, r = p.n, p.m, p.r
@@ -594,19 +593,20 @@ def _solve_inclusion_problem(
     partial_intent_sell_amts = p.get_partial_sell_maxs_scaled()
     upper = np.array([inf] * 4 * n + partial_intent_sell_amts + [1] * r)
 
-    # we will temporarily assume a 0 solution is latest, and linearize g() around that.
     S = np.zeros((n, k))
     S_upper = np.zeros(n)
     S_lower = np.array([-inf]*n)
     grads = np.zeros(2*n)
-    for i in range(n):
-        grads[i] = -scaling["LRNA"] * state.liquidity[asset_list[i]] - scaling["LRNA"] * scaling[asset_list[i]] * x[n+i]
-        grads[n+i] = -scaling[asset_list[i]] * state.lrna[asset_list[i]] - scaling["LRNA"] * scaling[asset_list[i]] * x[i]
+    for i, tkn in enumerate(asset_list):
+        lrna_c = p.get_amm_lrna_coefs()
+        asset_c = p.get_amm_asset_coefs()
+        grads[i] = -lrna_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[n+i]
+        grads[n+i] = -asset_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[i]
         S[i, i] = grads[i]
         S[i, n+i] = grads[n+i]
-        S_upper[i] = (grads[i] * x[n+i] + grads[n+i] * x[n+i] + scaling["LRNA"] * state.liquidity[asset_list[i]] * x[i]
-                + scaling[asset_list[i]] * state.lrna[asset_list[i]] * x[n+i]
-                + scaling["LRNA"] * scaling[asset_list[i]] * x[i] * x[n+i])
+        grad_dot_x = grads[i] * x[i] + grads[n+i] * x[n+i]
+        g_neg = lrna_c[tkn] * x[i] + asset_c[tkn] * x[n+i] + lrna_c[tkn] * asset_c[tkn] * x[i] * x[n+i]
+        S_upper[i] = grad_dot_x + g_neg
 
     # asset leftover must be above zero
     A3 = p._profit_A.toarray()
