@@ -1,4 +1,4 @@
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnipool_amm import OmnipoolState, simulate_swap
 from hydradx.model.amm.agents import Agent
 import copy
 from mpmath import mp, mpf
@@ -106,20 +106,26 @@ def execute_solution(
         elif transfer['sell_quantity'] < 0:
             raise Exception("sell quantity is negative")
 
-    # execute swaps against Omnipool
-    lrna_deltas = {tkn: 0 for tkn in deltas}
-    for tkn in deltas:  # first do sells to accumulate LRNA
-        if tkn != 'LRNA' and deltas[tkn]["in"] > deltas[tkn]["out"]:
-            init_lrna = omnipool.lrna[tkn]
-            sell_amt = math.nextafter(deltas[tkn]["out"] - deltas[tkn]["in"], math.inf)  # need to round this down (in abs)
-            omnipool.lrna_swap(pool_agent, delta_ra=sell_amt, tkn=tkn)
-            lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
-    for tkn in deltas:  # next sell LRNA back for tokens
-        if tkn != 'LRNA' and deltas[tkn]["in"] < deltas[tkn]["out"]:
-            init_lrna = omnipool.lrna[tkn]
-            buy_amt = math.nextafter(deltas[tkn]["out"] - deltas[tkn]["in"], math.inf)  # need to round this up
-            omnipool.lrna_swap(pool_agent, delta_ra=buy_amt, tkn=tkn)
-            lrna_deltas[tkn] = omnipool.lrna[tkn] - init_lrna
+    init_lrna = {tkn: omnipool.lrna[tkn] for tkn in deltas if tkn != 'LRNA'}
+    for tkn_buy in deltas:
+        for tkn_sell in deltas:
+            # try to sell tkn_buy for tkn_sell, if it is the direction we need to go.
+            if tkn_buy != tkn_sell and deltas[tkn_buy]["in"] < deltas[tkn_buy]["out"] and deltas[tkn_sell]["in"] > deltas[tkn_sell]["out"]:
+                max_buy_amt = math.nextafter(deltas[tkn_buy]["out"] - deltas[tkn_buy]["in"], math.inf)
+                max_sell_amt = math.nextafter(deltas[tkn_sell]["in"] - deltas[tkn_sell]["out"], -math.inf)
+                test_state, test_agent = simulate_swap(omnipool, pool_agent, tkn_buy, tkn_sell, sell_quantity=max_sell_amt)
+                buy_given_max_sell = test_agent.holdings[tkn_buy] - (pool_agent.holdings[tkn_buy] if tkn_buy in pool_agent.holdings else 0)
+                if buy_given_max_sell > max_buy_amt:  # can't do max sell, do max buy instead
+                    init_sell_holdings = pool_agent.holdings[tkn_sell]
+                    omnipool.swap(pool_agent, tkn_buy, tkn_sell, buy_quantity=max_buy_amt)
+                    deltas[tkn_buy]["out"] -= max_buy_amt
+                    deltas[tkn_sell]["in"] -= init_sell_holdings - pool_agent.holdings[tkn_sell]
+                else:
+                    init_buy_liquidity = pool_agent.holdings[tkn_buy] if tkn_buy in pool_agent.holdings else 0
+                    omnipool.swap(pool_agent, tkn_buy, tkn_sell, sell_quantity=max_sell_amt)
+                    deltas[tkn_sell]["in"] -= max_sell_amt
+                    deltas[tkn_buy]["out"] -= pool_agent.holdings[tkn_buy] - init_buy_liquidity
+    lrna_deltas = {tkn: omnipool.lrna[tkn] - init_lrna[tkn] for tkn in init_lrna}
 
     # transfer assets out to intent agents
     for transfer in transfers:
