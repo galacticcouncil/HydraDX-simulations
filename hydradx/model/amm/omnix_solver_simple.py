@@ -613,10 +613,6 @@ def _solve_inclusion_problem(
     A3_upper = np.array([inf]*(n+1))
     A3_lower = np.zeros(n+1)
 
-    # asset leftover in tkn_profit is actual objective
-    profit_i = asset_list.index(p.tkn_profit)
-    row_profit = A3[profit_i+1, :]
-
     # sum of lrna_lambda and y_i should be non-negative
     # sum of lambda and x_i should be non-negative
     A5 = np.zeros((2 * n, k))
@@ -630,7 +626,8 @@ def _solve_inclusion_problem(
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
-    A8[0, :] = -row_profit
+    q = p.get_q()
+    A8[0, :] = -q
     A8_upper = np.array([upper_bound])
     A8_lower = np.array([lower_bound])
 
@@ -659,7 +656,7 @@ def _solve_inclusion_problem(
     lp.num_col_ = k
     lp.num_row_ = A.shape[0]
 
-    lp.col_cost_ = -row_profit
+    lp.col_cost_ = -q
     lp.col_lower_ = lower
     lp.col_upper_ = upper
     lp.row_lower_ = A_lower
@@ -696,7 +693,7 @@ def _solve_inclusion_problem(
     save_A_upper = np.concatenate([old_A_upper, S_upper])
     save_A_lower = np.concatenate([old_A_lower, S_lower])
 
-    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, -row_profit @ x_expanded * scaling["LRNA"], solution.value_valid
+    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, -q @ x_expanded * scaling[p.tkn_profit], solution.value_valid
 
 
 def round_solution(intents, intent_deltas, tolerance=0.0001):
