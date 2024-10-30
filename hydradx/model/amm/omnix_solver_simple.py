@@ -15,12 +15,15 @@ class ICEProblem:
     def __init__(self,
                  omnipool: OmnipoolState,
                  intents: list,
+                 tkn_profit: str = "HDX",
                  min_partial: float = 1,
                  apply_min_partial: bool = True
                  ):
         self.omnipool = omnipool
         self.min_partial = min_partial
         self.intents = intents
+        assert tkn_profit in omnipool.asset_list
+        self.tkn_profit = tkn_profit
         temp_intents = []
         for intent in self.intents:
             temp_intents.append(copy.deepcopy(intent))
@@ -37,7 +40,7 @@ class ICEProblem:
         self.m = len(self.partial_intents)
         self.r = len(self.full_intents)
 
-        self.asset_list = []
+        self.asset_list = [self.tkn_profit]
         for intent in self.intents:
             if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in self.asset_list:
                 self.asset_list.append(intent['tkn_sell'])
@@ -88,6 +91,8 @@ class ICEProblem:
                 self._known_flow[intent['tkn_sell']]['in'] += intent["sell_quantity"]
                 self._known_flow[intent['tkn_buy']]['out'] += intent["buy_quantity"]
 
+    # note that max out is not enforced in Omnipool, it's used to scale variables and use good estimates for AMMs
+    # in particular, the max_out for tkn_profit does not reflect that the solver will buy it with any leftover
     def _set_max_in_out(self):
         self._max_in = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
         self._max_out = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
@@ -123,7 +128,7 @@ class ICEProblem:
             self._scaling["LRNA"] = max(self._scaling["LRNA"], scalar)
 
     def _set_omnipool_directions(self):
-        known_intent_directions = {}
+        known_intent_directions = {self.tkn_profit: 'buy'}  # solver collects profits in tkn_profit
         for j, intent in enumerate(self.partial_intents):
             if self.partial_sell_maxs[j] > 0:
                 if intent['tkn_sell'] not in known_intent_directions:
@@ -188,26 +193,19 @@ class ICEProblem:
         self._amm_asset_coefs = {tkn: self._scaling[tkn] / self.omnipool.liquidity[tkn] for tkn in self.asset_list}
 
     def _set_coefficients(self):
-        # objective coefs
-        # we want to maximize how much LRNA is left over for solver
+        # profit calculations
         # variables are y_i, x_i, lrna_lambda_i, lambda_i, d_j, I_l
         # y_i are net LRNA into Omnipool
-        obj_y_coefs = -np.ones(self.n)
+        profit_lrna_y_coefs = -np.ones(self.n)
         # x_i are net assets into Omnipool
-        obj_x_coefs = np.zeros(self.n)
+        profit_lrna_x_coefs = np.zeros(self.n)
         # lrna_lambda_i are LRNA amounts coming out of Omnipool
         lrna_fees = [self.omnipool.last_lrna_fee[tkn] for tkn in self.asset_list]
-        obj_lrna_lambda_coefs = -np.array(lrna_fees)
-        obj_lambda_coefs = np.zeros(self.n)
-        obj_d_coefs = np.array([self._tau[0, j] for j in range(self.m)])
-        obj_I_coefs = np.array([self._tau[0, self.m + l] * self.full_intents[l]['sell_quantity'] / self._scaling["LRNA"] for l in range(self.r)])
-        q = np.concatenate([obj_y_coefs, obj_x_coefs, obj_lrna_lambda_coefs, obj_lambda_coefs, obj_d_coefs, obj_I_coefs])
-        self._q = q.astype(float)
-
-        # self.intent_sell_mins = [0 for intent in self.partial_intents]
-        # self.intent_sell_mins_scaled = [0 for intent in self.partial_intents]
-        # self.intent_sell_maxs = [intent['sell_quantity'] for intent in self.partial_intents]
-        # self.intent_sell_maxs_scaled = [intent['sell_quantity'] / self.scaling[intent['tkn_sell']] for intent in self.partial_intents]
+        profit_lrna_lrna_lambda_coefs = -np.array(lrna_fees)
+        profit_lrna_lambda_coefs = np.zeros(self.n)
+        profit_lrna_d_coefs = np.array([self._tau[0, j] for j in range(self.m)])
+        profit_lrna_I_coefs = np.array([self._tau[0, self.m + l] * self.full_intents[l]['sell_quantity'] / self._scaling["LRNA"] for l in range(self.r)])
+        profit_lrna_coefs = np.concatenate([profit_lrna_y_coefs, profit_lrna_x_coefs, profit_lrna_lrna_lambda_coefs, profit_lrna_lambda_coefs, profit_lrna_d_coefs, profit_lrna_I_coefs])
 
         # leftover must be higher than required fees
         # other assets
@@ -224,9 +222,12 @@ class ICEProblem:
         I_coefs = -sparse.csc_matrix([[float((1 / (1 - self.fee_match) * self._phi[i, self.m + l] * self.full_intents[l]['buy_quantity'] -
                                              self._tau[i, self.m + l] * self.full_intents[l]['sell_quantity']) / self._scaling[tkn_list[i]])
                                       for l in range(self.r)] for i in range(1, self.n + 1)])
-        profit_A_LRNA = sparse.csc_matrix(self._q)
+        profit_A_LRNA = sparse.csc_matrix(profit_lrna_coefs.astype(float))
         profit_A_assets = sparse.hstack([profit_y_coefs, profit_x_coefs, profit_lrna_lambda_coefs, profit_lambda_coefs, profit_d_coefs, I_coefs])
         self._profit_A = sparse.vstack([profit_A_LRNA, profit_A_assets], format='csc')
+
+        profit_i = self.asset_list.index(self.tkn_profit)
+        self._q = self._profit_A[profit_i, :].toarray().flatten()
 
     def _recalculate(self):
         self._set_known_flow()
@@ -373,9 +374,6 @@ def _find_solution_unrounded(
 
     full_intents, partial_intents, state = p.full_intents, p.partial_intents, p.omnipool
 
-    # if force_linear is None:
-    #     force_linear = []
-
     # assets involved trades for which execution is being solved
     asset_list = p.asset_list
     n, m, r = p.n, p.m, p.r
@@ -394,7 +392,6 @@ def _find_solution_unrounded(
         if directions[tkn] == "neither":
             indices_to_keep.remove(asset_list.index(tkn))  # y_i is zero
             indices_to_keep.remove(n + asset_list.index(tkn))  # x_i is zero
-
 
     #----------------------------#
     #          OBJECTIVE         #
@@ -561,30 +558,22 @@ def _find_solution_unrounded(
 
 
 def _solve_inclusion_problem(
-        state: OmnipoolState,
-        intents: list,
+        p: ICEProblem,
         x: np.array = None,  # NLP solution
         upper_bound: float = None,
         lower_bound: float = None,
         old_A = None,
         old_A_upper = None,
-        old_A_lower = None,
-        buffer_fee: float = 0.0
+        old_A_lower = None
 ):
-
-    asset_list = []
-    for intent in intents:
-        if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in asset_list:
-            asset_list.append(intent['tkn_sell'])
-        if intent['tkn_buy'] != "LRNA" and intent['tkn_buy'] not in asset_list:
-            asset_list.append(intent['tkn_buy'])
+    state = p.omnipool
+    tkn_profit = p.tkn_profit
+    asset_list = p.asset_list
     tkn_list = ["LRNA"] + asset_list
 
-    partial_intents = [i for i in intents if i['partial']]
-    full_intents = [i for i in intents if not i['partial']]
-    n = len(asset_list)
-    m = len(partial_intents)
-    r = len(full_intents)
+    partial_intents = p.partial_intents
+    full_intents = p.full_intents
+    n, m, r = p.n, p.m, p.r
     k = 4 * n + m + r
 
     fees = [float(state.last_fee[tkn]) for tkn in asset_list]  # f_i
@@ -610,7 +599,7 @@ def _solve_inclusion_problem(
 
     y_coefs = np.ones(n)
     x_coefs = np.zeros(n)
-    lrna_lambda_coefs = np.array(lrna_fees) + buffer_fee
+    lrna_lambda_coefs = np.array(lrna_fees)
     lambda_coefs = np.zeros(n)
     d_coefs = np.array([-tau[0,j] for j in range(m)])
     I_coefs = np.array([-tau[0,m+l]*full_intents[l]['sell_quantity']/scaling["LRNA"] for l in range(r)])
@@ -652,15 +641,19 @@ def _solve_inclusion_problem(
     A3[0, :] = c
     for i in range(n):
         A3[i+1, n+i] = 1
-        A3[i+1, 3*n+i] = fees[i] - fee_match + buffer_fee
+        A3[i+1, 3*n+i] = fees[i] - fee_match
         for j in range(m):
-            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] *scaling[intents[j]['tkn_sell']]/scaling[intents[j]['tkn_buy']] * partial_intent_prices[j] - tau[i+1, j]
+            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] *scaling[partial_intents[j]['tkn_sell']]/scaling[partial_intents[j]['tkn_buy']] * partial_intent_prices[j] - tau[i+1, j]
         for l in range(r):
             buy_amt = 1 / (1 - fee_match) * phi[i+1, m+l] * full_intents[l]['buy_quantity']
             sell_amt = tau[i + 1, m+l] * full_intents[l]['sell_quantity']
             A3[i+1, 4*n+m+l] = (buy_amt - sell_amt)/scaling[asset_list[i]]
     A3_upper = np.zeros(n+1)
     A3_lower = np.array([-inf]*(n+1))
+
+    # asset leftover in tkn_profit is actual objective
+    profit_i = asset_list.index(tkn_profit)
+    row_profit = A3[profit_i+1, :]
 
     # sum of lrna_lambda and y_i should be non-negative
     # sum of lambda and x_i should be non-negative
@@ -704,7 +697,7 @@ def _solve_inclusion_problem(
     lp.num_col_ = k
     lp.num_row_ = A.shape[0]
 
-    lp.col_cost_ = c
+    lp.col_cost_ = row_profit
     lp.col_lower_ = lower
     lp.col_upper_ = upper
     lp.row_lower_ = A_lower
@@ -734,7 +727,7 @@ def _solve_inclusion_problem(
         new_amm_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
 
     for i in range(m):
-        exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[intents[i]['tkn_sell']]
+        exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[partial_intents[i]['tkn_sell']]
 
     exec_full_intent_flags = [1 if x_expanded[4 * n + m + i] > 0.5 else 0 for i in range(r)]
 
@@ -839,7 +832,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
         A_lower = np.concatenate([new_A_lower, IC_lower])
 
         # - do MILP solve
-        amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid = _solve_inclusion_problem(state, p.partial_intents + p.full_intents, x, Z_U, Z_L, A, A_upper, A_lower)
+        amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid = _solve_inclusion_problem(p, x, Z_U, Z_L, A, A_upper, A_lower)
         if not valid:
             break
 
