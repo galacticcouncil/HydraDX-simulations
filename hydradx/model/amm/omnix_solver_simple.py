@@ -567,38 +567,15 @@ def _solve_inclusion_problem(
         old_A_lower = None
 ):
     state = p.omnipool
-    tkn_profit = p.tkn_profit
     asset_list = p.asset_list
     tkn_list = ["LRNA"] + asset_list
-
-    partial_intents = p.partial_intents
-    full_intents = p.full_intents
     n, m, r = p.n, p.m, p.r
     k = 4 * n + m + r
 
-    fees = p.get_fees()
-    lrna_fees = p.get_lrna_fees()
-    fee_match = p.fee_match
-    partial_intent_prices = p.get_partial_intent_prices()
-
-    # calculate tau, phi
     scaling = p._scaling
-    tau = p._tau
-    phi = p._phi
 
     # we start with the 4n + m variables from the initial problem
     # then we add r indicator variables for the r non-partial intents
-    #----------------------------#
-    #          OBJECTIVE         #
-    #----------------------------#
-
-    y_coefs = np.ones(n)
-    x_coefs = np.zeros(n)
-    lrna_lambda_coefs = np.array(lrna_fees)
-    lambda_coefs = np.zeros(n)
-    d_coefs = np.array([-tau[0,j] for j in range(m)])
-    I_coefs = np.array([-tau[0,m+l]*full_intents[l]['sell_quantity']/scaling["LRNA"] for l in range(r)])
-    c = np.concatenate([y_coefs, x_coefs, lrna_lambda_coefs, lambda_coefs, d_coefs, I_coefs])
 
     # bounds on variables
     # y, x are unbounded
@@ -614,7 +591,7 @@ def _solve_inclusion_problem(
         lower_bound = -inf
 
     lower = np.array([-inf] * 2 * n + [0] * (2 * n + m + r))
-    partial_intent_sell_amts = [i['sell_quantity']/scaling[i['tkn_sell']] for i in partial_intents]
+    partial_intent_sell_amts = p.get_partial_sell_maxs_scaled()
     upper = np.array([inf] * 4 * n + partial_intent_sell_amts + [1] * r)
 
     # we will temporarily assume a 0 solution is latest, and linearize g() around that.
@@ -632,22 +609,12 @@ def _solve_inclusion_problem(
                 + scaling["LRNA"] * scaling[asset_list[i]] * x[i] * x[n+i])
 
     # asset leftover must be above zero
-    A3 = np.zeros((n+1, k))
-    A3[0, :] = c
-    for i in range(n):
-        A3[i+1, n+i] = 1
-        A3[i+1, 3*n+i] = fees[i] - fee_match
-        for j in range(m):
-            A3[i+1, 4*n+j] = 1/(1-fee_match)*phi[i+1, j] *scaling[partial_intents[j]['tkn_sell']]/scaling[partial_intents[j]['tkn_buy']] * partial_intent_prices[j] - tau[i+1, j]
-        for l in range(r):
-            buy_amt = 1 / (1 - fee_match) * phi[i+1, m+l] * full_intents[l]['buy_quantity']
-            sell_amt = tau[i + 1, m+l] * full_intents[l]['sell_quantity']
-            A3[i+1, 4*n+m+l] = (buy_amt - sell_amt)/scaling[asset_list[i]]
-    A3_upper = np.zeros(n+1)
-    A3_lower = np.array([-inf]*(n+1))
+    A3 = p._profit_A.toarray()
+    A3_upper = np.array([inf]*(n+1))
+    A3_lower = np.zeros(n+1)
 
     # asset leftover in tkn_profit is actual objective
-    profit_i = asset_list.index(tkn_profit)
+    profit_i = asset_list.index(p.tkn_profit)
     row_profit = A3[profit_i+1, :]
 
     # sum of lrna_lambda and y_i should be non-negative
@@ -663,7 +630,7 @@ def _solve_inclusion_problem(
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
-    A8[0, :] = c
+    A8[0, :] = -row_profit
     A8_upper = np.array([upper_bound])
     A8_lower = np.array([lower_bound])
 
@@ -692,7 +659,7 @@ def _solve_inclusion_problem(
     lp.num_col_ = k
     lp.num_row_ = A.shape[0]
 
-    lp.col_cost_ = row_profit
+    lp.col_cost_ = -row_profit
     lp.col_lower_ = lower
     lp.col_upper_ = upper
     lp.row_lower_ = A_lower
@@ -714,15 +681,14 @@ def _solve_inclusion_problem(
     x_expanded = solution.col_value
 
     new_amm_deltas = {}
-    exec_partial_intent_deltas = [None] * len(partial_intents)
-    exec_full_intent_flags = [None] * len(full_intents)
+    exec_partial_intent_deltas = [None] * m
 
     for i in range(n):
         tkn = tkn_list[i+1]
         new_amm_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
 
     for i in range(m):
-        exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[partial_intents[i]['tkn_sell']]
+        exec_partial_intent_deltas[i] = -x_expanded[4 * n + i] * scaling[p.partial_intents[i]['tkn_sell']]
 
     exec_full_intent_flags = [1 if x_expanded[4 * n + m + i] > 0.5 else 0 for i in range(r)]
 
@@ -730,7 +696,7 @@ def _solve_inclusion_problem(
     save_A_upper = np.concatenate([old_A_upper, S_upper])
     save_A_lower = np.concatenate([old_A_lower, S_lower])
 
-    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, c @ x_expanded * scaling["LRNA"], solution.value_valid
+    return new_amm_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, -row_profit @ x_expanded * scaling["LRNA"], solution.value_valid
 
 
 def round_solution(intents, intent_deltas, tolerance=0.0001):
