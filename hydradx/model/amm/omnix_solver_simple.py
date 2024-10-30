@@ -743,7 +743,7 @@ def find_solution(state: OmnipoolState, intents: list) -> list:
 
 def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_partial: float = 1) -> list:
     if len(init_intents) == 0:
-        return []
+        return [], 0
 
     p = ICEProblem(state, init_intents, min_partial=min_partial)
 
@@ -795,7 +795,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
             break
 
     if valid == True:  # this means we did not get to a solution
-        return [[0,0]]*(m + r)
+        return [[0,0]]*(m + r), 0
 
     trade_pcts = [-best_intent_deltas[i] / m for i, m in enumerate(p.partial_sell_maxs)]
 
@@ -809,7 +809,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
         amm_deltas, intent_deltas, x, obj, dual_obj, temp_status = _find_solution_unrounded(p)
         if temp_status in ['PrimalInfeasible', 'DualInfeasible']:
             # the better scaling revealed that there is no actual solution
-            return [[0,0]]*(m + r)
+            return [[0,0]]*(m + r), 0
         if obj < Z_U:
             best_amm_deltas = amm_deltas
             best_intent_deltas = intent_deltas
@@ -839,7 +839,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
     #                                                                                     force_linear = linearize)
     if status not in ["Solved", "AlmostSolved"]:
         if obj > 0:
-            return [[0,0]]*(m+r)  # no solution found
+            return [[0,0]]*(m+r), 0  # no solution found
         else:
             raise
     sell_deltas = round_solution(p.partial_intents, best_intent_deltas)
@@ -850,4 +850,4 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
         deltas[p.partial_intent_indices[i]] = partial_deltas_with_buys[i]
     for i in range(len(p.full_intent_indices)):
         deltas[p.full_intent_indices[i]] = full_deltas_with_buys[i]
-    return deltas
+    return deltas, -obj
