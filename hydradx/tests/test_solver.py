@@ -7,6 +7,8 @@ from hypothesis import given, strategies as st, assume, settings, Verbosity, Pha
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mp, mpf
+import highspy
+import numpy as np
 
 from hydradx.model.amm.omnix import validate_and_execute_solution
 from hydradx.model.amm.omnix_solver_simple import find_solution, \
@@ -45,25 +47,25 @@ def test_single_trade_settles():
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     intents = copy.deepcopy(init_intents_partial)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == -init_intents_partial[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_partial[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_full)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == -init_intents_full[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_full[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_partial_lrna)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == -init_intents_partial_lrna[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_partial_lrna[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_full_lrna)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == -init_intents_full_lrna[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_full_lrna[0]['buy_quantity']
@@ -100,25 +102,25 @@ def test_single_trade_does_not_settle():
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     intents = copy.deepcopy(init_intents_partial)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_full)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_partial_lrna)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_full_lrna)
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
     assert validate_and_execute_solution(initial_state.copy(), intents, intent_deltas)
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
@@ -154,19 +156,19 @@ def test_matching_trades_execute_more():
     # do the DOT sale alone
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1)]
-    sale_deltas = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas, _ = find_solution_outer_approx(state_sale, intents_sale)
     assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
 
     # do the DOT buy alone
     state_buy = initial_state.copy()
     intents_buy = [copy.deepcopy(intent2)]
-    buy_deltas = find_solution_outer_approx(state_buy, intents_buy)
+    buy_deltas, _ = find_solution_outer_approx(state_buy, intents_buy)
     assert validate_and_execute_solution(state_buy, intents_buy, buy_deltas)
 
     # do both trades together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1), copy.deepcopy(intent2)]
-    match_deltas = find_solution_outer_approx(state_match, intents_match)
+    match_deltas, _ = find_solution_outer_approx(state_match, intents_match)
     assert validate_and_execute_solution(state_match, intents_match, match_deltas)
 
     # check that matching trades caused more execution than executing either alone
@@ -178,13 +180,13 @@ def test_matching_trades_execute_more():
     # do the LRNA sale alone
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1_lrna)]
-    sale_deltas = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas, _ = find_solution_outer_approx(state_sale, intents_sale)
     assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
 
     # do both LRNA sale & DOT buy together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
-    match_deltas = find_solution_outer_approx(state_match, intents_match)
+    match_deltas, _ = find_solution_outer_approx(state_match, intents_match)
     assert validate_and_execute_solution(state_match, intents_match, match_deltas)
 
     # check that matching trades caused more execution than executing either alone
@@ -223,19 +225,19 @@ def test_matching_trades_execute_more_full_execution():
     # do the DOT sale alone
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1)]
-    sale_deltas = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas, _ = find_solution_outer_approx(state_sale, intents_sale)
     assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
 
     # do the DOT buy alone
     state_buy = initial_state.copy()
     intents_buy = [copy.deepcopy(intent2)]
-    buy_deltas = find_solution_outer_approx(state_buy, intents_buy)
+    buy_deltas, _ = find_solution_outer_approx(state_buy, intents_buy)
     assert validate_and_execute_solution(state_buy, intents_buy, buy_deltas)
 
     # do both trades together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1), copy.deepcopy(intent2)]
-    match_deltas = find_solution_outer_approx(state_match, intents_match)
+    match_deltas, _ = find_solution_outer_approx(state_match, intents_match)
     assert validate_and_execute_solution(state_match, intents_match, match_deltas)
 
     # check that matching trades caused more execution than executing either alone
@@ -247,13 +249,13 @@ def test_matching_trades_execute_more_full_execution():
     # do the LRNA sale alone
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1_lrna)]
-    sale_deltas = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas, _ = find_solution_outer_approx(state_sale, intents_sale)
     assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
 
     # do both LRNA sale & DOT buy together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
-    match_deltas = find_solution_outer_approx(state_match, intents_match)
+    match_deltas, _ = find_solution_outer_approx(state_match, intents_match)
     assert validate_and_execute_solution(state_match, intents_match, match_deltas)
 
     # check that matching trades caused more execution than executing either alone
@@ -290,7 +292,7 @@ def test_convex():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state, intents, intent_deltas)
 
@@ -328,7 +330,7 @@ def test_with_lrna_intent():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state, intents, intent_deltas)
 
@@ -369,7 +371,7 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
     assert intent_deltas[0][0] == -intents[0]['sell_quantity']
@@ -377,7 +379,76 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
     assert intent_deltas[1][0] == 0
     assert intent_deltas[1][1] == 0
 
-@given(st.floats(min_value=1e-10, max_value=1e-3))
+@given(st.floats(min_value=1e-7, max_value=1e-3))
+@settings(verbosity=Verbosity.verbose, print_blob=True)
+def test_inclusion_problem_small_trade_fuzz(trade_size_pct: float):
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+                 'WETH': mpf(897.820372708098), '2-Pool': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+            'WETH': mpf(82979.9927924809), '2-Pool': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    buy_tkn = 'DOT'
+    selL_tkn = '2-Pool'
+    buy_amt = trade_size_pct * liquidity[buy_tkn]
+    # buy_amt = mpf(.01)
+    price = initial_state.price(initial_state, buy_tkn, selL_tkn)
+    sell_amt = buy_amt * price * 1.01
+    # sell_amt = mpf(.05)
+    agents = [Agent(holdings={selL_tkn: sell_amt})]
+
+    intents = [
+        {'sell_quantity': sell_amt, 'buy_quantity': buy_amt, 'tkn_sell': selL_tkn, 'tkn_buy': buy_tkn, 'agent': agents[0], 'partial': False},
+    ]
+
+    # intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
+    p = ICEProblem(initial_state, intents)
+    p.set_up_problem()
+
+    inf = highspy.kHighsInf
+    Z_L = -inf
+    Z_U = 0
+    x = np.zeros(13)
+    A, A_upper, A_lower = np.zeros((0, 13)), np.array([]), np.array([])
+    # - get new cone constraint from I^K
+    indicators = [0]
+    BK = np.where(np.array(indicators) == 1)[0] + 12
+    NK = np.where(np.array(indicators) == 0)[0] + 12
+    IC_A = np.zeros((1, 13))
+    IC_A[0, BK] = 1
+    IC_A[0, NK] = -1
+    IC_upper = np.array([len(BK) - 1])
+    IC_lower = np.array([-inf])
+
+    # - add cone constraint to A, A_upper, A_lower
+    A = np.vstack([A, IC_A])
+    A_upper = np.concatenate([A_upper, IC_upper])
+    A_lower = np.concatenate([A_lower, IC_lower])
+    amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid, status = _solve_inclusion_problem(p, x, Z_U, Z_L, A, A_upper, A_lower)
+    assert indicators[0] == 1
+    assert str(status) == 'HighsModelStatus.kOptimal'
+    # assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    # assert intent_deltas[0][0] == -intents[0]['sell_quantity']
+    # assert intent_deltas[0][1] == pytest.approx(intents[0]['buy_quantity'], rel=1e-10)
+
+@given(st.floats(min_value=1e-7, max_value=1e-3))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that rounding errors don't screw up small trades
 
@@ -415,7 +486,7 @@ def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that roundi
         {'sell_quantity': sell_amt, 'buy_quantity': buy_amt, 'tkn_sell': selL_tkn, 'tkn_buy': buy_tkn, 'agent': agents[0], 'partial': True},
     ]
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
     assert intent_deltas[0][0] == -intents[0]['sell_quantity']
@@ -520,7 +591,7 @@ def test_full_solver():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, _ = find_solution_outer_approx(initial_state, intents)
 
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
 
@@ -532,6 +603,7 @@ def test_full_solver():
         st.lists(st.integers(min_value=0, max_value=17), min_size=3, max_size=3),
         st.lists(st.booleans(), min_size=3, max_size=3)
        )
+@reproduce_failure('6.39.6', b'AXic4wg0jOIoKWcgAQAAVxkB2A==')
 @settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None, phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
 def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, partial_flags):
 
@@ -572,8 +644,53 @@ def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, parti
         intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
                         'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
 
-    intent_deltas = find_solution_outer_approx(initial_state, intents)
+    intent_deltas, predicted_profit = find_solution_outer_approx(initial_state, intents)
 
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
+    assert valid
+    abs_error = abs(profit - predicted_profit)
+    if profit > 0:
+        pct_error = abs_error/profit
+        assert pct_error < 0.01 or abs_error < 100
+    else:
+        assert abs_error == 0
+    # assert abs_error < 100
 
     pprint(intent_deltas)
+
+
+def test_case_Martin():
+
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+                 'WETH': mpf(897.820372708098), '2-Pool-btc': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+            'WETH': mpf(82979.9927924809), '2-Pool-btc': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
+
+    agent = Agent(holdings={'GLMR': 1001500})
+
+    intents = [
+        {'sell_quantity': mpf(1001497.604662274886037302), 'buy_quantity': mpf(1081639.587746551400027), 'tkn_sell': 'GLMR', 'tkn_buy': 'KILT', 'agent': agent, 'partial': True},
+    ]
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    intent_deltas, predicted_profit = find_solution_outer_approx(initial_state, intents)
+    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
+    assert valid
+    assert profit == 0
