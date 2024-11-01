@@ -603,7 +603,6 @@ def test_full_solver():
         st.lists(st.integers(min_value=0, max_value=17), min_size=3, max_size=3),
         st.lists(st.booleans(), min_size=3, max_size=3)
        )
-@reproduce_failure('6.39.6', b'AXic4wg0jOIoKWcgAQAAVxkB2A==')
 @settings(print_blob=True, verbosity=Verbosity.verbose, deadline=None, phases=(Phase.explicit, Phase.reuse, Phase.generate, Phase.target))
 def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, partial_flags):
 
@@ -648,10 +647,11 @@ def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, parti
 
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
     assert valid
-    abs_error = abs(profit - predicted_profit)
+    abs_error = predicted_profit - profit
     if profit > 0:
         pct_error = abs_error/profit
-        assert pct_error < 0.01 or abs_error < 100
+        assert pct_error < 0.01 or abs_error < 1
+        assert abs(pct_error) < 0.05 or abs(abs_error) < 100
     else:
         assert abs_error == 0
     # assert abs_error < 100
