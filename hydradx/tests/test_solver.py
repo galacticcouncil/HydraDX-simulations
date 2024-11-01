@@ -448,7 +448,7 @@ def test_inclusion_problem_small_trade_fuzz(trade_size_pct: float):
     # assert intent_deltas[0][0] == -intents[0]['sell_quantity']
     # assert intent_deltas[0][1] == pytest.approx(intents[0]['buy_quantity'], rel=1e-10)
 
-@given(st.floats(min_value=1e-7, max_value=1e-3))
+@given(st.floats(min_value=1e-10, max_value=1e-3))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that rounding errors don't screw up small trades
 

@@ -889,17 +889,69 @@ def find_solution(state: OmnipoolState, intents: list) -> list:
     return add_buy_deltas(intents, sell_deltas)
 
 
+def calc_impact_to_limit(state: OmnipoolState, intent) -> float:
+    sell_spot = state.sell_spot(intent['tkn_sell'], intent['tkn_buy'])
+    ex_price = intent['buy_quantity'] / intent['sell_quantity']
+    slip_limit = 1 - ex_price / sell_spot
+    sell_liq = state.liquidity[intent['tkn_sell']] if intent['tkn_sell'] != "LRNA" else state.lrna[intent['tkn_buy']]
+    impact = intent['sell_quantity'] / (sell_liq + intent['sell_quantity'])
+    return impact / slip_limit
+
+
+def include_small_trades(state: OmnipoolState, intents: list):
+    size_limit = 1e-7
+    max_impact_to_limit = 0.1
+    x = []
+    for i, intent in enumerate(intents):
+        sell_liq = state.liquidity[intent['tkn_sell']] if intent['tkn_sell'] != "LRNA" else state.lrna[intent['tkn_buy']]
+        sell_pct = intent['sell_quantity'] / sell_liq
+        buy_liq = state.liquidity[intent['tkn_buy']] if intent['tkn_buy'] != "LRNA" else state.lrna[intent['tkn_sell']]
+        buy_pct = intent['buy_quantity'] / buy_liq
+        if sell_pct < size_limit and buy_pct < size_limit:
+            impact_to_limit = calc_impact_to_limit(state, intent)
+            if 0 < impact_to_limit < max_impact_to_limit:
+                x.append((impact_to_limit, i, intent))
+    x.sort()
+
+    omnipool_net = {tkn: 0 for tkn in state.asset_list}
+    max_price_movement = 0.0001
+    new_intents = copy.deepcopy(intents)
+    exec_indices = []
+    # include small trades until we get up to 0.5 bp of impact in each asset
+    for (impact, i, intent) in x:
+        if intent['tkn_sell'] in omnipool_net:
+            new_net = omnipool_net[intent['tkn_sell']] + intent['sell_quantity']
+            if new_net / state.liquidity[intent['tkn_sell']] > max_price_movement / 2:
+                continue
+        if intent['tkn_buy'] in omnipool_net:
+            new_net = omnipool_net[intent['tkn_buy']] - intent['buy_quantity']
+            if -new_net / state.liquidity[intent['tkn_buy']] > max_price_movement / 2:
+                continue
+        if intent['tkn_sell'] != "LRNA":
+            omnipool_net[intent['tkn_sell']] += intent['sell_quantity']
+        if intent['tkn_buy'] != "LRNA":
+            omnipool_net[intent['tkn_buy']] -= intent['buy_quantity']
+        new_intents[i]['partial'] = False
+        exec_indices.append(i)
+
+    return new_intents, exec_indices
+
+
 def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_partial: float = 1) -> list:
     if len(init_intents) == 0:
         return [], 0
 
-    p = ICEProblem(state, init_intents, min_partial=min_partial)
+    intents, exec_indices = include_small_trades(state, init_intents)
+
+    p = ICEProblem(state, intents, min_partial=min_partial)
 
     m, r, n = p.m, p.r, p.n
     inf = highspy.kHighsInf
     k_milp = 4 * n + m + r
     # get initial I values
     indicators = [0]*r
+    for i in exec_indices:
+        indicators[i] = 1
     # set Z_L = -inf, Z_U = inf
     Z_L = -inf
     Z_U = inf
@@ -908,7 +960,14 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
     best_amm_deltas = {tkn: 0 for tkn in p.asset_list}
     best_intent_deltas = [0]*m
     milp_obj = -inf
-    new_A, new_A_upper, new_A_lower = np.zeros((0, k_milp)), np.array([]), np.array([])
+
+    # - force small trades to execute
+    BK = np.where(np.array(indicators) == 1)[0] + 4 * n + m
+    new_A = np.zeros((1, k_milp))
+    new_A[0, BK] = 1
+    new_A_upper = np.array([inf])
+    new_A_lower = np.array([len(BK)])
+
     # loop until MILP has no solution:
     for _i in range(50):
         # - update I^(K+1), Z_L
