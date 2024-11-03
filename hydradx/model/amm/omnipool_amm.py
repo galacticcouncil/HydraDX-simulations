@@ -454,7 +454,7 @@ class OmnipoolState(AMM):
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-            if delta_Ri < 0:
+            if delta_Ri <= 0:
                 return self.fail_transaction(f'insufficient LRNA in {tkn_sell}', agent)
             # including both buy_quantity and sell_quantity potentially introduces a 'hack'
             # where you could include both and *not* have them match, but we're not worried about that
