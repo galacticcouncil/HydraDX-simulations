@@ -120,8 +120,10 @@ def execute_solution(
             for tkn_sell in deltas:
                 # try to sell tkn_buy for tkn_sell, if it is the direction we need to go.
                 if tkn_buy != tkn_sell and deltas[tkn_sell]["in"] > deltas[tkn_sell]["out"]:
-                    max_buy_amt = math.nextafter(deltas[tkn_buy]["out"] - deltas[tkn_buy]["in"], math.inf)
-                    max_sell_amt = math.nextafter(deltas[tkn_sell]["in"] - deltas[tkn_sell]["out"], -math.inf)
+                    max_buy_amt = deltas[tkn_buy]["out"] - deltas[tkn_buy]["in"]
+                    max_buy_amt = math.nextafter(max_buy_amt, math.inf) if max_buy_amt != 0 else 0
+                    max_sell_amt = deltas[tkn_sell]["in"] - deltas[tkn_sell]["out"]
+                    max_sell_amt = math.nextafter(max_sell_amt, -math.inf) if max_sell_amt != 0 else 0
                     test_state, test_agent = simulate_swap(omnipool, pool_agent, tkn_buy, tkn_sell, sell_quantity=max_sell_amt)
                     buy_given_max_sell = test_agent.holdings[tkn_buy] - (pool_agent.holdings[tkn_buy] if tkn_buy in pool_agent.holdings else 0)
                     if buy_given_max_sell > max_buy_amt:  # can't do max sell, do max buy instead
