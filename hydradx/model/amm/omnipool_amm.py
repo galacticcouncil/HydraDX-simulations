@@ -4,54 +4,79 @@ from .agents import Agent
 from .exchange import Exchange, FeeMechanism
 from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
+from mpmath import power
 
 class DynamicFee:
+
     def __init__(
         self,
         minimum: float = 0,
         amplification: float = 1,
-        raise_oracle_name: str = 'price',
         decay: float = 0.001,
-        maximum: float = 0.5,
+        maximum: float = float('inf'),
         current: dict[str: float] = None,
+        oracle_decay: float = 0,
+        raise_oracle_name: str = 'price',
+        liquidity: dict = None,
+        net_volume: dict = None
     ):
         self.amplification = amplification
         self.decay = decay
         self.minimum = minimum
         self.maximum = maximum
-        self.raise_oracle_name = raise_oracle_name
         # force compute on first call
         self.time_step = -1
         if current is None:
             self.current = {}
         else:
             self.current = current
+        self.raise_oracle_name = raise_oracle_name
+        self.oracle_decay = oracle_decay
+        self.last_liquidity = liquidity if liquidity is not None else {}
+        self.last_volume = net_volume if net_volume is not None else {}
 
     def compute(self, tkn: str, time_step: int, net_volume: float, liquidity: float):
         if self.time_step == time_step:
             # return the last fee if it's already been computed for this tkn and block
             return self.current[tkn]
 
-        self.time_step = time_step
+        # self.time_step = time_step
+        #
+        # if liquidity != 0:
+        #     x = net_volume / liquidity
+        # else:
+        #     x = 0
+        #
+        # fee_adj = self.amplification * x - self.decay
+        #
+        # previous_fee = self.current[tkn]
+        #
+        # fee = min(max(previous_fee + fee_adj, self.minimum), self.maximum)
+        # self.current[tkn] = fee
 
-        if liquidity != 0:
-            x = net_volume / liquidity
-        else:
-            x = 0
-
-        fee_adj = self.amplification * x - self.decay
-
-        previous_fee = self.current[tkn]
-
-        fee = min(max(previous_fee + fee_adj, self.minimum), self.maximum)
+        # use this approximation to catch up to where we think the fee should be,
+        # knowing there have been no trades until now
+        num_blocks = time_step - self.time_step
+        m = min(20, num_blocks)
+        x = self.amplification * self.last_volume[tkn] / liquidity
+        j_sum = 0
+        w = 1 - self.oracle_decay
+        for j in range(min(m, num_blocks)):
+            block_decay = power(w, j)
+            j_sum += block_decay / (
+                    1 + (self.last_liquidity[tkn] - liquidity) / liquidity * block_decay
+            )
+        w_term = (w * (power(w, m) - power(w, num_blocks))) / self.oracle_decay
+        fee = min(max(self.current[tkn] + x * (j_sum + w_term) - num_blocks * self.decay, self.minimum), self.maximum)
         self.current[tkn] = fee
+        self.time_step = time_step
+        # self.last_liquidity = liquidity
+        self.last_volume = net_volume
         return fee
 
 
 class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
-    _lrna_fee: DynamicFee = DynamicFee(amplification=0, decay=0)
-    _asset_fee: DynamicFee = DynamicFee(amplification=0, decay=0)
     _get_asset_fee: Callable[[str], float]
     _get_lrna_fee: Callable[[str],float]
 
@@ -118,6 +143,28 @@ class OmnipoolState(Exchange):
         self.withdrawal_fee = withdrawal_fee
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
+
+        self.oracles = {}
+
+        if oracles is None or 'price' not in oracles:
+            if last_oracle_values is None or 'price' not in last_oracle_values:
+                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self))
+            else:
+                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self),
+                                               last_values=last_oracle_values['price'])
+        if last_oracle_values is not None and oracles is not None:
+            self.oracles.update({
+                name: Oracle(
+                    sma_equivalent_length=period,
+                    last_values=last_oracle_values[name] if name in last_oracle_values else None
+                )
+                for name, period in oracles.items()
+            })
+        elif oracles is not None:
+            self.oracles.update({
+                name: Oracle(sma_equivalent_length=period, first_block=Block(self))
+                for name, period in oracles.items()
+            })
         self.asset_fee = asset_fee
         self.lrna_fee = lrna_fee
 
@@ -141,28 +188,6 @@ class OmnipoolState(Exchange):
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
-        self.oracles = {}
-
-        if oracles is None or 'price' not in oracles:
-            if last_oracle_values is None or 'price' not in last_oracle_values:
-                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self))
-            else:
-                self.oracles['price'] = Oracle(sma_equivalent_length=9, first_block=Block(self),
-                                               last_values=last_oracle_values['price'])
-        if last_oracle_values is not None and oracles is not None:
-            self.oracles.update({
-                name: Oracle(
-                    sma_equivalent_length=period,
-                    last_values=last_oracle_values[name] if name in last_oracle_values else None
-                )
-                for name, period in oracles.items()
-            })
-        elif oracles is not None:
-            self.oracles.update({
-                name: Oracle(sma_equivalent_length=period, first_block=Block(self))
-                for name, period in oracles.items()
-            })
-
         self.time_step = 0
         self.current_block = Block(self)
         self.unique_id = unique_id
@@ -175,6 +200,9 @@ class OmnipoolState(Exchange):
     def lrna_fee(self, value: DynamicFee or dict or float):
         if isinstance(value, DynamicFee):
             self._lrna_fee = value
+            self._lrna_fee.raise_oracle_name = value.raise_oracle_name or 'price'
+            self._lrna_fee.oracle_decay = value.oracle_decay or self.oracles[value.raise_oracle_name].decay_factor
+            self._lrna_fee.last_liquidity = self.liquidity
             if not value.current:
                 self._lrna_fee.current = self.last_lrna_fee or {tkn: self._lrna_fee.minimum for tkn in self.asset_list}
         elif isinstance(value, dict):
@@ -184,23 +212,28 @@ class OmnipoolState(Exchange):
                 current={
                     tkn: value[tkn] if tkn in value else (
                         self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum
-                    ) for tkn in self.asset_list}
+                    ) for tkn in self.asset_list},
+                oracle_decay=self.oracles['price'].decay_factor,
+                liquidity=self.liquidity
             )
         else:
             self._lrna_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                minimum=value,
-                maximum=value,
-                current={tkn: value for tkn in self.asset_list}
+                current={tkn: value for tkn in self.asset_list},
+                oracle_decay=self.oracles['price'].decay_factor,
+                liquidity=self.liquidity
             )
 
         def get_fee(tkn):
             return self._lrna_fee.compute(
                 tkn=tkn,
                 time_step=self.time_step,
-                net_volume=self.current_block.volume_in[tkn] - self.current_block.volume_out[tkn],
-                liquidity=self.current_block.liquidity[tkn]
+                net_volume=(
+                    self.oracles[self._lrna_fee.raise_oracle_name].volume_in[tkn]
+                    - self.oracles[self._lrna_fee.raise_oracle_name].volume_out[tkn]
+                ),
+                liquidity=self.oracles[self._lrna_fee.raise_oracle_name].liquidity[tkn]
             )
 
         self._get_lrna_fee = get_fee
@@ -217,6 +250,10 @@ class OmnipoolState(Exchange):
     def asset_fee(self, value):
         if isinstance(value, DynamicFee):
             self._asset_fee = value
+            # assign default values if none were provided (generally, they won't be)
+            self._asset_fee.raise_oracle_name = value.raise_oracle_name or 'price'
+            self._asset_fee.oracle_decay = value.oracle_decay or self.oracles[value.raise_oracle_name].decay_factor
+            self._asset_fee.last_liquidity = self.liquidity
             if not value.current:
                 self._asset_fee.current = self.last_fee or {tkn: self._asset_fee.minimum for tkn in self.asset_list}
         elif isinstance(value, dict):
@@ -226,23 +263,28 @@ class OmnipoolState(Exchange):
                 current={
                     tkn: value[tkn] if tkn in value else (
                         self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum
-                    ) for tkn in self.asset_list}
+                    ) for tkn in self.asset_list},
+                oracle_decay=self.oracles['price'].decay_factor,
+                liquidity=self.liquidity
             )
         else:
             self._asset_fee = DynamicFee(
                 amplification=0,
                 decay=0,
-                minimum=value,
-                maximum=value,
-                current={tkn: value for tkn in self.asset_list}
+                current={tkn: value for tkn in self.asset_list},
+                oracle_decay = self.oracles['price'].decay_factor,
+                liquidity=self.liquidity
             )
 
         def get_fee(tkn):
             return self._asset_fee.compute(
                 tkn=tkn,
                 time_step=self.time_step,
-                net_volume=self.current_block.volume_out[tkn] - self.current_block.volume_in[tkn],
-                liquidity=self.current_block.liquidity[tkn]
+                net_volume=(
+                    self.oracles[self._asset_fee.raise_oracle_name].volume_out[tkn]
+                    - self.oracles[self._asset_fee.raise_oracle_name].volume_in[tkn]
+                ),
+                liquidity=self.oracles[self._asset_fee.raise_oracle_name].liquidity[tkn]
             )
 
         self._get_asset_fee = get_fee
@@ -268,6 +310,8 @@ class OmnipoolState(Exchange):
         self.weight_cap[tkn] = weight_cap
         if tkn not in self._lrna_fee.current: self._lrna_fee.current[tkn] = self._lrna_fee.minimum
         if tkn not in self._asset_fee.current: self._asset_fee.current[tkn] = self._asset_fee.minimum
+        if tkn not in self._lrna_fee.last_liquidity: self._lrna_fee.last_liquidity[tkn] = liquidity
+        if tkn not in self._asset_fee.last_liquidity: self._asset_fee.last_liquidity[tkn] = liquidity
         if hasattr(self, 'current_block'):
             self.current_block.price[tkn] = self.lrna[tkn] / self.liquidity[tkn]
             self.current_block.liquidity[tkn] = self.liquidity[tkn]
