@@ -1326,11 +1326,11 @@ def test_dynamic_fee_multiple_block_update():
     init_vol_in = 0
     W = mpf(0.2)
     amplification = 1
-    decay = mpf(0.00001)
+    decay = 1 / mpf(100000)
     init_liq = mpf(10000)
     init_liq_oracle = mpf(10000)
     R = init_liq - init_vol_out
-    num_blocks = 1000
+    num_blocks = 10
     init_fee = mpf(0.0025)
     fee_min = mpf(0.0025)
     fee_max = mpf(0.1)
@@ -1338,23 +1338,51 @@ def test_dynamic_fee_multiple_block_update():
     vol_out_oracle = init_vol_out
     vol_in_oracle = init_vol_in
     liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
-    for i in range(num_blocks):
+    for j in range(num_blocks):
         x = (vol_out_oracle - vol_in_oracle) / liquidity_oracle
         delta_fee = amplification * x - decay
         fee = min(max(fee + delta_fee, fee_min), fee_max)
         # oracle updates
         vol_out_oracle = vol_out_oracle * (1 - W)
         vol_in_oracle = vol_in_oracle * (1 - W)
-        liquidity_oracle = W * R + (1-W) * liquidity_oracle
+        liquidity_oracle = W * R + (1 - W) * liquidity_oracle
 
-    vol_out_oracle = init_vol_out
-    vol_in_oracle = init_vol_in
     liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
     decays = [mpmath.power(1-W, i) for i in range(num_blocks)]
     mult = sum([decays[j] / (1 + (liquidity_oracle - R)/R * decays[j]) for j in range(num_blocks)])
-    delta_fee = amplification * (vol_out_oracle - vol_in_oracle) / R * mult - decay * num_blocks
+    delta_fee = amplification * (init_vol_out - init_vol_in) / R * mult - decay * num_blocks
     fee2 = min(max(init_fee + delta_fee, fee_min), fee_max)
     assert fee == pytest.approx(fee2, rel=1e-20)
+
+    m = min(20, num_blocks)
+    x = amplification * (init_vol_out - init_vol_in) / R
+    j_sum = 0
+    for j in range(m):
+        block_decay = mpmath.power(1 - W, j)
+        j_sum += block_decay / (
+            1 + (liquidity_oracle - R) / R * block_decay
+        )
+    w_term = ((1 - W) * (mpmath.power(1 - W, m) - mpmath.power(1 - W, num_blocks))) /  W
+    fee3 = init_fee + x * (j_sum + w_term) - num_blocks * decay
+    # assert fee3 == pytest.approx(fee, rel=1e-08)
+    er = 1
+    test_fee = DynamicFee(
+        minimum=fee_min,
+        amplification=amplification,
+        decay=decay,
+        maximum=fee_max,
+        oracle_decay=W,
+        current={'R1': init_fee},
+        liquidity={'R1': liquidity_oracle}
+    )
+    test_fee.time_step = 0
+    fee4 = test_fee.compute(
+        tkn='R1',
+        time_step=num_blocks,
+        net_volume=init_vol_out - init_vol_in,
+        liquidity=R,
+    )
+    assert fee4 == pytest.approx(fee, rel=1e-08)
 
 
 @given(
