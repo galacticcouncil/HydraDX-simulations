@@ -416,6 +416,14 @@ class ICEProblem:
             scaled_x = np.concatenate([scaled_x, scaled_I])
         return scaled_x
 
+    def get_intents(self):
+        new_intents = []
+        for intent in self.intents:
+            new_intent = {k: v for k, v in intent.items() if k != 'agent'}
+            new_intent['agent'] = intent['agent'].copy()
+            new_intents.append(new_intent)
+        return new_intents
+
 
 def scale_down_partial_intents(p, trade_pcts: list, scale: float):
     zero_ct = 0
@@ -1084,8 +1092,9 @@ def _convert_to_all_partial(p: ICEProblem) -> ICEProblem:
 def add_small_trades(p: ICEProblem, init_deltas: list):
     # simulate execution of intents
     state = p.omnipool.copy()
-    intents = copy.deepcopy(p.intents)
-    init_valid, init_profit = validate_and_execute_solution(state, intents, copy.deepcopy(init_deltas), "HDX")
+    intents = p.get_intents()
+    deltas = [[intent_deltas[0], intent_deltas[1]] for intent_deltas in init_deltas]  # make deep copy
+    init_valid, init_profit = validate_and_execute_solution(state, intents, deltas, "HDX")
     assert init_valid == True
     assert init_profit >= 0
     # go through small intents that remain, simulating their execution and adding them to the intents
@@ -1122,7 +1131,7 @@ def add_small_trades(p: ICEProblem, init_deltas: list):
             simulated_state.fail = ""  # reset fail message
 
     deltas = [[intent_deltas[0], intent_deltas[1]] for intent_deltas in init_deltas]  # make deep copy
-    orig_intents = copy.deepcopy(p.intents)
+    orig_intents = p.get_intents()
     for add_i, add_deltas, _, _ in additional_deltas:
         deltas[add_i][0] += add_deltas[0]
         deltas[add_i][1] += add_deltas[1]
@@ -1130,7 +1139,7 @@ def add_small_trades(p: ICEProblem, init_deltas: list):
         assert deltas[add_i][1] <= orig_intents[add_i]['buy_quantity']
 
     state = p.omnipool.copy()
-    valid, profit = validate_and_execute_solution(state, orig_intents, copy.deepcopy(deltas), "HDX")
+    valid, profit = validate_and_execute_solution(state, orig_intents, deltas, "HDX")
     assert valid == True
     assert profit >= 0
 
