@@ -723,14 +723,14 @@ def test_case_Martin():
 
 
 def test_more_random_intents():
-    r = 42
+    r = 43
     random.seed(r)
     np.random.seed(r)
 
-    intent_ct = 50
+    intent_ct = 500
     min_sell_ratio, max_sell_ratio = 1e-10, 0.01
     sell_ratios = min_sell_ratio + (max_sell_ratio - min_sell_ratio) * np.random.rand(intent_ct)
-    min_price_ratio, max_price_ratio = 0.9, 1.1
+    min_price_ratio, max_price_ratio = 0.99, 1.01
     price_ratios = min_price_ratio + (max_price_ratio - min_price_ratio) * np.random.rand(intent_ct)
     partial_flags = np.random.choice([True, False], size=intent_ct)
 

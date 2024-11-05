@@ -55,7 +55,7 @@ def validate_and_execute_solution(
     validate_intents(intents, intent_deltas)
     transfers, deltas = calculate_transfers(intents, intent_deltas)
     validate_transfer_amounts(transfers)
-    pool_agent, fee_agent, lrna_deltas = execute_solution(omnipool, transfers, deltas)
+    pool_agent, fee_agent, lrna_deltas = execute_solution(omnipool, transfers, deltas, exit_to=tkn_profit)
     if not validate_remainder(pool_agent):
         raise Exception("agent has negative holdings")
 
@@ -99,7 +99,8 @@ def execute_solution(
         omnipool: OmnipoolState,
         transfers: list,
         deltas: dict,  # note that net_deltas can be easily reconstructed from transfers
-        fee_match: float = 0.0
+        fee_match: float = 0.0,
+        exit_to: str = None
 ):
     pool_agent = Agent()
     fee_agent = Agent()
@@ -153,6 +154,15 @@ def execute_solution(
             transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
         elif transfer['buy_quantity'] < 0:
             raise Exception("buy quantity is negative")
+
+    if exit_to is not None:  # have pool agent exit to a specific token
+        tkns = [tkn for tkn in pool_agent.holdings if tkn != exit_to]
+        for tkn in tkns:
+            if pool_agent.holdings[tkn] > 0:
+                omnipool.swap(pool_agent, exit_to, tkn, sell_quantity=pool_agent.holdings[tkn])
+        for tkn in tkns:
+            if pool_agent.holdings[tkn] < 0:
+                omnipool.swap(pool_agent, tkn, exit_to, buy_quantity=-pool_agent.holdings[tkn])
 
     return pool_agent, fee_agent, lrna_deltas
 

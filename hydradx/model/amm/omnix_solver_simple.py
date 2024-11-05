@@ -26,7 +26,9 @@ class ICEProblem:
         self.tkn_profit = tkn_profit
         temp_intents = []
         for intent in self.intents:
-            temp_intents.append(copy.deepcopy(intent))
+            new_intent = {k: v for k, v in intent.items() if k != 'agent'}
+            new_intent['agent'] = intent['agent'].copy()
+            temp_intents.append(new_intent)
             buy_amt_lrna_value = intent['buy_quantity'] * self.omnipool.price(self.omnipool, intent['tkn_buy'])
             selL_amt_lrna_value = intent['sell_quantity'] * self.omnipool.price(self.omnipool, intent['tkn_sell'])
             if buy_amt_lrna_value < self.min_partial and selL_amt_lrna_value < self.min_partial and apply_min_partial:
@@ -103,6 +105,8 @@ class ICEProblem:
     def _set_max_in_out(self):
         self._max_in = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
         self._max_out = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
+        self._min_in = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
+        self._min_out = {tkn: 0 for tkn in self.asset_list + ['LRNA']}
         for i, intent in enumerate(self.partial_intents):
             self._max_in[intent['tkn_sell']] += self.partial_sell_maxs[i]
             buy_amt = intent['buy_quantity'] / intent['sell_quantity'] * self.partial_sell_maxs[i]
@@ -113,13 +117,39 @@ class ICEProblem:
                 self._max_out[intent['tkn_buy']] += intent['buy_quantity']
         for tkn in self._known_flow:
             self._max_in[tkn] += self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']
+            self._min_in[tkn] += self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']
             self._max_out[tkn] -= self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']
+            self._min_out[tkn] -= self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']
         fees = {tkn: self.omnipool.last_fee[tkn] for tkn in self.asset_list}
         for tkn in self.asset_list:
             self._max_in[tkn] = max(self._max_in[tkn], 0)
+            self._min_in[tkn] = max(self._min_in[tkn], 0)
             self._max_out[tkn] = max(self._max_out[tkn] / (1 - fees[tkn]), 0)
+            self._min_out[tkn] = max(self._min_out[tkn] / (1 - fees[tkn]), 0)
         self._max_out["LRNA"] = 0
+        self._min_out["LRNA"] = 0
         self._max_in["LRNA"] = max(self._max_in["LRNA"], 0)
+        self._min_in["LRNA"] = max(self._min_in["LRNA"], 0)
+
+    def _set_bounds(self):
+        # assets
+        self._min_x = np.array([self._min_in[tkn] - self._max_out[tkn] for tkn in self.asset_list])
+        self._max_x = np.array([self._max_in[tkn] - self._min_out[tkn] for tkn in self.asset_list])
+        self._min_lambda = np.maximum(-self._max_x, 0)
+        self._max_lambda = np.maximum(-self._min_x, 0)
+        # LRNA
+        min_y = np.array([-self.omnipool.lrna[tkn] * self._max_x[i] / (self._max_x[i] + self.omnipool.liquidity[tkn]) for i, tkn in enumerate(self.asset_list)])
+        self._min_y = min_y - 0.1 * np.abs(min_y)
+        max_y = np.array([-self.omnipool.lrna[tkn] * self._min_x[i] / (self._min_x[i] + self.omnipool.liquidity[tkn]) for i, tkn in enumerate(self.asset_list)])
+        self._max_y = max_y + 0.1 * np.abs(max_y)
+        self._min_lrna_lambda = np.maximum(-self._max_y, 0)
+        self._max_lrna_lambda = np.maximum(-self._min_y, 0)
+        # tkn_profit
+        profit_i = self.asset_list.index(self.tkn_profit)
+        self._min_x[profit_i] = -self.omnipool.liquidity[self.tkn_profit]
+        self._max_lambda[profit_i] = np.maximum(-self._min_x[profit_i], 0)
+        self._min_y[profit_i] = -self.omnipool.lrna[self.tkn_profit]
+        self._max_lrna_lambda[profit_i] = np.maximum(-self._min_y[profit_i], 0)
 
     def _set_scaling(self):
         self._scaling = {tkn: 0 for tkn in self.asset_list}
@@ -128,8 +158,6 @@ class ICEProblem:
             self._scaling[tkn] = max(self._max_in[tkn], self._max_out[tkn])
             if self._scaling[tkn] == 0 and tkn != self.tkn_profit:
                 self._scaling[tkn] = 1
-            else:
-                self._scaling[tkn] = min(self._scaling[tkn], self.omnipool.liquidity[tkn])
             # set scaling for LRNA equal to scaling for asset, adjusted by spot price
             scalar = self._scaling[tkn] * self.omnipool.lrna[tkn] / self.omnipool.liquidity[tkn]
             self._scaling["LRNA"] = max(self._scaling["LRNA"], scalar)
@@ -256,6 +284,7 @@ class ICEProblem:
     def _recalculate(self, rescale: bool = True):
         self._set_known_flow()
         self._set_max_in_out()
+        self._set_bounds()
         if rescale:
             self._set_scaling()
             self._set_amm_coefs()
@@ -306,7 +335,7 @@ class ICEProblem:
         return np.array([v for v in self._q])
 
     def get_profit_A(self):
-        return copy.deepcopy(self._profit_A)
+        return np.copy(self._profit_A)
 
     def get_omnipool_directions(self):
         return {k: v for k, v in self._omnipool_directions.items()}
@@ -326,13 +355,29 @@ class ICEProblem:
         return partial_intent_prices
 
     def get_partial_sell_maxs_scaled(self):
-        return [self.partial_sell_maxs[j] / self._scaling[intent['tkn_sell']] for j, intent in enumerate(self.partial_intents)]
+        partial_sell_maxes = [m for m in self.partial_sell_maxs]
+        for j, intent in enumerate(self.partial_intents):
+            tkn = intent['tkn_sell']
+            if tkn != 'LRNA':
+                partial_sell_maxes[j] = min([partial_sell_maxes[j], self.omnipool.liquidity[tkn] / 2])
+        return [partial_sell_maxes[j] / self._scaling[intent['tkn_sell']] for j, intent in enumerate(self.partial_intents)]
 
     def get_amm_approx(self, tkn):
         return self._force_amm_approx[tkn]
 
     def scale_obj_amt(self, amt):
         return amt * self._scaling[self.tkn_profit]
+
+    def get_scaled_bounds(self):
+        scaled_min_y = self._min_y / self._scaling["LRNA"]
+        scaled_max_y = self._max_y / self._scaling["LRNA"]
+        scaled_min_x = [self._min_x[i] / self._scaling[tkn] for i, tkn in enumerate(self.asset_list)]
+        scaled_max_x = [self._max_x[i] / self._scaling[tkn] for i, tkn in enumerate(self.asset_list)]
+        scaled_min_lrna_lambda = self._min_lrna_lambda / self._scaling["LRNA"]
+        scaled_max_lrna_lambda = self._max_lrna_lambda / self._scaling["LRNA"]
+        scaled_min_lambda = [self._min_lambda[i] / self._scaling[tkn] for i, tkn in enumerate(self.asset_list)]
+        scaled_max_lambda = [self._max_lambda[i] / self._scaling[tkn] for i, tkn in enumerate(self.asset_list)]
+        return scaled_min_y, scaled_max_y, scaled_min_x, scaled_max_x, scaled_min_lrna_lambda, scaled_max_lrna_lambda, scaled_min_lambda, scaled_max_lambda
 
     def get_real_x(self, x):
         '''
@@ -449,8 +494,19 @@ def _find_solution_unrounded(
     d_coefs = np.eye(m)
     A2 = np.hstack([amm_coefs, d_coefs])
     b2 = np.array(p.get_partial_sell_maxs_scaled())
+    # A2 = np.eye(k)
+    # min_y, max_y, min_x, max_x, min_lrna_lambda, max_lrna_lambda, min_lambda, max_lambda = p.get_scaled_bounds()
+    # profit_i = asset_list.index(p.tkn_profit)
+    # max_y = max_y + 1.1 * np.abs(max_y)
+    # max_x = max_x + 1.1 * np.abs(max_x)
+    # max_lrna_lambda = max_lrna_lambda + 1.1 * np.abs(max_lrna_lambda)
+    # max_lambda = max_lambda + 1.1 * np.abs(max_lambda)
+    # b2 = np.concatenate([max_y, max_x, max_lrna_lambda, max_lambda, p.get_partial_sell_maxs_scaled()])
+    # tkn_profit_indices = [profit_i, n + profit_i, 2*n + profit_i, 3*n + profit_i]
+    # np.delete(A2, tkn_profit_indices, axis=0)
+    # np.delete(b2, tkn_profit_indices)
     A2_trimmed = A2[:, indices_to_keep]
-    cone2 = cb.NonnegativeConeT(m)
+    cone2 = cb.NonnegativeConeT(A2_trimmed.shape[0])
 
     # # leftover must be higher than required fees
     profit_A = p.get_profit_A()
@@ -723,27 +779,83 @@ def _solve_inclusion_problem(
     if lower_bound is None:
         lower_bound = -inf
 
-    lower = np.array([-inf] * 2 * n + [0] * (2 * n + m + r))
     partial_intent_sell_amts = p.get_partial_sell_maxs_scaled()
-    upper = np.array([inf] * 4 * n + partial_intent_sell_amts + [1] * r)
 
-    num_pts = x_list.shape[0]
+    max_lambda_d = {tkn: p.omnipool.liquidity[tkn]/scaling[tkn]/2 for tkn in asset_list}
+    max_lrna_lambda_d = {tkn: p.omnipool.lrna[tkn]/scaling["LRNA"]/2 for tkn in asset_list}
+    max_y_d = max_lrna_lambda_d
+    min_y_d = {tkn: -x for tkn, x in max_lrna_lambda_d.items()}
+    max_x_d = max_lambda_d
+    min_x_d = {tkn: -x for tkn, x in max_lambda_d.items()}
 
-    S = np.zeros((n * num_pts, k))
-    S_upper = np.zeros(n * num_pts)
-    S_lower = np.array([-inf]*n * num_pts)
-    for a, x in enumerate(x_list):
-        grads = np.zeros(2*n)
+    max_in = {tkn: p._max_in[tkn] for tkn in asset_list + ["LRNA"]}
+    max_out = {tkn: p._max_out[tkn] for tkn in asset_list}
+    for tkn in asset_list:
+        if tkn != p.tkn_profit:
+            max_x_d[tkn] = min(max_in[tkn]/scaling[tkn] * 2, max_x_d[tkn])
+            min_x_d[tkn] = max(-max_out[tkn]/scaling[tkn] * 2, min_x_d[tkn])
+            max_lambda_d[tkn] = -min_x_d[tkn]
+            # need to bump up max_y for any LRNA sales
+            max_y_unscaled = max_out[tkn] * p.omnipool.lrna[tkn] / (p.omnipool.liquidity[tkn] - max_out[tkn]) + max_in["LRNA"]
+            max_y_d[tkn] = max_y_unscaled / scaling["LRNA"]
+            min_y_d[tkn] = -max_in[tkn] * p.omnipool.lrna[tkn] / (p.omnipool.liquidity[tkn] + max_in[tkn]) / scaling["LRNA"]
+            max_lrna_lambda_d[tkn] = -min_y_d[tkn]
+    min_y_old = np.array([min_y_d[tkn] for tkn in asset_list])
+    max_y_old = np.array([max_y_d[tkn] for tkn in asset_list])
+    min_x_old = np.array([min_x_d[tkn] for tkn in asset_list])
+    max_x_old = np.array([max_x_d[tkn] for tkn in asset_list])
+    max_lrna_lambda_old = np.array([max_lrna_lambda_d[tkn] for tkn in asset_list])
+    max_lambda_old = np.array([max_lambda_d[tkn] for tkn in asset_list])
+    min_y, max_y, min_x, max_x, min_lrna_lambda, max_lrna_lambda, min_lambda, max_lambda = p.get_scaled_bounds()
+    profit_i = asset_list.index(p.tkn_profit)
+    max_x[profit_i] = inf
+    max_y[profit_i] = inf
+    min_lambda[profit_i] = 0
+    min_lrna_lambda[profit_i] = 0
+
+    min_y = min_y - 1.1 * np.abs(min_y)
+    min_x = min_x - 1.1 * np.abs(min_x)
+    min_lrna_lambda = min_lrna_lambda - 1.1 * np.abs(min_lrna_lambda)
+    min_lambda = min_lambda - 1.1 * np.abs(min_lambda)
+    max_y = max_y + 1.1 * np.abs(max_y)
+    max_x = max_x + 1.1 * np.abs(max_x)
+    max_lrna_lambda = max_lrna_lambda + 1.1 * np.abs(max_lrna_lambda)
+    max_lambda = max_lambda + 1.1 * np.abs(max_lambda)
+
+    # min_lambda = np.zeros(n)
+    # min_lrna_lambda = np.zeros(n)
+
+    lower = np.concatenate([min_y, min_x, min_lrna_lambda, min_lambda, [0] * (m + r)])
+    upper = np.concatenate([max_y, max_x, max_lrna_lambda, max_lambda, partial_intent_sell_amts, [1] * r])
+
+    S = np.zeros((n, k))
+    S_upper = np.zeros(n)
+
+    # add point at x = 0
+    for i, tkn in enumerate(asset_list):
+        lrna_c = p.get_amm_lrna_coefs()
+        asset_c = p.get_amm_asset_coefs()
+        S[i, i] = -lrna_c[tkn]
+        S[i, n + i] = -asset_c[tkn]
+
+    for x in x_list:
         for i, tkn in enumerate(asset_list):
-            lrna_c = p.get_amm_lrna_coefs()
-            asset_c = p.get_amm_asset_coefs()
-            grads[i] = -lrna_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[n+i]
-            grads[n+i] = -asset_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[i]
-            S[a*n + i, i] = grads[i]
-            S[a*n + i, n+i] = grads[n+i]
-            grad_dot_x = grads[i] * x[i] + grads[n+i] * x[n+i]
-            g_neg = lrna_c[tkn] * x[i] + asset_c[tkn] * x[n+i] + lrna_c[tkn] * asset_c[tkn] * x[i] * x[n+i]
-            S_upper[a*n + i] = grad_dot_x + g_neg
+            if x[i] != 0 or x[n+i] != 0:
+                S_row = np.zeros((1,k))
+                S_row_upper = np.zeros(1)
+                lrna_c = p.get_amm_lrna_coefs()
+                asset_c = p.get_amm_asset_coefs()
+                grads_yi = -lrna_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[n+i]
+                grads_xi = -asset_c[tkn] - lrna_c[tkn] * asset_c[tkn] * x[i]
+                S_row[0, i] = grads_yi
+                S_row[0, n+i] = grads_xi
+                grad_dot_x = grads_yi * x[i] + grads_xi * x[n+i]
+                g_neg = lrna_c[tkn] * x[i] + asset_c[tkn] * x[n+i] + lrna_c[tkn] * asset_c[tkn] * x[i] * x[n+i]
+                S_row_upper[0] = grad_dot_x + g_neg
+                S = np.vstack([S, S_row])
+                S_upper = np.concatenate([S_upper, S_row_upper])
+
+    S_lower = np.array([-inf]*len(S_upper))
 
     # asset leftover must be above zero
     A3 = p.get_profit_A()
@@ -807,6 +919,12 @@ def _solve_inclusion_problem(
     lp.integrality_ = np.array([highspy.HighsVarType.kContinuous] * (4*n + m) + [highspy.HighsVarType.kInteger] * r)
 
     h.passModel(lp)
+    options = h.getOptions()
+    options.small_matrix_value = 1e-12
+    options.primal_feasibility_tolerance=1e-10
+    options.dual_feasibility_tolerance=1e-10
+    options.mip_feasibility_tolerance=1e-10
+    h.passOptions(options)
     h.run()
     status = h.getModelStatus()
     solution = h.getSolution()
@@ -952,12 +1070,21 @@ def find_initial_solution(state: OmnipoolState, intents: list):
     return mandatory_intents, exec_indices, init_i
 
 
+def _convert_to_all_partial(p: ICEProblem) -> ICEProblem:
+    new_intents = []
+    for i, intent in enumerate(p.intents):
+        new_intent = copy.deepcopy(intent)
+        new_intent['partial'] = True
+        new_intents.append(new_intent)
+    return ICEProblem(p.omnipool, new_intents, init_i=[], min_partial=0)
+
+
 def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_partial: float = 1) -> list:
     if len(init_intents) == 0:
         return [], 0, [], []
 
     intents, exec_indices, init_i = find_initial_solution(state, init_intents)
-    # init_i = exec_indices  # only execute mandatory trades initially
+    init_i = exec_indices  # only execute mandatory trades initially
     p = ICEProblem(state, intents, init_i=init_i, min_partial=min_partial)
 
     m, r, n = p.m, p.r, p.n
@@ -986,10 +1113,10 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
     Z_U_archive = []
     Z_L_archive = []
     indicators = [i for i in p.I]
-    x_list = np.zeros((1,4 * n + m))
+    x_list = np.zeros((0,4 * n + m))
 
     # loop until MILP has no solution:
-    for _i in range(100):
+    for _i in range(50):
         # - do NLP solve given I values, update x^K
         p.set_up_problem(I=indicators)
         amm_deltas, intent_deltas, x, obj, dual_obj, status = _find_good_solution_unrounded(p, allow_loss=True)
@@ -1019,7 +1146,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
 
         # - do MILP solve
         p.set_up_problem()
-        amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid, milp_status = _solve_inclusion_problem(p, x_list, Z_U, Z_L, A, A_upper, A_lower)
+        amm_deltas, partial_intent_deltas, indicators, new_A, new_A_upper, new_A_lower, milp_obj, valid, milp_status = _solve_inclusion_problem(p, x_list, Z_U, -inf, A, A_upper, A_lower)
         Z_L = max(Z_L, milp_obj)
         Z_U_archive.append(Z_U)
         Z_L_archive.append(Z_L)
