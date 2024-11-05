@@ -1124,7 +1124,7 @@ def add_small_trades(p: ICEProblem, init_deltas: list):
         if not simulated_state.fail:  # trade was successful
             sell_amt = intent['sell_quantity']
             buy_amt = intent['buy_quantity']
-            if intent['agent'].holdings[intent['tkn_sell']] - sim_agent.holdings[intent['tkn_sell']] != sell_amt:
+            if intent['agent'].holdings[intent['tkn_sell']] - sim_agent.holdings[intent['tkn_sell']] > sell_amt:
                 raise
             additional_deltas.append((intents_remaining_indices[i], [-sell_amt, buy_amt], intent['tkn_buy'], intent['tkn_sell']))
         else:
