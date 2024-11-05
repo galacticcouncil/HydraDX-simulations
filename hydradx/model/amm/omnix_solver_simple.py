@@ -8,6 +8,7 @@ import highspy
 from scipy import sparse
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnix import validate_and_execute_solution
 
 
 class ICEProblem:
@@ -1020,8 +1021,9 @@ def find_initial_solution(state: OmnipoolState, intents: list):
     max_impact_to_limit = 0.1  # to be eligble for mandatory inclusion, price impact to slippage limit must be less than this
     x = []
     for i, intent in enumerate(intents):
-        impact_to_limit = calc_limit_to_impact(state, intent)
-        x.append((impact_to_limit, i, intent))
+        limit_to_impact = calc_limit_to_impact(state, intent)
+        if limit_to_impact >= 1:
+            x.append((limit_to_impact, i, intent))
     x.sort(reverse=True)  # is now all intents sorted by limit to impact, descending
 
     omnipool_net = {tkn: 0 for tkn in state.asset_list}
@@ -1079,6 +1081,62 @@ def _convert_to_all_partial(p: ICEProblem) -> ICEProblem:
     return ICEProblem(p.omnipool, new_intents, init_i=[], min_partial=0)
 
 
+def add_small_trades(p: ICEProblem, init_deltas: list):
+    # simulate execution of intents
+    state = p.omnipool.copy()
+    intents = copy.deepcopy(p.intents)
+    init_valid, init_profit = validate_and_execute_solution(state, intents, copy.deepcopy(init_deltas), "HDX")
+    assert init_valid == True
+    assert init_profit >= 0
+    # go through small intents that remain, simulating their execution and adding them to the intents
+    # size_limit = 1e-7  # trades less than this % of liquidity will be eligible for mandatory inclusion
+    # max_impact_to_limit = 0.1  # to be eligible for mandatory inclusion, price impact to slippage limit must be less than this
+    intents_remaining_indices = [i for i, intent in enumerate(intents) if intent['sell_quantity'] > 0]
+    intents_remaining = [intent for intent in intents if intent['sell_quantity'] > 0]
+    x = []
+    for i, intent in enumerate(intents_remaining):
+        limit_to_impact = calc_limit_to_impact(state, intent)
+        if limit_to_impact >= 1:  # only include intents that have price limit above price impact
+            x.append((limit_to_impact, i, intent))
+    x.sort(reverse=True)  # is now all intents sorted by limit to impact, descending
+
+    max_price_movement = 0.0001  # max price movement from mandatory small trades
+    mandatory_intents = copy.deepcopy(intents)
+    exec_indices = []
+    simulated_state = state.copy()
+    additional_deltas = []
+
+    # include small trades until we get up to 0.5 bp of impact in each asset
+    for (impact, i, intent) in x:
+        # try executing trade
+        sim_agent = intent['agent'].copy()
+        assert sim_agent.holdings[intent['tkn_sell']] == intent['sell_quantity']
+        simulated_state.swap(sim_agent, intent['tkn_buy'], intent['tkn_sell'], buy_quantity=intent['buy_quantity'])
+        if not simulated_state.fail:  # trade was successful
+            sell_amt = intent['sell_quantity']
+            buy_amt = intent['buy_quantity']
+            if intent['agent'].holdings[intent['tkn_sell']] - sim_agent.holdings[intent['tkn_sell']] != sell_amt:
+                raise
+            additional_deltas.append((intents_remaining_indices[i], [-sell_amt, buy_amt], intent['tkn_buy'], intent['tkn_sell']))
+        else:
+            simulated_state.fail = ""  # reset fail message
+
+    deltas = [[intent_deltas[0], intent_deltas[1]] for intent_deltas in init_deltas]  # make deep copy
+    orig_intents = copy.deepcopy(p.intents)
+    for add_i, add_deltas, _, _ in additional_deltas:
+        deltas[add_i][0] += add_deltas[0]
+        deltas[add_i][1] += add_deltas[1]
+        assert -deltas[add_i][0] <= orig_intents[add_i]['sell_quantity']
+        assert deltas[add_i][1] <= orig_intents[add_i]['buy_quantity']
+
+    state = p.omnipool.copy()
+    valid, profit = validate_and_execute_solution(state, orig_intents, copy.deepcopy(deltas), "HDX")
+    assert valid == True
+    assert profit >= 0
+
+    return init_deltas, -profit
+
+
 def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_partial: float = 1) -> list:
     if len(init_intents) == 0:
         return [], 0, [], []
@@ -1116,7 +1174,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
     x_list = np.zeros((0,4 * n + m))
 
     # loop until MILP has no solution:
-    for _i in range(50):
+    for _i in range(5):
         # - do NLP solve given I values, update x^K
         p.set_up_problem(I=indicators)
         amm_deltas, intent_deltas, x, obj, dual_obj, status = _find_good_solution_unrounded(p, allow_loss=True)
@@ -1153,11 +1211,15 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
         if not valid:
             break
 
-    if best_status not in ["Solved", "AlmostSolved"]:
-        if Z_U > 0 or best_status in ['PrimalInfeasible', 'DualInfeasible']:
-            return [[0,0]]*(m+r), 0, Z_L_archive, Z_U_archive  # no solution found
-        else:
-            raise
+    if Z_U > 0 or best_status in ['PrimalInfeasible', 'DualInfeasible']:
+        best_amm_deltas = [0]*n
+        best_intent_deltas = [0]*m
+        y_best = [0]*r
+        Z_U = 0
+        # return [[0,0]]*(m+r), 0, Z_L_archive, Z_U_archive  # no solution found
+    elif best_status not in ['Solved', 'AlmostSolved']:
+        raise
+
     sell_deltas = round_solution(p.partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(p.partial_intents, sell_deltas)
     full_deltas_with_buys = [[-p.full_intents[l]['sell_quantity'], p.full_intents[l]['buy_quantity']] if y_best[l] == 1 else [0,0] for l in range(r)]
@@ -1166,4 +1228,5 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, min_par
         deltas[p.partial_intent_indices[i]] = partial_deltas_with_buys[i]
     for i in range(len(p.full_intent_indices)):
         deltas[p.full_intent_indices[i]] = full_deltas_with_buys[i]
-    return deltas, -Z_U, Z_L_archive, Z_U_archive
+    deltas_final, obj = add_small_trades(p, deltas)
+    return deltas_final, -obj, Z_L_archive, Z_U_archive
