@@ -14,10 +14,10 @@ def process_next_swap(
     dex_slippage_tolerance = buffer/2
     cex_slippage_tolerance = buffer/2
 
-    tkn_lrna_fee = text_dex.lrna_fee[tkn].compute(tkn=tkn)
-    numeraire_lrna_fee = text_dex.lrna_fee[numeraire].compute(tkn=numeraire)
-    tkn_asset_fee = text_dex.asset_fee[tkn].compute(tkn=tkn)
-    numeraire_asset_fee = text_dex.asset_fee[numeraire].compute(tkn=numeraire)
+    tkn_lrna_fee = text_dex.lrna_fee(tkn)
+    numeraire_lrna_fee = text_dex.lrna_fee(numeraire)
+    tkn_asset_fee = text_dex.asset_fee(tkn)
+    numeraire_asset_fee = text_dex.asset_fee(numeraire)
 
     op_spot = OmnipoolState.price(text_dex, tkn, numeraire)
     buy_spot = op_spot / ((1 - numeraire_lrna_fee) * (1 - tkn_asset_fee))
@@ -124,8 +124,8 @@ def get_arb_opps(op_state, cex_dict, config):
             bid_price = pair_order_book.bids[0][0]
             cex_sell_price = bid_price * (1 - cex_fee - buffer)
 
-            numeraire_lrna_fee = op_state.lrna_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
-            tkn_asset_fee = op_state.asset_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            numeraire_lrna_fee = op_state.lrna_fee(tkn_pair[1])
+            tkn_asset_fee = op_state.asset_fee(tkn_pair[0])
             dex_buy_price = dex_spot_price / ((1 - tkn_asset_fee) * (1 - numeraire_lrna_fee))
 
             if dex_buy_price < cex_sell_price:  # buy from DEX, sell to CEX
@@ -135,8 +135,8 @@ def get_arb_opps(op_state, cex_dict, config):
             ask_price = pair_order_book.asks[0][0]
             cex_buy_price = ask_price * (1 + cex_fee + buffer)
 
-            numeraire_asset_fee = op_state.asset_fee[tkn_pair[1]].compute(tkn=tkn_pair[1])
-            tkn_lrna_fee = op_state.lrna_fee[tkn_pair[0]].compute(tkn=tkn_pair[0])
+            numeraire_asset_fee = op_state.asset_fee(tkn_pair[1])
+            tkn_lrna_fee = op_state.lrna_fee(tkn=tkn_pair[0])
             dex_sell_price = dex_spot_price * (1 - numeraire_asset_fee) * (1 - tkn_lrna_fee)
 
             if dex_sell_price > cex_buy_price:  # buy from CEX, sell to DEX
@@ -267,8 +267,8 @@ def calculate_arb_amount_bid(
     holdings = {asset: init_amt for asset in [tkn, numeraire]}
     agent = Agent(holdings=holdings, unique_id='bot')
 
-    asset_fee = state.asset_fee[tkn].compute(tkn=tkn)
-    lrna_fee = state.lrna_fee[numeraire].compute(tkn=numeraire)
+    asset_fee = state.asset_fee(tkn=tkn)
+    lrna_fee = state.lrna_fee(numeraire)
     cex_price = bid[0] * (1 - cex_fee - buffer)
 
     # If buying the min amount moves the price too much, return 0
@@ -349,8 +349,8 @@ def calculate_arb_amount_ask(
     holdings = {asset: init_amt for asset in [tkn, numeraire]}
     agent = Agent(holdings=holdings, unique_id='bot')
 
-    asset_fee = state.asset_fee[numeraire].compute(tkn=numeraire)
-    lrna_fee = state.lrna_fee[tkn].compute(tkn=tkn)
+    asset_fee = state.asset_fee(numeraire)
+    lrna_fee = state.lrna_fee(tkn)
     cex_price = ask[0] * (1 + cex_fee + buffer)
 
     # If buying the min amount moves the price too much, return 0
@@ -502,7 +502,7 @@ def combine_swaps(
         buy_tkns = {tkn: 0 for tkn in ex.asset_list}
         buy_tkns.update({
             tkn: quantity for tkn, quantity in
-            sorted(filter(lambda x: x[1] > 0, net_swaps[ex_name].items()), key=lambda x: x[1] * ex.buy_spot(x[0]))
+            sorted(filter(lambda x: x[1] > 0, net_swaps[ex_name].items()), key=lambda x: x[1] * ex.buy_spot(x[0], x[1]))
         })
 
         sell_tkns = {
