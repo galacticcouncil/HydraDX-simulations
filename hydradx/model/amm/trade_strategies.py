@@ -321,9 +321,9 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
 
         agent_delta_x = -agent_delta_y * pool.liquidity[x] / (pool.liquidity[y] - agent_delta_y)
         if agent_delta_y > 0:
-            agent_delta_x /= 1 - pool.trade_fee.compute(y, abs(agent_delta_y))
+            agent_delta_x /= 1 - pool.trade_fee(y, abs(agent_delta_y))
         else:
-            agent_delta_x *= 1 - pool.trade_fee.compute(y, abs(agent_delta_y))
+            agent_delta_x *= 1 - pool.trade_fee(y, abs(agent_delta_y))
 
         projected_profit = (
             agent_delta_y * state.price(y)
@@ -367,7 +367,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         p = state.price(tkn_buy) / state.price(tkn_sell)
         x = pool.liquidity[tkn_sell]
         y = pool.liquidity[tkn_buy]
-        f = pool.trade_fee.compute('', 0)
+        f = pool.trade_fee('', 0)
         if p < x/y * (1 - f):
             # agent can profit by selling y to AMM
             b = 2 * y - (f / p) * x * (1 - f)
@@ -403,21 +403,21 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         def price_after_trade(buy_amount=0, sell_amount=0):
             if buy_amount:
                 sell_amount = -(x - pool.invariant / (y - buy_amount)) \
-                              * (1 + pool.trade_fee.compute(tkn_sell, buy_amount))
+                              * (1 + pool.trade_fee(tkn_sell, buy_amount))
                 price = (y - buy_amount) / (x + sell_amount)
 
             elif sell_amount:
                 buy_amount = (x - pool.invariant / (y + sell_amount)) \
-                             * (1 - pool.trade_fee.compute(tkn_sell, sell_amount))
+                             * (1 - pool.trade_fee(tkn_sell, sell_amount))
                 price = (y + sell_amount) / (x - buy_amount)
 
             else:
                 raise ValueError('Must specify either buy_amount or sell_amount')
 
             if agent_delta_y < 0:
-                price /= (1 - pool.trade_fee.compute(y, sell_amount))
+                price /= (1 - pool.trade_fee(y, sell_amount))
             else:
-                price /= (1 + pool.trade_fee.compute(y, sell_amount))
+                price /= (1 + pool.trade_fee(y, sell_amount))
 
             return price
 
