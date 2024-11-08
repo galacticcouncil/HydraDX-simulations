@@ -107,7 +107,7 @@ def global_state_config(
         for pool in pools.values():
             for asset in pool.asset_list:
                 pool.liquidity[asset] = pool.liquidity[asset] or 1000000 / market_prices[asset]
-            if hasattr(pool, 'trade_fee') and pool.trade_fee.compute('', 0) < 0:
+            if hasattr(pool, 'trade_fee') and pool.trade_fee('', 0) < 0:
                 pool.trade_fee = draw(fee_strategy)
 
     if not agents:
@@ -289,14 +289,14 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
         return (
                 state.pools['X/Y'].liquidity['X']
                 / state.pools['X/Y'].liquidity['Y']
-                * (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+                * (1 - state.pools['X/Y'].trade_fee())
         )
 
     def buy_spot(state: GlobalState):
         return (
                 state.pools['X/Y'].liquidity['X']
                 / state.pools['X/Y'].liquidity['Y']
-                / (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+                / (1 - state.pools['X/Y'].trade_fee())
         )
 
     algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
@@ -371,7 +371,7 @@ def test_buy_fee_derivation(initial_state: GlobalState):
     fee_amount = buy_amount / feeless_buy_amount - 1
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
+        expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee(initial_state.pools[pool_id].asset_list[0], 0))
     expected_fee_amount -= 1
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
@@ -431,7 +431,7 @@ def test_sell_fee_derivation(initial_state: GlobalState):
     # what do we think it should be, if the derived formula is right?
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
+        expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee(initial_state.pools[pool_id].asset_list[0], 0))
     expected_fee_amount = 1 - expected_fee_amount
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
