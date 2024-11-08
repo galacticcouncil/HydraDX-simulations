@@ -2,28 +2,6 @@ from .agents import Agent
 import copy
 from typing import Callable
 
-
-class FeeMechanism:
-
-    def __init__(self, fee_function: Callable, name: str):
-        self.name = name
-        self.fee_function = fee_function
-        self.exchange = None
-        self.tkn = None
-
-    def assign(self, exchange, tkn=''):
-        self.exchange = exchange
-        self.tkn = tkn
-        return self
-
-    def compute(self, tkn: str = '', delta_tkn: float = 0) -> float:
-        return self.fee_function(
-            exchange=self.exchange,
-            tkn=self.tkn or tkn,
-            delta_tkn=delta_tkn
-        )
-
-
 class Exchange:
     unique_id: str
     asset_list: list[str]
@@ -102,11 +80,3 @@ class Exchange:
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
         pass
 
-def basic_fee(f: float = 0) -> FeeMechanism:
-    def fee_function(
-            exchange: Exchange, tkn: str, delta_tkn: float
-    ) -> float:
-        return f
-    f_mech = FeeMechanism(fee_function, f"{f * 100}%")
-    f_mech.fee = f
-    return f_mech
