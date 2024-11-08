@@ -11,7 +11,6 @@ import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
 
-from .amm.exchange import basic_fee
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.omnipool_amm import OmnipoolState
@@ -455,10 +454,8 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
             {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
-                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
-                              omnipool.asset_fee.items()},
-                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
-                             omnipool.lrna_fee.items()},
+                'asset_fee': {tkn: omnipool.asset_fee(tkn) for tkn in omnipool.asset_list},
+                'lrna_fee': {tkn: omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list},
                 'sub_pools': [
                     {
                         'tokens': pool.liquidity,
@@ -490,8 +487,8 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
                 }
                 for tkn in json_state['liquidity']
             },
-            asset_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['asset_fee'].items()},
-            lrna_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['lrna_fee'].items()}
+            asset_fee={tkn: float(fee) for tkn, fee in json_state['asset_fee'].items()},
+            lrna_fee={tkn: float(fee) for tkn, fee in json_state['lrna_fee'].items()}
         )
         for pool in json_state['sub_pools']:
             omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
