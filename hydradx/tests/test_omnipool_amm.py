@@ -1255,7 +1255,7 @@ def test_dynamic_fees(hdx_price: float):
             raise_oracle_name='mid',
             decay=0.0005,
             maximum=0.40,
-            current={'R1': 0.1}
+            current={'R1': 0.1, 'HDX': 0, 'USD': 0}
         ),
         lrna_fee=DynamicFee(
             minimum=0.0005,
@@ -1263,7 +1263,7 @@ def test_dynamic_fees(hdx_price: float):
             raise_oracle_name='mid',
             decay=0.0001,
             maximum=0.10,
-            current={'R1': 0.1}
+            current={'R1': 0.1, 'HDX': 0, 'USD': 0}
         )
     )
     initial_hdx_fee = initial_state.asset_fee('HDX')
@@ -1330,7 +1330,7 @@ def test_dynamic_fee_multiple_block_update():
     init_liq = mpf(10000)
     init_liq_oracle = mpf(10000)
     R = init_liq - init_vol_out
-    num_blocks = 10
+    num_blocks = 1000
     init_fee = mpf(0.0025)
     fee_min = mpf(0.0025)
     fee_max = mpf(0.1)
@@ -1373,16 +1373,17 @@ def test_dynamic_fee_multiple_block_update():
         maximum=fee_max,
         oracle_decay=W,
         current={'R1': init_fee},
-        liquidity={'R1': liquidity_oracle}
+        liquidity={'R1': liquidity_oracle},
+        net_volume={'R1': init_vol_out - init_vol_in}
     )
     test_fee.time_step = 0
     fee4 = test_fee.compute(
         tkn='R1',
         time_step=num_blocks,
-        net_volume=init_vol_out - init_vol_in,
+        net_volume=0,
         liquidity=R,
     )
-    assert fee4 == pytest.approx(fee, rel=1e-08)
+    assert fee4 == pytest.approx(fee3, rel=1e-08)
 
 
 @given(
