@@ -1,5 +1,6 @@
 import base64
 import datetime
+import dateutil.parser
 import json
 import os
 import time
@@ -98,12 +99,12 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
 
 
 def import_binance_prices(
-        assets: list[str], start_date: str, days: int, interval: int = 12,
+        assets: list[str] or str, start_date: str, days: int=1, interval: int = 12,
         stablecoin: str = 'USDT', return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-    start_date = datetime.datetime.strptime(start_date, "%B %d %Y")
+    start_date = dateutil.parser.parse(start_date)
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
-
+    if isinstance(assets, str): assets = [assets]
     # find the data folder
     while not os.path.exists("./data"):
         cwd = os.getcwd()
@@ -843,7 +844,6 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
     # first make sure we have downloaded the available files
     download_history_files()
 
-    import dateutil.parser
     # find the date
     date = dateutil.parser.parse(f"{date}")
     end_date = dateutil.parser.parse(f"{end_date}") if end_date else None
