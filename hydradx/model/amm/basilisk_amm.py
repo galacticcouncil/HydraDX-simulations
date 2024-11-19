@@ -6,7 +6,6 @@ from .agents import Agent
 # when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
 precision_level = 20
 
-
 class ConstantProductPoolState(Exchange):
     def __init__(
             self,
@@ -75,10 +74,10 @@ class ConstantProductPoolState(Exchange):
         return self._trade_fee
 
     @trade_fee.setter
-    def trade_fee(self, fee: float):
+    def trade_fee(self, fee: float or Callable[[str, float], float]):
         def fee_function(tkn: str = '', delta_tkn: float = 0):
             return fee
-        self._trade_fee = fee_function
+        self._trade_fee = fee if isinstance(fee, Callable) else fee_function
 
     def swap(
         self,
