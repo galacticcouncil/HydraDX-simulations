@@ -5,12 +5,14 @@ import pytest
 from hypothesis import given, strategies as st, assume, settings
 import mpmath
 from mpmath import mp, mpf
+import os
+os.chdir('../..')
 
 from hydradx.model import run, processing
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, \
+from hydradx.model.amm.omnipool_amm import DynamicFee, OriginalDynamicFee, OmnipoolState, \
     OmnipoolLiquidityPosition
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
@@ -1246,13 +1248,9 @@ def test_dynamic_fees(hdx_price: float):
             'USD': {'liquidity': 100000, 'LRNA': 100000},
             'R1': {'liquidity': 100000, 'LRNA': 100000},
         },
-        oracles={
-            'mid': 100
-        },
         asset_fee=DynamicFee(
             minimum=0.0025,
             amplification=10,
-            raise_oracle_name='mid',
             decay=0.0005,
             maximum=0.40,
             current={'R1': 0.1, 'HDX': 0, 'USD': 0}
@@ -1260,7 +1258,6 @@ def test_dynamic_fees(hdx_price: float):
         lrna_fee=DynamicFee(
             minimum=0.0005,
             amplification=10,
-            raise_oracle_name='mid',
             decay=0.0001,
             maximum=0.10,
             current={'R1': 0.1, 'HDX': 0, 'USD': 0}
@@ -1283,14 +1280,20 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['USD']
     )
     test_state.update()
-    if test_state.last_fee['R1'] >= initial_R1_fee:
+    print('test_state._asset_fee.time_step:', test_state._asset_fee.time_step)
+
+    if test_state.asset_fee('R1') >= initial_R1_fee:
         raise AssertionError('R1 fee should be decreasing due to decay.')
-    if test_state.last_lrna_fee['R1'] >= initial_R1_lrna_fee:
+    if test_state.lrna_fee('R1') >= initial_R1_lrna_fee:
         raise AssertionError('R1 LRNA fee should be decreasing due to decay.')
-    intermediate_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
-    intermediate_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)
-    intermediate_usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 10000)
-    intermediate_hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 10000)
+
+    test_state.update()
+    print('test_state.time_step:', test_state.time_step)
+    print('test_state._asset_fee.time_step:', test_state._asset_fee.time_step)
+    intermediate_hdx_fee = test_state.asset_fee('HDX')
+    intermediate_usd_fee = test_state.asset_fee('USD')
+    intermediate_usd_lrna_fee = test_state.lrna_fee('USD')
+    intermediate_hdx_lrna_fee = test_state.lrna_fee('HDX')
     if not intermediate_hdx_fee > initial_hdx_fee:
         raise AssertionError('Fee should increase when price increases.')
     if not intermediate_usd_lrna_fee > initial_usd_lrna_fee:
@@ -1307,10 +1310,10 @@ def test_dynamic_fees(hdx_price: float):
         sell_quantity=test_agent.holdings['HDX']
     )
     test_state.update()
-    final_hdx_fee = test_state.asset_fee['HDX'].compute('HDX', 10000)
-    final_usd_fee = test_state.asset_fee['USD'].compute('USD', 10000)
-    final_usd_lrna_fee = test_state.lrna_fee['USD'].compute('USD', 10000)
-    final_hdx_lrna_fee = test_state.lrna_fee['HDX'].compute('HDX', 10000)
+    final_hdx_fee = test_state.asset_fee('HDX')
+    final_usd_fee = test_state.asset_fee('USD')
+    final_usd_lrna_fee = test_state.lrna_fee('USD')
+    final_hdx_lrna_fee = test_state.lrna_fee('HDX')
     if not final_usd_fee > intermediate_usd_fee:
         raise AssertionError('Fee should increase when price increases.')
     if not final_hdx_lrna_fee > intermediate_hdx_lrna_fee:
@@ -1365,7 +1368,6 @@ def test_dynamic_fee_multiple_block_update():
     w_term = ((1 - W) * (mpmath.power(1 - W, m) - mpmath.power(1 - W, num_blocks))) /  W
     fee3 = init_fee + x * (j_sum + w_term) - num_blocks * decay
     # assert fee3 == pytest.approx(fee, rel=1e-08)
-    er = 1
     test_fee = DynamicFee(
         minimum=fee_min,
         amplification=amplification,
@@ -1376,7 +1378,7 @@ def test_dynamic_fee_multiple_block_update():
         liquidity={'R1': liquidity_oracle},
         net_volume={'R1': init_vol_out - init_vol_in}
     )
-    test_fee.time_step = 0
+    test_fee.time_step = {'R1': 0}
     fee4 = test_fee.compute(
         tkn='R1',
         time_step=num_blocks,
@@ -1384,6 +1386,74 @@ def test_dynamic_fee_multiple_block_update():
         liquidity=R,
     )
     assert fee4 == pytest.approx(fee3, rel=1e-08)
+
+    fee5 = init_fee
+    liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
+    vol_in_oracle = init_vol_in
+    vol_out_oracle = init_vol_out
+    test_original_fee = OriginalDynamicFee(
+        minimum=fee_min,
+        amplification=amplification,
+        decay=decay,
+        maximum=fee_max,
+        oracle_decay=W,
+        current={'R1': init_fee},
+        liquidity={'R1': liquidity_oracle},
+        net_volume={'R1': vol_out_oracle - vol_in_oracle}
+    )
+    for i in range(num_blocks):
+        fee5 = test_original_fee.compute(
+            tkn='R1',
+            time_step=i,
+            net_volume=vol_out_oracle - vol_in_oracle,
+            liquidity=liquidity_oracle,
+        )
+        vol_out_oracle = vol_out_oracle * (1 - W)
+        vol_in_oracle = vol_in_oracle * (1 - W)
+        liquidity_oracle = W * R + (1 - W) * liquidity_oracle
+
+    if fee5 != pytest.approx(fee, rel=1e-20):
+        raise AssertionError("OriginalDynamicFee class didn't work.")
+
+
+def test_classic_fee():
+    init_vol_out = mpf(100)
+    init_vol_in = 0
+    W = mpf(0.2)
+    amplification = 1
+    decay = 1 / mpf(100000)
+    init_liq = mpf(10000)
+    init_liq_oracle = mpf(10000)
+    R = init_liq - init_vol_out
+    num_blocks = 1000
+    init_fee = mpf(0.0025)
+    fee_min = mpf(0.0025)
+    fee_max = mpf(0.1)
+    fee = init_fee
+    liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
+    vol_in_oracle = init_vol_in
+    vol_out_oracle = init_vol_out
+    test_original_fee = OriginalDynamicFee(
+        minimum=fee_min,
+        amplification=amplification,
+        decay=decay,
+        maximum=fee_max,
+        oracle_decay=W,
+        current={'R1': init_fee},
+        liquidity={'R1': liquidity_oracle},
+        net_volume={'R1': vol_out_oracle - vol_in_oracle}
+    )
+    for i in range(num_blocks):
+        fee = test_original_fee.compute(
+            tkn='R1',
+            time_step=i,
+            net_volume=vol_out_oracle - vol_in_oracle,
+            liquidity=liquidity_oracle,
+        )
+        vol_out_oracle = vol_out_oracle * (1 - W)
+        vol_in_oracle = vol_in_oracle * (1 - W)
+        liquidity_oracle = W * R + (1 - W) * liquidity_oracle
+    print(fee)
 
 
 @given(
