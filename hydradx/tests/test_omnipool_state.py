@@ -28,12 +28,12 @@ def test_omnipool_constructor_fee_dict_works():
         },
     )
 
-    assert omnipool.last_lrna_fee['HDX'] == 0.0030
-    assert omnipool.last_lrna_fee['USD'] == 0.0031
-    assert omnipool.last_lrna_fee['DOT'] == 0.0032
-    assert omnipool.last_fee['HDX'] == 0.0
-    assert omnipool.last_fee['USD'] == 0.0
-    assert omnipool.last_fee['DOT'] == 0.0
+    assert omnipool.last_lrna_fee['HDX'] == 0.0005
+    assert omnipool.last_lrna_fee['USD'] == 0.0005
+    assert omnipool.last_lrna_fee['DOT'] == 0.0005
+    assert omnipool.last_fee['HDX'] == 0.0030
+    assert omnipool.last_fee['USD'] == 0.0031
+    assert omnipool.last_fee['DOT'] == 0.0032
 
     assert omnipool.lrna_fee('HDX') == 0.0005
     assert omnipool.lrna_fee('USD') == 0.0005
