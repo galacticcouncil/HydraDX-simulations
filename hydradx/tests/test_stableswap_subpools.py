@@ -1,7 +1,7 @@
 import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
-from hydradx.tests.strategies_omnipool import omnipool_config
+from hydradx.tests.strategies_omnipool import omnipool_config, omnipool_reasonable_config
 from hypothesis import given, settings, strategies as st
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
@@ -133,15 +133,34 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent did not sell exactly the amount they specified.')
 
 
-@given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
-def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
+@given(
+    token_lrna_price=st.floats(min_value=0.1, max_value=10),
+    sub_pool_lrna_price=st.floats(min_value=0.1, max_value=10),
+    sub_pool_balance=st.floats(min_value=0.1, max_value=0.9)
+)
+def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, sub_pool_balance):
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'USD': {'liquidity': 1000, 'LRNA': 1000},
+            'HDX': {'liquidity': 1000, 'LRNA': 1000 * token_lrna_price},
+            'DAI': {'liquidity': 1000 * sub_pool_balance, 'LRNA': 1000 * sub_pool_balance * sub_pool_lrna_price},
+            'USDC': {'liquidity': 1000, 'LRNA': 1000 * sub_pool_lrna_price}
+        },
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
+    ).create_sub_pool(
+        tkns_migrate=['DAI', 'USDC'],
+        amplification=111,
+        trade_fee=0.003,
+        unique_id='stableswap'
+    )
     stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
     stable_shares = stable_pool.unique_id
 
     # agent holds some of everything
     agent = Agent(holdings={tkn: 1000000000000000 for tkn in initial_state.asset_list + stable_pool.asset_list})
     # attempt buying an asset from the stableswap pool
-    tkn_buy = initial_state.asset_list[2]
+    tkn_buy = initial_state.asset_list[1]
     tkn_sell = stable_pool.asset_list[0]
     buy_quantity = 10
     new_state, new_agent = oamm.simulate_swap(
