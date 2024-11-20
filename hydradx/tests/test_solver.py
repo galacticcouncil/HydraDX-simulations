@@ -723,13 +723,93 @@ def test_case_Martin():
 
 
 def test_more_random_intents():
-    r = 43
+    r = 50
     random.seed(r)
     np.random.seed(r)
 
     intent_ct = 500
     min_sell_ratio, max_sell_ratio = 1e-10, 0.01
     sell_ratios = min_sell_ratio + (max_sell_ratio - min_sell_ratio) * np.random.rand(intent_ct)
+    min_price_ratio, max_price_ratio = 0.99, 1.01
+    price_ratios = min_price_ratio + (max_price_ratio - min_price_ratio) * np.random.rand(intent_ct)
+    partial_flags = np.random.choice([True, False], size=intent_ct)
+
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+                 'WETH': mpf(897.820372708098), '2-Pool-btc': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+            'WETH': mpf(82979.9927924809), '2-Pool-btc': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
+
+    liquidity = {tkn: float(liquidity[tkn]) for tkn in liquidity}
+    lrna = {tkn: float(lrna[tkn]) for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=0.0025,
+        lrna_fee=0.0005
+    )
+    initial_state.last_fee = {tkn: 0.0025 for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: 0.0005 for tkn in lrna}
+
+    # Generate n pairs of elements without replacement
+    asset_pairs = [random.sample(initial_state.asset_list + ['LRNA'], 2) for _ in range(intent_ct)]
+    for i in range(len(asset_pairs)):  # can't buy LRNA
+        if asset_pairs[i][1] == 'LRNA':
+            asset_pairs[i][1] = asset_pairs[i][0]
+            asset_pairs[i][0] = 'LRNA'
+
+    intents = []
+    for i in range(intent_ct):
+        sell_tkn = asset_pairs[i][0]
+        buy_tkn = asset_pairs[i][1]
+        if sell_tkn != "LRNA":
+            sell_quantity = sell_ratios[i] * liquidity[sell_tkn]
+        else:
+            sell_quantity = sell_ratios[i] * lrna[buy_tkn]
+        buy_quantity = sell_quantity * initial_state.price(initial_state, sell_tkn, buy_tkn) * price_ratios[i]
+        agent = Agent(holdings={sell_tkn: sell_quantity})
+        intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
+                        'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
+        # intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
+        #                 'tkn_buy': buy_tkn, 'agent': agent, 'partial': True})
+    # intents.append({'sell_quantity': 1000, 'buy_quantity': 100000, 'tkn_sell': '2-Pool', 'tkn_buy': 'HDX', 'agent': Agent(holdings={"2-Pool": 10}), 'partial': True})
+    # intents.append({'sell_quantity': 1000, 'buy_quantity': 4000, 'tkn_sell': 'DOT', 'tkn_buy': '2-Pool', 'agent': Agent(holdings={'DOT': 10}), 'partial': False})
+
+    intent_deltas, predicted_profit, Z_Ls, Z_Us = find_solution_outer_approx(initial_state, intents)
+
+    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
+    assert valid
+    abs_error = predicted_profit - profit
+    if profit > 0:
+        pct_error = abs_error / profit
+        assert pct_error < 0.01 or abs_error < 1
+        assert abs(pct_error) < 0.05 or abs(abs_error) < 100
+    else:
+        assert abs_error == 0
+    # assert abs_error < 100
+
+    pprint(intent_deltas)
+
+
+def test_more_random_intents_with_small():
+    r = 50
+    random.seed(r)
+    np.random.seed(r)
+
+    intent_ct = 500
+    min_sell_ratio, max_sell_ratio = 1e-5, 0.01
+    sell_ratios = min_sell_ratio + (max_sell_ratio - min_sell_ratio) * np.random.rand(intent_ct)
+    for i in range(int(intent_ct/2)):
+        sell_ratios[i] /= 1000
     min_price_ratio, max_price_ratio = 0.99, 1.01
     price_ratios = min_price_ratio + (max_price_ratio - min_price_ratio) * np.random.rand(intent_ct)
     partial_flags = np.random.choice([True, False], size=intent_ct)
