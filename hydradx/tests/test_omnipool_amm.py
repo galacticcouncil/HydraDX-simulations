@@ -2673,3 +2673,35 @@ def test_cash_out_multiple_positions(trade_sizes: list[float]):
     reference_value = oamm.value_assets(spot_prices, cash_out_agent.holdings)
     if cash_out_value != pytest.approx(reference_value, 1e-20):
         raise AssertionError("Cash out not computed correctly.")
+
+
+def test_lp_share_lrna():
+    omnipool = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 100000, 'LRNA': 1000},
+            'USD': {'liquidity': 1000, 'LRNA': 1000}
+        },
+        lrna_fee=DynamicFee(
+            minimum=0.0005,
+            maximum=0.01,
+            current={tkn: 0.001 for tkn in ['HDX', 'USD']},
+        ),
+        asset_fee=DynamicFee(
+            minimum=0.0005,
+            maximum=0.01,
+            current={tkn: 0.001 for tkn in ['HDX', 'USD']},
+        ),
+        lp_lrna_share=1.0
+    )
+    agent = Agent(
+        holdings={
+            'HDX': 10000
+        }
+    )
+    omnipool.swap(
+        agent=agent,
+        tkn_sell='HDX',
+        tkn_buy='USD',
+        sell_quantity=agent.holdings['HDX']
+    )
+    er = 1
