@@ -663,16 +663,15 @@ class OmnipoolState(Exchange):
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
             lrna_fee_total = -delta_Qi * lrna_fee
-            lrna_fee_burn = lrna_fee_total * min_lrna_fee / lrna_fee * self.lp_lrna_share
+            lrna_fee_burn = -delta_Qi * min_lrna_fee * self.lp_lrna_share
             lp_deposit = lrna_fee_total - lrna_fee_burn
-            delta_Qt = -delta_Qi - lrna_fee_burn
+            delta_Qt = -delta_Qi - lrna_fee_total
             delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
                 tkn_buy] * self.lrna_mint_pct
             delta_Qj = delta_Qt + delta_Qm
             delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
             delta_QH = 0  # -lrna_fee * delta_Qi
             delta_Qi += lp_deposit
-
 
             # per-block trade limits
             if (
@@ -726,6 +725,8 @@ class OmnipoolState(Exchange):
         """
         asset_fee = self.asset_fee(tkn)
         lrna_fee = self.lrna_fee(tkn)
+        if 'LRNA' not in agent.holdings:
+            agent.holdings['LRNA'] = 0
 
         if delta_qa < 0:
             # selling LRNA
@@ -754,35 +755,29 @@ class OmnipoolState(Exchange):
         # buying LRNA
         elif delta_qa > 0:
             # buying LRNA
-            delta_qi = -delta_qa / (1 - lrna_fee)
+            lrna_fee_total = delta_qa * lrna_fee
+            lrna_fee_burn = delta_qa * self._lrna_fee.minimum * self.lp_lrna_share
+            delta_qi = -delta_qa - lrna_fee_total
+            lp_deposit = (lrna_fee - self._lrna_fee.minimum) * self.lp_lrna_share
             if delta_qi + self.lrna[tkn] <= 0:
                 return self.fail_transaction('insufficient lrna in pool', agent)
             delta_ra = -self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
             if agent.holdings[tkn] < -delta_ra:
                 return self.fail_transaction('Agent has insufficient assets', agent)
             self.lrna[tkn] += delta_qi  # burn the LRNA fee
-            self.liquidity[tkn] += -delta_ra
-            # if modify_imbalance:
-            #     self.lrna_imbalance += - delta_qi * (q + l) / (q + delta_qi) - delta_qi
-
-            # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
-            lrna_fee_amt = -(delta_qa + delta_qi)
-            self.lrna["HDX"] += lrna_fee_amt
+            self.liquidity[tkn] += -delta_ra + lp_deposit
 
         elif delta_ra < 0:
             # selling asset
             if delta_ra > agent.holdings[tkn]:
                 return self.fail_transaction('agent has insufficient assets', agent)
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
-            delta_qa = -delta_qi * (1 - lrna_fee)
+            lrna_fee_total = -delta_qi * lrna_fee
+            lrna_fee_burn = -delta_qi * self._lrna_fee.minimum * self.lp_lrna_share
+            lp_deposit = lrna_fee_total - lrna_fee_burn
+            delta_qa = -delta_qi - lrna_fee_total
             self.lrna[tkn] += delta_qi
-            self.liquidity[tkn] -= delta_ra
-            # if modify_imbalance:
-            #     self.lrna_imbalance += - delta_qi * (q + l) / (q + delta_qi) - delta_qi
-
-            # we assume, for now, that buying LRNA is only possible when modify_imbalance = False
-            lrna_fee_amt = -(delta_qa + delta_qi)
-            self.lrna["HDX"] += lrna_fee_amt
+            self.liquidity[tkn] -= delta_ra + lp_deposit
 
         else:
             return self.fail_transaction('All deltas are zero.', agent)
