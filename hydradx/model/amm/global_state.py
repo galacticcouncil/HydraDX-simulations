@@ -151,13 +151,15 @@ class GlobalState:
 
         return prices
 
-    def cash_out(self, agent: Agent) -> float:
+    def cash_out(self, agent_id: str) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        agent = self.agents[agent_id]
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
+
         withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
 
         for key in agent.holdings.keys():
