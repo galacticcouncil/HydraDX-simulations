@@ -1,5 +1,7 @@
 import copy
 from typing import Callable
+from debugpy.common.log import warning
+
 from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
@@ -71,11 +73,6 @@ class DynamicFee:
         w_term = (w * (power(w, m) - power(w, num_blocks))) / self.oracle_decay
         delta = x * (j_sum + w_term) - num_blocks * self.decay
         fee = min(max(self.current[tkn] + delta, self.minimum), self.maximum)
-        # print(
-        #     f'calculating fee for {tkn} at time step {time_step} - {self.last_updated[tkn]} with '
-        #     f'current {round(self.current[tkn], 8)} + delta {round(delta, 8)} = {round(fee, 8)} '
-        #     f'(x = {x}, j_sum = {j_sum}, w_term = {w_term})'
-        # )
 
         self.current[tkn] = fee
         self.calculated_this_block[tkn] = True
@@ -92,11 +89,6 @@ class DynamicFee:
                 self.last_volume[tkn] = self.next_volume[tkn]
                 self.last_updated[tkn] = self.next_time_step[tkn]
                 self.calculated_this_block[tkn] = False
-        # print('--update--')
-        # print(f'updated last_volume to {self.last_volume}')
-        # print(f'updated last_liquidity to {self.last_liquidity}')
-        # print(f'updated last_updated to {self.last_updated}')
-        # print(f'updated calculated_this_block to {self.calculated_this_block}')
 
 
 class OmnipoolState(Exchange):
@@ -122,7 +114,8 @@ class OmnipoolState(Exchange):
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
                  lrna_mint_pct: float = 0.0,
-                 unique_id: str = 'omnipool'
+                 unique_id: str = 'omnipool',
+                 lp_lrna_share: float = 1.0
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -167,6 +160,9 @@ class OmnipoolState(Exchange):
         self.remove_liquidity_volatility_threshold = remove_liquidity_volatility_threshold
         self.lrna_mint_pct = lrna_mint_pct
         self.withdrawal_fee = withdrawal_fee
+        self.lp_lrna_share = lp_lrna_share
+        if lp_lrna_share > 1:
+            warning('lp_lrna_share should be >= 0 and <= 1')
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
 
@@ -660,17 +656,23 @@ class OmnipoolState(Exchange):
             # get the fees we will be using
             asset_fee = self.asset_fee(tkn_buy)
             lrna_fee = self.lrna_fee(tkn_sell)
+            min_lrna_fee = self._lrna_fee.minimum
             # also update both fees for each asset, because that's what they do in production
             self.asset_fee(tkn_sell)
             self.lrna_fee(tkn_buy)
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
-            delta_Qt = -delta_Qi * (1 - lrna_fee)
+            lrna_fee_total = -delta_Qi * lrna_fee
+            lrna_fee_burn = lrna_fee_total * min_lrna_fee / lrna_fee * self.lp_lrna_share
+            lp_deposit = lrna_fee_total - lrna_fee_burn
+            delta_Qt = -delta_Qi - lrna_fee_burn
             delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
                 tkn_buy] * self.lrna_mint_pct
             delta_Qj = delta_Qt + delta_Qm
             delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
-            delta_QH = -lrna_fee * delta_Qi
+            delta_QH = 0  # -lrna_fee * delta_Qi
+            delta_Qi += lp_deposit
+
 
             # per-block trade limits
             if (
