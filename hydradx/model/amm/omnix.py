@@ -130,49 +130,13 @@ def execute_solution(
     pool_agent = Agent()
     fee_agent = Agent()
 
-    # amm_net_flow = {tkn: {"in": 0, "out": 0} for tkn in deltas}
-    # for tkn in deltas:
-    #     if tkn in omnipool_deltas:
-    #         dir = "in" if omnipool_deltas[tkn] > 0 else "out"
-    #         amm_net_flow[tkn][dir] += abs(omnipool_deltas[tkn])
-    # for i, ss in enumerate(stableswap_list):
-    #     if ss.unique_id in deltas:
-    #         dir = "in" if stableswap_deltas[i][0] > 0 else "out"
-    #         amm_net_flow[ss.unique_id][dir] += abs(stableswap_deltas[i][0])
-    #     for j, tkn in enumerate(ss.asset_list):
-    #         if tkn in deltas:
-    #             dir = "in" if stableswap_deltas[i][j+1] > 0 else "out"
-    #             amm_net_flow[tkn][dir] += abs(stableswap_deltas[i][j+1])
-
+    # Omnipool deltas are *feeless*. We need to recalculate the buy amounts to account for asset fees being left behind
+    for tkn in omnipool_deltas:
+        if omnipool_deltas[tkn] < 0:
+            omnipool_deltas[tkn] *= 1 - omnipool.last_fee[tkn]
 
     # we first execute all AMM trades, flash minting assets to pool_agent to enable sells
     minted = {}  # tracking minted assets so that we burn them later
-    for tkn_sell in omnipool_deltas:
-        if omnipool_deltas[tkn_sell] > 0:
-            for tkn_buy in omnipool_deltas:
-                if omnipool_deltas[tkn_buy] < 0:
-                    max_sell_amt = omnipool_deltas[tkn_sell]
-                    max_buy_amt = -omnipool_deltas[tkn_buy]
-                    if max_sell_amt <= 0:
-                        break
-                    # make sure agent has max_sell_amt
-                    mint_to_quantity(pool_agent, tkn_sell, max_sell_amt, minted)
-
-                    test_state, test_agent = simulate_swap(omnipool, pool_agent, tkn_buy, tkn_sell, sell_quantity=max_sell_amt)
-                    buy_given_max_sell = test_agent.holdings[tkn_buy] - (pool_agent.holdings[tkn_buy] if tkn_buy in pool_agent.holdings else 0)
-                    if buy_given_max_sell > max_buy_amt:  # can't do max sell, do max buy instead
-                        init_sell_holdings = pool_agent.holdings[tkn_sell]
-                        omnipool.swap(pool_agent, tkn_buy, tkn_sell, buy_quantity=max_buy_amt)
-                        omnipool_deltas[tkn_buy] += max_buy_amt
-                        omnipool_deltas[tkn_sell] -= init_sell_holdings - pool_agent.holdings[tkn_sell]
-                    else:
-                        init_buy_holdings = pool_agent.holdings[tkn_buy] if tkn_buy in pool_agent.holdings else 0
-                        omnipool.swap(pool_agent, tkn_buy, tkn_sell, sell_quantity=max_sell_amt)
-                        omnipool_deltas[tkn_sell] -= max_sell_amt
-                        omnipool_deltas[tkn_buy] += pool_agent.holdings[tkn_buy] - init_buy_holdings
-
-                    # burn excess tkn_sell
-                    burn_excess(pool_agent, tkn_sell, minted)
 
     for i, ss in enumerate(stableswap_list):
         pool_deltas = stableswap_deltas[i]
@@ -204,7 +168,8 @@ def execute_solution(
                         mint_to_quantity(pool_agent, tkn, max_add_amt, minted)
                         # try adding liquidity
                         test_state, test_agent = simulate_add_liquidity(ss, pool_agent, max_add_amt, tkn)
-                        if test_agent.holdings[ss.unique_id] - pool_agent.holdings[ss.unique_id] > stableswap_deltas[i][0]:  # need to buy shares instead
+                        delta_s = test_agent.holdings[ss.unique_id] - (pool_agent.holdings[ss.unique_id] if ss.unique_id in pool_agent.holdings else 0)
+                        if delta_s > stableswap_deltas[i][0]:  # need to buy shares instead
                             init_holdings = pool_agent.holdings[tkn] if tkn in pool_agent.holdings else 0
                             ss.buy_shares(pool_agent, stableswap_deltas[i][0], tkn)
                             delta_tkn = init_holdings - pool_agent.holdings[tkn]
