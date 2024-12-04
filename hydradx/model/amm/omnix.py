@@ -66,7 +66,7 @@ def validate_and_execute_solution(
 
     update_intents(intents, transfers)
     if tkn_profit is not None:
-        tkn_list = [tkn for tkn in pool_agent.holdings if tkn != tkn_profit]
+        tkn_list = [tkn for tkn in pool_agent.holdings if tkn != tkn_profit and pool_agent.holdings[tkn] > 0]
         for tkn in tkn_list:
             omnipool.swap(pool_agent, tkn_profit, tkn, sell_quantity=pool_agent.holdings[tkn])
         return True, (pool_agent.holdings[tkn_profit] if tkn_profit in pool_agent.holdings else 0)
@@ -332,13 +332,63 @@ def execute_solution(
         minted[tkn] = 0
 
     if exit_to is not None:  # have pool agent exit to a specific token
-        tkns = [tkn for tkn in pool_agent.holdings if tkn != exit_to]
-        for tkn in tkns:
+        tkns_stuck = []
+        tkns_to_sell = [tkn for tkn in pool_agent.holdings if (tkn != exit_to and pool_agent.holdings[tkn] > 0)]
+        while len(tkns_to_sell) > 0:  # first, sell extra tokens
+            tkn = tkns_to_sell.pop()
             if pool_agent.holdings[tkn] > 0:
-                omnipool.swap(pool_agent, exit_to, tkn, sell_quantity=pool_agent.holdings[tkn])
-        for tkn in tkns:
+                if tkn in omnipool.asset_list:
+                    omnipool.swap(pool_agent, exit_to, tkn, sell_quantity=pool_agent.holdings[tkn])
+                    if pool_agent.holdings[tkn] > 0:
+                        tkns_stuck.append(tkn)
+                else:
+                    for ss in stableswap_list:
+                        if tkn == ss.unique_id:  # withdraw assets uniformly
+                            ss.remove_uniform(pool_agent, pool_agent.holdings[tkn])
+                            for tkn_bought in ss.asset_list:
+                                tkns_to_sell.append(tkn_bought)
+                        elif tkn in ss.asset_list:  # sell asset for something in Omnipool
+                            if ss.unique_id in omnipool.asset_list:
+                                ss.add_liquidity(pool_agent, pool_agent.holdings[tkn], tkn)
+                                tkns_to_sell.append(ss.unique_id)
+                            else:
+                                for tkn_buy in ss.asset_list:
+                                    if tkn_buy in omnipool.asset_list:
+                                        ss.swap(pool_agent, tkn_buy=tkn_buy, tkn_sell=tkn, sell_quantity=pool_agent.holdings[tkn])
+                                        if pool_agent.holdings[tkn] > 0:
+                                            tkns_stuck.append(tkn)
+                                        else:
+                                            tkns_to_sell.append(tkn_buy)
+                                    else:
+                                        tkns_stuck.append(tkn)
+
+        tkns_stuck = []
+        tkns_to_buy = [tkn for tkn in pool_agent.holdings if pool_agent.holdings[tkn] < 0]
+        while len(tkns_to_buy) > 0:  # then, buy missing tokens
+            tkn = tkns_to_buy.pop()
             if pool_agent.holdings[tkn] < 0:
-                omnipool.swap(pool_agent, tkn, exit_to, buy_quantity=-pool_agent.holdings[tkn])
+                if tkn in omnipool.asset_list:
+                    omnipool.swap(pool_agent, tkn, exit_to, buy_quantity=-pool_agent.holdings[tkn])
+                    if pool_agent.holdings[tkn] < 0:
+                        tkns_stuck.append(tkn)
+                else:
+                    for ss in stableswap_list:
+                        if tkn == ss.unique_id:
+                            tkns_stuck.append(tkn)  # for now we will only worry about stablepools with share tokens in Omnipool
+                        elif tkn in ss.asset_list:
+                            if ss.unique_id in omnipool.asset_list:
+                                # mint some shares to pool_agent
+                                share_quantity = abs(pool_agent.holdings[tkn]) * ss.shares / ss.liquidity[tkn]
+                                mint_to_quantity(pool_agent, ss.unique_id, share_quantity, minted)
+                                ss.withdraw_asset(pool_agent, -pool_agent.holdings[tkn], tkn)
+                                # burn minted shares
+                                pool_agent.holdings[ss.unique_id] -= minted[ss.unique_id]
+                                minted[ss.unique_id] = 0
+                                tkns_to_buy.append(ss.unique_id)
+                                break
+                            else:
+                                tkns_stuck.append(tkn)  # for now we assume ss.unique_id is in Omnipool
+
 
     return pool_agent, fee_agent, lrna_deltas
 
