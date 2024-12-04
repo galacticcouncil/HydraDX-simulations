@@ -20,7 +20,8 @@ class ICEProblem:
                  tkn_profit: str = "HDX",
                  init_i: list = None,
                  min_partial: float = 1,
-                 apply_min_partial: bool = True
+                 apply_min_partial: bool = True,
+                 trading_tkns: list = None,
                  ):
         self.omnipool = omnipool
         if amm_list is None:
@@ -104,6 +105,11 @@ class ICEProblem:
         self._profit_A = None  # self._profit_A @ x_descaled is the leftover in each asset
         self._last_omnipool_deltas = None
         self._last_amm_deltas = None
+
+        if trading_tkns is None:
+            self.trading_tkns = ["LRNA"] + self.asset_list
+        else:
+            self.trading_tkns = trading_tkns
 
         self._set_indicator_matrices()  # only depends on amm structures
 
@@ -732,35 +738,59 @@ def _find_solution_unrounded(
     #        CONSTRAINTS         #
     #----------------------------#
 
-    diff_coefs = np.zeros((2*n + sigma + m,2*n))
-    lambda_coefs = np.vstack([-np.eye(2 * n), np.zeros((sigma + m, 2 * n))])
-    X_coefs = np.zeros((2*n + sigma + m, sigma))
-    L_coefs = np.vstack([np.zeros((2*n, sigma)), -np.eye(sigma), np.zeros((m, sigma))])
-    a_coefs = np.zeros((2*n + sigma + m, u))
-    d_coefs = np.vstack([np.zeros((2*n + sigma, m)), -np.eye(m)])
-    A1 = np.hstack([diff_coefs, lambda_coefs, X_coefs, L_coefs, a_coefs, d_coefs])
-    # rows_to_keep = [i for i in range(2*n+m) if 2*n+i in indices_to_keep]
-    # A1_trimmed = A1[:, indices_to_keep][rows_to_keep, :]
+
+    A1 = np.zeros((0, k))
+    cones1 = []
+    op_tradeable_indices = [i for i in range(n) if p.omnipool.asset_list[i] in p.trading_tkns]
+    for i in range(n):
+        if i in op_tradeable_indices:  # we need lambda_i >= 0, lrna_lambda_i >= 0
+            A1i = np.zeros((2, k))
+            A1i[0, 3 * n + i] = -1  # lambda_i
+            A1i[1, 2 * n + i] = -1  # lrna_lambda_i
+            cone1i = cb.NonnegativeConeT(2)
+        else:  # we need y_i = 0, x_i = 0, lambda_i = 0, lrna_lambda_i = 0
+            A1i = np.zeros((4, k))
+            A1i[0, i] = 1  # y_i
+            A1i[1, n + i] = 1  # x_i
+            A1i[2, 2 * n + i] = 1  # lrna_lambda_i
+            A1i[3, 3 * n + i] = 1  # lambda_i
+            cone1i = cb.ZeroConeT(4)
+        A1 = np.vstack([A1, A1i])
+        cones1.append(cone1i)
+
+    offset = 0
+    for i, amm in enumerate(amm_list):
+        if amm.unique_id in p.trading_tkns:
+            A1i = np.zeros((1, k))
+            A1i[0, 4 * n + sigma + offset] = -1
+            cones1.append(cb.NonnegativeConeT(1))
+        else:
+            A1i = np.zeros((2, k))
+            A1i[0, 4 * n + offset] = 1
+            A1i[1, 4 * n + sigma + offset] = 1
+            cones1.append(cb.ZeroConeT(2))
+        for j, tkn in enumerate(amm.asset_list):
+            if tkn in p.trading_tkns:
+                A1ij = np.zeros((1, k))
+                A1ij[0, 4 * n + sigma + offset + j + 1] = -1
+                cones1.append(cb.NonnegativeConeT(1))
+            else:
+                A1ij = np.zeros((2, k))
+                A1ij[0, 4 * n + offset + j + 1] = 1
+                A1ij[1, 4 * n + sigma + offset + j + 1] = 1
+                cones1.append(cb.ZeroConeT(2))
+            A1i = np.vstack([A1i, A1ij])
+        A1 = np.vstack([A1, A1i])
+        offset += len(amm.asset_list) + 1
+
     A1_trimmed = A1[:, indices_to_keep]
     b1 = np.zeros(A1_trimmed.shape[0])
-    cone1 = cb.NonnegativeConeT(A1_trimmed.shape[0])
 
-    # intent variables are constrained from above
-    amm_coefs = np.zeros((m, 4*n + 2*sigma + u))
-    d_coefs = np.eye(m)
+    # intent variables are constrained from above, and from below by 0
+    amm_coefs = np.zeros((2 * m, k - m))
+    d_coefs = np.vstack([np.eye(m), -np.eye(m)])
     A2 = np.hstack([amm_coefs, d_coefs])
-    b2 = np.array(p.get_partial_sell_maxs_scaled())
-    # A2 = np.eye(k)
-    # min_y, max_y, min_x, max_x, min_lrna_lambda, max_lrna_lambda, min_lambda, max_lambda = p.get_scaled_bounds()
-    # profit_i = asset_list.index(p.tkn_profit)
-    # max_y = max_y + 1.1 * np.abs(max_y)
-    # max_x = max_x + 1.1 * np.abs(max_x)
-    # max_lrna_lambda = max_lrna_lambda + 1.1 * np.abs(max_lrna_lambda)
-    # max_lambda = max_lambda + 1.1 * np.abs(max_lambda)
-    # b2 = np.concatenate([max_y, max_x, max_lrna_lambda, max_lambda, p.get_partial_sell_maxs_scaled()])
-    # tkn_profit_indices = [profit_i, n + profit_i, 2*n + profit_i, 3*n + profit_i]
-    # np.delete(A2, tkn_profit_indices, axis=0)
-    # np.delete(b2, tkn_profit_indices)
+    b2 = np.concatenate([np.array(p.get_partial_sell_maxs_scaled()), np.zeros(m)])
     A2_trimmed = A2[:, indices_to_keep]
     cone2 = cb.NonnegativeConeT(A2_trimmed.shape[0])
 
@@ -863,7 +893,7 @@ def _find_solution_unrounded(
     A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A5_trimmed, A6_trimmed, A7_trimmed])
     A_sparse = sparse.csc_matrix(A)
     b = np.concatenate([b1, b2, b3, b4, b5, b6, b7])
-    cones = [cone1, cone2, cone3] + cones4 + cones5 + [cone6, cone7]
+    cones = cones1 + [cone2, cone3] + cones4 + cones5 + [cone6, cone7]
 
     # solve
     settings = clarabel.DefaultSettings()
@@ -1545,15 +1575,39 @@ def add_small_trades(p: ICEProblem, init_deltas: list):
     return init_deltas, -profit
 
 
+def get_trading_tokens(intents, omnipool, amm_list):
+    tkn_locations = {tkn: 1 for tkn in (omnipool.asset_list + ["LRNA"])}
+    for amm in amm_list:
+        if amm.unique_id not in tkn_locations:
+            tkn_locations[amm.unique_id] = 0
+        tkn_locations[amm.unique_id] += 1
+        for tkn in amm.asset_list:
+            if tkn not in tkn_locations:
+                tkn_locations[tkn] = 0
+            tkn_locations[tkn] += 1
+    for intent in intents:
+        if intent['tkn_sell'] not in tkn_locations:
+            tkn_locations[intent['tkn_sell']] = 0
+        tkn_locations[intent['tkn_sell']] += 1
+        if intent['tkn_buy'] not in tkn_locations:
+            tkn_locations[intent['tkn_buy']] = 0
+        tkn_locations[intent['tkn_buy']] += 1
+
+    trading_tkns = [tkn for tkn in tkn_locations if tkn_locations[tkn] > 1]
+    return trading_tkns
+
+
+
 def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_list: list = None, min_partial: float = 1) -> list:
     if amm_list is None:
         amm_list = []
 
     # intents, exec_indices, init_i = find_initial_solution(state, init_intents)
     # init_i = exec_indices  # only execute mandatory trades initially
+    trading_tkns = get_trading_tokens(init_intents, state, amm_list)
     init_i, exec_indices = [], []
     intents = copy.deepcopy(init_intents)
-    p = ICEProblem(state, intents, amm_list=amm_list, init_i=init_i, min_partial=min_partial)
+    p = ICEProblem(state, intents, amm_list=amm_list, init_i=init_i, min_partial=min_partial, trading_tkns=trading_tkns)
 
     m, r, n, sigma = p.m, p.r, p.n, p.sigma
     inf = highspy.kHighsInf

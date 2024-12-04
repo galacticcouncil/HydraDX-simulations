@@ -71,7 +71,7 @@ def validate_and_execute_solution(
             omnipool.swap(pool_agent, tkn_profit, tkn, sell_quantity=pool_agent.holdings[tkn])
         return True, (pool_agent.holdings[tkn_profit] if tkn_profit in pool_agent.holdings else 0)
     else:
-        return True
+        return True, None
 
 
 def validate_intents(intents: list, intent_deltas: list):
