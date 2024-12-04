@@ -87,6 +87,7 @@ class ICEProblem:
         self.fee_match = 0.0000
         # assert self.fee_match <= min([self.omnipool.last_fee[tkn] for tkn in self.asset_list])
         self._omnipool_directional_flags = None
+        self._amm_directional_flags = None
         self.partial_sell_maxs = [intent['sell_quantity'] for intent in self.partial_intents]
 
         self._known_flow = None
@@ -214,7 +215,7 @@ class ICEProblem:
                 for j, tkn in enumerate(amm.asset_list):
                     self._scaling[tkn] = max(self._scaling[tkn], abs(self._last_amm_deltas[i][j+1]))
 
-    def _set_omnipool_directions(self):
+    def _set_directions(self):
         # known_intent_directions = {self.tkn_profit: 'both'}  # solver collects profits in tkn_profit
         # for j, intent in enumerate(self.partial_intents):
         #     if self.partial_sell_maxs[j] > 0:
@@ -269,6 +270,17 @@ class ICEProblem:
             elif self._omnipool_directional_flags[tkn] == 0:
                 self._omnipool_directions[tkn] = "neither"
 
+        self._amm_directions = []
+        for l in self._amm_directional_flags:
+            new_list = []
+            for f in l:
+                if f == -1:
+                    new_list.append("sell")
+                elif f == 1:
+                    new_list.append("buy")
+                elif f == 0:
+                    new_list.append("neither")
+            self._amm_directions.append(new_list)
 
     def _set_tau_phi(self):
         tau1 = np.zeros((self.N + 1, self.m))
@@ -385,7 +397,7 @@ class ICEProblem:
         if rescale:
             self._set_scaling()
             self._set_omnipool_coefs()
-        self._set_omnipool_directions()
+        self._set_directions()
         self._set_tau_phi()
         self._set_coefficients()
 
@@ -402,7 +414,8 @@ class ICEProblem:
             force_amm_approx: list = None,
             clear_amm_approx: bool = True,
             omnipool_deltas: dict = None,
-            amm_deltas: list = None
+            amm_deltas: list = None,
+            amm_flags: dict = None
     ):
         if I is not None:
             assert len(I) == len(self.full_intents)
@@ -417,6 +430,10 @@ class ICEProblem:
             self._omnipool_directional_flags = {}
         else:
             self._omnipool_directional_flags = omnipool_flags
+        if amm_flags is None:
+            self._amm_directional_flags = {}
+        else:
+            self._amm_directional_flags = amm_flags
         if force_omnipool_approx is not None:
             self._force_omnipool_approx = force_omnipool_approx
         elif clear_omnipool_approx:
@@ -455,8 +472,8 @@ class ICEProblem:
     def get_share_indices(self):
         return [v for v in self._share_indices]
 
-    # def get_omnipool_directions(self):
-    #     return {k: v for k, v in self._omnipool_directions.items()}
+    def get_directions(self):
+        return {k: v for k, v in self._omnipool_directions.items()}, copy.deepcopy(self._amm_directions)
 
     def get_epsilon_tkn(self):
         return {t: max([abs(self._max_in[t]), abs(self._max_out[t])]) / self.omnipool.liquidity[t] for t in self.omnipool.asset_list}
@@ -709,8 +726,8 @@ def _find_solution_unrounded(
     # if len(partial_intents) + sum(I) == 0:  # nothing for solver to do
     #     return {tkn: 0 for tkn in asset_list}, [], np.zeros(4*n), 0, 0, 'Solved'  # TODO enable solver with m=0
 
-    # directions = p.get_omnipool_directions()
-    directions = {}
+    omnipool_directions, amm_directions = p.get_directions()
+    # directions = {}
     k = 4 * n + 2 * sigma + u + m
 
     indices_to_keep = list(range(k))
@@ -748,6 +765,20 @@ def _find_solution_unrounded(
             A1i[0, 3 * n + i] = -1  # lambda_i
             A1i[1, 2 * n + i] = -1  # lrna_lambda_i
             cone1i = cb.NonnegativeConeT(2)
+            if p.omnipool.asset_list[i] in omnipool_directions:
+                if omnipool_directions[p.omnipool.asset_list[i]] == "buy":  # we need y_i <= 0, x_i >= 0
+                    A1i_dir = np.zeros((2, k))
+                    A1i_dir[0, i] = 1
+                    A1i_dir[1, n + i] = -1
+                    A1i = np.vstack([A1i, A1i_dir])
+                    cone1i = cb.NonnegativeConeT(4)
+                elif omnipool_directions[p.omnipool.asset_list[i]] == "sell":  # we need y_i >= 0, x_i <= 0
+                    A1i_dir = np.zeros((2, k))
+                    A1i_dir[0, i] = -1
+                    A1i_dir[1, n + i] = 1
+                    A1i = np.vstack([A1i, A1i_dir])
+                    cone1i = cb.NonnegativeConeT(4)
+
         else:  # we need y_i = 0, x_i = 0, lambda_i = 0, lrna_lambda_i = 0
             A1i = np.zeros((4, k))
             A1i[0, i] = 1  # y_i
@@ -764,6 +795,17 @@ def _find_solution_unrounded(
             A1i = np.zeros((1, k))
             A1i[0, 4 * n + sigma + offset] = -1
             cones1.append(cb.NonnegativeConeT(1))
+            if len(amm_directions) > 0:
+                if amm_directions[i][0] == "buy":  # X0 >= 0
+                    A1i_dir = np.zeros((1, k))
+                    A1i_dir[0, 4 * n + offset] = -1
+                    A1i = np.vstack([A1i, A1i_dir])
+                    cones1.append(cb.NonnegativeConeT(1))
+                elif amm_directions[i][0] == "sell":  # X0 <= 0
+                    A1i_dir = np.zeros((1, k))
+                    A1i_dir[0, 4 * n + offset] = 1
+                    A1i = np.vstack([A1i, A1i_dir])
+                    cones1.append(cb.NonnegativeConeT(1))
         else:
             A1i = np.zeros((2, k))
             A1i[0, 4 * n + offset] = 1
@@ -774,6 +816,17 @@ def _find_solution_unrounded(
                 A1ij = np.zeros((1, k))
                 A1ij[0, 4 * n + sigma + offset + j + 1] = -1
                 cones1.append(cb.NonnegativeConeT(1))
+                if len(amm_directions) > 0:
+                    if amm_directions[i][j+1] == "buy":  #Xj >= 0
+                        A1ij_dir = np.zeros((1, k))
+                        A1ij_dir[0, 4 * n + offset + j + 1] = -1
+                        A1ij = np.vstack([A1ij, A1ij_dir])
+                        cones1.append(cb.NonnegativeConeT(1))
+                    elif amm_directions[i][j+1] == "sell":  #Xj <= 0
+                        A1ij_dir = np.zeros((1, k))
+                        A1ij_dir[0, 4 * n + offset + j + 1] = 1
+                        A1ij = np.vstack([A1ij, A1ij_dir])
+                        cones1.append(cb.NonnegativeConeT(1))
             else:
                 A1ij = np.zeros((2, k))
                 A1ij[0, 4 * n + offset + j + 1] = 1
@@ -814,7 +867,7 @@ def _find_solution_unrounded(
         if tkn == p.tkn_profit:
             approx = "none"
         if approx == "linear":  # linearize the AMM constraint
-            if tkn not in directions:
+            if tkn not in omnipool_directions:
                 c1 = 1 / (1 + epsilon_tkn[tkn])
                 c2 = 1 / (1 - epsilon_tkn[tkn])
                 A4i = np.zeros((2, k))
@@ -825,7 +878,7 @@ def _find_solution_unrounded(
                 A4i[1, n + i] = -omnipool_asset_coefs[tkn] * c2
                 cones4.append(cb.NonnegativeConeT(2))
             else:
-                if directions[tkn] == "sell":
+                if omnipool_directions[tkn] == "sell":
                     c = 1 / (1 - epsilon_tkn[tkn])
                 else:
                     c = 1 / (1 + epsilon_tkn[tkn])
@@ -1068,7 +1121,8 @@ def _find_good_solution_unrounded(
     if do_directional_run:
         omnipool_flags, amm_flags = get_directional_flags(omnipool_deltas, amm_deltas)
         # TODO implement directional logic
-        p.set_up_problem(omnipool_flags=omnipool_flags, clear_I=False, clear_sell_maxes=False, clear_omnipool_approx=False, clear_amm_approx=False)
+        p.set_up_problem(omnipool_flags=omnipool_flags, clear_I=False, clear_sell_maxes=False,
+                         clear_omnipool_approx=False, clear_amm_approx=False, amm_flags=amm_flags)
         omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = _find_solution_unrounded(p, allow_loss=allow_loss)
 
     if status in ['PrimalInfeasible', 'DualInfeasible']:
