@@ -350,6 +350,8 @@ class ICEProblem:
         # other assets
         tkn_list = ["LRNA"] + self.asset_list
         fees = [self.omnipool.last_fee[tkn] for tkn in self.omnipool.asset_list]
+        stableswap_fees = [[amm.trade_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
+        stableswap_fees_flat = [item - self.fee_match for sublist in stableswap_fees for item in sublist]
         partial_intent_prices = self.get_partial_intent_prices()
         profit_y_coefs = np.zeros((self.N, self.n))
         profit_x_coefs = np.zeros((self.N, self.n))
@@ -362,7 +364,8 @@ class ICEProblem:
                 profit_x_coefs[i, j] = -1
                 profit_lambda_coefs[i, j] = self.fee_match - fees[j]
         profit_X_coefs = self._rho - self._psi
-        profit_L_coefs = np.zeros((self.N, self.sigma))  # TODO: add fees for AMMs
+        profit_L_coefs = self._psi @ np.diag(-np.array(stableswap_fees_flat))
+        profit_L_coefs_old = np.zeros((self.N, self.sigma))  # TODO: add fees for AMMs
         profit_a_coefs = np.zeros((self.N, self.u))
         scaling_vars = np.array([partial_intent_prices[j] * self._scaling[intent['tkn_sell']] / self._scaling[intent['tkn_buy']]
                                  for j, intent in enumerate(self.partial_intents)])
@@ -922,26 +925,26 @@ def _find_solution_unrounded(
     b6 = np.zeros(A6.shape[0])
     cone6 = cb.NonnegativeConeT(A6.shape[0])
 
-    # # inequality constraints: X_j + L_j >= 0
-    # A7 = np.zeros((0, k))
-    # for i in range(sigma):
-    #     A7i = np.zeros((1, k))
-    #     A7i[0, 4*n+i] = -1
-    #     A7i[0, 4*n+sigma+i] = -1
-    #     A7 = np.vstack([A7, A7i])
-    # A7_trimmed = A7[:, indices_to_keep]
-    # b7 = np.zeros(A7.shape[0])
-    # cone7 = cb.NonnegativeConeT(A7.shape[0])
-
-    # we will temporarily require that L_j == 0
+    # inequality constraints: X_j + L_j >= 0
     A7 = np.zeros((0, k))
     for i in range(sigma):
         A7i = np.zeros((1, k))
+        A7i[0, 4*n+i] = -1
         A7i[0, 4*n+sigma+i] = -1
         A7 = np.vstack([A7, A7i])
     A7_trimmed = A7[:, indices_to_keep]
     b7 = np.zeros(A7.shape[0])
-    cone7 = cb.ZeroConeT(A7.shape[0])
+    cone7 = cb.NonnegativeConeT(A7.shape[0])
+
+    # # we will temporarily require that L_j == 0
+    # A7 = np.zeros((0, k))
+    # for i in range(sigma):
+    #     A7i = np.zeros((1, k))
+    #     A7i[0, 4*n+sigma+i] = -1
+    #     A7 = np.vstack([A7, A7i])
+    # A7_trimmed = A7[:, indices_to_keep]
+    # b7 = np.zeros(A7.shape[0])
+    # cone7 = cb.ZeroConeT(A7.shape[0])
 
     A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A5_trimmed, A6_trimmed, A7_trimmed])
     A_sparse = sparse.csc_matrix(A)
@@ -1235,7 +1238,7 @@ def _solve_inclusion_problem(
     min_a = [-inf] * sigma
     max_a = [inf] * sigma
 
-    max_L = np.zeros(sigma)  # TODO: remove
+    # max_L = np.zeros(sigma)  # TODO: remove
 
     lower = np.concatenate([min_y, min_x, min_lrna_lambda, min_lambda, min_X, min_L, min_a, [0] * (m + r)])
     upper = np.concatenate([max_y, max_x, max_lrna_lambda, max_lambda, max_X, max_L, max_a, partial_intent_sell_amts, [1] * r])

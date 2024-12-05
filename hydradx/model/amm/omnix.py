@@ -130,10 +130,15 @@ def execute_solution(
     pool_agent = Agent()
     fee_agent = Agent()
 
-    # Omnipool deltas are *feeless*. We need to recalculate the buy amounts to account for asset fees being left behind
+    # amm deltas are *feeless*. We need to recalculate the buy amounts to account for asset fees being left behind
     for tkn in omnipool_deltas:
         if omnipool_deltas[tkn] < 0:
             omnipool_deltas[tkn] *= 1 - omnipool.last_fee[tkn]
+
+    for i, ss in enumerate(stableswap_list):
+        for j, tkn in enumerate(ss.asset_list):
+            if stableswap_deltas[i][j+1] < 0:
+                stableswap_deltas[i][j+1] *= 1 - ss.trade_fee
 
     # we first execute all AMM trades, flash minting assets to pool_agent to enable sells
     minted = {}  # tracking minted assets so that we burn them later
