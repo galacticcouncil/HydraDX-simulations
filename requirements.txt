@@ -2,7 +2,7 @@ pandas>=0.25.3
 numpy>=1.19.2
 plotly>=4.8.2
 matplotlib>=3.3.3
-jupyterlab>=4.1.0b2
+jupyterlab>=4.32
 seaborn>=0.11.1
 scipy>=1.10.0-rc1
 ipywidgets>=7.5.1
@@ -13,8 +13,8 @@ pytest~=7.4.2
 ipdb
 sympy
 mpmath~=1.4.0a0
-zipp
-requests~=2.31.0
+zipp>=3.19.1
+requests~=2.32.0
 python-dotenv
 hydradx-api~=0.3.1
 python-dateutil~=2.8.1
