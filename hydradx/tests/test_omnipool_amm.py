@@ -1036,6 +1036,7 @@ def test_sell_with_partial_lrna_mint(
 
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025))
 def test_lrna_buy_nonzero_fee(initial_state: oamm.OmnipoolState):
+    initial_state.lp_lrna_share = 0
     old_state = initial_state
     old_agent = Agent(
         holdings={token: 1000000 for token in initial_state.asset_list + ['LRNA']}
@@ -1051,18 +1052,15 @@ def test_lrna_buy_nonzero_fee(initial_state: oamm.OmnipoolState):
         buy_quantity=delta_qa
     )
 
-    expected_delta_qi = -delta_qa / (1 - 0.0005)
-    expected_fee = -(delta_qa + expected_delta_qi)
-
-    if expected_fee != pytest.approx(new_state.lrna['HDX'] - old_state.lrna['HDX']):
-        raise AssertionError('Fee to HDX pool is wrong.')
+    expected_delta_qi = -delta_qa / (1 - initial_state.lrna_fee(i))
+    expected_lrna_fee = -(delta_qa + expected_delta_qi)
 
     if old_state.lrna[i] - new_state.lrna[i] != pytest.approx(
-            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_fee):
+            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_lrna_fee):
         raise AssertionError('Delta Qi is wrong.')
 
     if old_state.lrna_total - new_state.lrna_total != pytest.approx(
-            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA']):
+            new_agent.holdings['LRNA'] - old_agent.holdings['LRNA'] + expected_lrna_fee):
         raise AssertionError('Some LRNA is being incorrectly burned or minted.')
 
 
@@ -1489,7 +1487,8 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
         lrna_fee=0.0005,
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
-        }
+        },
+        lp_lrna_share=0
     )
 
     trader1_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
@@ -1648,6 +1647,7 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
+        lp_lrna_share=0
     )
 
     initial_state = GlobalState(
@@ -1753,7 +1753,8 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         ),
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
-        }
+        },
+        lp_lrna_share=0
     )
 
     trader_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
@@ -2368,11 +2369,13 @@ def test_fee_application():
         raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
 
 
-def test_lrna_swap_equivalency():
+@given(st.floats(min_value=0, max_value=1))
+def test_lrna_swap_equivalency(lp_lrna_share):
     initial_state = OmnipoolState(
         tokens={'HDX': {'liquidity': 1000000, 'LRNA': 1000}, 'USD': {'liquidity': 3000, 'LRNA': 150}},
         lrna_fee={'HDX': 0.0005, 'USD': 0.001},
-        asset_fee={'HDX': 0.007, 'USD': 0.0025}
+        asset_fee={'HDX': 0.007, 'USD': 0.0025},
+        lp_lrna_share=lp_lrna_share
     )
     agent = Agent(holdings={'HDX': 1000000})
     sell_quantity = 1
@@ -2398,13 +2401,15 @@ def test_lrna_swap_equivalency():
     buy_quantity = direct_sell_agent.holdings['USD']
     if sell_state.liquidity['USD'] != pytest.approx(direct_sell_state.liquidity['USD'], rel=1e-12):
         raise AssertionError("Direct swap was not equivalent to LRNA swap.")
+    if sell_state.lrna['HDX'] != pytest.approx(direct_sell_state.lrna['HDX'], rel=1e-12):
+        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
 
     buy_agent = agent.copy()
     buy_state = initial_state.copy().swap(
         buy_quantity=1,
         agent=buy_agent,
-        tkn_buy='HDX',
-        tkn_sell='LRNA'
+        tkn_sell='HDX',
+        tkn_buy='LRNA'
     ).swap(
         buy_quantity=initial_state.calculate_sell_from_buy('USD', 'HDX', 1),
         agent=buy_agent,
@@ -2420,6 +2425,8 @@ def test_lrna_swap_equivalency():
         buy_quantity=buy_quantity
     )
     if buy_state.liquidity['USD'] != pytest.approx(direct_buy_state.liquidity['USD'], rel=1e-12):
+        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
+    if buy_state.lrna['HDX'] != pytest.approx(direct_buy_state.lrna['HDX'], rel=1e-12):
         raise AssertionError("Direct swap was not equivalent to LRNA swap.")
 
 
