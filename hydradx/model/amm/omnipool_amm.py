@@ -325,7 +325,7 @@ class OmnipoolState(Exchange):
             time_step=self.time_step,
             volume={
                 tkn: (self.oracles['price'].volume_in[tkn] - self.oracles['price'].volume_out[tkn])
-                for tkn in self.asset_list
+                for tkn in self._lrna_fee.current
             },
             liquidity=self.oracles['price'].liquidity
         )
@@ -333,7 +333,7 @@ class OmnipoolState(Exchange):
             time_step=self.time_step,
             volume={
                 tkn: (self.oracles['price'].volume_out[tkn] - self.oracles['price'].volume_in[tkn])
-                for tkn in self.asset_list
+                for tkn in self._asset_fee.current
             },
             liquidity=self.oracles['price'].liquidity
         )
@@ -607,7 +607,7 @@ class OmnipoolState(Exchange):
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
             lrna_fee_total = -delta_Qi * lrna_fee
-            lrna_fee_burn = -delta_Qi * min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share)
+            lrna_fee_burn = -delta_Qi * (min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share))
             lp_deposit = lrna_fee_total - lrna_fee_burn
             delta_Qt = -delta_Qi - lrna_fee_total
             delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
@@ -700,8 +700,8 @@ class OmnipoolState(Exchange):
         # buying LRNA
         elif delta_qa > 0:
             # buying LRNA
-            lrna_fee_total = delta_qa * lrna_fee
-            lrna_fee_burn = delta_qa * min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share)
+            lrna_fee_total = delta_qa / (1 - lrna_fee) - delta_qa
+            lrna_fee_burn = delta_qa / (1 - (min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share))) - delta_qa
             delta_qi = -delta_qa - lrna_fee_total
             lp_deposit = lrna_fee_total - lrna_fee_burn
             if delta_qi + self.lrna[tkn] <= 0:
@@ -718,7 +718,7 @@ class OmnipoolState(Exchange):
                 return self.fail_transaction('agent has insufficient assets', agent)
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
             lrna_fee_total = -delta_qi * lrna_fee
-            lrna_fee_burn = -delta_qi * min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share)
+            lrna_fee_burn = -delta_qi * (min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share))
             lp_deposit = lrna_fee_total - lrna_fee_burn
             delta_qa = -delta_qi - lrna_fee_total
             self.lrna[tkn] += delta_qi
