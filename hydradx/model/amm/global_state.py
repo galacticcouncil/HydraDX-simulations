@@ -41,8 +41,7 @@ class GlobalState:
             for asset in self.asset_list:
                 if asset not in agent.holdings:
                     agent.holdings[asset] = 0
-        self._evolve_function = evolve_function
-        self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.evolve_function = evolve_function
         self.datastreams = save_data
         self.save_data = {
             tag: save_data[tag].assemble(self)
@@ -88,7 +87,7 @@ class GlobalState:
             money_market=self.money_market.copy() if self.money_market else None,
             otcs=[otc.copy() for otc in self.otcs],
             external_market=self.external_market.copy(),
-            evolve_function=copy.copy(self._evolve_function),
+            evolve_function=copy.copy(self.evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
         )
@@ -110,8 +109,8 @@ class GlobalState:
         self.time_step += 1
         for pool in self.pools.values():
             pool.update()
-        if self._evolve_function:
-            return self._evolve_function(self)
+        if self.evolve_function:
+            return self.evolve_function(self)
         else:
             return self
 
@@ -270,7 +269,7 @@ class GlobalState:
                     f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
                 ])) +
                 f'{newline}{newline}'
-                f'evolution function: {self.evolve_function}'
+                f'evolution function: {self.evolve_function.__name__ if self.evolve_function else "None"}'
                 f'{newline}'
         )
 
