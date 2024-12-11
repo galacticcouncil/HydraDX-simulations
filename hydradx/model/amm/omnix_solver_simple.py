@@ -192,10 +192,10 @@ class ICEProblem:
 
     def _set_scaling(self):
         self._scaling = {tkn: 0 for tkn in self.asset_list}
-        self._scaling["LRNA"] = 0
+        self._scaling["LRNA"] = 1
         for tkn in self.asset_list:
             self._scaling[tkn] = max(self._max_in[tkn], self._max_out[tkn])
-            if self._scaling[tkn] == 0 and tkn != self.tkn_profit:
+            if self._scaling[tkn] == 0:
                 self._scaling[tkn] = 1
             # set scaling for LRNA equal to scaling for asset, adjusted by spot price
             if tkn in self.omnipool.asset_list:
@@ -205,7 +205,17 @@ class ICEProblem:
                 self._scaling["LRNA"] = max(self._scaling["LRNA"], scalar)
                 # raise scaling for tkn_profit to scaling for asset, adjusted by spot price, if needed
                 scalar_profit = self._scaling[tkn] * self.omnipool.price(self.omnipool, tkn, self.tkn_profit)
-                self._scaling[self.tkn_profit] = max(self._scaling[self.tkn_profit], scalar_profit)
+                self._scaling[self.tkn_profit] = max(self._scaling[self.tkn_profit], scalar_profit / 10000)
+        for amm in self.amm_list:  # raise scaling for all assets in each AMM to match max
+            max_scale = self._scaling[amm.unique_id]
+            for tkn in amm.asset_list:
+                max_scale = max(max_scale, self._scaling[tkn])
+            self._scaling[amm.unique_id] = max_scale
+            for tkn in amm.asset_list:
+                self._scaling[tkn] = max_scale
+
+        # if self._last_omnipool_deltas is not None:
+        #     self._scaling[self.tkn_profit] = abs(self._last_omnipool_deltas[self.tkn_profit])
 
         if self._last_amm_deltas is not None:
             assert len(self._last_amm_deltas) == len(self.amm_list)
@@ -326,6 +336,7 @@ class ICEProblem:
         self._omnipool_asset_coefs = {tkn: self._scaling[tkn] / self.omnipool.liquidity[tkn] for tkn in self.omnipool.asset_list}
 
     def _set_coefficients(self):
+        buffer_fee = 0.00001  # 0.1 bp buffer fee
         # profit calculations
         # variables are y_i, x_i, lrna_lambda_i, lambda_i, d_j, I_l
         # y_i are net LRNA into Omnipool
@@ -349,8 +360,8 @@ class ICEProblem:
         # leftover must be higher than required fees
         # other assets
         tkn_list = ["LRNA"] + self.asset_list
-        fees = [self.omnipool.last_fee[tkn] for tkn in self.omnipool.asset_list]
-        stableswap_fees = [[amm.trade_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
+        fees = [self.omnipool.last_fee[tkn] + buffer_fee for tkn in self.omnipool.asset_list]
+        stableswap_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
         stableswap_fees_flat = [item - self.fee_match for sublist in stableswap_fees for item in sublist]
         partial_intent_prices = self.get_partial_intent_prices()
         profit_y_coefs = np.zeros((self.N, self.n))
@@ -761,7 +772,10 @@ def _find_solution_unrounded(
 
     A1 = np.zeros((0, k))
     cones1 = []
+    profit_i = p.asset_list.index(p.tkn_profit)
     op_tradeable_indices = [i for i in range(n) if p.omnipool.asset_list[i] in p.trading_tkns]
+    if profit_i not in op_tradeable_indices:
+        op_tradeable_indices.append(profit_i)
     for i in range(n):
         if i in op_tradeable_indices:  # we need lambda_i >= 0, lrna_lambda_i >= 0
             A1i = np.zeros((2, k))
@@ -890,6 +904,24 @@ def _find_solution_unrounded(
                 A4i[0, i] = -omnipool_lrna_coefs[tkn]
                 A4i[0, n+i] = -omnipool_asset_coefs[tkn] * c
                 cones4.append(cb.ZeroConeT(1))
+            # if approx is linear, we need to apply some constraints to x_i, y_i
+            A4i_bounds = np.zeros((4, k))
+            b4i_bounds = np.zeros(4)
+            # y_i is bounded by [-lrna[tkn]/2, lrna[tkn]/2]
+            max_lrna_delta = p.omnipool.lrna[tkn] / 2
+            A4i_bounds[0, i] = 1
+            b4i_bounds[0] = max_lrna_delta
+            A4i_bounds[1, i] = -1
+            b4i_bounds[1] = max_lrna_delta
+            # x_i is bounded by [-liquidity[tkn]/2, liquidity[tkn]/2]
+            max_asset_delta = p.omnipool.liquidity[tkn] / 2
+            A4i_bounds[2, n + i] = 1
+            b4i_bounds[2] = max_asset_delta
+            A4i_bounds[3, n + i] = -1
+            b4i_bounds[3] = max_asset_delta
+            A4i = np.vstack([A4i, A4i_bounds])
+            b4i = np.append(b4i, b4i_bounds)
+            cones4.append(cb.NonnegativeConeT(4))
         elif approx == "quadratic":  # quadratic approximation to in-given-out function
             A4i = np.zeros((3, k))
             A4i[1,i] = -omnipool_lrna_coefs[tkn]
@@ -966,9 +998,11 @@ def _find_solution_unrounded(
         if i in indices_to_keep:
             x_expanded[i] = x[indices_to_keep.index(i)]
     x_scaled = p.get_real_x(x_expanded)
+    new_omnipool_deltas["LRNA"] = 0
     for i in range(n):
         tkn = asset_list[i]
         new_omnipool_deltas[tkn] = x_scaled[n+i]
+        new_omnipool_deltas["LRNA"] += x_scaled[i]
     amm_deltas = []
     offset = 0
     for amm in p.amm_list:
@@ -999,9 +1033,9 @@ def _find_good_solution_unrounded(
 ):
     n, m, r = p.n, p.m, p.r
     N, u, s, sigma = p.N, p.u, p.s, p.sigma
-    # force_omnipool_approx = {tkn: "linear" for tkn in p.omnipool.asset_list}
-    # force_amm_approx = [["linear" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
-    # p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, force_amm_approx=force_amm_approx)
+    force_omnipool_approx = {tkn: "linear" for tkn in p.omnipool.asset_list}
+    force_amm_approx = [["linear" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
+    p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, force_amm_approx=force_amm_approx)
     omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = _find_solution_unrounded(p, allow_loss=allow_loss)
     # if partial trade size is much higher than executed trade, lower trade max
     if scale_trade_max:
@@ -1033,20 +1067,25 @@ def _find_good_solution_unrounded(
         for tkn in p.omnipool.asset_list:
             if omnipool_pcts[tkn] <= 1e-6:
                 force_omnipool_approx[tkn] = "linear"
-                approx_adjusted_ct += 1
             elif omnipool_pcts[tkn] <= 1e-3:
                 force_omnipool_approx[tkn] = "quadratic"
+                approx_adjusted_ct += 1
+            else:
+                force_omnipool_approx[tkn] = "full"
                 approx_adjusted_ct += 1
 
         force_amm_approx = [["full" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
         for s, amm in enumerate(p.amm_list):
             if max(stableswap_pcts[s][0], stableswap_pcts[s][1]) <= 1e-5:  # evaluate shares constraint
-            # if stableswap_pcts[s][0] <= 1e-5:
                 force_amm_approx[s][0] = "linear"
+            else:
+                force_amm_approx[s][0] = "full"
                 approx_adjusted_ct += 1
             for j in range(len(amm.asset_list)):  # evaluate each asset constraint
                 if stableswap_pcts[s][j+2] <= 1e-5:
                     force_amm_approx[s][j+1] = "linear"
+                else:
+                    force_amm_approx[s][j+1] = "full"
                     approx_adjusted_ct += 1
 
     for i in range(100):
@@ -1058,6 +1097,7 @@ def _find_good_solution_unrounded(
         # if trade_pct is 0 but max is still nonzero, we may want to lower max to see if this helps
         # so we should be looking at trade_pcts where max is nonzero
         trade_pcts_nonzero_max = [max(-intent_deltas[i],0) / m for i, m in enumerate(p.partial_sell_maxs) if m > 0]
+
         if (len(trade_pcts_nonzero_max) == 0 or min(trade_pcts_nonzero_max) >= 0.1) and approx_adjusted_ct == 0:
             break  # no changes to problem were made
         if len(trade_pcts_nonzero_max) > 0 and min(trade_pcts_nonzero_max) < 0.1:
@@ -1067,8 +1107,8 @@ def _find_good_solution_unrounded(
         # constrain amm variables
         p.set_up_problem(sell_maxes=new_maxes, clear_I=False, force_omnipool_approx=force_omnipool_approx,
                          force_amm_approx=force_amm_approx, omnipool_deltas=omnipool_deltas, amm_deltas=amm_deltas)
-        if zero_ct == m:
-            break  # all partial intents have been eliminated from execution
+        # if zero_ct == m:
+        #     break  # all partial intents have been eliminated from execution
         # solve refined problem
         omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = _find_solution_unrounded(p, allow_loss=allow_loss)
 
@@ -1274,7 +1314,7 @@ def _solve_inclusion_problem(
             S_upper = np.concatenate([S_upper, S_row_upper])
 
         offset = 0
-        for s, amm in enumerate(p.amm_list):
+        for _s, amm in enumerate(p.amm_list):
             D0_prime = amm.d - amm.d/amm.ann
             s0 = amm.shares
             c = C[offset]
@@ -1282,7 +1322,7 @@ def _solve_inclusion_problem(
             denom = sum_assets - D0_prime
             a0 = x[4*n + 2*sigma + offset]
             X0 = x[4*n + offset]
-            exp = np.exp(float(a0*s0 / (s0 + (c*X0))))
+            exp = np.exp(float(a0 / (1 + (c*X0/s0))))
             term = (c / s0 - c*a0 / (s0 + c)) * exp
             # linearization of shares constraint, i.e. a0
             S_row = np.zeros((1, k))
@@ -1345,6 +1385,17 @@ def _solve_inclusion_problem(
     A5_upper = np.array([inf] * 2 * n)
     A5_lower = np.zeros(2 * n)
 
+    # inequality constraints: X_j + L_j >= 0
+    A7 = np.zeros((sigma, k))
+    for i in range(sigma):
+        A7[i, 4*n + i] = 1
+        A7[i, 4*n + sigma + i] = 1
+    A7_upper = np.array([inf] * sigma)
+    A7_lower = np.zeros(sigma)
+    A7 = np.zeros((0,k))
+    A7_upper = np.array([])
+    A7_lower = np.array([])
+
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
     q = p.get_q()
@@ -1359,9 +1410,9 @@ def _solve_inclusion_problem(
     if old_A_lower is None:
         old_A_lower = np.array([])
     assert len(old_A_upper) == len(old_A_lower) == old_A.shape[0]
-    A = np.vstack([old_A, S, A_amm, A3, A5, A8])
-    A_upper = np.concatenate([old_A_upper, S_upper, A_amm_upper, A3_upper, A5_upper, A8_upper])
-    A_lower = np.concatenate([old_A_lower, S_lower, A_amm_lower, A3_lower, A5_lower, A8_lower])
+    A = np.vstack([old_A, S, A_amm, A3, A5, A7, A8])
+    A_upper = np.concatenate([old_A_upper, S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper, A8_upper])
+    A_lower = np.concatenate([old_A_lower, S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower, A8_lower])
 
     nonzeros = []
     start = [0]
@@ -1408,8 +1459,10 @@ def _solve_inclusion_problem(
     new_omnipool_deltas = {}
     exec_partial_intent_deltas = [None] * m
 
+    new_omnipool_deltas["LRNA"] = 0
     for i, tkn in enumerate(p.omnipool.asset_list):
         new_omnipool_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
+        new_omnipool_deltas["LRNA"] += x_expanded[i] * scaling["LRNA"]
 
     offset = 0
     new_amm_deltas = []
@@ -1683,7 +1736,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
     mandatory_indicators = [0] * r
     for i in exec_indices:
         mandatory_indicators[i] = 1
-    BK = np.where(np.array(mandatory_indicators) == 1)[0] + 4 * n + m
+    BK = np.where(np.array(mandatory_indicators) == 1)[0] + 4 * n + 3 * sigma + m
     new_A = np.zeros((1, k_milp))
     new_A[0, BK] = 1
     new_A_upper = np.array([inf])
