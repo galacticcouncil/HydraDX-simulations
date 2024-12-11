@@ -957,17 +957,32 @@ def test_full_solver_stableswap():
         Agent(holdings={'HDX': 10000}),
         Agent(holdings={'USDT': 100}),
         Agent(holdings={'USDC': 100}),
+        Agent(holdings={'2-Pool': 1000}),
+        Agent(holdings={'2-Pool': 100}),
+        Agent(holdings={'2-Pool': 100}),
     ]
 
     intents = [
         # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149711278057), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0]},
         # {'sell_quantity': mpf(1.149711278057), 'buy_quantity': mpf(100), 'tkn_sell': 'CRU', 'tkn_buy': 'HDX', 'agent': agents[1]},
         # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.149), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': False},
-        {'sell_quantity': mpf(10000), 'buy_quantity': mpf(100), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': True},
+        # {'sell_quantity': mpf(10000), 'buy_quantity': mpf(100), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[0], 'partial': True},
         # {'sell_quantity': mpf(10000), 'buy_quantity': mpf(100), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1],
         #  'partial': False},
-        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(90.0), 'tkn_sell': 'USDT', 'tkn_buy': 'USDC', 'agent': agents[2], 'partial': True},
-        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(10.0), 'tkn_sell': 'USDC', 'tkn_buy': 'DOT', 'agent': agents[3], 'partial': True},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(90.0), 'tkn_sell': 'USDT', 'tkn_buy': 'USDC', 'agent': agents[2], 'partial': False},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(10.0), 'tkn_sell': 'USDC', 'tkn_buy': 'DOT', 'agent': agents[3], 'partial': False},
+        # {'sell_quantity': mpf(10000), 'buy_quantity': mpf(2), 'tkn_sell': 'HDX', 'tkn_buy': 'DOT',
+        #  'agent': agents[0], 'partial': True},
+        # {'sell_quantity': mpf(10000), 'buy_quantity': mpf(2), 'tkn_sell': 'HDX', 'tkn_buy': 'DOT',
+        #  'agent': agents[1], 'partial': False},
+        {'sell_quantity': mpf(1000), 'buy_quantity': mpf(500.0), 'tkn_sell': '2-Pool', 'tkn_buy': 'USDC',
+         'agent': agents[4], 'partial': False},
+        # {'sell_quantity': mpf(1000), 'buy_quantity': mpf(500.0), 'tkn_sell': '2-Pool', 'tkn_buy': '4-Pool',
+        #  'agent': agents[4], 'partial': False},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(90.0), 'tkn_sell': '2-Pool', 'tkn_buy': 'USDC',
+        #  'agent': agents[5], 'partial': True},
+        # {'sell_quantity': mpf(100), 'buy_quantity': mpf(200.0), 'tkn_sell': '2-Pool', 'tkn_buy': 'USDC',
+        #  'agent': agents[4], 'partial': False},
         # {'sell_quantity': mpf(100), 'buy_quantity': mpf(200.0), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU', 'agent': agents[1],
         #  'partial': True},
         # {'sell_quantity': mpf(100), 'buy_quantity': mpf(1.25359), 'tkn_sell': 'HDX', 'tkn_buy': 'CRU',
@@ -976,23 +991,32 @@ def test_full_solver_stableswap():
         #  'agent': agents[1]}
     ]
 
-    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
-                 'WETH': mpf(897.820372708098), '2-Pool-btc': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
-                 'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
-                 'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
-                 '2-Pool': mpf(14626788.977583803), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
-                 'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
-    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
-            'WETH': mpf(82979.9927924809), '2-Pool-btc': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
-            'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
-            'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
-            '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
-            'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
+    # liquidity = {'4-Pool': mpf(1392263.9295618401 + 15000), 'HDX': mpf(140474254.46393022), 'KILT': mpf(1941765.8700688032),
+    #              'WETH': mpf(897.820372708098), '2-Pool-btc': mpf(80.37640742108785), 'GLMR': mpf(7389788.325282889),
+    #              'BNC': mpf(5294190.655262755), 'RING': mpf(30608622.54045291), 'vASTR': mpf(1709768.9093601815),
+    #              'vDOT': mpf(851755.7840315843), 'CFG': mpf(3497639.0397717496), 'CRU': mpf(337868.26827475097),
+    #              '2-Pool': mpf(14626788.977583803 - 15000), 'DOT': mpf(2369965.4990946855), 'PHA': mpf(6002455.470581388),
+    #              'ZTG': mpf(9707643.829161936), 'INTR': mpf(52756928.48950746), 'ASTR': mpf(31837859.71273387), }
+    # lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), 'KILT': mpf(10802.301353604526),
+    #         'WETH': mpf(82979.9927924809), '2-Pool-btc': mpf(197326.54331209575), 'GLMR': mpf(44400.11377262768),
+    #         'BNC': mpf(35968.10763198863), 'RING': mpf(1996.48438233777), 'vASTR': mpf(4292.819030020081),
+    #         'vDOT': mpf(182410.99000727307), 'CFG': mpf(41595.57689216696), 'CRU': mpf(4744.442135139952),
+    #         '2-Pool': mpf(523282.70722423657), 'DOT': mpf(363516.4838824808), 'PHA': mpf(24099.247547699764),
+    #         'ZTG': mpf(4208.90365804613), 'INTR': mpf(19516.483401186168), 'ASTR': mpf(68571.5237579274), }
 
-    # liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), '2-Pool-btc': mpf(80.37640742108785),
-    #              'CRU': mpf(337868.26827475097), '2-Pool': mpf(14626788.977583803)}
-    # lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), '2-Pool-btc': mpf(197326.54331209575),
-    #         'CRU': mpf(4744.442135139952), '2-Pool': mpf(523282.70722423657)}
+    liquidity = {'4-Pool': mpf(1392263.9295618401 + 15000), 'HDX': mpf(140474254.46393022), '2-Pool-btc': mpf(80.37640742108785),
+                 'CRU': mpf(337868.26827475097), '2-Pool': mpf(14626788.977583803 - 15000)}
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), '2-Pool-btc': mpf(197326.54331209575),
+            'CRU': mpf(4744.442135139952), '2-Pool': mpf(523282.70722423657)}
+
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), '2-Pool-btc': mpf(80.37640742108785),
+                 'CRU': mpf(337868.26827475097), '2-Pool': mpf(14626788.977583803)}
+    lrna = {'4-Pool': mpf(50483.454258911326/10), 'HDX': mpf(24725.8021660851), '2-Pool-btc': mpf(197326.54331209575),
+            'CRU': mpf(4744.442135139952), '2-Pool': mpf(523282.70722423657)}
+
+    liquidity = {'4-Pool': mpf(1392263.9295618401), 'HDX': mpf(140474254.46393022), '2-Pool': mpf(14626788.977583803)}
+    lrna = {'4-Pool': mpf(50483.454258911326), 'HDX': mpf(24725.8021660851), '2-Pool': mpf(523282.70722423657)}
+
 
     initial_state = OmnipoolState(
         tokens={
@@ -1005,26 +1029,30 @@ def test_full_solver_stableswap():
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     sp_tokens = {
+        "USDT": 7600000 - 81080,
+        "USDC": 9200000 + 74500
+    }
+    sp_tokens = {
         "USDT": 7600000,
         "USDC": 9200000
     }
     stablepool = StableSwapPoolState(
         tokens=sp_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.01,
         unique_id="2-Pool"
     )
 
     sp4_tokens = {
-        "USDC": 600000,
-        "USDT": 340000,
-        "DAI": 365000,
-        "USDT2": 330000
+        "USDC": 600000 - 74600,
+        "USDT": 340000 + 81160,
+        # "DAI": 365000,
+        # "USDT2": 330000
     }
     stablepool4 = StableSwapPoolState(
         tokens=sp4_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.01,
         unique_id="4-Pool"
     )
 
@@ -1035,11 +1063,13 @@ def test_full_solver_stableswap():
     stablepool_btc = StableSwapPoolState(
         tokens=sp_btc_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.01,
         unique_id="2-Pool-btc"
     )
 
     amm_list = [stablepool, stablepool4, stablepool_btc]
+    amm_list = [stablepool, stablepool4]
+    # amm_list = [stablepool]
 
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
     intent_deltas, omnipool_deltas, amm_deltas = x[0], x[4], x[5]
@@ -1053,7 +1083,7 @@ def test_full_solver_stableswap():
 
 
 def test_more_random_intents_with_stableswap():
-    r = 50
+    r = 52
     random.seed(r)
     np.random.seed(r)
 
@@ -1097,7 +1127,7 @@ def test_more_random_intents_with_stableswap():
     stablepool = StableSwapPoolState(
         tokens=sp_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.0005,
         unique_id="2-Pool"
     )
 
@@ -1110,7 +1140,7 @@ def test_more_random_intents_with_stableswap():
     stablepool4 = StableSwapPoolState(
         tokens=sp4_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.0005,
         unique_id="4-Pool"
     )
 
@@ -1121,7 +1151,7 @@ def test_more_random_intents_with_stableswap():
     stablepool_btc = StableSwapPoolState(
         tokens=sp_btc_tokens,
         amplification=1000,
-        trade_fee=0.0,
+        trade_fee=0.0005,
         unique_id="2-Pool-btc"
     )
 
@@ -1185,6 +1215,8 @@ def test_more_random_intents_with_stableswap():
 
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
     intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
+    z_l_archive = x[2]
+    z_u_archive = x[3]
     # valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas)
 
