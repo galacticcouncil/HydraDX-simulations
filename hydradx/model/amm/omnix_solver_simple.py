@@ -907,14 +907,14 @@ def _find_solution_unrounded(
             # if approx is linear, we need to apply some constraints to x_i, y_i
             A4i_bounds = np.zeros((4, k))
             b4i_bounds = np.zeros(4)
-            # y_i is bounded by [-lrna[tkn]/2, lrna[tkn]/2]
-            max_lrna_delta = p.omnipool.lrna[tkn] / 2
+            # y_i is bounded by 2e-6 * [-lrna[tkn], lrna[tkn]]
+            max_lrna_delta = 2e-6 * p.omnipool.lrna[tkn]
             A4i_bounds[0, i] = 1
             b4i_bounds[0] = max_lrna_delta
             A4i_bounds[1, i] = -1
             b4i_bounds[1] = max_lrna_delta
-            # x_i is bounded by [-liquidity[tkn]/2, liquidity[tkn]/2]
-            max_asset_delta = p.omnipool.liquidity[tkn] / 2
+            # x_i is bounded by 2e-6 * [-liquidity[tkn], liquidity[tkn]]
+            max_asset_delta = 2e-6 * p.omnipool.liquidity[tkn]
             A4i_bounds[2, n + i] = 1
             b4i_bounds[2] = max_asset_delta
             A4i_bounds[3, n + i] = -1
@@ -1122,34 +1122,29 @@ def _find_good_solution_unrounded(
             omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
             approx_adjusted_ct = 0
             for tkn in p.omnipool.asset_list:
-                if force_omnipool_approx[tkn] == "linear":
-                    if omnipool_pcts[tkn] > 1e-3:  # don't actually want to force linear approximation
-                        force_omnipool_approx[tkn] = "full"
-                        approx_adjusted_ct += 1
-                    elif omnipool_pcts[tkn] > 2e-6:  # don't actually want to force linear approximation
-                        force_omnipool_approx[tkn] = "quadratic"
-                        approx_adjusted_ct += 1
-                elif force_omnipool_approx[tkn] == "quadratic":
-                    if omnipool_pcts[tkn] > 2e-3:  # don't actually want to force linear approximation
-                        force_omnipool_approx[tkn] = "full"
-                        approx_adjusted_ct += 1
-                    elif omnipool_pcts[tkn] <= 1e-6:  # force linear
-                        force_omnipool_approx[tkn] = "linear"
-                        approx_adjusted_ct += 1
-                else:
-                    if omnipool_pcts[tkn] <= 1e-6:  # force linear
-                        force_omnipool_approx[tkn] = "linear"
-                        approx_adjusted_ct += 1
-                    elif omnipool_pcts[tkn] <= 1e-3:  # force quadratic
-                        force_omnipool_approx[tkn] = "quadratic"
-                        approx_adjusted_ct += 1
+                if force_omnipool_approx[tkn] == "linear" and omnipool_pcts[tkn] > 1e-6:
+                    force_omnipool_approx[tkn] = "quadratic"  # don't actually want to force linear approximation
+                    approx_adjusted_ct += 1
+                if force_omnipool_approx[tkn] == "quadratic" and omnipool_pcts[tkn] > 1e-3:
+                    force_omnipool_approx[tkn] = "full"  # don't actually want to force quadratic approximation
+                    approx_adjusted_ct += 1
+                    # elif omnipool_pcts[tkn] <= 1e-6:  # force linear
+                    #     force_omnipool_approx[tkn] = "linear"
+                    #     approx_adjusted_ct += 1
+                # else:
+                #     if omnipool_pcts[tkn] <= 1e-6:  # force linear
+                #         force_omnipool_approx[tkn] = "linear"
+                #         approx_adjusted_ct += 1
+                #     elif omnipool_pcts[tkn] <= 1e-3:  # force quadratic
+                #         force_omnipool_approx[tkn] = "quadratic"
+                #         approx_adjusted_ct += 1
 
             stableswap_pcts = []
-            for i, amm in enumerate(p.amm_list):
-                pcts = [abs(amm_deltas[i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-                sum_delta_x = sum([abs(amm_deltas[i][j + 1]) for j in range(len(amm.asset_list))])
+            for _i, amm in enumerate(p.amm_list):
+                pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
+                sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
                 pcts.append(sum_delta_x / amm.d)
-                pcts.extend([abs(amm_deltas[i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
+                pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
                 stableswap_pcts.append(pcts)
             for s, amm in enumerate(p.amm_list):
                 if force_amm_approx[s][0] == "linear" and max(stableswap_pcts[s][0], stableswap_pcts[s][1]) > 1e-5:
