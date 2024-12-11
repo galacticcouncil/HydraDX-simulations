@@ -1044,48 +1044,48 @@ def _find_good_solution_unrounded(
         trade_pcts = [1] * len(p.partial_sell_maxs)
     trade_pcts = trade_pcts + [1 for _ in range(r)]
     # adjust AMM constraint approximation based on percent of Omnipool liquidity traded with AMM
-    omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
-    stableswap_pcts = []
-    for i, amm in enumerate(p.amm_list):
-        pcts = [abs(amm_deltas[i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-        sum_delta_x = sum([abs(amm_deltas[i][j+1]) for j in range(len(amm.asset_list))])
-        # sum_x_0 = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
-        # delta_D = amm.d / amm.shares * amm_deltas[i][0]
-        # assert sum_delta_x - delta_D >= 0
-        # assert sum_x_0 - amm.d >= 0
-        # second shares size constraint, (sum delta_x - delta_D) / (sum x_0 - D_0 + D_0/ann) <= epsilon
-        # second shares size constraint, sum_delta_x / D_0 <= epsilon
-        pcts.append(sum_delta_x / amm.d)
-        pcts.extend([abs(amm_deltas[i][j+1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-        stableswap_pcts.append(pcts)
+    # omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
+    # stableswap_pcts = []
+    # for i, amm in enumerate(p.amm_list):
+    #     pcts = [abs(amm_deltas[i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
+    #     sum_delta_x = sum([abs(amm_deltas[i][j+1]) for j in range(len(amm.asset_list))])
+    #     # sum_x_0 = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
+    #     # delta_D = amm.d / amm.shares * amm_deltas[i][0]
+    #     # assert sum_delta_x - delta_D >= 0
+    #     # assert sum_x_0 - amm.d >= 0
+    #     # second shares size constraint, (sum delta_x - delta_D) / (sum x_0 - D_0 + D_0/ann) <= epsilon
+    #     # second shares size constraint, sum_delta_x / D_0 <= epsilon
+    #     pcts.append(sum_delta_x / amm.d)
+    #     pcts.extend([abs(amm_deltas[i][j+1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
+    #     stableswap_pcts.append(pcts)
 
-    force_omnipool_approx = None
-    force_amm_approx = None
+    # force_omnipool_approx = None
+    # force_amm_approx = None
     approx_adjusted_ct = 0
-    if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:
-        force_omnipool_approx = {tkn: "full" for tkn in p.omnipool.asset_list}
+    if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update force_amm_approx if necessary
+        omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
         for tkn in p.omnipool.asset_list:
-            if omnipool_pcts[tkn] <= 1e-6:
-                force_omnipool_approx[tkn] = "linear"
-            elif omnipool_pcts[tkn] <= 1e-3:
-                force_omnipool_approx[tkn] = "quadratic"
+            if force_omnipool_approx[tkn] == "linear" and omnipool_pcts[tkn] > 1e-6:
+                force_omnipool_approx[tkn] = "quadratic"  # don't actually want to force linear approximation
                 approx_adjusted_ct += 1
-            else:
-                force_omnipool_approx[tkn] = "full"
+            if force_omnipool_approx[tkn] == "quadratic" and omnipool_pcts[tkn] > 1e-3:
+                force_omnipool_approx[tkn] = "full"  # don't actually want to force quadratic approximation
                 approx_adjusted_ct += 1
 
-        force_amm_approx = [["full" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
+        stableswap_pcts = []
+        for _i, amm in enumerate(p.amm_list):
+            pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
+            sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
+            pcts.append(sum_delta_x / amm.d)
+            pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
+            stableswap_pcts.append(pcts)
         for s, amm in enumerate(p.amm_list):
-            if max(stableswap_pcts[s][0], stableswap_pcts[s][1]) <= 1e-5:  # evaluate shares constraint
-                force_amm_approx[s][0] = "linear"
-            else:
+            if force_amm_approx[s][0] == "linear" and max(stableswap_pcts[s][0], stableswap_pcts[s][1]) > 1e-5:
                 force_amm_approx[s][0] = "full"
                 approx_adjusted_ct += 1
             for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                if stableswap_pcts[s][j+2] <= 1e-5:
-                    force_amm_approx[s][j+1] = "linear"
-                else:
-                    force_amm_approx[s][j+1] = "full"
+                if force_amm_approx[s][j + 1] == "linear" and stableswap_pcts[s][j + 2] > 1e-5:
+                    force_amm_approx[s][j + 1] = "full"
                     approx_adjusted_ct += 1
 
     for i in range(100):
@@ -1168,7 +1168,8 @@ def _find_good_solution_unrounded(
         intent_deltas = [0] * m
         x = np.zeros(4 * n + m)
         obj, dual_obj = 0, 0
-        return omnipool_deltas, intent_deltas, x, obj, dual_obj, status
+        amm_deltas = [[0]*(len(amm.asset_list) + 1) for amm in p.amm_list]
+        return omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas
     # need to rescale, if we scaled solution down to solve it accurately
     x_unscaled = p.get_real_x(x)
     return omnipool_deltas, intent_deltas, x_unscaled, obj, dual_obj, status, amm_deltas
@@ -1329,7 +1330,7 @@ def _solve_inclusion_problem(
             for l, tkn in enumerate(amm.asset_list):
                 S_row[0, 4*n + offset + l + 1] = grads_i[l]
             grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[4*n + offset + l + 1] for l in range(len(amm.asset_list))])
-            sum_deltas = sum([B[offset + l] * x[4*n + offset + l + 1] for l in range(len(amm.asset_list))])
+            sum_deltas = sum([B[offset + l + 1] * x[4*n + offset + l + 1] for l in range(len(amm.asset_list))])
             g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
             S_row_upper = np.array([grad_dot_x + g_neg])
             S = np.vstack([S, S_row])
@@ -1387,9 +1388,9 @@ def _solve_inclusion_problem(
         A7[i, 4*n + sigma + i] = 1
     A7_upper = np.array([inf] * sigma)
     A7_lower = np.zeros(sigma)
-    A7 = np.zeros((0,k))
-    A7_upper = np.array([])
-    A7_lower = np.array([])
+    # A7 = np.zeros((0,k))
+    # A7_upper = np.array([])
+    # A7_lower = np.array([])
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
@@ -1408,6 +1409,9 @@ def _solve_inclusion_problem(
     A = np.vstack([old_A, S, A_amm, A3, A5, A7, A8])
     A_upper = np.concatenate([old_A_upper, S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper, A8_upper])
     A_lower = np.concatenate([old_A_lower, S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower, A8_lower])
+    # A = np.vstack([S, A_amm, A3, A5, A7, A8])
+    # A_upper = np.concatenate([S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper, A8_upper])
+    # A_lower = np.concatenate([S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower, A8_lower])
 
     nonzeros = []
     start = [0]
@@ -1479,6 +1483,12 @@ def _solve_inclusion_problem(
 
     score = -q @ x_expanded * scaling[p.tkn_profit]
 
+    x_correct = np.concatenate([x_list[0], np.zeros(r)])
+    A_times_x = A @ x_correct
+    A_upper_test = A_upper - A_times_x
+    A_lower_test = A_times_x - A_lower
+    upper_test = upper - x_correct
+    lower_test = x_correct - lower
     return new_omnipool_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, score, solution.value_valid, status, new_amm_deltas
 
 
