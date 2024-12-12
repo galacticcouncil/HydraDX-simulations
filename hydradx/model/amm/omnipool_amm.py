@@ -197,7 +197,7 @@ class OmnipoolState(Exchange):
                     tkn: value[tkn] if tkn in value else (
                         self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum
                     ) for tkn in self.asset_list},
-                liquidity=self.liquidity,
+                liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
         else:
@@ -205,7 +205,7 @@ class OmnipoolState(Exchange):
                 amplification=0,
                 decay=0,
                 current={tkn: value for tkn in self.asset_list},
-                liquidity=self.liquidity,
+                liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
 
