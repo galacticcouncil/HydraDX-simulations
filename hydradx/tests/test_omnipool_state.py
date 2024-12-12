@@ -50,12 +50,11 @@ def test_omnipool_constructor_last_fee_works():
             'USD': {'liquidity': 1000000, 'LRNA': 1000000 / 20},
             'DOT': {'liquidity': 1000000 / 5, 'LRNA': 1000000 / 20},
         },
-        oracles={'fee_raise': 50},
+        oracles={'price': 50},
         lrna_fee=0.0005,
         asset_fee=DynamicFee(
             minimum=0.0031,
             amplification=0.2,
-            raise_oracle_name='fee_raise',
             decay=0.00005,
             maximum=0.4,
             current={
