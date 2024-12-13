@@ -16,8 +16,8 @@ class DynamicFee:
         self,
         minimum: float = 0,
         maximum: float = float('inf'),
-        amplification: float = 1,
-        decay: float = 0.001,
+        amplification: float = 0,
+        decay: float = 0,
         # ^^ if these four are provided, we can figure the rest out.
         current: dict[str: float] = None,
         liquidity: dict = None,
@@ -191,8 +191,6 @@ class OmnipoolState(Exchange):
             return return_val
         elif isinstance(value, dict):
             return DynamicFee(
-                amplification=0,
-                decay=0,
                 current={
                     tkn: value[tkn] if tkn in value else (
                         self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum
@@ -202,8 +200,6 @@ class OmnipoolState(Exchange):
             )
         else:
             return DynamicFee(
-                amplification=0,
-                decay=0,
                 current={tkn: value for tkn in self.asset_list},
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
@@ -701,7 +697,7 @@ class OmnipoolState(Exchange):
         elif delta_qa > 0:
             # buying LRNA
             lrna_fee_total = delta_qa / (1 - lrna_fee) - delta_qa
-            lrna_fee_burn = delta_qa / (1 - (min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share))) - delta_qa
+            lrna_fee_burn = lrna_fee_total * (1 - (1 - min_lrna_fee / lrna_fee) * self.lp_lrna_share)
             delta_qi = -delta_qa - lrna_fee_total
             lp_deposit = lrna_fee_total - lrna_fee_burn
             if delta_qi + self.lrna[tkn] <= 0:
@@ -721,8 +717,8 @@ class OmnipoolState(Exchange):
             lrna_fee_burn = -delta_qi * (min_lrna_fee + (lrna_fee - min_lrna_fee) * (1 - self.lp_lrna_share))
             lp_deposit = lrna_fee_total - lrna_fee_burn
             delta_qa = -delta_qi - lrna_fee_total
-            self.lrna[tkn] += delta_qi
-            self.liquidity[tkn] -= delta_ra + lp_deposit
+            self.lrna[tkn] += delta_qi + lp_deposit
+            self.liquidity[tkn] -= delta_ra
 
         else:
             return self.fail_transaction('All deltas are zero.', agent)
