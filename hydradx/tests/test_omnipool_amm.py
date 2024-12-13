@@ -2099,6 +2099,37 @@ def test_add_and_remove_liquidity():
         raise
 
 
+@given(tkn_lrna=st.floats(min_value=100000, max_value=10000000))
+def test_calculate_sell_from_buy(tkn_lrna):
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {"liquidity": mpf(10000000), "LRNA": mpf(1000000)},
+            "USDT": {"liquidity": mpf(1000000), "LRNA": mpf(1000000)},
+            "TKN": {"liquidity": mpf(100000), "LRNA": mpf(tkn_lrna)}
+        },
+        lrna_fee=0.0005,
+        asset_fee=0.0025,
+    )
+    buy_quantity = 1
+    tkn_sell = 'TKN'
+    tkn_buy = 'USDT'
+    sell_quantity = omnipool.calculate_sell_from_buy(
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=1
+    )
+    buy_agent = Agent(holdings={tkn: 1000000 for tkn in omnipool.asset_list})
+    buy_state = omnipool.copy().swap(
+        agent=buy_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+    actual_sell_quantity = buy_agent.initial_holdings[tkn_sell] - buy_agent.holdings[tkn_sell]
+    if actual_sell_quantity != pytest.approx(sell_quantity, rel=1e-20):
+        raise AssertionError(f'sell quantity {actual_sell_quantity} != calculated {sell_quantity}')
+
+
 def test_calculate_sell_from_buy_low_liq_sell_asset():
     tokens = {
         "HDX": {"liquidity": mpf(10000000), "LRNA": mpf(1000000)},
@@ -2377,15 +2408,17 @@ def test_lrna_swap_equivalency(lp_lrna_share):
         asset_fee={'HDX': 0.007, 'USD': 0.0025},
         lp_lrna_share=lp_lrna_share
     )
-    agent = Agent(holdings={'HDX': 1000000})
-    sell_quantity = 1
+    agent = Agent(holdings={'HDX': 1000000, 'LRNA': 0})
+    sell_quantity = 1000
     sell_agent = agent.copy()
     sell_state = initial_state.copy().swap(
         sell_quantity=sell_quantity,
         agent=sell_agent,
         tkn_sell='HDX',
         tkn_buy='LRNA'
-    ).swap(
+    )
+    mid_sell_agent = sell_agent.copy()
+    sell_state.swap(
         sell_quantity=sell_agent.holdings['LRNA'],
         agent=sell_agent,
         tkn_buy='USD',
@@ -2400,18 +2433,32 @@ def test_lrna_swap_equivalency(lp_lrna_share):
     )
     buy_quantity = direct_sell_agent.holdings['USD']
     if sell_state.liquidity['USD'] != pytest.approx(direct_sell_state.liquidity['USD'], rel=1e-12):
-        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
-    if sell_state.lrna['HDX'] != pytest.approx(direct_sell_state.lrna['HDX'], rel=1e-12):
-        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (USD liquidity).")
+    elif sell_state.lrna['USD'] != pytest.approx(direct_sell_state.lrna['USD'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (USD LRNA).")
+    elif sell_state.lrna['HDX'] != pytest.approx(direct_sell_state.lrna['HDX'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (HDX LRNA).")
+    elif sell_state.liquidity['HDX'] != pytest.approx(direct_sell_state.liquidity['HDX'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (HDX liquidity).")
+    elif sell_agent.holdings['USD'] != pytest.approx(direct_sell_agent.holdings['USD'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (agent USD).")
+    elif sell_agent.holdings['HDX'] != pytest.approx(direct_sell_agent.holdings['HDX'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (agent HDX).")
+    elif sell_agent.holdings['LRNA'] != pytest.approx(direct_sell_agent.holdings['LRNA'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (agent LRNA).")
+    elif direct_sell_state.fail:
+        raise AssertionError("Sell failed.")
+    else:
+        er = 'no problem'
 
     buy_agent = agent.copy()
     buy_state = initial_state.copy().swap(
-        buy_quantity=1,
+        buy_quantity=mid_sell_agent.holdings['LRNA'],
         agent=buy_agent,
         tkn_sell='HDX',
         tkn_buy='LRNA'
     ).swap(
-        buy_quantity=initial_state.calculate_sell_from_buy('USD', 'HDX', 1),
+        buy_quantity=buy_quantity,
         agent=buy_agent,
         tkn_buy='USD',
         tkn_sell='LRNA'
@@ -2425,9 +2472,23 @@ def test_lrna_swap_equivalency(lp_lrna_share):
         buy_quantity=buy_quantity
     )
     if buy_state.liquidity['USD'] != pytest.approx(direct_buy_state.liquidity['USD'], rel=1e-12):
-        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
-    if buy_state.lrna['HDX'] != pytest.approx(direct_buy_state.lrna['HDX'], rel=1e-12):
-        raise AssertionError("Direct swap was not equivalent to LRNA swap.")
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (USD liquidity).")
+    elif buy_state.lrna['USD'] != pytest.approx(direct_buy_state.lrna['USD'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (USD LRNA).")
+    elif buy_state.liquidity['HDX'] != pytest.approx(direct_buy_state.liquidity['HDX'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (HDX liquidity).")
+    elif buy_state.lrna['HDX'] != pytest.approx(direct_buy_state.lrna['HDX'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (HDX lrna).")
+    elif buy_agent.holdings['USD'] != pytest.approx(direct_buy_agent.holdings['USD'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (agent USD).")
+    elif buy_agent.holdings['HDX'] != pytest.approx(direct_buy_agent.holdings['HDX'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (agent HDX).")
+    elif buy_agent.holdings['LRNA'] != pytest.approx(direct_buy_agent.holdings['LRNA'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (agent LRNA).")
+    elif direct_buy_state.fail:
+        raise AssertionError("Buy failed.")
+    else:
+        er = 'no problem'
 
 
 def test_cash_out_omnipool_exact():
