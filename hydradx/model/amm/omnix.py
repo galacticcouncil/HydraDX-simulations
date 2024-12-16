@@ -340,6 +340,8 @@ def execute_solution(
     # transfer assets out to intent agents
     for transfer in transfers:
         if transfer['buy_quantity'] > 0:
+            if transfer['tkn_buy'] not in pool_agent.holdings:
+                pool_agent.holdings[transfer['tkn_buy']] = 0
             pool_agent.holdings[transfer['tkn_buy']] -= transfer['buy_quantity']
             if transfer['tkn_buy'] not in transfer['agent'].holdings:
                 transfer['agent'].holdings[transfer['tkn_buy']] = 0
@@ -358,7 +360,7 @@ def execute_solution(
             tkn = tkns_to_sell.pop()
             if pool_agent.holdings[tkn] > 0:
                 if tkn in omnipool.asset_list:
-                    omnipool.swap(pool_agent, exit_to, tkn, sell_quantity=pool_agent.holdings[tkn])
+                    omnipool.swap(pool_agent, tkn_buy=exit_to, tkn_sell=tkn, sell_quantity=pool_agent.holdings[tkn])
                     if pool_agent.holdings[tkn] > 0:
                         tkns_stuck.append(tkn)
                 else:
@@ -392,7 +394,7 @@ def execute_solution(
             tkn = tkns_to_buy.pop()
             if pool_agent.holdings[tkn] < 0:
                 if tkn in omnipool.asset_list:
-                    omnipool.swap(pool_agent, tkn, exit_to, buy_quantity=-pool_agent.holdings[tkn])
+                    omnipool.swap(pool_agent, tkn_buy=tkn, tkn_sell=exit_to, buy_quantity=-pool_agent.holdings[tkn])
                     if pool_agent.holdings[tkn] < 0:
                         tkns_stuck.append(tkn)
                 else:

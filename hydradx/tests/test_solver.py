@@ -19,6 +19,10 @@ from hydradx.model.amm.omnix_solver_simple import find_solution, \
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
 
+#######################
+# Omnipool only tests #
+#######################
+
 def test_single_trade_settles():
     agents = [Agent(holdings={'DOT': 100, 'LRNA': 750})]
 
@@ -86,9 +90,11 @@ def test_single_trade_settles():
     assert intent_deltas[0][1] == init_intents_full_lrna[0]['buy_quantity']
 
 
-    # tkn_sell, tkn_buy = "DOT", "WETH"
-    # size_factor = 0.001  # pct of total liquidity that is being traded
-    # partial = True
+
+###############
+# Other tests #
+###############
+
 # @reproduce_failure('6.39.6', b'AAEZHfyXOrk=')
 @given(st.floats(min_value=1e-7, max_value=0.01))
 @settings(verbosity=Verbosity.verbose, print_blob=True)

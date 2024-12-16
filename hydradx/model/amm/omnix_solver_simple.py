@@ -1226,7 +1226,7 @@ def _find_good_solution(
     # zero out rounding errors
     for i in range(n):
         tkn = p.omnipool.asset_list[i]
-        if min(abs(x_unscaled[i] / p.omnipool.lrna[tkn]), abs(x_unscaled[2 * n + i] / p.omnipool.liquidity[tkn])) < 1e-11:
+        if min(abs(x_unscaled[i] / p.omnipool.lrna[tkn]), abs(x_unscaled[n + i] / p.omnipool.liquidity[tkn])) < 1e-11:
             x_unscaled[i] = 0
             x_unscaled[n + i] = 0
             x_unscaled[2 * n + i] = 0
