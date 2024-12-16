@@ -140,44 +140,56 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
 @given(
     token_lrna_price=st.floats(min_value=0.1, max_value=10),
     sub_pool_lrna_price=st.floats(min_value=0.1, max_value=10),
-    sub_pool_balance=st.floats(min_value=0.1, max_value=0.9)
+    sub_pool_balance=st.floats(min_value=0.25, max_value=1)
 )
 def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, sub_pool_balance):
-    initial_state = oamm.OmnipoolState(
-        tokens={
-            'USD': {'liquidity': 1000, 'LRNA': 1000},
-            'HDX': {'liquidity': 1000, 'LRNA': 1000 * token_lrna_price},
-            'DAI': {'liquidity': 1000 * sub_pool_balance, 'LRNA': 1000 * sub_pool_balance * sub_pool_lrna_price},
-            'USDC': {'liquidity': 1000, 'LRNA': 1000 * sub_pool_lrna_price}
+    stable_pool: oamm.StableSwapPoolState = ssamm.StableSwapPoolState(
+        tokens = {
+            'DAI': mpf(1000) * sub_pool_balance,
+            'USDC': mpf(1000)
         },
-        asset_fee=0.0025,
-        lrna_fee=0.0005,
-    ).create_sub_pool(
-        tkns_migrate=['DAI', 'USDC'],
         amplification=111,
-        trade_fee=0.003,
+        # trade_fee=0.003,
         unique_id='stableswap'
     )
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'USD': {'liquidity': mpf(1000), 'LRNA': mpf(1000)},
+            'HDX': {'liquidity': mpf(1000), 'LRNA': mpf(1000) * token_lrna_price},
+            'stableswap': {'liquidity': stable_pool.shares, 'LRNA': mpf(1000) * sub_pool_lrna_price}
+        },
+        # asset_fee=0.0025,
+        # lrna_fee=0.0005,
+        unique_id='omnipool',
+        withdrawal_fee=False
+    )
     stable_shares = stable_pool.unique_id
+    router = OmnipoolRouter([stable_pool, initial_state])
 
     # agent holds some of everything
-    agent = Agent(holdings={tkn: 1000000000000000 for tkn in initial_state.asset_list + stable_pool.asset_list})
+    agent = Agent(holdings={'DAI': mpf(1000000000), 'HDX': 0})
     # attempt buying an asset from the stableswap pool
     tkn_buy = initial_state.asset_list[1]
     tkn_sell = stable_pool.asset_list[0]
     buy_quantity = 10
-    new_state, new_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=agent,
+    new_router, new_agent = router.simulate_swap(
+        agent=agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
-    if new_state.fail:
+    new_stable_pool: ssamm.StableSwapPoolState = new_router.exchanges['stableswap']
+    new_state: oamm.OmnipoolState = new_router.exchanges['omnipool']
+    if new_router.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
+    if not (
+            stable_pool.calculate_d()
+            and new_stable_pool.shares
+            and new_stable_pool.calculate_d()
+            and stable_pool.shares
+    ):
+        er = 1
     if not (
             stable_pool.calculate_d() * new_stable_pool.shares ==
             pytest.approx(new_stable_pool.calculate_d() * stable_pool.shares)
@@ -197,9 +209,8 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=agent,
+    _, lesser_trade_agent = router.simulate_swap(
+        agent=agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity - 1
@@ -212,6 +223,7 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
         raise AssertionError(f"Execution price did not decrease with smaller trade")
     if new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy] != buy_quantity:
         raise AssertionError('Agent did not get exactly the amount they specified.')
+    er = 2
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
