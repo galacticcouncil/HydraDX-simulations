@@ -135,6 +135,13 @@ def execute_solution(
         if omnipool_deltas[tkn] < 0 and tkn != "LRNA":
             omnipool_deltas[tkn] *= 1 - omnipool.last_fee[tkn]
 
+    omnipool_deltas["LRNA"] = 0
+    for transfer in transfers:
+        if transfer['tkn_buy'] == "LRNA":
+            omnipool_deltas["LRNA"] -= transfer['buy_quantity']
+        elif transfer['tkn_sell'] == "LRNA":
+            omnipool_deltas["LRNA"] += transfer['sell_quantity']
+
     for i, ss in enumerate(stableswap_list):
         for j, tkn in enumerate(ss.asset_list):
             if stableswap_deltas[i][j+1] < 0:
@@ -146,9 +153,13 @@ def execute_solution(
     for i, ss in enumerate(stableswap_list):
         pool_deltas = stableswap_deltas[i]
         if stableswap_deltas[i][0] > 0:  # separate if statement prevents adding & withdrawing due to rounding issues
+            break_ct = 0
             while stableswap_deltas[i][0] > 0:  # need to add liquidity
+                break_ct += 1
+                if break_ct > 1000:
+                    raise
                 # construct list of tokens to add liquidity in
-                if max(stableswap_deltas[i][1:]) <= 0:
+                if max([stableswap_deltas[i][j+1]/ss.liquidity[tkn] for j, tkn in enumerate(ss.asset_list)]) <= 1e-11:
                     break  # can't add any more liquidity
                 tkns = []
                 highest_pct = 0
@@ -189,7 +200,11 @@ def execute_solution(
                         # burn excess minted assets
                         burn_excess(pool_agent, tkn, minted)
         elif stableswap_deltas[i][0] < 0:
+            break_ct = 0
             while stableswap_deltas[i][0] < 0:
+                break_ct += 1
+                if break_ct > 1000:
+                    raise
                 # construct list of tokens to remove liquidity in
                 if min(stableswap_deltas[i][1:]) >= 0:
                     break  # can't remove any more liquidity
@@ -369,7 +384,11 @@ def execute_solution(
 
         tkns_stuck = []
         tkns_to_buy = [tkn for tkn in pool_agent.holdings if pool_agent.holdings[tkn] < 0]
+        break_ct = 0
         while len(tkns_to_buy) > 0:  # then, buy missing tokens
+            break_ct += 1
+            if break_ct > 1000:
+                raise
             tkn = tkns_to_buy.pop()
             if pool_agent.holdings[tkn] < 0:
                 if tkn in omnipool.asset_list:
