@@ -1873,7 +1873,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
             break
 
     if Z_U > 0 or best_status in ['PrimalInfeasible', 'DualInfeasible']:
-        best_omnipool_deltas = [0]*n
+        best_omnipool_deltas = {tkn: 0.0 for tkn in p.omnipool.asset_list}
         best_amm_deltas = [[0]*(len(amm.asset_list) + 1) for amm in amm_list]
         best_intent_deltas = [0]*m
         y_best = [0]*r
