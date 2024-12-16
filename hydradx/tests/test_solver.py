@@ -55,36 +55,36 @@ def test_single_trade_settles():
 
     intents = copy.deepcopy(init_intents_partial)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -init_intents_partial[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_partial[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_full)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -init_intents_full[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_full[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_partial_lrna)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -init_intents_partial_lrna[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_partial_lrna[0]['buy_quantity']
 
     intents = copy.deepcopy(init_intents_full_lrna)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -init_intents_full_lrna[0]['sell_quantity']
     assert intent_deltas[0][1] == init_intents_full_lrna[0]['buy_quantity']
@@ -122,36 +122,36 @@ def test_single_trade_does_not_settle():
 
     intents = copy.deepcopy(init_intents_partial)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_full)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_partial_lrna)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
 
     intents = copy.deepcopy(init_intents_full_lrna)
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-    omnipool_deltas = x[4]
-    amm_deltas = x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
     assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == 0
     assert intent_deltas[0][1] == 0
@@ -188,24 +188,24 @@ def test_matching_trades_execute_more():
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1)]
     x = find_solution_outer_approx(state_sale, intents_sale)
-    sale_deltas = x[0]
-    omnipool_deltas = x[4]
+    sale_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
     assert validate_and_execute_solution(state_sale, [], intents_sale, sale_deltas, omnipool_deltas, [], "HDX")
 
     # do the DOT buy alone
     state_buy = initial_state.copy()
     intents_buy = [copy.deepcopy(intent2)]
     x = find_solution_outer_approx(state_buy, intents_buy)
-    buy_deltas = x[0]
-    omnipool_deltas = x[4]
+    buy_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
     assert validate_and_execute_solution(state_buy, [], intents_buy, buy_deltas, omnipool_deltas, [], "HDX")
 
     # do both trades together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1), copy.deepcopy(intent2)]
     x = find_solution_outer_approx(state_match, intents_match)
-    match_deltas = x[0]
-    omnipool_deltas = x[4]
+    match_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
     assert validate_and_execute_solution(state_match, [], intents_match, match_deltas, omnipool_deltas, [], "HDX")
 
     # check that matching trades caused more execution than executing either alone
@@ -218,16 +218,16 @@ def test_matching_trades_execute_more():
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1_lrna)]
     x = find_solution_outer_approx(state_sale, intents_sale)
-    sale_deltas = x[0]
-    omnipool_deltas = x[4]
+    sale_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
     assert validate_and_execute_solution(state_sale, [], intents_sale, sale_deltas, omnipool_deltas, [], "HDX")
 
     # do both LRNA sale & DOT buy together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
     x = find_solution_outer_approx(state_match, intents_match)
-    match_deltas = x[0]
-    omnipool_deltas = x[4]
+    match_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
     assert validate_and_execute_solution(state_match, [], intents_match, match_deltas, omnipool_deltas, [], "HDX")
 
     # check that matching trades caused more execution than executing either alone
@@ -236,6 +236,85 @@ def test_matching_trades_execute_more():
     assert abs(match_deltas[0][0]) > abs(sale_deltas[0][0])
     assert abs(match_deltas[1][0]) > abs(buy_deltas[0][0])
 
+
+def test_matching_trades_execute_more_full_execution():
+    agents = [Agent(holdings={'DOT': 1000, 'LRNA': 7500}), Agent(holdings={'USDT': 7600})]
+
+    intent1 = {  # selling DOT for $7.49
+        'sell_quantity': mpf(1000), 'buy_quantity': mpf(7470), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False
+    }
+
+    intent2 = {  # buying DOT for $7.51
+        'sell_quantity': mpf(7530), 'buy_quantity': mpf(1000), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': False
+    }
+
+    intent1_lrna = {  # selling DOT for $7.49
+        'sell_quantity': mpf(7500), 'buy_quantity': mpf(7480), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False
+    }
+
+    liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}  # DOT price is $7.50
+    lrna = {'HDX': mpf(1000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000)}
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    # do the DOT sale alone
+    state_sale = initial_state.copy()
+    intents_sale = [copy.deepcopy(intent1)]
+    x = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    assert validate_and_execute_solution(state_sale, [], intents_sale, sale_deltas, omnipool_deltas, [], "HDX")
+
+    # do the DOT buy alone
+    state_buy = initial_state.copy()
+    intents_buy = [copy.deepcopy(intent2)]
+    x = find_solution_outer_approx(state_buy, intents_buy)
+    buy_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    assert validate_and_execute_solution(state_buy, [], intents_buy, buy_deltas, omnipool_deltas, [], "HDX")
+
+    # do both trades together
+    state_match = initial_state.copy()
+    intents_match = [copy.deepcopy(intent1), copy.deepcopy(intent2)]
+    x = find_solution_outer_approx(state_match, intents_match)
+    match_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    assert validate_and_execute_solution(state_match, [], intents_match, match_deltas, omnipool_deltas, [], "HDX")
+
+    # check that matching trades caused more execution than executing either alone
+    assert abs(sale_deltas[0][0]) == 0
+    assert abs(buy_deltas[0][0]) == 0
+    assert abs(match_deltas[0][0]) > 0
+    assert abs(match_deltas[1][0]) > 0
+
+    # do the LRNA sale alone
+    state_sale = initial_state.copy()
+    intents_sale = [copy.deepcopy(intent1_lrna)]
+    x = find_solution_outer_approx(state_sale, intents_sale)
+    sale_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    assert validate_and_execute_solution(state_sale, [], intents_sale, sale_deltas, omnipool_deltas, [], "HDX")
+
+    # do both LRNA sale & DOT buy together
+    state_match = initial_state.copy()
+    intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
+    x = find_solution_outer_approx(state_match, intents_match)
+    match_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    assert validate_and_execute_solution(state_match, [], intents_match, match_deltas, omnipool_deltas, [], "HDX")
+
+    # check that matching trades caused more execution than executing either alone
+    assert abs(sale_deltas[0][0]) == 0
+    assert abs(buy_deltas[0][0]) == 0
+    assert abs(match_deltas[0][0]) > 0
+    assert abs(match_deltas[1][0]) > 0
 
 
 ###############
@@ -359,80 +438,6 @@ def test_fuzz_single_trade_settles(size_factor: float):
 
     assert valid
 
-
-def test_matching_trades_execute_more_full_execution():
-    agents = [Agent(holdings={'DOT': 1000, 'LRNA': 7500}), Agent(holdings={'USDT': 7600})]
-
-    intent1 = {  # selling DOT for $7.49
-        'sell_quantity': mpf(1000), 'buy_quantity': mpf(7470), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False
-    }
-
-    intent2 = {  # buying DOT for $7.51
-        'sell_quantity': mpf(7530), 'buy_quantity': mpf(1000), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': False
-    }
-
-    intent1_lrna = {  # selling DOT for $7.49
-        'sell_quantity': mpf(7500), 'buy_quantity': mpf(7480), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False
-    }
-
-    liquidity = {'HDX': mpf(100000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000/7.5)}  # DOT price is $7.50
-    lrna = {'HDX': mpf(1000000), 'USDT': mpf(10000000), 'DOT': mpf(10000000)}
-    initial_state = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
-        },
-        asset_fee=mpf(0.0025),
-        lrna_fee=mpf(0.0005)
-    )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
-
-    # do the DOT sale alone
-    state_sale = initial_state.copy()
-    intents_sale = [copy.deepcopy(intent1)]
-    x = find_solution_outer_approx(state_sale, intents_sale)
-    sale_deltas = x[0]
-    assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
-
-    # do the DOT buy alone
-    state_buy = initial_state.copy()
-    intents_buy = [copy.deepcopy(intent2)]
-    x = find_solution_outer_approx(state_buy, intents_buy)
-    buy_deltas = x[0]
-    assert validate_and_execute_solution(state_buy, intents_buy, buy_deltas)
-
-    # do both trades together
-    state_match = initial_state.copy()
-    intents_match = [copy.deepcopy(intent1), copy.deepcopy(intent2)]
-    x = find_solution_outer_approx(state_match, intents_match)
-    match_deltas = x[0]
-    assert validate_and_execute_solution(state_match, intents_match, match_deltas)
-
-    # check that matching trades caused more execution than executing either alone
-    assert abs(sale_deltas[0][0]) == 0
-    assert abs(buy_deltas[0][0]) == 0
-    assert abs(match_deltas[0][0]) > 0
-    assert abs(match_deltas[1][0]) > 0
-
-    # do the LRNA sale alone
-    state_sale = initial_state.copy()
-    intents_sale = [copy.deepcopy(intent1_lrna)]
-    x = find_solution_outer_approx(state_sale, intents_sale)
-    sale_deltas = x[0]
-    assert validate_and_execute_solution(state_sale, intents_sale, sale_deltas)
-
-    # do both LRNA sale & DOT buy together
-    state_match = initial_state.copy()
-    intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
-    x = find_solution_outer_approx(state_match, intents_match)
-    match_deltas = x[0]
-    assert validate_and_execute_solution(state_match, intents_match, match_deltas)
-
-    # check that matching trades caused more execution than executing either alone
-    assert abs(sale_deltas[0][0]) == 0
-    assert abs(buy_deltas[0][0]) == 0
-    assert abs(match_deltas[0][0]) > 0
-    assert abs(match_deltas[1][0]) > 0
 
 def test_convex():
 

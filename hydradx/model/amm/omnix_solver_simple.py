@@ -1890,7 +1890,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
         deltas[p.partial_intent_indices[i]] = partial_deltas_with_buys[i]
     for i in range(len(p.full_intent_indices)):
         deltas[p.full_intent_indices[i]] = full_deltas_with_buys[i]
-    return deltas, -Z_U, Z_L_archive, Z_U_archive, best_omnipool_deltas, best_amm_deltas
+    return {'deltas': deltas, 'profit': -Z_U, 'Z_L': Z_L_archive, 'Z_U': Z_U_archive, 'omnipool_deltas': best_omnipool_deltas, 'amm_deltas': best_amm_deltas}
     # TODO: reimplement
     # deltas_final, obj = add_small_trades(p, deltas)
     # return deltas_final, -obj, Z_L_archive, Z_U_archive
