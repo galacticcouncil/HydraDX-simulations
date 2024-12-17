@@ -1583,8 +1583,6 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
 def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
                                   oracle_volume_in: list[float], oracle_volume_out: list[float],
                                   oracle_prices: list[float], n):
-    lrna_fees = [0.0005, 0.0010, 0.0050]
-    asset_fees = [0.01, 0.0025, 0.0040]
 
     init_liquidity = {
         'HDX': {'liquidity': liquidity[0], 'LRNA': lrna[0]},
@@ -1600,15 +1598,15 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
     }
 
     init_lrna_fees = {
-        'HDX': lrna_fees[0],
-        'USD': lrna_fees[1],
-        'DOT': lrna_fees[2],
+        'HDX': 0.0005,
+        'USD': 0.0010,
+        'DOT': 0.0050,
     }
 
     init_asset_fees = {
-        'HDX': asset_fees[0],
-        'USD': asset_fees[1],
-        'DOT': asset_fees[2],
+        'HDX': 0.01,
+        'USD': 0.0025,
+        'DOT': 0.0040,
     }
 
     asset_fee_params = {
@@ -1635,19 +1633,20 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
             amplification=asset_fee_params['amplification'],
             decay=asset_fee_params['decay'],
             maximum=asset_fee_params['fee_max'],
-            current=copy.deepcopy(init_lrna_fees)
+            current=copy.deepcopy(init_asset_fees)
         ),
         lrna_fee=DynamicFee(
             minimum=lrna_fee_params['minimum'],
             amplification=lrna_fee_params['amplification'],
             decay=lrna_fee_params['decay'],
             maximum=lrna_fee_params['fee_max'],
-            current=copy.deepcopy(init_asset_fees)
+            current=copy.deepcopy(init_lrna_fees)
         ),
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        lp_lrna_share=0
+        lp_lrna_share=0,
+        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
     initial_state = GlobalState(
@@ -1742,19 +1741,20 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
             amplification=asset_fee_params['amplification'],
             decay=asset_fee_params['decay'],
             maximum=asset_fee_params['fee_max'],
-            current=copy.deepcopy(init_lrna_fees)
+            current=copy.deepcopy(init_asset_fees)
         ),
         lrna_fee=DynamicFee(
             minimum=lrna_fee_params['minimum'],
             amplification=lrna_fee_params['amplification'],
             decay=lrna_fee_params['decay'],
             maximum=lrna_fee_params['fee_max'],
-            current=copy.deepcopy(init_asset_fees)
+            current=copy.deepcopy(init_lrna_fees)
         ),
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        lp_lrna_share=0
+        lp_lrna_share=0,
+        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
     trader_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
@@ -1774,11 +1774,11 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         }
     )
 
-    events = run.run(initial_state=initial_state, time_steps=2, silent=True)
+    events = run.run(initial_state=initial_state, time_steps=3, silent=True)
 
     # test non-empty block fee dynamics
 
-    omnipool = events[1].pools['omnipool']
+    omnipool = events[2].pools['omnipool']
     prev_lrna_fees = events[0].pools['omnipool'].last_lrna_fee
     prev_asset_fees = events[0].pools['omnipool'].last_fee
     omnipool_oracle = omnipool.oracles['price']
@@ -2099,7 +2099,7 @@ def test_add_and_remove_liquidity():
         raise
 
 
-@given(tkn_lrna=st.floats(min_value=100000, max_value=10000000))
+@given(tkn_lrna=st.floats(min_value=1000, max_value=10000000))
 def test_calculate_sell_from_buy(tkn_lrna):
     omnipool = OmnipoolState(
         tokens={
@@ -2119,14 +2119,14 @@ def test_calculate_sell_from_buy(tkn_lrna):
         buy_quantity=1
     )
     buy_agent = Agent(holdings={tkn: 1000000 for tkn in omnipool.asset_list})
-    buy_state = omnipool.copy().swap(
+    omnipool.copy().swap(
         agent=buy_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity
     )
     actual_sell_quantity = buy_agent.initial_holdings[tkn_sell] - buy_agent.holdings[tkn_sell]
-    if actual_sell_quantity != pytest.approx(sell_quantity, rel=1e-20):
+    if actual_sell_quantity != pytest.approx(sell_quantity, rel=1e-40):
         raise AssertionError(f'sell quantity {actual_sell_quantity} != calculated {sell_quantity}')
 
 
@@ -2400,15 +2400,21 @@ def test_fee_application():
         raise AssertionError("Direct swap was not equivalent to LRNA swap with fees applied manually.")
 
 
-@given(st.floats(min_value=0, max_value=1))
-def test_lrna_swap_equivalency(lp_lrna_share):
+@given(st.integers(min_value=1, max_value=10), st.integers(min_value=1, max_value=10))
+def test_lrna_swap_equivalency(lp_lrna_share, min_fee_fraction):
     initial_state = OmnipoolState(
-        tokens={'HDX': {'liquidity': 1000000, 'LRNA': 1000}, 'USD': {'liquidity': 3000, 'LRNA': 150}},
-        lrna_fee={'HDX': 0.0005, 'USD': 0.001},
-        asset_fee={'HDX': 0.007, 'USD': 0.0025},
-        lp_lrna_share=lp_lrna_share
+        tokens={'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000)}, 'USD': {'liquidity': mpf(3000), 'LRNA': mpf(150)}},
+        lrna_fee=DynamicFee(
+            current={'HDX': mpf(1) / 2000, 'USD': mpf(1) / 1000},
+            minimum=mpf(1) / 2000 / min_fee_fraction
+        ),
+        asset_fee=DynamicFee(
+            current={'HDX': mpf(1) / 1000 * 7, 'USD': mpf(1) / 400}
+        ),
+        lp_lrna_share=mpf(1) / lp_lrna_share
     )
-    agent = Agent(holdings={'HDX': 1000000, 'LRNA': 0})
+
+    agent = Agent(holdings={'HDX': mpf(1000000), 'LRNA': mpf(0)})
     sell_quantity = 1000
     sell_agent = agent.copy()
     sell_state = initial_state.copy().swap(
