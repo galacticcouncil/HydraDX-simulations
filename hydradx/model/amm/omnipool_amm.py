@@ -193,7 +193,9 @@ class OmnipoolState(Exchange):
             return DynamicFee(
                 current={
                     tkn: value[tkn] if tkn in value else (
-                        self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum
+                        (self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum)
+                        if fee_type == 'lrna' else
+                        (self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum)
                     ) for tkn in self.asset_list},
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
@@ -697,7 +699,7 @@ class OmnipoolState(Exchange):
         elif delta_qa > 0:
             # buying LRNA
             lrna_fee_total = delta_qa / (1 - lrna_fee) - delta_qa
-            lrna_fee_burn = lrna_fee_total * (1 - (1 - min_lrna_fee / lrna_fee) * self.lp_lrna_share)
+            lrna_fee_burn = lrna_fee_total * (1 - (1 - min_lrna_fee / lrna_fee) * self.lp_lrna_share) if lrna_fee > 0 else 0
             delta_qi = -delta_qa - lrna_fee_total
             lp_deposit = lrna_fee_total - lrna_fee_burn
             if delta_qi + self.lrna[tkn] <= 0:
