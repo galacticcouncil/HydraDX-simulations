@@ -1673,22 +1673,21 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
 
 
 @given(
-    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
-    st.lists(asset_quantity_bounded_strategy, min_size=3, max_size=3),
-    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
-    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
-    st.lists(asset_quantity_strategy, min_size=3, max_size=3),
-    st.lists(asset_price_strategy, min_size=2, max_size=2),
-    st.integers(min_value=10, max_value=1000),
-    st.floats(min_value=-1000, max_value=1000),
-    st.lists(st.floats(min_value=0.0005, max_value=0.10), min_size=3, max_size=3),
-    st.lists(st.floats(min_value=0.0025, max_value=0.40), min_size=3, max_size=3),
-    st.lists(st.floats(min_value=0.001, max_value=100), min_size=2, max_size=2),
-    st.lists(st.floats(min_value=0.000001, max_value=0.0001), min_size=2, max_size=2),
+    liquidity=st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    lrna=st.lists(asset_quantity_bounded_strategy, min_size=3, max_size=3),
+    oracle_liquidity=st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    oracle_volume_in=st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    oracle_volume_out=st.lists(asset_quantity_strategy, min_size=3, max_size=3),
+    oracle_period=st.integers(min_value=10, max_value=1000),
+    trade_size=st.floats(min_value=-1000, max_value=1000),
+    lrna_fees=st.lists(st.floats(min_value=0.0005, max_value=0.10), min_size=3, max_size=3),
+    asset_fees=st.lists(st.floats(min_value=0.0025, max_value=0.40), min_size=3, max_size=3),
+    amp=st.lists(st.floats(min_value=0.001, max_value=100), min_size=2, max_size=2),
+    decay=st.lists(st.floats(min_value=0.000001, max_value=0.0001), min_size=2, max_size=2),
 )
 def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
-                                 oracle_prices: list[float], n, trade_size: float, lrna_fees: list[float],
+                                 oracle_period, trade_size: float, lrna_fees: list[float],
                                  asset_fees: list[float], amp: list[float], decay: list[float]):
     assume(trade_size != 0)
     init_liquidity = {
@@ -1701,7 +1700,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         'liquidity': {'HDX': oracle_liquidity[0], 'USD': oracle_liquidity[1], 'DOT': oracle_liquidity[2]},
         'volume_in': {'HDX': oracle_volume_in[0], 'USD': oracle_volume_in[1], 'DOT': oracle_volume_in[2]},
         'volume_out': {'HDX': oracle_volume_out[0], 'USD': oracle_volume_out[1], 'DOT': oracle_volume_out[2]},
-        'price': {'HDX': oracle_prices[0], 'USD': 1, 'DOT': oracle_prices[1]},
+        'price': {'HDX': 1, 'USD': 1, 'DOT': 1},  # this is not relevant to the fee calculation
     }
 
     init_lrna_fees = {
@@ -1734,7 +1733,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
     initial_omnipool = oamm.OmnipoolState(
         tokens=copy.deepcopy(init_liquidity),
         oracles={
-            'price': n
+            'price': oracle_period
         },
         asset_fee=DynamicFee(
             minimum=asset_fee_params['minimum'],
@@ -1778,7 +1777,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
 
     # test non-empty block fee dynamics
 
-    omnipool = events[2].pools['omnipool']
+    omnipool = events[1].pools['omnipool']
     prev_lrna_fees = events[0].pools['omnipool'].last_lrna_fee
     prev_asset_fees = events[0].pools['omnipool'].last_fee
     omnipool_oracle = omnipool.oracles['price']
