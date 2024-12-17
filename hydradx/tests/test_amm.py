@@ -190,7 +190,7 @@ def test_LP(initial_state: GlobalState):
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
-    if final_state.cash_out(final_state.agents['LP']) < initial_state.cash_out(initial_state.agents['LP']):
+    if final_state.cash_out('LP') < initial_state.cash_out('LP'):
         print('failed, lost money.')
         raise AssertionError('The LP lost money!')
     # print('test passed.')
@@ -476,14 +476,11 @@ def test_omnipool_arbitrage():
                     tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
                 },
                 oracles={
-                    'short': 10,
-                    'medium': 40,
-                    'long': 160
+                    'price': 40
                 },
                 lrna_fee=DynamicFee(
                     minimum=0.0025,
                     amplification=10,
-                    raise_oracle_name='medium',
                     decay=0.00001,
                     maximum=0.1,
                 ),
