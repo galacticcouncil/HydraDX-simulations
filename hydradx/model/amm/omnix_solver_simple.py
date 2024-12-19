@@ -941,24 +941,24 @@ def _find_solution_unrounded(
                 A4i[0, i] = -omnipool_lrna_coefs[tkn]
                 A4i[0, n+i] = -omnipool_asset_coefs[tkn] * c
                 cones4.append(cb.ZeroConeT(1))
-            # if approx is linear, we need to apply some constraints to x_i, y_i
-            A4i_bounds = np.zeros((4, k))
-            b4i_bounds = np.zeros(4)
-            # y_i is bounded by 2e-6 * [-lrna[tkn], lrna[tkn]]
-            max_lrna_delta = 2e-6 * p.omnipool.lrna[tkn]
-            A4i_bounds[0, i] = 1
-            b4i_bounds[0] = max_lrna_delta
-            A4i_bounds[1, i] = -1
-            b4i_bounds[1] = max_lrna_delta
-            # x_i is bounded by 2e-6 * [-liquidity[tkn], liquidity[tkn]]
-            max_asset_delta = 2e-6 * p.omnipool.liquidity[tkn]
-            A4i_bounds[2, n + i] = 1
-            b4i_bounds[2] = max_asset_delta
-            A4i_bounds[3, n + i] = -1
-            b4i_bounds[3] = max_asset_delta
-            A4i = np.vstack([A4i, A4i_bounds])
-            b4i = np.append(b4i, b4i_bounds)
-            cones4.append(cb.NonnegativeConeT(4))
+            # # if approx is linear, we need to apply some constraints to x_i, y_i
+            # A4i_bounds = np.zeros((4, k))
+            # b4i_bounds = np.zeros(4)
+            # # y_i is bounded by [-lrna[tkn], lrna[tkn]]/2
+            # max_lrna_delta = p.omnipool.lrna[tkn] / 2
+            # A4i_bounds[0, i] = 1
+            # b4i_bounds[0] = max_lrna_delta / p._scaling["LRNA"]
+            # A4i_bounds[1, i] = -1
+            # b4i_bounds[1] = max_lrna_delta / p._scaling["LRNA"]
+            # # x_i is bounded by [-liquidity[tkn], liquidity[tkn]]/2
+            # max_asset_delta = p.omnipool.liquidity[tkn] / 2
+            # A4i_bounds[2, n + i] = 1
+            # b4i_bounds[2] = max_asset_delta / p._scaling[tkn]
+            # A4i_bounds[3, n + i] = -1
+            # b4i_bounds[3] = max_asset_delta / p._scaling[tkn]
+            # A4i = np.vstack([A4i, A4i_bounds])
+            # b4i = np.append(b4i, b4i_bounds)
+            # cones4.append(cb.NonnegativeConeT(4))
         elif approx == "quadratic":  # quadratic approximation to in-given-out function
             A4i = np.zeros((3, k))
             A4i[1,i] = -omnipool_lrna_coefs[tkn]
@@ -1055,15 +1055,6 @@ def _find_solution_unrounded(
     obj_offset = objective_I_coefs @ I if I is not None else 0
     score = p.scale_obj_amt(solution.obj_val + obj_offset)
     dual_score = p.scale_obj_amt(solution.obj_val_dual + obj_offset)
-
-    # yi_correct = np.array([86.876-1.4047, 1.4047, -86.876])/p._scaling["LRNA"]
-    # xi_correct = np.array([-483000/p._scaling["HDX"], -100/p._scaling["CRU"], 204600/p._scaling["ZTG"]])
-    # lambdai_correct = np.array([max(0, -yi) for yi in yi_correct])
-    # lrna_lambdai_correct = np.array([max(0, -xi) for xi in xi_correct])
-    # x_correct = np.concatenate([yi_correct, xi_correct, lrna_lambdai_correct, lambdai_correct])
-    #
-    # Ax_corret = A @ x_correct
-
 
     return (new_omnipool_deltas, exec_intent_deltas, x_expanded, score, dual_score, str(solution.status), amm_deltas)
 
@@ -1422,7 +1413,8 @@ def _solve_inclusion_problem(
                 S_row[0, 4*n + offset] = grad_s
                 S_row[0, 4*n + 2*sigma + offset + l + 1] = grad_a
                 S_row[0, 4*n + offset + l + 1] = grad_x
-                grad_dot_x = grad_s * X0 + grad_a * a0 + grad_x * x[4*n + offset + l + 1]
+                ai = x[4*n + 2*sigma + offset + l + 1]
+                grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[4*n + offset + l + 1]
                 g_neg = (1 + c * X0 / s0) * exp - B[offset + l + 1] * x[4*n + offset + l + 1]  / amm.liquidity[tkn] - 1
                 S_row_upper = np.array([grad_dot_x + g_neg])
                 S = np.vstack([S, S_row])
@@ -1564,12 +1556,6 @@ def _solve_inclusion_problem(
 
     score = -q @ x_expanded * scaling[p.tkn_profit]
 
-    # x_correct = np.concatenate([x_list[0], np.ones(r)])
-    # A_times_x = A @ x_correct
-    # A_upper_test = A_upper - A_times_x
-    # A_lower_test = A_times_x - A_lower
-    # upper_test = upper - x_correct
-    # lower_test = x_correct - lower
     return new_omnipool_deltas, exec_partial_intent_deltas, exec_full_intent_flags, save_A, save_A_upper, save_A_lower, score, solution.value_valid, status, new_amm_deltas
 
 
