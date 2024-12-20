@@ -140,29 +140,6 @@ class ICEProblem:
                     self._known_flow[intent['tkn_sell']]['in'] += intent["sell_quantity"]
                     self._known_flow[intent['tkn_buy']]['out'] += intent["buy_quantity"]
 
-        # adjust forced approximations for known_flow
-        for tkn in self._force_omnipool_approx:
-            known_pct = abs(self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']) / self.omnipool.liquidity[tkn]
-            if known_pct > 1e-6 and self._force_omnipool_approx[tkn] == "linear":
-                self._force_omnipool_approx[tkn] = "quadratic"
-            if known_pct > 1e-3 and self._force_omnipool_approx[tkn] == "quadratic":
-                self._force_omnipool_approx[tkn] = "full"
-        stableswap_pcts = []
-        for _i, amm in enumerate(self.amm_list):
-            share_tkn = amm.unique_id
-            pcts = [abs(self._known_flow[share_tkn]['in'] - self._known_flow[share_tkn]['out']) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-            sum_delta_x = sum([abs(self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']) for tkn in amm.asset_list])
-            pcts.append(sum_delta_x / amm.d)
-            pcts.extend([abs(self._known_flow[tkn]['in'] - self._known_flow[tkn]['out']) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-            stableswap_pcts.append(pcts)
-        for s, amm in enumerate(self.amm_list):
-            if self._force_amm_approx[s][0] == "linear" and max(stableswap_pcts[s][0], stableswap_pcts[s][1]) > 1e-5:
-                self._force_amm_approx[s][0] = "full"
-            for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                if self._force_amm_approx[s][j + 1] == "linear" and stableswap_pcts[s][j + 2] > 1e-5:
-                    self._force_amm_approx[s][j + 1] = "full"
-
-
     # note that max out is not enforced in Omnipool, it's used to scale variables and use good estimates for AMMs
     # in particular, the max_out for tkn_profit does not reflect that the solver will buy it with any leftover
     def _set_max_in_out(self):
@@ -1865,8 +1842,8 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
         y_best = [0]*r
         Z_U = 0
         # return [[0,0]]*(m+r), 0, Z_L_archive, Z_U_archive  # no solution found
-    elif best_status not in ['Solved', 'AlmostSolved']:
-        raise
+    # elif best_status not in ['Solved', 'AlmostSolved']:
+    #     raise
 
     sell_deltas = round_solution(p.partial_intents, best_intent_deltas)
     partial_deltas_with_buys = add_buy_deltas(p.partial_intents, sell_deltas)
