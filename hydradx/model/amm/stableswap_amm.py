@@ -15,7 +15,8 @@ class StableSwapPoolState(Exchange):
             trade_fee: float = 0,
             unique_id: str = '',
             spot_price_precision: float = 1e-07,
-            shares: float = 0
+            shares: float = 0,
+            peg: float or list = None
     ):
         """
         Tokens should be in the form of:
@@ -44,6 +45,16 @@ class StableSwapPoolState(Exchange):
         for token, quantity in tokens.items():
             self.asset_list.append(token)
             self.liquidity[token] = quantity
+
+        self.peg = peg
+        if peg is None:
+            self.peg = [1] * len(self.asset_list)
+        elif isinstance(peg, (int, float)):  # peg is price of second asset denominated in first asset
+            assert len(self.asset_list) == 2
+            self.peg = [1, peg]
+        else:  # peg is list of prices of all assets except the first, denominate in first asset
+            assert len(peg) == len(self.asset_list) - 1
+            self.peg = [1] + peg
 
         self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
@@ -79,9 +90,18 @@ class StableSwapPoolState(Exchange):
             return True
         return False
 
+    def get_adjusted_liquidity(self, balances=None):
+        if balances is None:
+            balances = self.liquidity
+        adjusted_liquidity = {}
+        for tkn in balances:
+            i = self.asset_list.index(tkn)
+            adjusted_liquidity[tkn] = balances[tkn] * self.peg[i]
+        return adjusted_liquidity
+
     def calculate_d(self, reserves=(), max_iterations=128) -> float:
-        reserves = reserves or self.liquidity.values()
-        xp_sorted = sorted(reserves)
+        reserves = reserves or list(self.liquidity.values())
+        xp_sorted = sorted([reserves[i] * self.peg[i] for i in range(self.n_coins)])
         s = sum(xp_sorted)
         if s == 0:
             return 0
@@ -103,10 +123,11 @@ class StableSwapPoolState(Exchange):
     Given a value for D and the balances of all tokens except 1, calculate what the balance of the final token should be
     """
 
-    def calculate_y(self, reserves: list, d: float, max_iterations=128):
+    def calculate_y(self, reserves: list, d: float, tkn_omit: str, max_iterations=128):
 
         # get all the balances except tkn_out and sort them from low to high
-        balances = sorted(reserves)
+        pegs = [self.peg[i] for i, tkn in enumerate(self.asset_list) if tkn != tkn_omit]
+        balances = sorted([reserves[i] * pegs[i] for i in range(self.n_coins - 1)])
 
         s = sum(balances)
         c = d
@@ -122,9 +143,9 @@ class StableSwapPoolState(Exchange):
             y = (y ** 2 + c) / (2 * y + b - d)
 
             if self.has_converged(y_prev, y):
-                return y
+                return y / self.peg[self.asset_list.index(tkn_omit)]
 
-        return y
+        return y / self.peg[self.asset_list.index(tkn_omit)]
 
     # price is denominated in the first asset by default
     def spot_price(self, i: int = 1):
@@ -152,7 +173,7 @@ class StableSwapPoolState(Exchange):
         else:
             return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
-    def sell_limit(self, tkn_buy, tkn_sell):
+    def sell_limit(self, tkn_buy, tkn_sell):  # TODO: fix this
         return self.liquidity[tkn_buy]
 
     def buy_limit(self, tkn_buy, tkn_sell):
@@ -162,11 +183,11 @@ class StableSwapPoolState(Exchange):
 
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
         reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
-        return (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
+        return (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d, tkn_buy)) * (1 - self.trade_fee)
 
     def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
         reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-        return (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+        return (self.calculate_y(reserves, self.d, tkn_sell) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
 
     def price(self, tkn, denomination: str = ''):
         """
@@ -189,16 +210,19 @@ class StableSwapPoolState(Exchange):
         ann = self.ann
 
         c = d
-        sorted_bal = sorted(balances)
+        adj_balances = [balances[k] * self.peg[k] for k in range(n)]
+        sorted_bal = sorted(adj_balances)
         for x in sorted_bal:
             c = c * d / (n * x)
 
-        xi = balances[i]
-        xj = balances[j]
+        xi = adj_balances[i]
+        xj = adj_balances[j]
 
         p = xj * (ann * xi + c) / (ann * xj + c) / xi
 
-        return p
+        p_adj = p * self.peg[i] / self.peg[j]
+
+        return p_adj
 
     def share_price(self, numeraire: str = ''):
         i = 0 if numeraire == '' else list(self.liquidity.keys()).index(numeraire)
@@ -208,13 +232,13 @@ class StableSwapPoolState(Exchange):
         n = self.n_coins
 
         c = d
-        sorted_liq = sorted(self.liquidity.values())
+        sorted_liq = sorted([self.liquidity[self.asset_list[i]] * self.peg[i] for i in range(n)])
         for x in sorted_liq:
             c = c * d / (n * x)
-        xi = self.liquidity[self.asset_list[i]]
+        xi = self.liquidity[self.asset_list[i]] * self.peg[i]
         ann = self.ann
         p = (d * xi * ann + xi * (n + 1) * c - xi * d) / (xi * ann + c) / s
-        return p
+        return p / self.peg[i]
 
     def modified_balances(self, delta: dict = None, omit: list = ()):
         balances = copy.copy(self.liquidity)
@@ -243,6 +267,7 @@ class StableSwapPoolState(Exchange):
             f'********************************\n'
             f'trade fee: {self.trade_fee}\n'
             f'shares: {shares}\n'
+            f'peg: {self.peg}\n'
             f'amplification constant: {self.amplification}\n'
             f'tokens: (\n\n'
         ) + '\n'.join(
@@ -273,10 +298,10 @@ class StableSwapPoolState(Exchange):
     ):
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-            sell_quantity = (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
+            sell_quantity = (self.calculate_y(reserves, self.d, tkn_sell) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
-            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - self.trade_fee)
+            buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d, tkn_buy)) * (1 - self.trade_fee)
 
         if agent.holdings[tkn_sell] < sell_quantity:
             return self.fail_transaction('Agent has insufficient funds.')
@@ -319,7 +344,8 @@ class StableSwapPoolState(Exchange):
             sell_quantity = quantity
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(
                 self.modified_balances(delta={tkn: quantity for tkn in tkns_sell}, omit=[tkn_buy]),
-                self.d
+                self.d,
+                tkn_buy
             )) * (1 - self.trade_fee)
 
             if self.liquidity[tkn_buy] < buy_quantity:
@@ -340,7 +366,8 @@ class StableSwapPoolState(Exchange):
 
             sell_quantity = (self.calculate_y(
                 self.modified_balances(delta={tkn: -quantity for tkn in tkns_buy}, omit=[tkn_sell]),
-                self.d
+                self.d,
+                tkn_sell
             ) - self.liquidity[tkn_sell]) / (1 - self.trade_fee)
             if agent.holdings[tkn_sell] < sell_quantity:
                 return self.fail_transaction(f'Agent has insufficient funds. {agent.holdings[tkn_sell]} < {quantity}')
@@ -411,7 +438,7 @@ class StableSwapPoolState(Exchange):
         xp_reduced = copy.copy(self.liquidity)
         xp_reduced.pop(tkn_remove)
 
-        reduced_y = self.calculate_y(self.modified_balances(omit=[tkn_remove]), reduced_d)
+        reduced_y = self.calculate_y(self.modified_balances(omit=[tkn_remove]), reduced_d, tkn_remove)
         asset_reserve = self.liquidity[tkn_remove]
 
         for tkn in self.asset_list:
@@ -422,7 +449,7 @@ class StableSwapPoolState(Exchange):
                 dx_expected = self.liquidity[tkn] - self.liquidity[tkn] * reduced_d / initial_d
                 xp_reduced[tkn] -= _fee * dx_expected
 
-        dy = asset_reserve - self.calculate_y(list(xp_reduced.values()), reduced_d)
+        dy = asset_reserve - self.calculate_y(list(xp_reduced.values()), reduced_d, tkn_remove)
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
@@ -522,7 +549,7 @@ class StableSwapPoolState(Exchange):
         d1 = initial_d + initial_d * quantity / self.shares
 
         xp = self.modified_balances(omit=[tkn_add])
-        y = self.calculate_y(xp, d1)
+        y = self.calculate_y(xp, d1, tkn_add)
 
         fee = self.trade_fee * self.n_coins / (4 * (self.n_coins - 1))
         reserves_reduced = []
@@ -539,7 +566,7 @@ class StableSwapPoolState(Exchange):
             else:
                 reserves_reduced.append(reduced_balance)
 
-        y1 = self.calculate_y(reserves_reduced, d1)
+        y1 = self.calculate_y(reserves_reduced, d1, tkn_add)
         dy = y1 - asset_reserve
         dy_0 = y - asset_reserve
         fee_amount = dy - dy_0

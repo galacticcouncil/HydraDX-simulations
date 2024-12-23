@@ -9,7 +9,7 @@ from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
 
@@ -654,3 +654,52 @@ def test_share_prices(assets, fee, amp):
     withdraw_asset_price = pool.withdraw_asset_spot('USDT')
     if withdraw_asset_price >= spot:
         raise AssertionError('Withdraw asset price should be lower than spot price.')
+
+
+def test_arbitrary_peg_feeless():
+    # we'll test that slippage is lowest around the peg.
+    amp = 1000
+    fee = 0.0
+    tvl = 2000000
+    trade_size = 100
+
+    # first, with peg = 1
+    slippage = {}
+    for r in [1, 2, 0.5]:
+        tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+        pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee))
+        spot = pool.sell_spot('USDT', 'USDC')
+
+        agent = Agent(holdings={'USDT': mpf(trade_size)})
+        test_state, test_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+        execution_price = test_agent.holdings['USDC'] / trade_size
+        slippage[r] = abs(spot - execution_price)/spot
+    assert slippage[1] < slippage[2] and slippage[1] < slippage[0.5]
+
+    # then, with peg = 2
+    slippage = {}
+    for r in [1, 2, 3]:
+        tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+        pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=2)
+        spot = pool.sell_spot('USDT', 'USDC')
+
+        agent = Agent(holdings={'USDT': mpf(trade_size)})
+        test_state, test_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+        execution_price = test_agent.holdings['USDC'] / trade_size
+        slippage[r] = abs(spot - execution_price)/spot
+    assert max(slippage.values()) < 1e-5
+    assert slippage[2] < slippage[1] and slippage[2] < slippage[3]
+
+    # finally, with peg = 0.5
+    slippage = {}
+    for r in [0.25, 0.5, 1]:
+        tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+        pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=0.5)
+        spot = pool.sell_spot('USDT', 'USDC')
+
+        agent = Agent(holdings={'USDT': mpf(trade_size)})
+        test_state, test_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+        execution_price = test_agent.holdings['USDC'] / trade_size
+        slippage[r] = abs(spot - execution_price)/spot
+    assert max(slippage.values()) < 1e-5
+    assert slippage[0.5] < slippage[0.25] and slippage[0.5] < slippage[1]
