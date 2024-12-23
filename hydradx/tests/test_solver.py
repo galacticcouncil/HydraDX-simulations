@@ -31,6 +31,76 @@ def get_token_list(omnipool: OmnipoolState, amm_list: list[StableSwapPoolState])
     return token_list
 
 
+def test_no_intent_arbitrage():
+    prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 0.99, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
+              'USDT2': 1, 'DAI': 1}
+    weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
+    total_lrna = 65000000
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna},
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    ss_fee = 0.0005
+
+    sp_tokens = {"USDT": 7600000,"USDC": 9200000}
+    stablepool = StableSwapPoolState(
+        tokens=sp_tokens, amplification=1000, trade_fee=ss_fee, unique_id="2-Pool"
+    )
+
+    sp4_tokens = {"USDC": 600000, "USDT": 340000, "DAI": 365000, "USDT2": 330000}
+    stablepool4 = StableSwapPoolState(
+        tokens=sp4_tokens, amplification=1000, trade_fee=ss_fee, unique_id="4-Pool"
+    )
+
+    amm_list = [stablepool, stablepool4]
+    intents = []
+    x = find_solution_outer_approx(initial_state, intents, amm_list)
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
+                                         copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
+                                         copy.deepcopy(x['amm_deltas']),"HDX")
+
+    prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
+              'USDT2': 1, 'DAI': 1}
+    weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
+    total_lrna = 65000000
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna},
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
+    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
+
+    sp_tokens = {"USDT": 7600000 * 2, "USDC": 9200000}
+    stablepool = StableSwapPoolState(
+        tokens=sp_tokens, amplification=1000, trade_fee=ss_fee, unique_id="2-Pool"
+    )
+
+    sp4_tokens = {"USDC": 600000, "USDT": 340000, "DAI": 365000, "USDT2": 330000}
+    stablepool4 = StableSwapPoolState(
+        tokens=sp4_tokens, amplification=1000, trade_fee=ss_fee, unique_id="4-Pool"
+    )
+
+    amm_list = [stablepool, stablepool4]
+    intents = []
+    x = find_solution_outer_approx(initial_state, intents, amm_list)
+    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
+                                         copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
+                                         copy.deepcopy(x['amm_deltas']),"HDX")
+
+
 def test_single_trade_settles():
 
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
@@ -160,65 +230,6 @@ def test_single_trade_settles():
                 raise
             if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
                 raise
-
-
-    #
-    #
-    #
-    #
-    # agents = [Agent(holdings={'DOT': 100, 'LRNA': 750})]
-    #
-    # init_intents_partial = [  # selling DOT for $7
-    #     {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True}
-    # ]
-    # init_intents_full = [  # selling DOT for $7
-    #     {'sell_quantity': mpf(100), 'buy_quantity': mpf(700), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': False}
-    # ]
-    # init_intents_partial_lrna = [
-    #     {'sell_quantity': mpf(750), 'buy_quantity': mpf(700), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0],
-    #      'partial': True}
-    # ]
-    # init_intents_full_lrna = [
-    #     {'sell_quantity': mpf(750), 'buy_quantity': mpf(700), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0],
-    #      'partial': False}
-    # ]
-    #
-    #
-    # intents = copy.deepcopy(init_intents_partial)
-    # x = find_solution_outer_approx(initial_state, intents)
-    # intent_deltas = x['deltas']
-    # omnipool_deltas = x['omnipool_deltas']
-    # amm_deltas = x['amm_deltas']
-    # assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
-    # assert intent_deltas[0][0] == -init_intents_partial[0]['sell_quantity']
-    # assert intent_deltas[0][1] == init_intents_partial[0]['buy_quantity']
-    #
-    # intents = copy.deepcopy(init_intents_full)
-    # x = find_solution_outer_approx(initial_state, intents)
-    # intent_deltas = x['deltas']
-    # omnipool_deltas = x['omnipool_deltas']
-    # amm_deltas = x['amm_deltas']
-    # assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
-    # assert intent_deltas[0][0] == -init_intents_full[0]['sell_quantity']
-    # assert intent_deltas[0][1] == init_intents_full[0]['buy_quantity']
-    #
-    # intents = copy.deepcopy(init_intents_partial_lrna)
-    # x = find_solution_outer_approx(initial_state, intents)
-    # intent_deltas = x['deltas']
-    # omnipool_deltas = x['omnipool_deltas']
-    # amm_deltas = x['amm_deltas']
-    # assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
-    # assert intent_deltas[0][0] == -init_intents_partial_lrna[0]['sell_quantity']
-    # assert intent_deltas[0][1] == init_intents_partial_lrna[0]['buy_quantity']
-    #
-    # intents = copy.deepcopy(init_intents_full_lrna)
-    # x = find_solution_outer_approx(initial_state, intents)
-    # intent_deltas = x['deltas']
-    # omnipool_deltas = x['omnipool_deltas']
-    # amm_deltas = x['amm_deltas']
-    # assert validate_and_execute_solution(initial_state.copy(), [], intents, intent_deltas, omnipool_deltas, amm_deltas, "HDX")
-    # assert intent_deltas[0][0] == -init_intents_full_lrna[0]['sell_quantity']
-    # assert intent_deltas[0][1] == init_intents_full_lrna[0]['buy_quantity']
 
 
 def test_single_trade_does_not_settle():
