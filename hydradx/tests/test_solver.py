@@ -32,6 +32,8 @@ def get_token_list(omnipool: OmnipoolState, amm_list: list[StableSwapPoolState])
 
 
 def test_no_intent_arbitrage():
+
+    # test where stablepool shares have different values
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 0.99, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
               'USDT2': 1, 'DAI': 1}
     weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
@@ -51,11 +53,13 @@ def test_no_intent_arbitrage():
     ss_fee = 0.0005
 
     sp_tokens = {"USDT": 7600000,"USDC": 9200000}
+    # sp_tokens = {"USDT": 16800000/2,"USDC": 16800000/2}
     stablepool = StableSwapPoolState(
         tokens=sp_tokens, amplification=1000, trade_fee=ss_fee, unique_id="2-Pool"
     )
 
     sp4_tokens = {"USDC": 600000, "USDT": 340000, "DAI": 365000, "USDT2": 330000}
+    # sp4_tokens = {"USDC": 940000/2, "USDT": 940000/2, "DAI": 365000, "USDT2": 330000}
     stablepool4 = StableSwapPoolState(
         tokens=sp4_tokens, amplification=1000, trade_fee=ss_fee, unique_id="4-Pool"
     )
@@ -63,9 +67,17 @@ def test_no_intent_arbitrage():
     amm_list = [stablepool, stablepool4]
     intents = []
     x = find_solution_outer_approx(initial_state, intents, amm_list)
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
+    assert x['omnipool_deltas']['2-Pool'] >= 9000
+    assert x['omnipool_deltas']['4-Pool'] <= -9000
+    assert x['omnipool_deltas']['HDX'] <= -6000
+    assert x['profit'] >= 6000
+    final_amm_list = [amm.copy() for amm in amm_list]
+    final_state = initial_state.copy()
+    assert validate_and_execute_solution(final_state, final_amm_list, copy.deepcopy(intents),
                                          copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
                                          copy.deepcopy(x['amm_deltas']),"HDX")
+
+    # test where stablecoin prices are different in different stablepools
 
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
               'USDT2': 1, 'DAI': 1}
@@ -83,7 +95,7 @@ def test_no_intent_arbitrage():
     initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
     initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
-    sp_tokens = {"USDT": 7600000 * 2, "USDC": 9200000}
+    sp_tokens = {"USDT": 7600000 * 10, "USDC": 9200000}
     stablepool = StableSwapPoolState(
         tokens=sp_tokens, amplification=1000, trade_fee=ss_fee, unique_id="2-Pool"
     )
@@ -96,6 +108,9 @@ def test_no_intent_arbitrage():
     amm_list = [stablepool, stablepool4]
     intents = []
     x = find_solution_outer_approx(initial_state, intents, amm_list)
+    assert x['omnipool_deltas']['2-Pool'] >= 3000
+    assert x['omnipool_deltas']['HDX'] <= -250000
+    assert x['profit'] >= 250000
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
                                          copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
                                          copy.deepcopy(x['amm_deltas']),"HDX")
