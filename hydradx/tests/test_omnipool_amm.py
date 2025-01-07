@@ -1036,7 +1036,7 @@ def test_sell_with_partial_lrna_mint(
 
 @given(omnipool_reasonable_config(token_count=3, lrna_fee=0.0005, asset_fee=0.0025))
 def test_lrna_buy_nonzero_fee(initial_state: oamm.OmnipoolState):
-    initial_state.lp_lrna_share = 0
+    initial_state.lrna_fee_burn = 0
     old_state = initial_state
     old_agent = Agent(
         holdings={token: 1000000 for token in initial_state.asset_list + ['LRNA']}
@@ -1487,8 +1487,7 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
         lrna_fee=0.0005,
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
-        },
-        lp_lrna_share=0
+        }
     )
 
     trader1_holdings = {'HDX': 1000000000, 'USD': 1000000000, 'LRNA': 1000000000, 'DOT': 1000000000}
@@ -1645,7 +1644,6 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        lp_lrna_share=0,
         update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
@@ -1752,7 +1750,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        lp_lrna_share=0,
+        lrna_fee_burn=0,
         update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
@@ -2400,7 +2398,7 @@ def test_fee_application():
 
 
 @given(st.integers(min_value=1, max_value=10), st.integers(min_value=1, max_value=10))
-def test_lrna_swap_equivalency(lp_lrna_share, min_fee_fraction):
+def test_lrna_swap_equivalency(lrna_burn_rate, min_fee_fraction):
     initial_state = OmnipoolState(
         tokens={'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000)}, 'USD': {'liquidity': mpf(3000), 'LRNA': mpf(150)}},
         lrna_fee=DynamicFee(
@@ -2410,7 +2408,7 @@ def test_lrna_swap_equivalency(lp_lrna_share, min_fee_fraction):
         asset_fee=DynamicFee(
             current={'HDX': mpf(1) / 1000 * 7, 'USD': mpf(1) / 400}
         ),
-        lp_lrna_share=mpf(1) / lp_lrna_share
+        lrna_fee_burn=mpf(1) / lrna_burn_rate / min_fee_fraction / 2000
     )
 
     agent = Agent(holdings={'HDX': mpf(1000000), 'LRNA': mpf(0)})
@@ -2667,32 +2665,3 @@ def test_cash_out_multiple_positions(trade_sizes: list[float]):
     reference_value = oamm.value_assets(spot_prices, cash_out_agent.holdings)
     if cash_out_value != pytest.approx(reference_value, 1e-20):
         raise AssertionError("Cash out not computed correctly.")
-
-
-def test_lp_share_lrna():
-    initial_state = OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': 100000, 'LRNA': 1000},
-            'USD': {'liquidity': 1000, 'LRNA': 1000}
-        },
-        lrna_fee=DynamicFee(
-            minimum=0.0005,
-            maximum=0.01,
-            current={tkn: 0.001 for tkn in ['HDX', 'USD']},
-        ),
-        asset_fee=0,
-        lp_lrna_share=1.0
-    )
-    agent1 = Agent(
-        holdings={
-            'HDX': float('inf')
-        }
-    )
-    lrna_buy_quantity = 100
-    test1 = initial_state.copy().swap(
-        agent=agent1,
-        tkn_sell='HDX',
-        tkn_buy='LRNA',
-        buy_quantity=lrna_buy_quantity
-    )
-    er = 1
