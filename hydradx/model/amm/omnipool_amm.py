@@ -162,8 +162,8 @@ class OmnipoolState(Exchange):
         self.asset_fee = asset_fee
         self.lrna_fee = lrna_fee
         self.lrna_fee_burn = lrna_fee_burn
-        if lrna_fee_burn > self._lrna_fee.minimum:
-            raise ValueError('lrna_fee_burn must be less than lrna_fee.minimum')
+        if lrna_fee_burn > 1 or lrna_fee_burn < 0:
+            raise ValueError('lrna_fee_burn must be >= 0 and <= 1')
         if lrna_fee_destination is None:
             lrna_fee_destination = Agent(holdings={'LRNA': 0})
         self.lrna_fee_destination = lrna_fee_destination
@@ -195,19 +195,24 @@ class OmnipoolState(Exchange):
             )
             return return_val
         elif isinstance(value, dict):
+            current = {
+                tkn: value[tkn] if tkn in value else (
+                    (self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum)
+                    if fee_type == 'lrna' else
+                    (self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum)
+                ) for tkn in self.asset_list}
             return DynamicFee(
-                current={
-                    tkn: value[tkn] if tkn in value else (
-                        (self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum)
-                        if fee_type == 'lrna' else
-                        (self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum)
-                    ) for tkn in self.asset_list},
+                current=current,
+                minimum=min(current.values()),
+                maximum=max(current.values()),
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
         else:
             return DynamicFee(
                 current={tkn: value for tkn in self.asset_list},
+                maximum=value,
+                minimum=value,
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
@@ -605,7 +610,8 @@ class OmnipoolState(Exchange):
 
             delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
             lrna_fee_total = -delta_Qi * lrna_fee
-            fee_deposit = lrna_fee_total - self.lrna_fee_burn
+            lrna_fee_burn = self.lrna_fee_burn * lrna_fee_total
+            fee_deposit = lrna_fee_total - lrna_fee_burn
             delta_Qt = -delta_Qi - lrna_fee_total
             delta_Qm = (self.lrna[tkn_buy] + delta_Qt) * delta_Qt * asset_fee / self.lrna[
                 tkn_buy] * self.lrna_mint_pct
@@ -667,7 +673,6 @@ class OmnipoolState(Exchange):
         """
         asset_fee = self.asset_fee(tkn)
         lrna_fee = self.lrna_fee(tkn)
-        min_lrna_fee = self._lrna_fee.minimum
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
 
@@ -700,7 +705,8 @@ class OmnipoolState(Exchange):
             # buying LRNA
             lrna_fee_total = delta_qa / (1 - lrna_fee) - delta_qa
             delta_qi = -delta_qa - lrna_fee_total
-            fee_deposit = lrna_fee_total - self.lrna_fee_burn
+            lrna_fee_burn = self.lrna_fee_burn * lrna_fee_total
+            fee_deposit = lrna_fee_total - lrna_fee_burn
             if delta_qi + self.lrna[tkn] <= 0:
                 return self.fail_transaction('insufficient lrna in pool', agent)
             delta_ra = -self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
@@ -717,7 +723,8 @@ class OmnipoolState(Exchange):
                 return self.fail_transaction('agent has insufficient assets', agent)
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
             lrna_fee_total = -delta_qi * lrna_fee
-            fee_deposit = lrna_fee_total - self.lrna_fee_burn
+            lrna_fee_burn = lrna_fee_total * self.lrna_fee_burn
+            fee_deposit = lrna_fee_total - lrna_fee_burn
             delta_qa = -delta_qi - lrna_fee_total
             self.lrna[tkn] += delta_qi
             self.liquidity[tkn] -= delta_ra
