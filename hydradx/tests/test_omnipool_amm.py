@@ -2449,6 +2449,9 @@ def test_lrna_swap_equivalency(lrna_burn_rate, min_fee_fraction):
         raise AssertionError("Direct sell was not equivalent to two LRNA swaps (agent HDX).")
     elif sell_agent.holdings['LRNA'] != pytest.approx(direct_sell_agent.holdings['LRNA'], rel=1e-12):
         raise AssertionError("Direct sell was not equivalent to two LRNA swaps (agent LRNA).")
+    elif sell_state.lrna_fee_destination.holdings['LRNA'] != pytest.approx(
+            direct_sell_state.lrna_fee_destination.holdings['LRNA'], rel=1e-12):
+        raise AssertionError("Direct sell was not equivalent to two LRNA swaps (fee destination LRNA).")
     elif direct_sell_state.fail:
         raise AssertionError("Sell failed.")
     else:
@@ -2488,6 +2491,9 @@ def test_lrna_swap_equivalency(lrna_burn_rate, min_fee_fraction):
         raise AssertionError("Direct buy was not equivalent to two LRNA swaps (agent HDX).")
     elif buy_agent.holdings['LRNA'] != pytest.approx(direct_buy_agent.holdings['LRNA'], rel=1e-12):
         raise AssertionError("Direct buy was not equivalent to two LRNA swaps (agent LRNA).")
+    elif buy_state.lrna_fee_destination.holdings['LRNA'] != pytest.approx(
+            direct_buy_state.lrna_fee_destination.holdings['LRNA'], rel=1e-12):
+        raise AssertionError("Direct buy was not equivalent to two LRNA swaps (fee destination LRNA).")
     elif direct_buy_state.fail:
         raise AssertionError("Buy failed.")
     else:
@@ -2665,3 +2671,96 @@ def test_cash_out_multiple_positions(trade_sizes: list[float]):
     reference_value = oamm.value_assets(spot_prices, cash_out_agent.holdings)
     if cash_out_value != pytest.approx(reference_value, 1e-20):
         raise AssertionError("Cash out not computed correctly.")
+
+
+@given(
+    lrna_fee=st.floats(min_value=0.0005, max_value=0.001),
+    burn_rate=st.floats(min_value=0, max_value=1)
+)
+def test_lrna_fee_burn(lrna_fee, burn_rate):
+    initial_state = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(100000)},
+            'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(100000)},
+            'DOT': {'liquidity': mpf(100000), 'LRNA': mpf(100000)}
+        },
+        lrna_fee=lrna_fee,
+        asset_fee=0.0025,
+        lrna_fee_burn=burn_rate
+    )
+    tkn_sell = 'USD'
+    tkn_buy = 'DOT'
+    sell_quantity = mpf(10)
+    initial_agent = Agent(holdings={tkn_sell: sell_quantity * 2})
+    sell_tkn_state, sell_tkn_agent = oamm.simulate_swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy='LRNA',
+        sell_quantity=sell_quantity
+    )
+    lrna_received_1 = sell_tkn_agent.holdings['LRNA']
+    lrna_deposited_1 = sell_tkn_state.lrna_fee_destination.holdings['LRNA']
+    lrna_burned_1 = (
+            sum(initial_state.lrna.values())
+            - sum(sell_tkn_state.lrna.values())
+            - sell_tkn_agent.holdings['LRNA']
+            - lrna_deposited_1
+    )
+    lrna_paid_out_1 = initial_state.lrna[tkn_sell] - sell_tkn_state.lrna[tkn_sell]
+    lrna_fee_total_1 = lrna_paid_out_1 * lrna_fee
+    if lrna_received_1 + lrna_fee_total_1 != pytest.approx(lrna_paid_out_1, rel=1e-20):
+        raise AssertionError(f'LRNA fee not calculated correctly.')
+    if lrna_burned_1 / lrna_fee_total_1 != pytest.approx(burn_rate, rel=1e-20):
+        raise AssertionError(f'LRNA burn rate not calculated correctly.')
+
+    buy_lrna_state, buy_lrna_agent = oamm.simulate_swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy='LRNA',
+        buy_quantity=lrna_received
+    )
+    if buy_lrna_state.fail:
+        raise AssertionError('buy LRNA swap failed.')
+    lrna_received_2 = buy_lrna_agent.holdings['LRNA']
+    lrna_deposited_2 = buy_lrna_state.lrna_fee_destination.holdings['LRNA']
+    lrna_burned_2 = (
+            sum(initial_state.lrna.values())
+            - sum(buy_lrna_state.lrna.values())
+            - buy_lrna_agent.holdings['LRNA']
+            - lrna_deposited_2
+    )
+    lrna_paid_out_2 = initial_state.lrna[tkn_sell] - buy_lrna_state.lrna[tkn_sell]
+    lrna_fee_total_2 = lrna_paid_out_2 * lrna_fee
+    if lrna_received_2 + lrna_fee_total_2 != pytest.approx(lrna_paid_out_2, rel=1e-20):
+        raise AssertionError(f'LRNA fee not calculated correctly.')
+    if lrna_burned_2 / lrna_fee_total_2 != pytest.approx(burn_rate, rel=1e-20):
+        raise AssertionError(f'LRNA burn rate not calculated correctly.')
+
+    buy_quantity = initial_state.calculate_buy_from_sell(
+        tkn_buy=tkn_buy,
+        tkn_sell=tkn_sell,
+        sell_quantity=sell_quantity
+    )
+    buy_state, buy_agent = oamm.simulate_swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+    lrna_deposited_3 = buy_state.lrna_fee_destination.holdings['LRNA']
+    lrna_burned_3 = (
+            sum(initial_state.lrna.values())
+            - sum(buy_state.lrna.values())
+            - lrna_deposited_3
+    )
+    lrna_paid_out_3 = initial_state.lrna[tkn_sell] - buy_state.lrna[tkn_sell]
+    lrna_fee_total_3 = lrna_paid_out_3 * lrna_fee
+    if buy_state.fail:
+        raise AssertionError('buy swap failed.')
+    if lrna_burned_3 / lrna_fee_total_3 != pytest.approx(burn_rate, rel=1e-20):
+        raise AssertionError(f'LRNA burn rate not calculated correctly.')
+    if lrna_received_1 + lrna_fee_total_3 != pytest.approx(lrna_paid_out_3, rel=1e-20):
+        raise AssertionError(f'LRNA fee not calculated correctly.')
