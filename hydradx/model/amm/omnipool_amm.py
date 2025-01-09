@@ -712,7 +712,7 @@ class OmnipoolState(Exchange):
             delta_ra = -self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
             if agent.holdings[tkn] < -delta_ra:
                 return self.fail_transaction('Agent has insufficient assets', agent)
-            self.lrna[tkn] += delta_qi
+            self.lrna[tkn] += delta_qi  # burn the LRNA fee
             self.liquidity[tkn] += -delta_ra
             if self.lrna_fee_destination:
                 self.lrna_fee_destination.holdings['LRNA'] += fee_deposit
