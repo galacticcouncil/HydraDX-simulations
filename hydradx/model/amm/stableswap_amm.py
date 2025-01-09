@@ -654,6 +654,16 @@ def simulate_remove_liquidity(
     return new_state.remove_liquidity(new_agent, quantity, tkn_remove), new_agent
 
 
+def simulate_remove_uniform(
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        shares_removed: float
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+    return new_state.remove_uniform(new_agent, shares_removed), new_agent
+
+
 def simulate_buy_shares(
         old_state: StableSwapPoolState,
         old_agent: Agent,

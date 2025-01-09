@@ -9,7 +9,7 @@ from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, simulate_remove_uniform
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
 
@@ -703,3 +703,83 @@ def test_arbitrary_peg_feeless():
         slippage[r] = abs(spot - execution_price)/spot
     assert max(slippage.values()) < 1e-5
     assert slippage[0.5] < slippage[0.25] and slippage[0.5] < slippage[1]
+
+
+@given(
+    st.floats(min_value=0.0001, max_value=1000),
+    st.floats(min_value=0.01, max_value=100),
+)
+def test_fuzz_arbitrary_peg_remove_uniform(peg, r):
+    # we'll test that the asset/share ratio does not decrease
+    amp = 1000
+    fee = 0.0
+    tvl = 2000000
+    remove_pct_size = 0.0001
+
+    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+    usdc_ratio = pool.liquidity['USDC'] / pool.shares
+    usdt_ratio = pool.liquidity['USDT'] / pool.shares
+
+    agent = Agent(holdings={pool.unique_id: mpf(pool.shares * remove_pct_size)})
+    test_state, test_agent = simulate_remove_uniform(pool, agent, agent.holdings[pool.unique_id])
+    new_usdc_ratio = test_state.liquidity['USDC'] / test_state.shares
+    new_usdt_ratio = test_state.liquidity['USDT'] / test_state.shares
+    err_usdc = (new_usdc_ratio - usdc_ratio)/usdc_ratio
+    err_usdt = (new_usdt_ratio - usdt_ratio)/usdt_ratio
+    if err_usdc < -1e-20:
+        raise  # exploitable
+    elif err_usdc > 1e-20:
+        raise  # insufficiently accurate
+    if err_usdt < -1e-20:
+        raise  # exploitable
+    elif err_usdt > 1e-20:
+        raise  # insufficiently accurate
+
+
+@given(
+    st.booleans(),
+    st.booleans(),
+    st.floats(min_value=0.000001, max_value=100),
+    st.floats(min_value=0.000001, max_value=100),
+    st.integers(min_value=10, max_value=100000),
+    st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000)
+)
+def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pct_size, amp, peg, r):
+    fee = 0.0
+    tvl = 2000000
+    add_tkn = 'USDT' if add_tkn_usdt else 'USDC'
+    remove_tkn = 'USDT' if remove_tkn_usdt else 'USDC'
+    sell_tkn = 'USDT'
+    buy_tkn = 'USDC'
+
+    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+    add_amt = pool.liquidity[add_tkn] * add_pct_size
+    sell_amt = pool.liquidity[sell_tkn] * trade_pct_size
+
+    init_holdings = {add_tkn: add_amt}
+    if add_tkn == sell_tkn:
+        init_holdings[add_tkn] += sell_amt
+        init_holdings[buy_tkn] = 0
+    else:
+        init_holdings[sell_tkn] = sell_amt
+    agent = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
+
+    # add liquidity
+    pool.add_liquidity(agent, add_amt, add_tkn)
+    # trade
+    pool.swap(agent, sell_tkn, buy_tkn, sell_quantity=agent.holdings[sell_tkn])
+    # remove liquidity
+    pool.remove_liquidity(agent, agent.holdings[pool.unique_id], remove_tkn)
+    # trade back
+    pool.swap(agent, buy_tkn, sell_tkn, sell_quantity=agent.holdings[buy_tkn] - init_holdings[buy_tkn])
+    if agent.holdings[pool.unique_id] != 0:
+        raise AssertionError('Agent should have no shares left')
+    if agent.holdings[buy_tkn] != init_holdings[buy_tkn]:
+        raise AssertionError('By design of test, agent should have starting quantity of buy_tkn')
+    if agent.holdings[sell_tkn] >= init_holdings[sell_tkn]:
+        raise AssertionError('Agent has successfully exploited the pool')
+
+
