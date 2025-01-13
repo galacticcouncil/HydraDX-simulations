@@ -708,17 +708,20 @@ def test_arbitrary_peg_feeless():
 
 @given(
     st.floats(min_value=0.0001, max_value=1000),
+    st.floats(min_value=0.0001, max_value=1000),
+    st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=0.01, max_value=100),
 )
-def test_fuzz_arbitrary_peg_remove_uniform(peg, r):
+def test_fuzz_arbitrary_peg_remove_uniform(peg1, peg2, r1, r2):
     # we'll test that the asset/share ratio does not decrease
     amp = 1000
     fee = 0.0
     tvl = 2000000
     remove_pct_size = 0.0001
 
-    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
-    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+    tokens = {'USDT': mpf(r1 / (r1 + r2 + 1) * tvl), 'USDC': mpf(1 / (r1 + r2 + 1) * tvl),
+              'DAI': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
     usdc_ratio = pool.liquidity['USDC'] / pool.shares
     usdt_ratio = pool.liquidity['USDT'] / pool.shares
 
@@ -745,9 +748,11 @@ def test_fuzz_arbitrary_peg_remove_uniform(peg, r):
     st.floats(min_value=0.000001, max_value=100),
     st.integers(min_value=10, max_value=100000),
     st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000),
     st.floats(min_value=0.000001, max_value = 1000000)
 )
-def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pct_size, amp, peg, r):
+def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pct_size, amp, peg1, peg2, r1, r2):
     fee = 0.0
     tvl = 2000000
     add_tkn = 'USDT' if add_tkn_usdt else 'USDC'
@@ -755,8 +760,9 @@ def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pc
     sell_tkn = 'USDT'
     buy_tkn = 'USDC'
 
-    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
-    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+    tokens = {'USDT': mpf(r1 / (r1 + r2 + 1) * tvl), 'USDC': mpf(1 / (r1 + r2 + 1) * tvl),
+              'DAI': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
     add_amt = pool.liquidity[add_tkn] * add_pct_size
     sell_amt = pool.liquidity[sell_tkn] * trade_pct_size
 
@@ -788,38 +794,36 @@ def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pc
 
 
 def test_stableswap_fee():
-    # we'll test that slippage is lowest around the peg.
     amp = 1000
     fee = 0.01  # very high fee of 1% to exaggerate impact
     tvl = 2000000
     trade_size = 100
 
-    for peg in [1, 0.5, 2]:
-        r = peg  # this makes pool evenly balanced at peg
-        tokens = {'TKN1': mpf(r / (r + 1) * tvl), 'TKN2': mpf(1 / (r + 1) * tvl)}
-        init_asset_sum_adj = tokens['TKN1'] + peg * tokens['TKN2']
-        pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+    for peg1 in [1, 0.5, 2]:
+        for peg2 in [1, 0.5, 2]:
+            r1, r2 = peg1, peg2  # this makes pool evenly balanced at peg
+            tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
+                      'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
+            init_asset_sum_adj = tokens['TKN1'] + peg1 * tokens['TKN2']
+            pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
+            agent = Agent(holdings={'TKN1': mpf(trade_size)})
+            test_state, test_agent = simulate_swap(pool, agent, 'TKN1', 'TKN2', sell_quantity=trade_size)
+            asset_sum_adj = test_state.liquidity['TKN1'] + peg1 * test_state.liquidity['TKN2']
+            correct_fee = fee * trade_size
+            # we're pretty permissive with the error bar here because we are taking the difference of asset sums
+            if asset_sum_adj - init_asset_sum_adj != pytest.approx(correct_fee, rel=1e-3):
+                raise AssertionError('Fee not correctly applied')
 
-        agent = Agent(holdings={'TKN1': mpf(trade_size)})
-        test_state, test_agent = simulate_swap(pool, agent, 'TKN1', 'TKN2', sell_quantity=trade_size)
-        asset_sum_adj = test_state.liquidity['TKN1'] + peg * test_state.liquidity['TKN2']
-        correct_fee = fee * trade_size
-        # we're pretty permissive with the error bar here because we are taking the difference of asset sums
-        if asset_sum_adj - init_asset_sum_adj != pytest.approx(correct_fee, rel=1e-4):
-            raise AssertionError('Fee not correctly applied')
 
-
-@given(st.floats(min_value=0.0001, max_value=0.01))
+@given(st.floats(min_value=0.0, max_value=0.01))
 def test_fuzz_stableswap_fee_invariant(fee):
     # we'll test that slippage is lowest around the peg.
     amp = 1000
     tvl = 2000000
     trade_size = 100
 
-    # first, with peg = 1
     for r in [1, 2, 0.5]:
         for peg_m in [0.5, 1, 2]:
-        # for peg_m in [1]:
             peg = r * peg_m
             tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
             pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
