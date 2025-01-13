@@ -9,7 +9,8 @@ from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, simulate_remove_uniform
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, simulate_remove_uniform, \
+    simulate_add_liquidity
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
 
@@ -830,3 +831,28 @@ def test_fuzz_stableswap_fee_invariant(fee):
             # these quantities should *not* be exactly equal when the pool is not balanced, so we use high error
             rel_error = 1e-8 if peg_m == 1 else 1e-2
             assert test_state.d - init_d == pytest.approx(correct_fee, rel=rel_error)
+
+
+@given(
+    st.floats(min_value=0.0001, max_value=0.01),
+    st.floats(min_value=0.0001, max_value=10000)
+)
+@settings(print_blob=True)
+def test_stableswap_withdraw_fee_arbitrary_peg(fee, peg):
+    # we'll compare adding USDT and withdrawing USDC to just swapping USDT for USDC
+    amp = 1000
+    tvl = 2000000
+    trade_size = 100
+
+    r = peg
+    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+
+    agent = Agent(holdings={'USDT': mpf(trade_size)})
+    liq_state, liq_agent = simulate_add_liquidity(pool, agent, agent.holdings['USDT'], 'USDT')
+    liq_state.remove_liquidity(liq_agent, liq_agent.holdings[liq_state.unique_id], 'USDC')
+
+    swap_state, swap_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+    pct_diff = (swap_agent.holdings['USDC'] - liq_agent.holdings['USDC'])/swap_agent.holdings['USDC']
+    assert pct_diff > -1e-4  # withdraw liquidity is sometimes slightly better than swapping
+    assert pct_diff < 1e-4
