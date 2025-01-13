@@ -784,3 +784,49 @@ def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pc
     profit_pct = (init_holdings[sell_tkn] - agent.holdings[sell_tkn])/tokens[sell_tkn]
     if profit_pct >= 1e9:
         raise AssertionError('Agent lost too much money')
+
+
+def test_stableswap_fee():
+    # we'll test that slippage is lowest around the peg.
+    amp = 1000
+    fee = 0.01  # very high fee of 1% to exaggerate impact
+    tvl = 2000000
+    trade_size = 100
+
+    for peg in [1, 0.5, 2]:
+        r = peg  # this makes pool evenly balanced at peg
+        tokens = {'TKN1': mpf(r / (r + 1) * tvl), 'TKN2': mpf(1 / (r + 1) * tvl)}
+        init_asset_sum_adj = tokens['TKN1'] + peg * tokens['TKN2']
+        pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+
+        agent = Agent(holdings={'TKN1': mpf(trade_size)})
+        test_state, test_agent = simulate_swap(pool, agent, 'TKN1', 'TKN2', sell_quantity=trade_size)
+        asset_sum_adj = test_state.liquidity['TKN1'] + peg * test_state.liquidity['TKN2']
+        correct_fee = fee * trade_size
+        # we're pretty permissive with the error bar here because we are taking the difference of asset sums
+        if asset_sum_adj - init_asset_sum_adj != pytest.approx(correct_fee, rel=1e-4):
+            raise AssertionError('Fee not correctly applied')
+
+
+@given(st.floats(min_value=0.0001, max_value=0.01))
+def test_fuzz_stableswap_fee_invariant(fee):
+    # we'll test that slippage is lowest around the peg.
+    amp = 1000
+    tvl = 2000000
+    trade_size = 100
+
+    # first, with peg = 1
+    for r in [1, 2, 0.5]:
+        for peg_m in [0.5, 1, 2]:
+        # for peg_m in [1]:
+            peg = r * peg_m
+            tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+            pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+            init_d = pool.d
+
+            agent = Agent(holdings={'USDT': mpf(trade_size)})
+            test_state, test_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+            correct_fee = fee * trade_size
+            # these quantities should *not* be exactly equal when the pool is not balanced, so we use high error
+            rel_error = 1e-8 if peg_m == 1 else 1e-2
+            assert test_state.d - init_d == pytest.approx(correct_fee, rel=rel_error)
