@@ -8,7 +8,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
     process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
 from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool, save_omnipool, load_omnipool
@@ -891,6 +891,7 @@ def test_stableswap_router_arbitrage():
                 # estimate value from omnipool price
                 profit['USD'] += (
                     profit[asset] * omnipool.lrna_price(asset)
+
                     / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
                 )
     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)

@@ -459,7 +459,6 @@ def test_remove_liquidity_no_fee(initial_state: oamm.OmnipoolState):
     )
 
     p_init = old_state.lrna_price(i)
-
     delta_S = -old_agent.holdings[('omnipool', i)]
 
     new_state, new_agent = oamm.simulate_remove_liquidity(old_state, old_agent, delta_S, i)
@@ -2091,6 +2090,7 @@ def test_add_and_remove_liquidity():
 
     initial_value = omnipool.cash_out(agent, market_prices)
     final_value = remove_state.cash_out(remove_agent, market_prices)
+
     profit = final_value - initial_value
     if profit > 0:
         raise
@@ -2413,6 +2413,7 @@ def test_lrna_swap_equivalency(lrna_burn_rate, min_fee_fraction):
 
     agent = Agent(holdings={'HDX': mpf(1000000), 'LRNA': mpf(0)})
     sell_quantity = 1000
+
     sell_agent = agent.copy()
     sell_state = initial_state.copy().swap(
         sell_quantity=sell_quantity,
