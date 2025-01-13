@@ -2686,7 +2686,8 @@ def test_lrna_fee_burn(lrna_fee, burn_rate):
         },
         lrna_fee=lrna_fee,
         asset_fee=0.0025,
-        lrna_fee_burn=burn_rate
+        lrna_fee_burn=burn_rate,
+        lrna_mint_pct=0
     )
     tkn_sell = 'USD'
     tkn_buy = 'DOT'
@@ -2719,7 +2720,7 @@ def test_lrna_fee_burn(lrna_fee, burn_rate):
         old_agent=initial_agent,
         tkn_sell=tkn_sell,
         tkn_buy='LRNA',
-        buy_quantity=lrna_received
+        buy_quantity=lrna_received_1
     )
     if buy_lrna_state.fail:
         raise AssertionError('buy LRNA swap failed.')
@@ -2764,3 +2765,60 @@ def test_lrna_fee_burn(lrna_fee, burn_rate):
         raise AssertionError(f'LRNA burn rate not calculated correctly.')
     if lrna_received_1 + lrna_fee_total_3 != pytest.approx(lrna_paid_out_3, rel=1e-20):
         raise AssertionError(f'LRNA fee not calculated correctly.')
+
+
+def test_price_after_trade():
+    setup1 = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(2000000000000000), 'LRNA': mpf(2000000000000000)},
+            'USD': {'liquidity': mpf(2000000000000000), 'LRNA': mpf(2000000000000000)}
+        },
+        lrna_mint_pct=1,
+        asset_fee=0,
+        lrna_fee=0.1
+    )
+    setup2 = setup1.copy()
+    setup2.asset_fee = 0.1
+    setup3 = setup2.copy()
+    setup3.lrna_mint_pct = 0
+    setup4 = setup2.copy()
+
+    agent = Agent(
+        holdings={'USD': mpf(58_823_529_411_766)}
+    )
+    print()
+    print(setup1.usd_price('HDX'))
+    print(setup2.usd_price('HDX'))
+    setup1.swap(
+        agent=agent.copy(),
+        tkn_buy='HDX',
+        tkn_sell='USD',
+        sell_quantity=agent.holdings['USD']
+    )
+    setup2.swap(
+        agent=agent.copy(),
+        tkn_buy='HDX',
+        tkn_sell='USD',
+        sell_quantity=agent.holdings['USD']
+    )
+    sell_agent = agent.copy()
+    setup3.swap(
+        agent=sell_agent,
+        tkn_buy='HDX',
+        tkn_sell='USD',
+        sell_quantity=agent.holdings['USD']
+    )
+    buy_agent = agent.copy()
+    setup4.swap(
+        agent=buy_agent,
+        tkn_buy='HDX',
+        tkn_sell='USD',
+        buy_quantity=sell_agent.holdings['HDX']
+    )
+    print(setup1.liquidity['HDX'] / setup1.lrna['HDX'])
+    print(setup2.liquidity['HDX'] / setup2.lrna['HDX'])
+    print(setup3.liquidity['HDX'] / setup3.lrna['HDX'])
+    print(setup4.liquidity['HDX'] / setup4.lrna['HDX'])
+    lrna_minted = setup2.lrna['HDX'] - setup3.lrna['HDX']
+    print(lrna_minted)
+    print(f"agent4 sell quantity: {buy_agent.initial_holdings['USD'] - buy_agent.holdings['USD']}")
