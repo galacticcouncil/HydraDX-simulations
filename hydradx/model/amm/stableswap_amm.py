@@ -174,12 +174,12 @@ class StableSwapPoolState(Exchange):
             return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
     def sell_limit(self, tkn_buy, tkn_sell):  # TODO: fix this
-        return self.liquidity[tkn_buy]
+        return self.liquidity[tkn_buy] - 1
 
     def buy_limit(self, tkn_buy, tkn_sell):
         if tkn_buy not in self.liquidity:
             return 0
-        return self.liquidity[tkn_buy]
+        return self.liquidity[tkn_buy] - 1
 
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
         reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
@@ -617,6 +617,15 @@ class StableSwapPoolState(Exchange):
             self.liquidity[tkn] -= delta_tkns[tkn]
             agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
         return self
+
+    def cash_out(self, agent: Agent, prices: dict[str: float]) -> float:
+        if self.unique_id not in agent.holdings:
+            print(f'Error: agent does not have any shares in {self.unique_id}.')
+            return 0
+
+        share_fraction = agent.holdings[self.unique_id] / self.shares
+        delta_tkns = {tkn: share_fraction * self.liquidity[tkn] for tkn in self.asset_list}  # delta_tkn is positive
+        return sum([delta_tkns[tkn] * prices[tkn] for tkn in self.asset_list])
 
 
 def simulate_swap(
