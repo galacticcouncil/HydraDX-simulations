@@ -1048,7 +1048,7 @@ def dca_with_lping(
     return TradeStrategy(strategy, name='DCA with LPing')
 
 
-def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, config: dict = None, trade_frequency: float = 1) -> TradeStrategy:
+def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, config: list[dict] = None, trade_frequency: float = 1) -> TradeStrategy:
     # Create reverse equivalency map
     reverse_map = {}
     if equivalency_map is None:
