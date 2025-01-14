@@ -46,15 +46,7 @@ class StableSwapPoolState(Exchange):
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
-        self.peg = peg
-        if peg is None:
-            self.peg = [1] * len(self.asset_list)
-        elif isinstance(peg, (int, float)):  # peg is price of second asset denominated in first asset
-            assert len(self.asset_list) == 2
-            self.peg = [1, peg]
-        else:  # peg is list of prices of all assets except the first, denominate in first asset
-            assert len(peg) == len(self.asset_list) - 1
-            self.peg = [1] + peg
+        self.set_peg()
 
         self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
@@ -79,6 +71,16 @@ class StableSwapPoolState(Exchange):
         self.time_step += 1
         if self.target_amp_block >= self.time_step:
             self.amplification += self.amp_change_step
+
+    def set_peg(self, peg=None):
+        if peg is None:
+            self.peg = [1] * len(self.asset_list)
+        elif isinstance(peg, (int, float)):  # peg is price of second asset denominated in first asset
+            assert len(self.asset_list) == 2
+            self.peg = [1, peg]
+        else:  # peg is list of prices of all assets except the first, denominate in first asset
+            assert len(peg) == len(self.asset_list) - 1
+            self.peg = [1] + peg
 
     def set_amplification(self, amplification: float, duration: float):
         self.target_amp_block = self.time_step + duration
