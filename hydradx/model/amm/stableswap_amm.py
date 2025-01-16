@@ -46,7 +46,7 @@ class StableSwapPoolState(Exchange):
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
-        self.set_peg()
+        self.set_peg(peg)
 
         self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
