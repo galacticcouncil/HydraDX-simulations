@@ -1106,7 +1106,7 @@ def test_get_arb_swaps_output():
 
     all_swaps = get_arb_swaps(op_state, cex_dict, cfg, max_liquidity=max_liquidity)
 
-    # with open(f'./output/arb_swaps.json', 'w') as output_file:
+    # with open(f'hydradx/tests/output/arb_swaps.json', 'w') as output_file:
     #     json.dump(all_swaps, output_file)
 
     with open(prefix + 'output/arb_swaps.json', 'r') as output_file:
