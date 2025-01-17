@@ -295,12 +295,15 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 def test_save_load():
     path = os.getcwd()
-    if not os.path.exists(os.path.join(path, 'archive')):
-        path = os.path.join(path, 'hydradx', 'tests', 'archive')
-    else:
-        path = os.path.join(path, 'archive')
+    # if not os.path.exists(os.path.join(path, 'archive')):
+    #     path = os.path.join(path, 'hydradx', 'tests', 'archive')
+    # else:
+    #     path = os.path.join(path, 'archive')
     omnipool = get_omnipool()
     save_omnipool(omnipool, path=path)
     omnipool2 = load_omnipool(path=path)
     if repr(omnipool2) != repr(omnipool):
         raise AssertionError('Save and load failed')
+    # delete the file
+    filename = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))[0]
+    os.remove(os.path.join(path, filename))
