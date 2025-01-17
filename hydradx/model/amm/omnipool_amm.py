@@ -1,13 +1,11 @@
 import copy
 from typing import Callable
-from debugpy.common.log import warning
 import math
 
 from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
-from mpmath import power
 from typing import Literal
 
 class DynamicFee:
@@ -64,9 +62,9 @@ class OmnipoolState(Exchange):
                  remove_liquidity_volatility_threshold: float = 0,
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
-                 lrna_mint_pct: float = 0.0,
+                 lrna_mint_pct: float = 1.0,
                  unique_id: str = 'omnipool',
-                 lrna_fee_burn: float = 0.0,
+                 lrna_fee_burn: float = 1.0,
                  lrna_fee_destination: Agent = None
                  ):
         """
