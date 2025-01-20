@@ -19,3 +19,13 @@ def randomize_object(obj):
         for prop in obj.__dict__:
             setattr(obj, prop, randomize_object(getattr(obj, prop)))
         return obj
+
+def find_test_directory():
+    import os
+
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    while not os.path.exists(os.path.join(test_dir, 'tests')):
+        test_dir = os.path.dirname(test_dir)
+        if test_dir == '/':
+            raise Exception('Could not find test directory')
+    return os.path.join(test_dir, 'tests')

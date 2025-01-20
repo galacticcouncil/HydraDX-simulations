@@ -230,13 +230,13 @@ def get_orderbooks_from_file(input_path: str) -> dict:
     for filename in file_ls:
         if filename.startswith('kraken_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
-            filepath = input_path + filename
+            filepath = os.path.join(input_path, filename)
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
                 ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(y)
         elif filename.startswith('binance_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
-            filepath = input_path + filename
+            filepath = os.path.join(input_path, filename)
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
                 ob_dict['binance'][tkn_pair] = convert_binance_orderbook(tkn_pair, y)
@@ -383,13 +383,13 @@ def get_omnipool_data_from_file(path: str):
     for filename in file_ls:
         if filename.startswith('omnipool_data'):
             if filename.split('_')[2] == 'tokens':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     tokens = json.load(json_file)
             elif filename.split('_')[2] == 'fees':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     fees = json.load(json_file)
             elif filename.split('_')[2] == 'assetmap':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     asset_map_str = json.load(json_file)
                     # print(asset_map_str)
                     asset_map = {int(k): v for k, v in asset_map_str.items()}
