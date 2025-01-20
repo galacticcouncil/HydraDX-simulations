@@ -15,6 +15,9 @@ from hydradx.model.processing import get_omnipool_data, get_centralized_market, 
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from mpmath import mp, mpf
+
+from hydradx.tests.utils import find_test_directory
+
 mp.dps = 50
 
 
@@ -699,9 +702,8 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
 
-    input_path = './data/'
-    if not os.path.exists(input_path):
-        input_path = 'hydradx/tests/data/'
+    input_path = find_test_directory()
+    input_path = os.path.join(input_path, 'data')
     asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
 
     cex = {}
@@ -822,17 +824,13 @@ def test_combine_step():
 def test_stableswap_router_arbitrage():
     # omnipool = get_omnipool()
     # save_omnipool(omnipool)
-    path = os.getcwd()
-    if not os.path.exists(os.path.join(path, 'archive')):
-        path = os.path.join(path, 'hydradx', 'tests', 'archive')
-    else:
-        path = os.path.join(path, 'archive')
-    omnipool = load_omnipool(path)
+    archive_path = os.path.join(find_test_directory(), 'archive')
+    omnipool = load_omnipool(archive_path)
     fourpool, btcpool, twopool = omnipool.sub_pools.values()
     router = OmnipoolRouter(
         exchanges=[omnipool, twopool, fourpool, btcpool]
     )
-    input_path = './data/'
+    input_path = os.path.join(find_test_directory(), 'data')
     if not os.path.exists(input_path):
         input_path = 'hydradx/tests/data/'
     cex = {}
