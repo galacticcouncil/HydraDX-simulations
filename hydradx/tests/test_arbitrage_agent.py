@@ -4,6 +4,9 @@ import os, json
 import pytest
 from hypothesis import given, strategies as st, settings, Phase
 from mpmath import mp, mpf
+
+from hydradx.tests.utils import find_test_directory
+
 mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
@@ -1048,11 +1051,7 @@ def test_generalized_arb():
 def test_get_arb_swaps_output():
 
     # try to find the test directory
-    path = os.getcwd()
-    if not os.path.exists(os.path.join(path, 'data')):
-        while not os.path.exists(os.path.join(path, 'hydradx')):
-            path = os.path.dirname(path)
-        path = os.path.join(path, 'hydradx', 'tests')
+    path = find_test_directory()
 
     asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(os.path.join(path, 'data'))
 
