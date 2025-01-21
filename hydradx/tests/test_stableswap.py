@@ -178,11 +178,11 @@ def test_round_trip_dy(initial_pool: StableSwapPoolState):
     d = initial_pool.calculate_d()
     asset_a = initial_pool.asset_list[0]
     other_reserves = [initial_pool.liquidity[a] for a in list(filter(lambda k: k != asset_a, initial_pool.asset_list))]
-    y = initial_pool.calculate_y(reserves=other_reserves, d=d)
+    y = initial_pool.calculate_y(reserves=other_reserves, d=d, tkn_omit=asset_a)
     if y != pytest.approx(initial_pool.liquidity[asset_a]) or y < initial_pool.liquidity[asset_a]:
         raise AssertionError('Round-trip calculation incorrect.')
     modified_d = initial_pool.calculate_d(initial_pool.modified_balances(delta={asset_a: 1}))
-    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d) != pytest.approx(y + 1):
+    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d, tkn_omit=asset_a) != pytest.approx(y + 1):
         raise AssertionError('Round-trip calculation incorrect.')
 
 
