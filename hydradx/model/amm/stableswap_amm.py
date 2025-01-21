@@ -155,7 +155,7 @@ class StableSwapPoolState(Exchange):
         balances = list(self.liquidity.values())
         if i == 0:  # price of the numeraire is always 1
             return 1
-        return self.price_at_balance(balances, self.d, i)
+        return self.price_at_balance(balances, i)
 
     def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
         if fee is None:
@@ -201,14 +201,13 @@ class StableSwapPoolState(Exchange):
         j = list(self.liquidity.keys()).index(denomination)
         return self.price_at_balance(
             balances=list(self.liquidity.values()),
-            d=self.d,
             i=i, j=j
         )
 
-    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
+    def price_at_balance(self, balances: list, i: int = 1, j: int = 0):
         n = self.n_coins
         ann = self.ann
-
+        d = self.calculate_d(balances)
         c = d
         adj_balances = [balances[k] * self.peg[k] for k in range(n)]
         sorted_bal = sorted(adj_balances)
@@ -414,21 +413,12 @@ class StableSwapPoolState(Exchange):
         agent.holdings[tkn_remove] += quantity
         return self
 
-    def remove_liquidity(
+    def calculate_remove_liquidity(
             self,
             agent: Agent,
             shares_removed: float,
-            tkn_remove: str,
+            tkn_remove: str
     ):
-        # First, need to calculate
-        # * Get current D
-        # * Solve Eqn against y_i for D - _token_amount
-
-        if shares_removed > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Agent has insufficient funds.')
-        elif shares_removed <= 0:
-            return self.fail_transaction('Withdraw quantity must be > 0.')
-
         _fee = self.trade_fee
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
@@ -450,6 +440,24 @@ class StableSwapPoolState(Exchange):
                 xp_reduced[tkn] -= _fee * dx_expected
 
         dy = asset_reserve - self.calculate_y(list(xp_reduced.values()), reduced_d, tkn_remove)
+        return dy
+
+    def remove_liquidity(
+            self,
+            agent: Agent,
+            shares_removed: float,
+            tkn_remove: str,
+    ):
+        # First, need to calculate
+        # * Get current D
+        # * Solve Eqn against y_i for D - _token_amount
+
+        if shares_removed > agent.holdings[self.unique_id]:
+            return self.fail_transaction('Agent has insufficient funds.')
+        elif shares_removed <= 0:
+            return self.fail_transaction('Withdraw quantity must be > 0.')
+
+        dy = self.calculate_remove_liquidity(agent, shares_removed, tkn_remove)
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
