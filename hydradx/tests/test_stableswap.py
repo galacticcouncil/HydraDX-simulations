@@ -703,3 +703,20 @@ def test_arbitrary_peg_feeless():
         slippage[r] = abs(spot - execution_price)/spot
     assert max(slippage.values()) < 1e-5
     assert slippage[0.5] < slippage[0.25] and slippage[0.5] < slippage[1]
+
+
+@given(amplification=st.integers(min_value=1, max_value=10000))
+def test_price_at_balance(amplification):
+    stableswap = StableSwapPoolState(
+        tokens={'USDT': 1, 'USDC': 1},
+        amplification=amplification,
+        trade_fee=0
+    )
+    for balance_ratio in [0.1, 0.5, 1, 2, 10]:
+        stableswap.liquidity['USDT'] = balance_ratio
+        spot = stableswap.spot_price()
+        calculated = stableswap.price_at_balance(list(stableswap.liquidity.values()))
+        if calculated != pytest.approx(spot, rel=1e-12):
+            raise AssertionError(f'Price at balance ({calculated}) != spot price ({spot}).')
+
+
