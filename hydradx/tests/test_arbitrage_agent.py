@@ -4,6 +4,9 @@ import os, json
 import pytest
 from hypothesis import given, strategies as st, settings, Phase
 from mpmath import mp, mpf
+
+from hydradx.tests.utils import find_test_directory
+
 mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
@@ -1047,14 +1050,13 @@ def test_generalized_arb():
 
 def test_get_arb_swaps_output():
 
-    prefix = './'
-    if not os.path.exists(prefix + "data"):
-        prefix = 'hydradx/tests/'
+    # try to find the test directory
+    path = find_test_directory()
 
-    asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(prefix + "data/")
+    asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(os.path.join(path, 'data'))
 
-    arb_file = "arbconfig2.txt"
-    with open(prefix + 'config/' + arb_file, 'r') as json_file:
+    arb_file = 'arbconfig2.txt'
+    with open(os.path.join(path, 'config', arb_file), 'r') as json_file:
         cfg = json.load(json_file)
 
     for d in cfg:
@@ -1064,7 +1066,7 @@ def test_get_arb_swaps_output():
 
     order_book_assets = {}
 
-    ob_objs = get_orderbooks_from_file(prefix + "data/")
+    ob_objs = get_orderbooks_from_file(os.path.join(path, 'data'))
 
     for arb_cfg in cfg:
         tkn_pair = arb_cfg['order_book']
@@ -1101,15 +1103,15 @@ def test_get_arb_swaps_output():
     )
 
     liq_file = "liqconfig.txt"
-    with open(prefix + 'config/' + liq_file, 'r') as json_file:
+    with open(os.path.join(path, 'config', liq_file), 'r') as json_file:
         max_liquidity = json.load(json_file)
 
     all_swaps = get_arb_swaps(op_state, cex_dict, cfg, max_liquidity=max_liquidity)
 
-    # with open(f'./output/arb_swaps.json', 'w') as output_file:
+    # with open(os.path.join(path, 'output', 'arb_swaps.json', 'w') as output_file:
     #     json.dump(all_swaps, output_file)
 
-    with open(prefix + 'output/arb_swaps.json', 'r') as output_file:
+    with open(os.path.join(path, 'output', 'arb_swaps.json'), 'r') as output_file:
         loaded_swaps = json.load(output_file)
 
     assert all_swaps == loaded_swaps
