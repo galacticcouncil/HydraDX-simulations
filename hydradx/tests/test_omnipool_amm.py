@@ -2823,3 +2823,30 @@ def test_price_after_trade():
     lrna_minted = setup2.lrna['HDX'] - setup3.lrna['HDX']
     print(lrna_minted)
     print(f"agent4 sell quantity: {buy_agent.initial_holdings['USD'] - buy_agent.holdings['USD']}")
+
+
+def test_fee_against_invariant_spec():
+
+    fA = 0.01
+    omnipool = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(100), 'LRNA': mpf(100)},
+            'USD': {'liquidity': mpf(100), 'LRNA': mpf(100)}
+        },
+        lrna_mint_pct=1,
+        asset_fee=fA,
+        lrna_fee=0.0
+    )
+
+    q, r = omnipool.lrna['USD'], omnipool.liquidity['USD']
+
+    delta_q = 1
+    agent = Agent(holdings={'LRNA': delta_q})
+    omnipool.swap(agent, 'USD', 'LRNA', sell_quantity=delta_q)
+
+    q_plus, r_plus = omnipool.lrna['USD'], omnipool.liquidity['USD']
+    F = 0
+    rho = delta_q / q
+    lhs = q_plus * r_plus - q * r
+    rhs = - delta_q * (r / (1 + rho) * (1 - fA) - F * rho + r_plus * (-1 - fA * (1 + rho)))
+    assert lhs == pytest.approx(rhs, rel=1e-20)
