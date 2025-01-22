@@ -866,11 +866,11 @@ def test_stableswap_withdraw_fee_arbitrary_peg(fee, peg):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=0.0001, max_value=1)
 )
 @settings(print_blob=True)
-def test_fuzz_arb_repegging(fee, balance_pct, amp):
+def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct):
     init_vDOT_price = 1
-    repeg_pct = 2 * fee
 
     balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
     tokens = {'DOT': balance_pct / (balance_pct + 1) * balanced_tokens['DOT'],
@@ -893,11 +893,11 @@ def test_fuzz_arb_repegging(fee, balance_pct, amp):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=0.0001, max_value=1)
 )
-@settings(print_blob=True, max_examples=10000)
-def test_fuzz_arb_repegging_lp(fee, balance_pct, amp):
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct):
     init_vDOT_price = 1
-    repeg_pct = 2 * fee
 
     for liq_tkn in ['DOT', 'vDOT']:
         balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
