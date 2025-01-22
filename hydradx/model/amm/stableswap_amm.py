@@ -587,7 +587,7 @@ class StableSwapPoolState(Exchange):
         """Calculates spot price of withdrawing asset as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_remove] * precision
-        delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size)
+        delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size, self.trade_fee)
         return trade_size / delta_shares
 
     def buy_shares(
