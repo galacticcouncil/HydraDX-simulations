@@ -866,11 +866,11 @@ def test_stableswap_withdraw_fee_arbitrary_peg(fee, peg):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=0.0001, max_value=1)
 )
 @settings(print_blob=True)
-def test_fuzz_arb_repegging(fee, balance_pct, amp):
+def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct):
     init_vDOT_price = 1
-    repeg_pct = 2 * fee
 
     balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
     tokens = {'DOT': balance_pct / (balance_pct + 1) * balanced_tokens['DOT'],
@@ -879,10 +879,10 @@ def test_fuzz_arb_repegging(fee, balance_pct, amp):
     arb_size = 1
     agent = Agent(holdings={'DOT': arb_size})
 
+    peg_target = init_vDOT_price * (1 + repeg_pct)
     pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price)
-
     pool.swap(agent, 'DOT', 'vDOT', sell_quantity=arb_size)
-    pool.set_peg(pool.peg[1] * (1 + repeg_pct))
+    pool.set_peg_target(peg_target)
     pool.swap(agent, 'vDOT', 'DOT', sell_quantity=agent.holdings['vDOT'])
     profit = agent.holdings['DOT'] - arb_size
     if profit > 0:
@@ -893,11 +893,11 @@ def test_fuzz_arb_repegging(fee, balance_pct, amp):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=0.0001, max_value=1)
 )
-@settings(print_blob=True, max_examples=10000)
-def test_fuzz_arb_repegging_lp(fee, balance_pct, amp):
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct):
     init_vDOT_price = 1
-    repeg_pct = 2 * fee
 
     for liq_tkn in ['DOT', 'vDOT']:
         balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
@@ -907,10 +907,11 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp):
         liq_size = 1000000
         agent = Agent(holdings={liq_tkn: liq_size})
 
+        peg_target = init_vDOT_price * (1 + repeg_pct)
         pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price)
 
         pool.add_liquidity(agent, liq_size, liq_tkn)
-        pool.set_peg(pool.peg[1] * (1 + repeg_pct))
+        pool.set_peg_target(peg_target)
         pool.remove_liquidity(agent, agent.holdings[pool.unique_id], liq_tkn)
         profit = agent.holdings[liq_tkn] - liq_size
         if profit > 0:
