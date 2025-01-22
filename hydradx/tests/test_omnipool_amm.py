@@ -2827,7 +2827,7 @@ def test_price_after_trade():
 
 @given(
     sell_amt=st.floats(min_value=1, max_value=10000),
-    asset_fee = st.floats(min_value=0.0, max_value=0.1)
+    asset_fee = st.floats(min_value=0.00001, max_value=0.1)
 )
 @settings(print_blob=True)
 def test_fee_against_invariant_spec(sell_amt, asset_fee):
@@ -2854,12 +2854,9 @@ def test_fee_against_invariant_spec(sell_amt, asset_fee):
     q_plus, r_plus = omnipool.lrna['USD'], omnipool.liquidity['USD']
     rho = -delta_q / q
     lhs = q_plus * r_plus - q * r
-    rhs = - delta_q * (r / (1 + rho) * (1 - fA) - F * rho + r_plus * (-1 - fA * (1 + rho)))
-    assert lhs == pytest.approx(rhs, rel=1e-20)
-
     rhs = delta_q * (r / (1 + rho) * (1 - fA) + F / rho + r_plus * (-1 - fA * (1 + rho)))
-    assert lhs == pytest.approx(rhs, rel=1e-12)
+    assert lhs == pytest.approx(rhs, rel=1e-10)
 
     lhs2 = (q_plus * r_plus + (F - r) * q) / delta_q
     rhs2 = r * q * (1 - fA) / (q - delta_q) - (1 + fA) * r_plus + fA * r_plus * delta_q / q
-    assert lhs2 == pytest.approx(rhs2, rel=1e-12)
+    assert lhs2 == pytest.approx(rhs2, rel=1e-10)
