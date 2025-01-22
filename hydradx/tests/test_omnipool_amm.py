@@ -2,7 +2,7 @@ import copy
 import math
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings
+from hypothesis import given, strategies as st, assume, settings, reproduce_failure
 import mpmath
 from mpmath import mp, mpf
 import os
@@ -2825,13 +2825,17 @@ def test_price_after_trade():
     print(f"agent4 sell quantity: {buy_agent.initial_holdings['USD'] - buy_agent.holdings['USD']}")
 
 
-def test_fee_against_invariant_spec():
-
-    fA = 0.01
+@given(
+    sell_amt=st.floats(min_value=1, max_value=10000),
+    asset_fee = st.floats(min_value=0.0, max_value=0.1)
+)
+@settings(print_blob=True)
+def test_fee_against_invariant_spec(sell_amt, asset_fee):
+    fA = asset_fee
     omnipool = OmnipoolState(
         tokens={
-            'HDX': {'liquidity': mpf(100), 'LRNA': mpf(100)},
-            'USD': {'liquidity': mpf(100), 'LRNA': mpf(100)}
+            'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+            'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)}
         },
         lrna_mint_pct=1,
         asset_fee=fA,
@@ -2840,13 +2844,20 @@ def test_fee_against_invariant_spec():
 
     q, r = omnipool.lrna['USD'], omnipool.liquidity['USD']
 
-    delta_q = 1
-    agent = Agent(holdings={'LRNA': delta_q})
-    omnipool.swap(agent, 'USD', 'LRNA', sell_quantity=delta_q)
+    delta_q = -sell_amt
+    agent = Agent(holdings={'LRNA': -delta_q})
+
+    F = 0  # python implementation doesn't remove any fee
+
+    omnipool.swap(agent, 'USD', 'LRNA', sell_quantity=-delta_q)
 
     q_plus, r_plus = omnipool.lrna['USD'], omnipool.liquidity['USD']
-    F = 0
-    rho = delta_q / q
+    rho = -delta_q / q
     lhs = q_plus * r_plus - q * r
-    rhs = - delta_q * (r / (1 + rho) * (1 - fA) - F * rho + r_plus * (-1 - fA * (1 + rho)))
-    assert lhs == pytest.approx(rhs, rel=1e-20)
+
+    rhs = delta_q * (r / (1 + rho) * (1 - fA) + F / rho + r_plus * (-1 - fA * (1 + rho)))
+    assert lhs == pytest.approx(rhs, rel=1e-12)
+
+    lhs2 = (q_plus * r_plus + (F - r) * q) / delta_q
+    rhs2 = r * q * (1 - fA) / (q - delta_q) - (1 + fA) * r_plus + fA * r_plus * delta_q / q
+    assert lhs2 == pytest.approx(rhs2, rel=1e-12)
