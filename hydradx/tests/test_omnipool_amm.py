@@ -2854,6 +2854,8 @@ def test_fee_against_invariant_spec(sell_amt, asset_fee):
     q_plus, r_plus = omnipool.lrna['USD'], omnipool.liquidity['USD']
     rho = -delta_q / q
     lhs = q_plus * r_plus - q * r
+    rhs = - delta_q * (r / (1 + rho) * (1 - fA) - F * rho + r_plus * (-1 - fA * (1 + rho)))
+    assert lhs == pytest.approx(rhs, rel=1e-20)
 
     rhs = delta_q * (r / (1 + rho) * (1 - fA) + F / rho + r_plus * (-1 - fA * (1 + rho)))
     assert lhs == pytest.approx(rhs, rel=1e-12)
