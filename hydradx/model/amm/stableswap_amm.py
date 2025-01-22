@@ -310,27 +310,17 @@ class StableSwapPoolState(Exchange):
             f'error message:{self.fail or "none"}'
         )
 
-    def calculate_peg_difference(self, tkn: str, numeraire: str = None):
-        n_i = 0 if numeraire is None else self.asset_list.index(numeraire)
-        t_i = self.asset_list.index(tkn)
-        p_n = self.peg[n_i]  # peg of numeraire
-        pt_n = self.peg_target[n_i]  # target peg of numeraire
-        p_t = self.peg[t_i]  # peg of token
-        pt_t = self.peg_target[t_i]  # target peg of token
-        peg = p_t / p_n
-        peg_target = pt_t / pt_n
-        return (peg_target - peg) / peg
+    def calculate_max_peg_difference(self):
+        price_changes = [self.peg_target[i] / self.peg[i] for i in range(len(self.peg))]
+        return max(price_changes) / min(price_changes) - 1
 
     def set_peg_to_target(self):
         for i in range(len(self.peg)):
             self.peg[i] = self.peg_target[i]
 
-    def update_peg(self, tkn_sell: str = None, tkn_buy: str = None) -> float:
-        if tkn_sell is not None:
-            peg_diff = self.calculate_peg_difference(tkn_sell, tkn_buy)
-            fee = max(peg_diff, self.trade_fee)
-        else:
-            fee = 0
+    def update_peg(self) -> float:
+        peg_diff = self.calculate_max_peg_difference()
+        fee = max(peg_diff, self.trade_fee)
         self.set_peg_to_target()
         return fee
 
@@ -342,7 +332,7 @@ class StableSwapPoolState(Exchange):
             buy_quantity: float = 0,
             sell_quantity: float = 0
     ):
-        fee = self.update_peg(tkn_sell, tkn_buy)
+        fee = self.update_peg()
 
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
@@ -382,7 +372,7 @@ class StableSwapPoolState(Exchange):
             raise ValueError('Cannot specify both buy and sell quantities.')
 
         if tkn_buy:
-            fee = self.update_peg(tkn_buy)
+            fee = self.update_peg()
             tkns_sell = list(filter(lambda t: t != tkn_buy, self.asset_list))
             for tkn in tkns_sell:
                 if tkn not in agent.holdings:
@@ -407,7 +397,7 @@ class StableSwapPoolState(Exchange):
             agent.holdings[tkn_buy] += buy_quantity
 
         elif tkn_sell:
-            fee = self.update_peg(tkn_sell)
+            fee = self.update_peg()
             tkns_buy = list(filter(lambda t: t != tkn_sell, self.asset_list))
             buy_quantity = quantity
 
@@ -446,7 +436,7 @@ class StableSwapPoolState(Exchange):
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        fee = self.update_peg(tkn_remove)
+        fee = self.update_peg()
         shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity, fee)
 
         if shares_removed > agent.holdings[self.unique_id]:
@@ -480,7 +470,7 @@ class StableSwapPoolState(Exchange):
         elif shares_removed <= 0:
             return self.fail_transaction('Withdraw quantity must be > 0.')
 
-        fee = self.update_peg(tkn_remove)
+        fee = self.update_peg()
         _fee = fee
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
@@ -517,7 +507,7 @@ class StableSwapPoolState(Exchange):
             quantity: float,
             tkn_add: str
     ):
-        fee = self.update_peg(tkn_add)
+        fee = self.update_peg()
         updated_reserves = {
             tkn: self.liquidity[tkn] + (quantity if tkn == tkn_add else 0) for tkn in self.asset_list
         }
@@ -598,7 +588,7 @@ class StableSwapPoolState(Exchange):
             fail_overdraft: bool = True
     ):
 
-        trade_fee = self.update_peg(tkn_add)
+        trade_fee = self.update_peg()
         initial_d = self.d
         d1 = initial_d + initial_d * quantity / self.shares
 
