@@ -224,6 +224,8 @@ class OmnipoolRouter:
                 sell_shares = omnipool.calculate_sell_from_buy(tkn_buy, stable_pool.unique_id, buy_quantity)
                 if sell_shares < 0:
                     return self.fail_transaction("Not enough liquidity in the stableswap/LRNA pool.")
+                elif sell_shares > stable_pool.shares:
+                    return self.fail_transaction("Not enough shares in the stableswap pool.")
                 stable_pool.buy_shares(agent, sell_shares, tkn_sell)
                 if stable_pool.fail:
                     return self.fail_transaction(stable_pool.fail)
