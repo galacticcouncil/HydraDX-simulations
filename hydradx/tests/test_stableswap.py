@@ -867,7 +867,7 @@ def test_stableswap_withdraw_fee_arbitrary_peg(fee, peg):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
-    st.floats(min_value=0.0001, max_value=1)
+    st.floats(min_value=-1, max_value=1, exclude_min=True)
 )
 @settings(print_blob=True)
 def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct):
@@ -895,7 +895,7 @@ def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct):
     st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.0001, max_value=10000),
     st.floats(min_value=10, max_value=100000),
-    st.floats(min_value=0.0001, max_value=1)
+    st.floats(min_value=-1, max_value=1, exclude_min=True)
 )
 @settings(print_blob=True)
 def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct):
@@ -925,8 +925,8 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct):
     st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=10, max_value=100000),
-    st.floats(min_value=0.0001, max_value=1),
-    st.floats(min_value=0.0001, max_value=1)
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=-1, max_value=1, exclude_min=True)
 )
 @settings(print_blob=True)
 def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2):
@@ -962,8 +962,8 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
     st.floats(min_value=.01, max_value=100),
     st.floats(min_value=.01, max_value=100),
     st.floats(min_value=10, max_value=100000),
-    st.floats(min_value=0.0001, max_value=1),
-    st.floats(min_value=0.0001, max_value=1)
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=-1, max_value=1, exclude_min=True)
 )
 @settings(print_blob=True)
 def test_fuzz_arb_repegging_lp_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2):
