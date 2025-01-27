@@ -1,3 +1,4 @@
+import copy
 import functools
 from datetime import timedelta
 
@@ -928,7 +929,6 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct):
     st.floats(min_value=0.0001, max_value=1)
 )
 @settings(print_blob=True)
-@reproduce_failure('6.39.6', b'AXicY2BAAR6t62YdOccgqTA36scfmCCjbGrz3AsAkVwJPw==')
 def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2):
     init_vDOT_price = 1
     init_lstDOT_price = 1
@@ -947,7 +947,7 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
             arb_size = 1
             agent = Agent(holdings={tkn_sell: arb_size})
 
-            pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price])
+            pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price])
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
             pool.set_peg_target(peg_target)
             pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])
@@ -957,33 +957,41 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
                 raise AssertionError(f'Attack successful')
 
 
-# @given(
-#     st.floats(min_value=0.00001, max_value=0.0010),
-#     st.floats(min_value=0.0001, max_value=10000),
-#     st.floats(min_value=10, max_value=100000),
-#     st.floats(min_value=0.0001, max_value=1)
-# )
-# @settings(print_blob=True)
-# def test_fuzz_arb_repegging_lp_3pool(fee, balance_pct, amp, repeg_pct):
-#     init_vDOT_price = 1
-#     for liq_tkn in ['DOT', 'vDOT']:
-#         balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
-#         tokens = {'DOT': balance_pct / (balance_pct + 1) * balanced_tokens['DOT'],
-#                   'vDOT': 1 / (balance_pct + 1) * balanced_tokens['vDOT']}
-#
-#         liq_size = 1000000
-#         agent = Agent(holdings={liq_tkn: liq_size})
-#
-#         peg_target = init_vDOT_price * (1 + repeg_pct)
-#         pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price)
-#
-#         pool.add_liquidity(agent, liq_size, liq_tkn)
-#         pool.set_peg_target(peg_target)
-#         pool.remove_liquidity(agent, agent.holdings[pool.unique_id], liq_tkn)
-#         assert pool.peg == [1, peg_target]
-#         profit = agent.holdings[liq_tkn] - liq_size
-#         if profit > 1:
-#             raise AssertionError(f'Attack successful')
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=.01, max_value=100),
+    st.floats(min_value=.01, max_value=100),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=0.0001, max_value=1),
+    st.floats(min_value=0.0001, max_value=1)
+)
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_lp_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2):
+    init_vDOT_price = 1
+    init_lstDOT_price = 1
+
+    dot_liq = 1000000
+    tokens = {
+        'DOT': dot_liq,
+        'vDOT': ratio1 * dot_liq / init_vDOT_price,
+        'lstDOT': ratio2 * dot_liq / init_lstDOT_price
+    }
+
+    peg_target = [init_vDOT_price * (1 + repeg_pct1), init_lstDOT_price * (1 + repeg_pct2)]
+
+    for liq_tkn in ['DOT', 'vDOT']:
+        liq_size = tokens[liq_tkn] / 2
+        agent = Agent(holdings={liq_tkn: liq_size})
+
+        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price])
+
+        pool.add_liquidity(agent, liq_size, liq_tkn)
+        pool.set_peg_target(peg_target)
+        pool.remove_liquidity(agent, agent.holdings[pool.unique_id], liq_tkn)
+        assert pool.peg == [1] + peg_target
+        profit = agent.holdings[liq_tkn] - liq_size
+        if profit > 1:
+            raise AssertionError(f'Attack successful')
 
 
 def test_stableswap_constructor_peg_success():
