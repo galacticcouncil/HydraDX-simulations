@@ -44,8 +44,6 @@ class DynamicFee:
 
 class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
-    _asset_fee: DynamicFee
-    _lrna_fee: DynamicFee
 
     def __init__(self,
                  tokens: dict[str: dict],
@@ -206,7 +204,7 @@ class OmnipoolState(Exchange):
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
-        else:
+        elif isinstance(value, float):
             return DynamicFee(
                 current={tkn: value for tkn in self.asset_list},
                 maximum=value,
@@ -214,6 +212,8 @@ class OmnipoolState(Exchange):
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
+        else:
+            raise ValueError('Invalid fee value')
 
     @property
     def lrna_fee(self) -> Callable[[str], float]:
