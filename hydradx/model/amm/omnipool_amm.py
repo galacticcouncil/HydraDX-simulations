@@ -31,15 +31,15 @@ class DynamicFee:
         else:
             self.current = current
         self.last_updated = last_updated or {tkn: 0 for tkn in self.current}
-        self.last_liquidity = liquidity if liquidity is not None else {}
-        self.last_volume = net_volume if net_volume is not None else {}
+        self.liquidity_at_last_update = liquidity if liquidity is not None else {}
+        self.volume_at_last_update = net_volume if net_volume is not None else {}
 
     def update(self, time_step: int, volume: dict, liquidity: dict):
         for tkn in self.current:
             if self.last_updated[tkn] == time_step:
                 # update only when fee[tkn] has been accessed this block
-                self.last_liquidity[tkn] = liquidity[tkn]
-                self.last_volume[tkn] = volume[tkn]
+                self.liquidity_at_last_update[tkn] = liquidity[tkn]
+                self.volume_at_last_update[tkn] = volume[tkn]
 
 
 class OmnipoolState(Exchange):
@@ -185,8 +185,8 @@ class OmnipoolState(Exchange):
                 minimum=value.minimum,
                 maximum=value.maximum,
                 current={tkn: value.current[tkn] if tkn in value.current else value.minimum for tkn in self.asset_list},
-                liquidity={tkn: value.last_liquidity[tkn] if tkn in value.last_liquidity else self.liquidity[tkn] for tkn in self.asset_list},
-                net_volume={tkn: value.last_volume[tkn] for tkn in self.asset_list} if value.last_volume else get_last_volume(),
+                liquidity={tkn: value.liquidity_at_last_update[tkn] if tkn in value.liquidity_at_last_update else self.liquidity[tkn] for tkn in self.asset_list},
+                net_volume={tkn: value.volume_at_last_update[tkn] for tkn in self.asset_list} if value.volume_at_last_update else get_last_volume(),
                 last_updated=value.last_updated
             )
             return return_val
@@ -262,13 +262,13 @@ class OmnipoolState(Exchange):
         # knowing there have been no trades until now
         num_blocks = int(self.time_step - fee.last_updated[tkn])
         m = min(20, num_blocks)
-        x = fee.amplification * fee.last_volume[tkn] / self.liquidity[tkn]
+        x = fee.amplification * fee.volume_at_last_update[tkn] / self.liquidity[tkn]
         j_sum = 0
         w = 1 - self.oracles['price'].decay_factor
         for j in range(m):
             oracle_value = math.pow(w, j)
             j_sum += oracle_value / (
-                    1 + (fee.last_liquidity[tkn] - self.liquidity[tkn]) / self.liquidity[tkn] * oracle_value
+                    1 + (fee.liquidity_at_last_update[tkn] - self.liquidity[tkn]) / self.liquidity[tkn] * oracle_value
             )
         w_term = (w * (math.pow(w, m) - math.pow(w, num_blocks))) / self.oracles['price'].decay_factor
         delta = x * (j_sum + w_term) - num_blocks * fee.decay
@@ -295,10 +295,10 @@ class OmnipoolState(Exchange):
         if hasattr(self, '_lrna_fee'):
             if tkn not in self._lrna_fee.current: self._lrna_fee.current[tkn] = self._lrna_fee.minimum
             if tkn not in self._asset_fee.current: self._asset_fee.current[tkn] = self._asset_fee.minimum
-            if tkn not in self._lrna_fee.last_liquidity: self._lrna_fee.last_liquidity[tkn] = liquidity
-            if tkn not in self._asset_fee.last_liquidity: self._asset_fee.last_liquidity[tkn] = liquidity
-            if tkn not in self._lrna_fee.last_volume: self._lrna_fee.last_volume[tkn] = 0
-            if tkn not in self._asset_fee.last_volume: self._asset_fee.last_volume[tkn] = 0
+            if tkn not in self._lrna_fee.liquidity_at_last_update: self._lrna_fee.liquidity_at_last_update[tkn] = liquidity
+            if tkn not in self._asset_fee.liquidity_at_last_update: self._asset_fee.liquidity_at_last_update[tkn] = liquidity
+            if tkn not in self._lrna_fee.volume_at_last_update: self._lrna_fee.volume_at_last_update[tkn] = 0
+            if tkn not in self._asset_fee.volume_at_last_update: self._asset_fee.volume_at_last_update[tkn] = 0
             if tkn not in self._lrna_fee.last_updated: self._lrna_fee.last_updated[tkn] = 0
             if tkn not in self._asset_fee.last_updated: self._asset_fee.last_updated[tkn] = 0
         if hasattr(self, 'current_block'):
