@@ -1210,6 +1210,9 @@ class OmnipoolState(Exchange):
 
         # update block
         self.current_block.lps[tkn_add] += quantity
+        # update fees
+        self.asset_fee(tkn_add)
+        self.lrna_fee(tkn_add)
 
         return self
 
@@ -1317,6 +1320,9 @@ class OmnipoolState(Exchange):
                 del agent.nfts[nft_id]
 
         self.current_block.withdrawals[tkn_remove] += abs(delta_s)
+        # update fees
+        self.asset_fee(tkn_remove)
+        self.lrna_fee(tkn_remove)
         return self
 
     def price(self, tkn: str, denominator: str = '') -> float:
