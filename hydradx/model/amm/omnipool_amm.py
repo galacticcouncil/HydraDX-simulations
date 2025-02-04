@@ -63,7 +63,8 @@ class OmnipoolState(Exchange):
                  lrna_mint_pct: float = 0.5,
                  unique_id: str = 'omnipool',
                  lrna_fee_burn: float = 1.0,
-                 lrna_fee_destination: Agent = None
+                 lrna_fee_destination: Agent = None,
+                 dynamic_fee_precision: int = 20
                  ):
         """
         tokens should be a dict in the form of [str: dict]
@@ -163,6 +164,7 @@ class OmnipoolState(Exchange):
         if lrna_fee_destination is None:
             lrna_fee_destination = Agent(holdings={'LRNA': 0})
         self.lrna_fee_destination = lrna_fee_destination
+        self.dynamic_fee_precision = dynamic_fee_precision
 
         self.current_block = Block(self)
         self.unique_id = unique_id
@@ -204,7 +206,7 @@ class OmnipoolState(Exchange):
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
-        elif isinstance(value, float):
+        else:  # value is a number
             return DynamicFee(
                 current={tkn: value for tkn in self.asset_list},
                 maximum=value,
@@ -212,8 +214,6 @@ class OmnipoolState(Exchange):
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume()
             )
-        else:
-            raise ValueError('Invalid fee value')
 
     @property
     def lrna_fee(self) -> Callable[[str], float]:
@@ -261,16 +261,17 @@ class OmnipoolState(Exchange):
         # use this approximation to catch up to where we think the fee should be,
         # knowing there have been no trades until now
         num_blocks = int(self.time_step - fee.last_updated[tkn])
-        m = min(20, num_blocks)
+        m = min(self.dynamic_fee_precision, num_blocks)
         x = fee.amplification * fee.volume_at_last_update[tkn] / self.liquidity[tkn]
         j_sum = 0
         w = 1 - self.oracles['price'].decay_factor
+        w_j = 1
         for j in range(m):
-            oracle_value = math.pow(w, j)
-            j_sum += oracle_value / (
-                    1 + (fee.liquidity_at_last_update[tkn] - self.liquidity[tkn]) / self.liquidity[tkn] * oracle_value
+            j_sum += w_j / (
+                    1 + (fee.liquidity_at_last_update[tkn] - self.liquidity[tkn]) / self.liquidity[tkn] * w_j
             )
-        w_term = (w * (math.pow(w, m) - math.pow(w, num_blocks))) / self.oracles['price'].decay_factor
+            w_j *= w
+        w_term = (math.pow(w, m + 1) - math.pow(w, num_blocks + 1)) / self.oracles['price'].decay_factor
         delta = x * (j_sum + w_term) - num_blocks * fee.decay
         fee_value = min(max(fee.current[tkn] + delta, fee.minimum), fee.maximum)
         fee.current[tkn] = fee_value
