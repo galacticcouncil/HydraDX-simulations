@@ -368,6 +368,44 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     return transform
 
 
+def dynamic_fees_from_historical_prices(price_list: list[dict[str: float]], buffer: float, mult: float) -> Callable:
+    hist_prices_transform = historical_prices(price_list)
+    b = buffer  # 10 bp buffer
+    m = mult  # slope of 0.5
+
+    def calculate_fees(state: GlobalState) -> tuple[dict, dict]:
+        omnipool = state.pools['omnipool']
+
+        # convert oracle prices to be denominated in LRNA via the preferred stablecoin
+        usd_tkn = omnipool.stablecoin
+        lrna_price = omnipool.price('LRNA', usd_tkn)
+        lrna_oracle_prices = {tkn: state.external_market[tkn] / lrna_price for tkn in state.external_market}
+        # calculate the fee for each asset
+        asset_fees = {}
+        protocol_fees = {}
+        for tkn in omnipool.asset_list:
+            price = omnipool.price(tkn, "LRNA")
+            if tkn in lrna_oracle_prices and lrna_oracle_prices[tkn] > 0:
+                asset_fee_oracle = max(1 - price * (1 + b) / lrna_oracle_prices[tkn], 0) * m
+                protocol_fee_oracle = max(1 - lrna_oracle_prices[tkn] * (1 + b) / price, 0) * m
+            else:
+                asset_fee_oracle = 0
+                protocol_fee_oracle = 0
+            asset_fees[tkn] = max(asset_fee_oracle, 0.0025)
+            protocol_fees[tkn] = max(protocol_fee_oracle, 0.0005)
+        return asset_fees, protocol_fees
+
+
+    def transform(state: GlobalState) -> GlobalState:
+        state = hist_prices_transform(state)
+        asset_fees, protocol_fees = calculate_fees(state)
+        state.pools['omnipool'].asset_fee = asset_fees
+        state.pools['omnipool'].lrna_fee = protocol_fees
+        return state
+
+    return transform
+
+
 def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         omnipool = state.pools[pool_id]

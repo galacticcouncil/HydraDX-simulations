@@ -4,7 +4,7 @@ from .global_state import GlobalState
 from .agents import Agent
 from .exchange import Exchange
 from .basilisk_amm import ConstantProductPoolState
-from .omnipool_amm import OmnipoolState
+from .omnipool_amm import OmnipoolState, simulate_swap
 from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
 from typing import Callable
@@ -562,6 +562,62 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
         return state
 
     return TradeStrategy(strategy, name='omnipool arbitrage')
+
+
+def arb_tkn_pair(pool_id: str, tkn_pair: tuple[str, str]):
+
+    def get_sell_amount(pool: OmnipoolState, price: float, tkn: str, numeraire: str, holdings: dict[str: float]):
+        if price < pool.price(tkn, numeraire):  # sell tkn to Omnipool
+            tkn_buy = numeraire
+            tkn_sell = tkn
+            target_price = price
+        else:  # buy tkn from Omnipool
+            tkn_buy = tkn
+            tkn_sell = numeraire
+            target_price = 1 / price  # we want target_price to be denominated in tkn_buy
+
+        max_sell_amt = holdings[tkn_sell]
+
+        # first try selling max amount
+        dummy_agent = Agent(unique_id='dummy_agent', trade_strategy=None, holdings={tkn_sell: max_sell_amt})
+        temp_state, temp_agent = simulate_swap(pool, dummy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell,
+                                               sell_quantity=dummy_agent.holdings[tkn_sell])
+        sell_spot = temp_state.sell_spot(tkn_sell, tkn_buy)
+        if sell_spot > target_price:  # price is too high, we'd like to sell more but can't
+            return tkn_sell, max_sell_amt
+
+        # use binomial search to find correct sell_amount
+        sell_amt_max = max_sell_amt
+        sell_amt_min = 0
+        for i in range(32):
+        # while (sell_amt_max - sell_amt_min)/sell_amt_max > 0.0001:
+            sell_amt = (sell_amt_max + sell_amt_min) / 2
+            dummy_agent = Agent(unique_id='dummy_agent', trade_strategy=None, holdings={tkn_sell: sell_amt})
+            temp_state, temp_agent = simulate_swap(pool, dummy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell,
+                                                   sell_quantity=dummy_agent.holdings[tkn_sell])
+            sell_spot = temp_state.sell_spot(tkn_sell, tkn_buy)
+            if sell_spot > target_price:  # price is too high, we need to sell more
+                sell_amt_min = sell_amt
+            elif sell_spot < target_price:  # price is too low, we need to sell less
+                sell_amt_max = sell_amt
+            else:  # price is correct
+                break
+
+        return sell_amt, tkn_sell, tkn_buy, sell_amt_max - sell_amt_min
+
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+
+        init_pool = state.pools[pool_id]
+        market_price_tkn1 = state.price(tkn_pair[0])
+        market_price_tkn2 = state.price(tkn_pair[1]) if tkn_pair[1] in state.external_market else 1
+        market_price = market_price_tkn1 / market_price_tkn2
+        sell_amt, tkn_sell, tkn_buy, error = get_sell_amount(init_pool, market_price, tkn_pair[0], tkn_pair[1], state.agents[agent_id].holdings)
+        if sell_amt > 0:
+            state = state.execute_swap(pool_id, agent_id, tkn_sell=tkn_sell, tkn_buy=tkn_buy, sell_quantity=sell_amt)
+            state = state.external_market_trade(agent_id, tkn_sell=tkn_buy, tkn_buy=tkn_sell, buy_quantity=sell_amt)
+        return state
+
+    return TradeStrategy(strategy, name='pairwise arbitrage')
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 1e-6):
