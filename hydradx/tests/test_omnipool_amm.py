@@ -1317,7 +1317,7 @@ def test_dynamic_fees(hdx_price: float):
         raise AssertionError('LRNA fee should decrease with time.')
 
 
-@given(num_blocks = st.integers(min_value=1, max_value=1000))
+@given(num_blocks = st.integers(min_value=0, max_value=1000))
 def test_dynamic_fee_multiple_block_update(num_blocks):
     init_vol_out = mpf(100)
     init_vol_in = 0
