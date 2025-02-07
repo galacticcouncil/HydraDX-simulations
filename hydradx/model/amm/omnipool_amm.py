@@ -1,11 +1,13 @@
 import copy
 from typing import Callable
+from debugpy.common.log import warning
 import math
 
 from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
 from .stableswap_amm import StableSwapPoolState
+from mpmath import power
 from typing import Literal
 
 class DynamicFee:
@@ -44,6 +46,8 @@ class DynamicFee:
 
 class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
+    _asset_fee: DynamicFee
+    _lrna_fee: DynamicFee
 
     def __init__(self,
                  tokens: dict[str: dict],
@@ -375,6 +379,11 @@ class OmnipoolState(Exchange):
 
     def copy(self):
         copy_state = copy.deepcopy(self)
+        # if isinstance(self._lrna_fee, DynamicFee):
+        #     # in the setter, this will actually create a new DynamicFee instance
+        #     copy_state.lrna_fee = self._lrna_fee
+        # if isinstance(self._asset_fee, DynamicFee):
+        #     copy_state.asset_fee = self._asset_fee
         copy_state.fail = ''
         return copy_state
 
@@ -1363,7 +1372,7 @@ class OmnipoolState(Exchange):
             return 0
         else:
             return (self.lrna[tkn] / self.liquidity[tkn]) * (1 - fee)
-        
+
     def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None,
                      numeraire: str = None) -> float:
         # assets is a dict of token: quantity

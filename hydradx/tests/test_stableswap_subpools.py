@@ -191,6 +191,13 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
     ):
         er = 1
     if not (
+            stable_pool.calculate_d()
+            and new_stable_pool.shares
+            and new_stable_pool.calculate_d()
+            and stable_pool.shares
+    ):
+        er = 1
+    if not (
             stable_pool.calculate_d() * new_stable_pool.shares ==
             pytest.approx(new_stable_pool.calculate_d() * stable_pool.shares)
     ):

@@ -584,7 +584,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             buy_amount = buy_amount or sell_amount
             balance_out = stable_pool.liquidity[tkn_buy] - buy_amount
             balance_in = stable_pool.calculate_y(
-                stable_pool.modified_balances(delta={tkn_buy: -buy_amount}, omit=[tkn_sell]), d
+                stable_pool.modified_balances(delta={tkn_buy: -buy_amount}, omit=[tkn_sell]), d, tkn_omit=tkn_sell
             )
             balances = list(stable_pool.liquidity.values())
             balances[list(stable_pool.liquidity.keys()).index(tkn_buy)] = balance_out
@@ -623,7 +623,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
         delta_y = find_trade_size(target_price, precision=precision)
         delta_x = (
             stable_pool.liquidity[tkn_sell]
-            - stable_pool.calculate_y(stable_pool.modified_balances(delta={tkn_buy: -delta_y}, omit=[tkn_sell]), d)
+            - stable_pool.calculate_y(stable_pool.modified_balances(delta={tkn_buy: -delta_y}, omit=[tkn_sell]), d, tkn_omit=tkn_sell)
         ) / (1 - stable_pool.trade_fee)
 
         projected_profit = (
