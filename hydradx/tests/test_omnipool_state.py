@@ -10,6 +10,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, DynamicF
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
 from hydradx.model.processing import get_omnipool, save_omnipool, load_omnipool
+from hydradx.tests.utils import find_test_directory
 
 
 def test_omnipool_constructor_fee_dict_works():
@@ -294,13 +295,12 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 
 def test_save_load():
-    path = os.getcwd()
-    if not os.path.exists(os.path.join(path, 'archive')):
-        path = os.path.join(path, 'hydradx', 'tests', 'archive')
-    else:
-        path = os.path.join(path, 'archive')
+    path = find_test_directory()
     omnipool = get_omnipool()
     save_omnipool(omnipool, path=path)
     omnipool2 = load_omnipool(path=path)
     if repr(omnipool2) != repr(omnipool):
         raise AssertionError('Save and load failed')
+    # delete the file
+    filename = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))[0]
+    os.remove(os.path.join(path, filename))

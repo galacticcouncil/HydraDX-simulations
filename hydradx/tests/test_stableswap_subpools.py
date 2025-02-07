@@ -2,7 +2,7 @@ import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
 from hydradx.tests.strategies_omnipool import omnipool_config, omnipool_reasonable_config
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings, strategies as st, reproduce_failure
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
@@ -171,7 +171,7 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
     # attempt buying an asset from the stableswap pool
     tkn_buy = initial_state.asset_list[1]
     tkn_sell = stable_pool.asset_list[0]
-    buy_quantity = 10
+    buy_quantity = 1
     new_router, new_agent = router.simulate_swap(
         agent=agent,
         tkn_buy=tkn_buy,
@@ -183,6 +183,13 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
     if new_router.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
+    if not (
+            stable_pool.calculate_d()
+            and new_stable_pool.shares
+            and new_stable_pool.calculate_d()
+            and stable_pool.shares
+    ):
+        er = 1
     if not (
             stable_pool.calculate_d()
             and new_stable_pool.shares
@@ -213,7 +220,7 @@ def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, su
         agent=agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
-        buy_quantity=buy_quantity - 1
+        buy_quantity=buy_quantity * 0.99
     )
     lesser_execution_price = (
             (agent.holdings[tkn_sell] - lesser_trade_agent.holdings[tkn_sell]) /
@@ -597,8 +604,6 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
     if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
-
-
 
 
 @given(omnipool_config(
