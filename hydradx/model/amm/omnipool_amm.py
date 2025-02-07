@@ -60,9 +60,9 @@ class OmnipoolState(Exchange):
                  remove_liquidity_volatility_threshold: float = 0,
                  withdrawal_fee: bool = True,
                  min_withdrawal_fee: float = 0.0001,
-                 lrna_mint_pct: float = 0.5,
+                 lrna_mint_pct: float = 1.0,
                  unique_id: str = 'omnipool',
-                 lrna_fee_burn: float = 1.0,
+                 lrna_fee_burn: float = 0.5,
                  lrna_fee_destination: Agent = None,
                  dynamic_fee_precision: int = 20
                  ):
