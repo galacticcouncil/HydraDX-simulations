@@ -1,15 +1,17 @@
+import copy
 import functools
 from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mp, mpf
 
 from hydradx.model import run
 from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, simulate_remove_uniform, \
+    simulate_add_liquidity
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
 
@@ -177,11 +179,11 @@ def test_round_trip_dy(initial_pool: StableSwapPoolState):
     d = initial_pool.calculate_d()
     asset_a = initial_pool.asset_list[0]
     other_reserves = [initial_pool.liquidity[a] for a in list(filter(lambda k: k != asset_a, initial_pool.asset_list))]
-    y = initial_pool.calculate_y(reserves=other_reserves, d=d)
+    y = initial_pool.calculate_y(reserves=other_reserves, d=d, tkn_omit=asset_a)
     if y != pytest.approx(initial_pool.liquidity[asset_a]) or y < initial_pool.liquidity[asset_a]:
         raise AssertionError('Round-trip calculation incorrect.')
     modified_d = initial_pool.calculate_d(initial_pool.modified_balances(delta={asset_a: 1}))
-    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d) != pytest.approx(y + 1):
+    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d, tkn_omit=asset_a) != pytest.approx(y + 1):
         raise AssertionError('Round-trip calculation incorrect.')
 
 
@@ -720,3 +722,389 @@ def test_price_at_balance(amplification):
             raise AssertionError(f'Price at balance ({calculated}) != spot price ({spot}).')
 
 
+@given(
+    st.floats(min_value=0.0001, max_value=1000),
+    st.floats(min_value=0.0001, max_value=1000),
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=0.01, max_value=100),
+)
+def test_fuzz_arbitrary_peg_remove_uniform(peg1, peg2, r1, r2):
+    # we'll test that the asset/share ratio does not decrease
+    amp = 1000
+    fee = 0.0
+    tvl = 2000000
+    remove_pct_size = 0.0001
+
+    tokens = {'USDT': mpf(r1 / (r1 + r2 + 1) * tvl), 'USDC': mpf(1 / (r1 + r2 + 1) * tvl),
+              'DAI': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
+    usdc_ratio = pool.liquidity['USDC'] / pool.shares
+    usdt_ratio = pool.liquidity['USDT'] / pool.shares
+
+    agent = Agent(holdings={pool.unique_id: mpf(pool.shares * remove_pct_size)})
+    test_state, test_agent = simulate_remove_uniform(pool, agent, agent.holdings[pool.unique_id])
+    new_usdc_ratio = test_state.liquidity['USDC'] / test_state.shares
+    new_usdt_ratio = test_state.liquidity['USDT'] / test_state.shares
+    err_usdc = (new_usdc_ratio - usdc_ratio)/usdc_ratio
+    err_usdt = (new_usdt_ratio - usdt_ratio)/usdt_ratio
+    if err_usdc < -1e-20:
+        raise  # exploitable
+    elif err_usdc > 1e-20:
+        raise  # insufficiently accurate
+    if err_usdt < -1e-20:
+        raise  # exploitable
+    elif err_usdt > 1e-20:
+        raise  # insufficiently accurate
+
+
+@given(
+    st.booleans(),
+    st.booleans(),
+    st.floats(min_value=0.000001, max_value=100),
+    st.floats(min_value=0.000001, max_value=100),
+    st.integers(min_value=10, max_value=100000),
+    st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000),
+    st.floats(min_value=0.000001, max_value = 1000000)
+)
+def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pct_size, amp, peg1, peg2, r1, r2):
+    fee = 0.0
+    tvl = 2000000
+    add_tkn = 'USDT' if add_tkn_usdt else 'USDC'
+    remove_tkn = 'USDT' if remove_tkn_usdt else 'USDC'
+    sell_tkn = 'USDT'
+    buy_tkn = 'USDC'
+
+    tokens = {'USDT': mpf(r1 / (r1 + r2 + 1) * tvl), 'USDC': mpf(1 / (r1 + r2 + 1) * tvl),
+              'DAI': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
+    add_amt = pool.liquidity[add_tkn] * add_pct_size
+    sell_amt = pool.liquidity[sell_tkn] * trade_pct_size
+
+    init_holdings = {add_tkn: add_amt}
+    if add_tkn == sell_tkn:
+        init_holdings[add_tkn] += sell_amt
+        init_holdings[buy_tkn] = 0
+    else:
+        init_holdings[sell_tkn] = sell_amt
+    agent = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
+
+    # add liquidity
+    pool.add_liquidity(agent, add_amt, add_tkn)
+    # trade
+    pool.swap(agent, sell_tkn, buy_tkn, sell_quantity=agent.holdings[sell_tkn])
+    # remove liquidity
+    pool.remove_liquidity(agent, agent.holdings[pool.unique_id], remove_tkn)
+    # trade back
+    pool.swap(agent, buy_tkn, sell_tkn, sell_quantity=agent.holdings[buy_tkn] - init_holdings[buy_tkn])
+    if agent.holdings[pool.unique_id] != 0:
+        raise AssertionError('Agent should have no shares left')
+    if agent.holdings[buy_tkn] != init_holdings[buy_tkn]:
+        raise AssertionError('By design of test, agent should have starting quantity of buy_tkn')
+    if agent.holdings[sell_tkn] >= init_holdings[sell_tkn]:
+        raise AssertionError('Agent has successfully exploited the pool')
+    profit_pct = (init_holdings[sell_tkn] - agent.holdings[sell_tkn])/tokens[sell_tkn]
+    if profit_pct >= 1e9:
+        raise AssertionError('Agent lost too much money')
+
+
+def test_stableswap_fee():
+    amp = 1000
+    fee = 0.01  # very high fee of 1% to exaggerate impact
+    tvl = 2000000
+    trade_size = 100
+
+    for peg1 in [1, 0.5, 2]:
+        for peg2 in [1, 0.5, 2]:
+            r1, r2 = peg1, peg2  # this makes pool evenly balanced at peg
+            tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
+                      'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
+            init_asset_sum_adj = tokens['TKN1'] + peg1 * tokens['TKN2']
+            pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
+            agent = Agent(holdings={'TKN1': mpf(trade_size)})
+            test_state, test_agent = simulate_swap(pool, agent, 'TKN1', 'TKN2', sell_quantity=trade_size)
+            asset_sum_adj = test_state.liquidity['TKN1'] + peg1 * test_state.liquidity['TKN2']
+            correct_fee = fee * trade_size
+            # we're pretty permissive with the error bar here because we are taking the difference of asset sums
+            if asset_sum_adj - init_asset_sum_adj != pytest.approx(correct_fee, rel=1e-3):
+                raise AssertionError('Fee not correctly applied')
+
+
+@given(st.floats(min_value=0.0, max_value=0.01))
+def test_fuzz_stableswap_fee_invariant(fee):
+    # we'll test that slippage is lowest around the peg.
+    amp = 1000
+    tvl = 2000000
+    trade_size = 100
+
+    for r in [1, 2, 0.5]:
+        for peg_m in [0.5, 1, 2]:
+            peg = r * peg_m
+            tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+            pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+            init_d = pool.d
+
+            agent = Agent(holdings={'USDT': mpf(trade_size)})
+            test_state, test_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+            correct_fee = fee * trade_size
+            # these quantities should *not* be exactly equal when the pool is not balanced, so we use high error
+            rel_error = 1e-8 if peg_m == 1 else 1e-2
+            assert test_state.d - init_d == pytest.approx(correct_fee, rel=rel_error)
+
+
+@given(
+    st.floats(min_value=0.0001, max_value=0.01),
+    st.floats(min_value=0.0001, max_value=10000)
+)
+@settings(print_blob=True)
+def test_stableswap_withdraw_fee_arbitrary_peg(fee, peg):
+    # we'll compare adding USDT and withdrawing USDC to just swapping USDT for USDC
+    amp = 1000
+    tvl = 2000000
+    trade_size = 100
+
+    r = peg
+    tokens = {'USDT': mpf(r / (r + 1) * tvl), 'USDC': mpf(1 / (r + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=peg)
+
+    agent = Agent(holdings={'USDT': mpf(trade_size)})
+    liq_state, liq_agent = simulate_add_liquidity(pool, agent, agent.holdings['USDT'], 'USDT')
+    liq_state.remove_liquidity(liq_agent, liq_agent.holdings[liq_state.unique_id], 'USDC')
+
+    swap_state, swap_agent = simulate_swap(pool, agent, 'USDT', 'USDC', sell_quantity=trade_size)
+    pct_diff = (swap_agent.holdings['USDC'] - liq_agent.holdings['USDC'])/swap_agent.holdings['USDC']
+    assert pct_diff > -1e-4  # withdraw liquidity is sometimes slightly better than swapping
+    assert pct_diff < 1e-4
+
+
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=0.0001, max_value=10000),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=0, max_value=0.01)
+)
+@settings(print_blob=True)
+def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct, max_repeg):
+    init_vDOT_price = 1
+
+    balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
+    tokens = {'DOT': balance_pct / (balance_pct + 1) * balanced_tokens['DOT'],
+              'vDOT': 1 / (balance_pct + 1) * balanced_tokens['vDOT']}
+
+    arb_size = 1
+    agent = Agent(holdings={'DOT': arb_size})
+
+    peg_target = init_vDOT_price * (1 + repeg_pct)
+    pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_target_update=max_repeg)
+    pool.swap(agent, 'DOT', 'vDOT', sell_quantity=arb_size)
+    pool.set_peg_target(peg_target)
+    pool.swap(agent, 'vDOT', 'DOT', sell_quantity=agent.holdings['vDOT'])
+    profit = agent.holdings['DOT'] - arb_size
+    if profit > 0:
+        raise AssertionError(f'Attack successful')
+
+
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=0.0001, max_value=10000),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=0, max_value=0.01)
+)
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct, max_repeg):
+    init_vDOT_price = 1
+    for liq_tkn in ['DOT', 'vDOT']:
+        balanced_tokens = {'DOT': init_vDOT_price * 1000000, 'vDOT': 1000000}
+        tokens = {'DOT': balance_pct / (balance_pct + 1) * balanced_tokens['DOT'],
+                  'vDOT': 1 / (balance_pct + 1) * balanced_tokens['vDOT']}
+
+        liq_size = 1000000
+        agent = Agent(holdings={liq_tkn: liq_size})
+
+        peg_target = init_vDOT_price * (1 + repeg_pct)
+        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_target_update=max_repeg)
+
+        pool.add_liquidity(agent, liq_size, liq_tkn)
+        pool.set_peg_target(peg_target)
+        pool.remove_liquidity(agent, agent.holdings[pool.unique_id], liq_tkn)
+        profit = agent.holdings[liq_tkn] - liq_size
+        if profit > 0:
+            raise AssertionError(f'Attack successful')
+
+
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=0, max_value=0.01)
+)
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg):
+    init_vDOT_price = 1
+    init_lstDOT_price = 1
+    arb_size = 1
+
+    dot_liq = 1000000
+    tokens = {
+        'DOT': dot_liq,
+        'vDOT': ratio1 * dot_liq / init_vDOT_price,
+        'lstDOT': ratio2 * dot_liq / init_lstDOT_price
+    }
+
+    peg_target = [init_vDOT_price * (1 + repeg_pct1), init_lstDOT_price * (1 + repeg_pct2)]
+
+    for [tkn1, tkn2] in [['DOT', 'vDOT'], ['DOT', 'lstDOT'], ['vDOT', 'lstDOT']]:
+        for [tkn_buy, tkn_sell] in [[tkn1, tkn2], [tkn2, tkn1]]:
+            agent = Agent(holdings={tkn_sell: arb_size})
+
+            pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
+                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+            pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
+            pool.set_peg_target(peg_target)
+            pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])
+            profit = agent.holdings[tkn_sell] - arb_size
+            if profit > 0:
+                raise AssertionError(f'Attack successful')
+
+
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=.01, max_value=100),
+    st.floats(min_value=.01, max_value=100),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=0, max_value=0.01)
+)
+@settings(print_blob=True)
+def test_fuzz_arb_repegging_lp_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg):
+    init_vDOT_price = 1
+    init_lstDOT_price = 1
+
+    dot_liq = 1000000
+    tokens = {
+        'DOT': dot_liq,
+        'vDOT': ratio1 * dot_liq / init_vDOT_price,
+        'lstDOT': ratio2 * dot_liq / init_lstDOT_price
+    }
+
+    peg_target = [init_vDOT_price * (1 + repeg_pct1), init_lstDOT_price * (1 + repeg_pct2)]
+
+    for liq_tkn in ['DOT', 'vDOT']:
+        liq_size = tokens[liq_tkn] / 2
+        agent = Agent(holdings={liq_tkn: liq_size})
+
+        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+
+        pool.add_liquidity(agent, liq_size, liq_tkn)
+        pool.set_peg_target(peg_target)
+        pool.remove_liquidity(agent, agent.holdings[pool.unique_id], liq_tkn)
+        profit = agent.holdings[liq_tkn] - liq_size
+        if profit > 0:
+            raise AssertionError(f'Attack successful')
+
+
+def test_stableswap_constructor_peg_success():
+    # n = 2
+    tokens = {'DOT': 1400000, 'vDOT': 1000000}
+    a = 100
+    trade_fee = 0.0005
+    peg = 1.4
+
+    pool = StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg)
+    assert pool.peg == [1, 1.4]
+    assert pool.peg_target == [1, 1.4]
+
+    # different peg target
+    peg_target = 1.5
+    pool = StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg, peg_target=peg_target)
+    assert pool.peg == [1, 1.4]
+    assert pool.peg_target == [1, 1.5]
+
+    # n = 3
+    tokens = {'DOT': 1400000, 'vDOT': 1000000, 'lstDOT': 1100000}
+    peg = [1.4, 1.3]
+    pool = StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg)
+    assert pool.peg == [1, 1.4, 1.3]
+    assert pool.peg_target == [1, 1.4, 1.3]
+
+    # different peg target
+    peg_target = [1.5, 1.4]
+    pool = StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg, peg_target=peg_target)
+    assert pool.peg == [1, 1.4, 1.3]
+    assert pool.peg_target == [1, 1.5, 1.4]
+
+
+def test_stableswap_constructor_peg_failure():
+    tokens = {'DOT': 1400000, 'vDOT': 1000000, 'lstDOT': 1100000}
+    a = 100
+    trade_fee = 0.0005
+    peg = 1.4
+
+    with pytest.raises(Exception):
+        StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg)
+
+    # different peg target
+    peg = [1.4, 1.3]
+    peg_target = 1.5
+    with pytest.raises(Exception):
+        StableSwapPoolState(tokens=tokens, amplification=a, trade_fee=trade_fee, peg=peg, peg_target=peg_target)
+
+
+@given(
+    st.floats(min_value=0.00001, max_value=0.0010),
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=-1, max_value=1, exclude_min=True),
+    st.floats(min_value=0.000001, max_value=0.01),
+    st.integers(min_value=1, max_value=1000),
+    st.floats(min_value=1, max_value=100000)
+)
+@settings(print_blob=True)
+def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg, block_ct, sell_size):
+    init_vDOT_price = 1
+    init_lstDOT_price = 1
+
+    dot_liq = 1000000
+    tokens = {
+        'DOT': dot_liq,
+        'vDOT': ratio1 * dot_liq / init_vDOT_price,
+        'lstDOT': ratio2 * dot_liq / init_lstDOT_price
+    }
+
+    peg_target = [init_vDOT_price * (1 + repeg_pct1), init_lstDOT_price * (1 + repeg_pct2)]
+
+    for [tkn1, tkn2] in [['DOT', 'vDOT'], ['DOT', 'lstDOT'], ['vDOT', 'lstDOT']]:
+        for [tkn_buy, tkn_sell] in [[tkn1, tkn2], [tkn2, tkn1]]:
+            agent = Agent(holdings={tkn_sell: sell_size})
+
+            pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
+                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+            pool.set_peg_target(peg_target)
+            pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=sell_size, block_no=block_ct)
+            peg_diff = [pool.peg[i] - 1 for i in range(len(pool.peg))]
+            for i in range(1,len(tokens)):
+                if peg_target[i-1] != pool.peg_target[i]:
+                    raise AssertionError(f'Peg target update unsuccessful')
+                # peg change should be in correct direction
+                is_expected_peg_move_pos = peg_target[i-1] > 1
+                if is_expected_peg_move_pos and peg_diff[i] < 0:
+                    raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated in correct direction')
+                elif not is_expected_peg_move_pos and peg_diff[i] > 0:
+                    raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated in correct direction')
+                if abs(peg_diff[i])/block_ct - max_repeg > 1e-15:  # check that max per-block is respected
+                    raise AssertionError(f'Peg diff of asset {pool.asset_list[i]} exceeds max_repeg {max_repeg}')
+                dir_sign = 1 if is_expected_peg_move_pos else -1
+                max_total_repeg = dir_sign * block_ct * max_repeg
+                # if peg target not hit, 1 + max_total_repeg = peg < peg_target
+                if pool.peg[i] != peg_target[i-1]:
+                    if 1 + max_total_repeg != pool.peg[i]:
+                        raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated sufficiently')

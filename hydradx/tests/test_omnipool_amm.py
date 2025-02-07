@@ -1317,7 +1317,8 @@ def test_dynamic_fees(hdx_price: float):
         raise AssertionError('LRNA fee should decrease with time.')
 
 
-def test_dynamic_fee_multiple_block_update():
+@given(num_blocks = st.integers(min_value=0, max_value=1000))
+def test_dynamic_fee_multiple_block_update(num_blocks):
     init_vol_out = mpf(100)
     init_vol_in = 0
     W = mpf(0.2)
@@ -1326,7 +1327,7 @@ def test_dynamic_fee_multiple_block_update():
     init_liq = mpf(10000)
     init_liq_oracle = mpf(10000)
     R = init_liq - init_vol_out
-    num_blocks = 1000
+    # num_blocks = 1000
     init_fee = mpf(0.0025)
     fee_min = mpf(0.0025)
     fee_max = mpf(0.1)
@@ -1344,23 +1345,8 @@ def test_dynamic_fee_multiple_block_update():
         liquidity_oracle = W * R + (1 - W) * liquidity_oracle
 
     liquidity_oracle = W * (init_liq - init_vol_out) + (1-W) * init_liq_oracle
-    decays = [mpmath.power(1-W, i) for i in range(num_blocks)]
-    mult = sum([decays[j] / (1 + (liquidity_oracle - R)/R * decays[j]) for j in range(num_blocks)])
-    delta_fee = amplification * (init_vol_out - init_vol_in) / R * mult - decay * num_blocks
-    fee2 = min(max(init_fee + delta_fee, fee_min), fee_max)
-    assert fee == pytest.approx(fee2, rel=1e-20)
 
-    m = min(20, num_blocks)
-    x = amplification * (init_vol_out - init_vol_in) / R
-    j_sum = 0
-    for j in range(m):
-        block_decay = mpmath.power(1 - W, j)
-        j_sum += block_decay / (
-            1 + (liquidity_oracle - R) / R * block_decay
-        )
-    w_term = ((1 - W) * (mpmath.power(1 - W, m) - mpmath.power(1 - W, num_blocks))) /  W
-    fee3 = init_fee + x * (j_sum + w_term) - num_blocks * decay
-    # assert fee3 == pytest.approx(fee, rel=1e-08)
+    fee_precision = 30
     test_state = OmnipoolState(
         tokens={
             'HDX': {'liquidity': 1, 'LRNA': 1},
@@ -1374,11 +1360,17 @@ def test_dynamic_fee_multiple_block_update():
             current={'R1': init_fee, 'HDX': 0},
             liquidity={'R1': liquidity_oracle, 'HDX': 0},
             net_volume={'R1': init_vol_out - init_vol_in, 'HDX': 0}
-        )
+        ),
+        dynamic_fee_precision=fee_precision
     )
     test_state.time_step = num_blocks
-    fee4 = test_state.lrna_fee('R1')
-    assert fee4 == pytest.approx(fee3, rel=1e-08)
+    fee2 = test_state.lrna_fee('R1')
+    if num_blocks < fee_precision:
+        if fee != pytest.approx(fee2, rel=1e-20):
+            raise AssertionError('Fee is not correct within precision range.')
+    else:
+        if fee2 != pytest.approx(fee, rel=1e-03):
+            raise AssertionError('Fee approximation is not correct.')
 
 
 @given(
