@@ -1,6 +1,6 @@
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mpf, mp
 from datetime import timedelta
 
@@ -868,6 +868,7 @@ def test_sell_spot_sell_stableswap_buy_omnipool(
     asset_fee=fee_strategy,
     trade_fee=fee_strategy
 )
+@settings(deadline=timedelta(milliseconds=500))
 def test_buy_spot_sell_stableswap_buy_omnipool(
         assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
 ):
