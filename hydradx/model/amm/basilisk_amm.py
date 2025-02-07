@@ -1,15 +1,16 @@
 import math
-from .amm import AMM, FeeMechanism, basic_fee
+from typing import Callable
+
+from .exchange import Exchange
 from .agents import Agent
 # when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
 precision_level = 20
 
-
-class ConstantProductPoolState(AMM):
+class ConstantProductPoolState(Exchange):
     def __init__(
             self,
             tokens: dict[str: float],
-            trade_fee: FeeMechanism or float = 0,
+            trade_fee: float = 0,
             unique_id=''
     ):
         """
@@ -21,8 +22,7 @@ class ConstantProductPoolState(AMM):
         There should only be two.
         """
         super().__init__()
-        self.trade_fee: FeeMechanism = trade_fee.assign(self) if isinstance(trade_fee, FeeMechanism)\
-            else basic_fee(trade_fee).assign(self)
+        self.trade_fee = trade_fee
         self.liquidity = dict()
         self.asset_list: list[str] = []
 
@@ -34,23 +34,21 @@ class ConstantProductPoolState(AMM):
 
         self.unique_id = unique_id
 
-    @staticmethod
-    def thorchain_fee() -> FeeMechanism:
-        def fee_function(exchange: AMM, tkn: str, delta_tkn: float):
-            return delta_tkn / (delta_tkn + exchange.liquidity[tkn])
+    def thorchain_fee(self):
+        def fee_function(tkn: str, delta_tkn: float):
+            return delta_tkn / (delta_tkn + self.liquidity[tkn])
 
-        return FeeMechanism(fee_function=fee_function, name='Thorchain fee')
+        return fee_function
 
-    @staticmethod
-    def custom_slip_fee(slip_factor: float, minimum: float = 0) -> FeeMechanism:
+    def custom_slip_fee(self, slip_factor: float, minimum: float = 0) :
         def fee_function(
-            exchange: AMM, tkn: str, delta_tkn: float
+            tkn: str, delta_tkn: float
         ) -> float:
             fee = (slip_factor * delta_tkn
-                   / (delta_tkn + exchange.liquidity[tkn])) + minimum
+                   / (delta_tkn + self.liquidity[tkn])) + minimum
 
             return fee
-        return FeeMechanism(fee_function=fee_function, name=f'slip fee {slip_factor * 100}% slippage + {minimum}')
+        return fee_function
 
     @property
     def invariant(self):
@@ -60,7 +58,7 @@ class ConstantProductPoolState(AMM):
         precision = 12
         return (
             f'Constant Product Pool\n'
-            f'base trade fee: {self.trade_fee.name}\n'
+            f'base trade fee: {round(self.trade_fee(self.asset_list[1], 1) * 1000) / 1000}\n'
             f'shares: {self.shares}\n'
             f'tokens: (\n'
         ) + ')\n(\n'.join(
@@ -70,6 +68,16 @@ class ConstantProductPoolState(AMM):
                 f'    weight: {round(self.liquidity[token] / sum(self.liquidity.values()), precision)}\n'
             ) for token in self.asset_list]
         ) + '\n)'
+
+    @property
+    def trade_fee(self):
+        return self._trade_fee
+
+    @trade_fee.setter
+    def trade_fee(self, fee: float or Callable[[str, float], float]):
+        def fee_function(tkn: str = '', delta_tkn: float = 0):
+            return fee
+        self._trade_fee = fee if isinstance(fee, Callable) else fee_function
 
     def swap(
         self,
@@ -103,7 +111,7 @@ class ConstantProductPoolState(AMM):
                     self.liquidity[tkn_sell] + sell_quantity)
             if math.isnan(buy_quantity):
                 buy_quantity = sell_quantity  # this allows infinite liquidity for testing
-            trade_fee = self.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            trade_fee = self.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
             buy_quantity *= 1 - trade_fee
     
         elif buy_quantity != 0:
@@ -111,7 +119,7 @@ class ConstantProductPoolState(AMM):
             sell_quantity = buy_quantity * self.liquidity[tkn_sell] / (self.liquidity[tkn_buy] - buy_quantity)
             if math.isnan(sell_quantity):
                 sell_quantity = buy_quantity  # this allows infinite liquidity for testing
-            trade_fee = self.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+            trade_fee = self.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
             sell_quantity /= 1 - trade_fee
     
         else:
@@ -238,10 +246,4 @@ def simulate_swap(
         new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity
     )
     return new_state, new_agent
-# 
-# 
-# ConstantProductPoolState.swap = staticmethod(simulate_swap)
-# ConstantProductPoolState.execute_swap = staticmethod(execute_swap)
-# ConstantProductPoolState.execute_add_liquidity = staticmethod(execute_add_liquidity)
-# ConstantProductPoolState.add_liquidity = staticmethod(simulate_add_liquidity)
-# ConstantProductPoolState.remove_liquidity = staticmethod(simulate_remove_liquidity)
+

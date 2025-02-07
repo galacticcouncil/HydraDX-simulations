@@ -1,5 +1,6 @@
 import base64
 import datetime
+import dateutil.parser
 import json
 import os
 import time
@@ -11,7 +12,6 @@ import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
 
-from .amm.amm import basic_fee
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.omnipool_amm import OmnipoolState
@@ -99,12 +99,12 @@ def postprocessing(events: list, optional_params: list[str] = ()) -> list:
 
 
 def import_binance_prices(
-        assets: list[str], start_date: str, days: int, interval: int = 12,
+        assets: list[str] or str, start_date: str, days: int=1, interval: int = 12,
         stablecoin: str = 'USDT', return_as_dict: bool = False
 ) -> dict[str: list[float]]:
-    start_date = datetime.datetime.strptime(start_date, "%B %d %Y")
+    start_date = dateutil.parser.parse(start_date)
     dates = [datetime.datetime.strftime(start_date + datetime.timedelta(days=i), "%Y-%m-%d") for i in range(days)]
-
+    if isinstance(assets, str): assets = [assets]
     # find the data folder
     while not os.path.exists("./data"):
         cwd = os.getcwd()
@@ -230,13 +230,13 @@ def get_orderbooks_from_file(input_path: str) -> dict:
     for filename in file_ls:
         if filename.startswith('kraken_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
-            filepath = input_path + filename
+            filepath = os.path.join(input_path, filename)
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
                 ob_dict['kraken'][tkn_pair] = convert_kraken_orderbook(y)
         elif filename.startswith('binance_orderbook'):
             tkn_pair = tuple(filename.split('_')[2].split('-'))
-            filepath = input_path + filename
+            filepath = os.path.join(input_path, filename)
             with open(filepath, newline='') as input_file:
                 y = json.load(input_file)
                 ob_dict['binance'][tkn_pair] = convert_binance_orderbook(tkn_pair, y)
@@ -383,13 +383,13 @@ def get_omnipool_data_from_file(path: str):
     for filename in file_ls:
         if filename.startswith('omnipool_data'):
             if filename.split('_')[2] == 'tokens':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     tokens = json.load(json_file)
             elif filename.split('_')[2] == 'fees':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     fees = json.load(json_file)
             elif filename.split('_')[2] == 'assetmap':
-                with open(path + filename, newline='') as json_file:
+                with open(os.path.join(path, filename), newline='') as json_file:
                     asset_map_str = json.load(json_file)
                     # print(asset_map_str)
                     asset_map = {int(k): v for k, v in asset_map_str.items()}
@@ -455,10 +455,8 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
             {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
-                'asset_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
-                              omnipool.asset_fee.items()},
-                'lrna_fee': {tkn: (fee.fee if hasattr(fee, 'fee') else str(fee)) for tkn, fee in
-                             omnipool.lrna_fee.items()},
+                'asset_fee': {tkn: omnipool.asset_fee(tkn) for tkn in omnipool.asset_list},
+                'lrna_fee': {tkn: omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list},
                 'sub_pools': [
                     {
                         'tokens': pool.liquidity,
@@ -490,8 +488,8 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
                 }
                 for tkn in json_state['liquidity']
             },
-            asset_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['asset_fee'].items()},
-            lrna_fee={tkn: basic_fee(float(fee)) for tkn, fee in json_state['lrna_fee'].items()}
+            asset_fee={tkn: float(fee) for tkn, fee in json_state['asset_fee'].items()},
+            lrna_fee={tkn: float(fee) for tkn, fee in json_state['lrna_fee'].items()}
         )
         for pool in json_state['sub_pools']:
             omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
@@ -846,7 +844,6 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
     # first make sure we have downloaded the available files
     download_history_files()
 
-    import dateutil.parser
     # find the date
     date = dateutil.parser.parse(f"{date}")
     end_date = dateutil.parser.parse(f"{end_date}") if end_date else None

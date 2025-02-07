@@ -1,6 +1,6 @@
 import copy
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 import bisect
 
 
@@ -78,7 +78,7 @@ OrderBook.copy = lambda self: OrderBook(
 )
 
 
-class CentralizedMarket(AMM):
+class CentralizedMarket(Exchange):
     def __init__(
             self,
             order_book: dict[tuple[str, str], OrderBook],

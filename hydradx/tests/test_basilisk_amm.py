@@ -205,7 +205,7 @@ def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_to
 def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: float):
     assume(slip_factor > 0.01)
     minimum_fee = 0.0001
-    initial_state.trade_fee = bamm.ConstantProductPoolState.custom_slip_fee(
+    initial_state.trade_fee = initial_state.custom_slip_fee(
         slip_factor=slip_factor, minimum=minimum_fee)
     initial_agent = Agent(
         holdings={token: 1000000 for token in initial_state.asset_list}
@@ -269,7 +269,7 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
         sell_quantity=sell_quantity
     )
 
-    sell_fee = initial_state.trade_fee.compute(tkn=tkn_sell, delta_tkn=sell_quantity)
+    sell_fee = initial_state.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
     if sell_state.liquidity[tkn_sell] * (sell_fee - minimum_fee) != pytest.approx(abs(slip_factor * sell_quantity)):
         raise AssertionError('Math mismatch, please re-check.')
 
@@ -310,9 +310,9 @@ def test_slip_fees(initial_state: bamm.ConstantProductPoolState, slip_factor: fl
 
 def test_fee_difference():
     initial_state = bamm.ConstantProductPoolState(
-        tokens={'R1': 1000, 'R2': 1000},
-        trade_fee=bamm.ConstantProductPoolState.custom_slip_fee(slip_factor=1)
+        tokens={'R1': 1000, 'R2': 1000}
     )
+    initial_state.trade_fee = initial_state.custom_slip_fee(slip_factor=1)
     trader = Agent(
         holdings={'R1': 1000, 'R2': 1000}
     )
