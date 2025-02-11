@@ -18,8 +18,7 @@ class StableSwapPoolState(Exchange):
             shares: float = 0,
             peg: float or list = None,
             peg_target: float or list = None,
-            max_peg_target_update: float = float('inf'),
-            block_no: int = 0
+            max_peg_target_update: float = float('inf')
     ):
         """
         Tokens should be in the form of:
@@ -37,6 +36,7 @@ class StableSwapPoolState(Exchange):
         self.amp_change_step = 0
         self.target_amp_block = 0
         self.time_step = 0
+        self.peg_target_updated_at = 0
         self.precision = precision
         self.spot_price_precision = spot_price_precision
         self.liquidity = dict()
@@ -50,7 +50,7 @@ class StableSwapPoolState(Exchange):
             self.liquidity[token] = quantity
 
         self.set_peg(peg)
-        self.set_peg_target(peg_target, block_no)
+        self.set_peg_target(peg_target)
         self.max_peg_target_update = max_peg_target_update
 
         self.shares = shares or self.calculate_d()
@@ -87,7 +87,7 @@ class StableSwapPoolState(Exchange):
             assert len(peg) == len(self.asset_list) - 1
             self.peg = [1] + peg
 
-    def set_peg_target(self, peg_target=None, block_no=0):
+    def set_peg_target(self, peg_target=None):
         if peg_target is None:
             self.peg_target = [p for p in self.peg]
         elif isinstance(peg_target, (int, float)):
@@ -98,7 +98,7 @@ class StableSwapPoolState(Exchange):
             self.peg_target = [1] + peg_target
 
         assert len(self.peg) == len(self.peg_target)
-        self.peg_target_block_no = block_no
+        self.peg_target_updated_at = self.time_step
 
     def set_amplification(self, amplification: float, duration: float):
         self.target_amp_block = self.time_step + duration
@@ -177,17 +177,17 @@ class StableSwapPoolState(Exchange):
             return 1
         return self.price_at_balance(balances, self.d, i)
 
-    def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None, block_no: int = 0):
+    def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
         if fee is None:
-            fee = self.calculate_fee(block_no)
+            fee = self.calculate_fee()
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
         else:
             return self.price(tkn_sell, tkn_buy) * (1 - fee)
 
-    def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None, block_no: int = 0):
+    def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
         if fee is None:
-            fee = self.calculate_fee(block_no)
+            fee = self.calculate_fee()
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
         else:
@@ -201,13 +201,13 @@ class StableSwapPoolState(Exchange):
             return 0
         return self.liquidity[tkn_buy]
 
-    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity, block_no=0):
-        fee = self.calculate_fee(block_no)
+    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
+        fee = self.calculate_fee()
         reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
         return (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d, tkn_buy)) * (1 - fee)
 
-    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity, block_no=0):
-        fee = self.calculate_fee(block_no)
+    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
+        fee = self.calculate_fee()
         reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
         return (self.calculate_y(reserves, self.d, tkn_sell) - self.liquidity[tkn_sell]) / (1 - fee)
 
@@ -272,7 +272,9 @@ class StableSwapPoolState(Exchange):
                 balances.pop(tkn)
         return list(balances.values())
 
-    def calculate_withdrawal_shares(self, tkn_remove, quantity, fee):
+    def calculate_withdrawal_shares(self, tkn_remove, quantity, fee = None):
+        if fee is None:
+            fee = self.calculate_fee(is_swap=False)
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
         return self.shares * (1 - updated_d / self.d) / (1 - fee)
 
@@ -310,9 +312,9 @@ class StableSwapPoolState(Exchange):
             f'error message:{self.fail or "none"}'
         )
 
-    def _calculate_peg_deltas(self, block_no=0):
+    def _calculate_peg_deltas(self):
         peg_deltas = []
-        block_ct = max([block_no - self.peg_target_block_no, 1])
+        block_ct = max([self.time_step - self.peg_target_updated_at, 1])
         for i in range(len(self.peg)):
             peg_diff = self.peg_target[i] - self.peg[i]
             max_peg_move = self.max_peg_target_update * self.peg[i] * block_ct
@@ -324,8 +326,8 @@ class StableSwapPoolState(Exchange):
                 peg_deltas.append(-max_peg_move)
         return peg_deltas
 
-    def calculate_max_peg_difference(self, peg_deltas, block_no=0):
-        block_ct = max([block_no - self.peg_target_block_no, 1])
+    def calculate_max_peg_difference(self, peg_deltas):
+        block_ct = max([self.time_step - self.peg_target_updated_at, 1])
         peg_relative_changes = [peg_deltas[i] / block_ct / self.peg[i] for i in range(len(self.peg))]
         return (1 + max(peg_relative_changes)) / (1 + min(peg_relative_changes)) - 1
 
@@ -333,17 +335,18 @@ class StableSwapPoolState(Exchange):
         for i in range(len(self.peg)):
             self.peg[i] += peg_deltas[i]
 
-    def _calculate_fee_from_peg_deltas(self, peg_deltas, block_no=0, mult=1):
-        peg_diff_per_block = self.calculate_max_peg_difference(peg_deltas, block_no)
+    def _calculate_fee_from_peg_deltas(self, peg_deltas, is_swap: bool):
+        mult = 1 if is_swap else 2
+        peg_diff_per_block = self.calculate_max_peg_difference(peg_deltas)
         return max(peg_diff_per_block * mult, self.trade_fee)
 
-    def calculate_fee(self, block_no=0, mult=1):
-        peg_deltas = self._calculate_peg_deltas(block_no)
-        return self._calculate_fee_from_peg_deltas(peg_deltas, block_no, mult)
+    def calculate_fee(self, is_swap: bool = True):
+        peg_deltas = self._calculate_peg_deltas()
+        return self._calculate_fee_from_peg_deltas(peg_deltas, is_swap)
 
-    def _update_peg(self, block_no, peg_mult=1) -> float:
-        peg_deltas = self._calculate_peg_deltas(block_no)
-        fee = self._calculate_fee_from_peg_deltas(peg_deltas, block_no, peg_mult)
+    def _update_peg(self, is_swap: bool = True) -> float:
+        peg_deltas = self._calculate_peg_deltas()
+        fee = self._calculate_fee_from_peg_deltas(peg_deltas, is_swap)
         self._move_peg_towards_target(peg_deltas)
         return fee
 
@@ -353,10 +356,9 @@ class StableSwapPoolState(Exchange):
             tkn_sell: str,
             tkn_buy: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0,
-            block_no: int = 0
+            sell_quantity: float = 0
     ):
-        fee = self._update_peg(block_no)
+        fee = self._update_peg()
 
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
@@ -384,8 +386,7 @@ class StableSwapPoolState(Exchange):
             agent: Agent,
             quantity: float,
             tkn_sell: str = '',
-            tkn_buy: str = '',
-            block_no: int = 0
+            tkn_buy: str = ''
     ):
         """
         This can be used when you want to change the price of one asset without changing the price of the others.
@@ -397,7 +398,7 @@ class StableSwapPoolState(Exchange):
             raise ValueError('Cannot specify both buy and sell quantities.')
 
         if tkn_buy:
-            fee = self._update_peg(block_no)
+            fee = self._update_peg()
             tkns_sell = list(filter(lambda t: t != tkn_buy, self.asset_list))
             for tkn in tkns_sell:
                 if tkn not in agent.holdings:
@@ -422,7 +423,7 @@ class StableSwapPoolState(Exchange):
             agent.holdings[tkn_buy] += buy_quantity
 
         elif tkn_sell:
-            fee = self._update_peg(block_no)
+            fee = self._update_peg()
             tkns_buy = list(filter(lambda t: t != tkn_sell, self.asset_list))
             buy_quantity = quantity
 
@@ -451,8 +452,7 @@ class StableSwapPoolState(Exchange):
             agent: Agent,
             quantity: float,
             tkn_remove: str,
-            fail_on_overdraw: bool = True,
-            block_no: int = 0
+            fail_on_overdraw: bool = True
     ):
         """
         Calculate a withdrawal based on the asset quantity rather than the share quantity
@@ -462,7 +462,7 @@ class StableSwapPoolState(Exchange):
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        fee = self._update_peg(block_no, 2)
+        fee = self._update_peg(is_swap=False)
         shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity, fee)
 
         if shares_removed > agent.holdings[self.unique_id]:
@@ -485,8 +485,7 @@ class StableSwapPoolState(Exchange):
             self,
             agent: Agent,
             shares_removed: float,
-            tkn_remove: str,
-            block_no: int = 0
+            tkn_remove: str
     ):
         # First, need to calculate
         # * Get current D
@@ -497,7 +496,7 @@ class StableSwapPoolState(Exchange):
         elif shares_removed <= 0:
             return self.fail_transaction('Withdraw quantity must be > 0.')
 
-        _fee = self._update_peg(block_no, 2)
+        _fee = self._update_peg(is_swap=False)
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
         initial_d = self.calculate_d()
@@ -533,10 +532,9 @@ class StableSwapPoolState(Exchange):
             self,
             agent: Agent,
             quantity: float,
-            tkn_add: str,
-            block_no: int = 0
+            tkn_add: str
     ):
-        fee = self._update_peg(block_no, 2)
+        fee = self._update_peg(is_swap=False)
         updated_reserves = {
             tkn: self.liquidity[tkn] + (quantity if tkn == tkn_add else 0) for tkn in self.asset_list
         }
@@ -606,7 +604,7 @@ class StableSwapPoolState(Exchange):
         """Calculates spot price of withdrawing asset as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_remove] * precision
-        delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size, self.trade_fee)
+        delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size)
         return trade_size / delta_shares
 
     def buy_shares(
@@ -614,11 +612,10 @@ class StableSwapPoolState(Exchange):
             agent: Agent,
             quantity: float,
             tkn_add: str,
-            fail_overdraft: bool = True,
-            block_no: int = 0
+            fail_overdraft: bool = True
     ):
 
-        trade_fee = self._update_peg(block_no, 2)
+        trade_fee = self._update_peg(is_swap=False)
         initial_d = self.d
         d1 = initial_d + initial_d * quantity / self.shares
 
@@ -665,15 +662,14 @@ class StableSwapPoolState(Exchange):
     def remove_uniform(
             self,
             agent: Agent,
-            shares_removed: float,
-            block_no: int = 0
+            shares_removed: float
     ):
         if shares_removed > agent.holdings[self.unique_id]:
             raise ValueError('Agent tried to remove more shares than it owns.')
         elif shares_removed <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        self._update_peg(block_no, 2)
+        self._update_peg(is_swap=False)
         share_fraction = shares_removed / self.shares
 
         delta_tkns = {}
@@ -701,47 +697,43 @@ def simulate_swap(
         tkn_sell: str,
         tkn_buy: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0,
-        block_no: int = 0
+        sell_quantity: float = 0
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity, block_no), new_agent
+    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity), new_agent
 
 
 def simulate_add_liquidity(
         old_state: StableSwapPoolState,
         old_agent: Agent,
         quantity: float,  # quantity of asset to be added
-        tkn_add: str,
-        block_no: int = 0
+        tkn_add: str
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.add_liquidity(new_agent, quantity, tkn_add, block_no), new_agent
+    return new_state.add_liquidity(new_agent, quantity, tkn_add), new_agent
 
 
 def simulate_remove_liquidity(
         old_state: StableSwapPoolState,
         old_agent: Agent,
         quantity: float,  # in this case, quantity refers to a number of shares, not quantity of asset
-        tkn_remove: str,
-        block_no: int = 0
+        tkn_remove: str
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.remove_liquidity(new_agent, quantity, tkn_remove, block_no), new_agent
+    return new_state.remove_liquidity(new_agent, quantity, tkn_remove), new_agent
 
 
 def simulate_remove_uniform(
         old_state: StableSwapPoolState,
         old_agent: Agent,
-        shares_removed: float,
-        block_no: int = 0
+        shares_removed: float
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.remove_uniform(new_agent, shares_removed, block_no), new_agent
+    return new_state.remove_uniform(new_agent, shares_removed), new_agent
 
 
 def simulate_buy_shares(
@@ -749,8 +741,7 @@ def simulate_buy_shares(
         old_agent: Agent,
         quantity: float,
         tkn_add: str,
-        fail_overdraft: bool = True,
-        block_no: int = 0
+        fail_overdraft: bool = True
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
@@ -758,6 +749,5 @@ def simulate_buy_shares(
         agent=new_agent,
         quantity=quantity,
         tkn_add=tkn_add,
-        fail_overdraft=fail_overdraft,
-        block_no=block_no
+        fail_overdraft=fail_overdraft
     ), new_agent

@@ -461,7 +461,6 @@ def test_exploitability(initial_lp: int, trade_size: int):
             break
 
 
-@settings(deadline=timedelta(milliseconds=500))
 @given(
     st.integers(min_value=1, max_value=1000000),
     st.floats(min_value=0.00001, max_value=0.99999)
@@ -967,7 +966,6 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
     st.floats(min_value=-1, max_value=1, exclude_min=True),
     st.floats(min_value=0, max_value=0.01)
 )
-@settings(print_blob=True)
 def test_fuzz_arb_repegging_lp_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg):
     init_vDOT_price = 1
     init_lstDOT_price = 1
@@ -1053,7 +1051,6 @@ def test_stableswap_constructor_peg_failure():
     st.integers(min_value=1, max_value=1000),
     st.floats(min_value=1, max_value=100000)
 )
-@settings(print_blob=True)
 def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg, block_ct, sell_size):
     init_vDOT_price = 1
     init_lstDOT_price = 1
@@ -1074,7 +1071,8 @@ def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg,
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
                                        peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
             pool.set_peg_target(peg_target)
-            pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=sell_size, block_no=block_ct)
+            pool.time_step += block_ct  # fast forward some blocks
+            pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=sell_size)
             peg_diff = [pool.peg[i] - 1 for i in range(len(pool.peg))]
             for i in range(1,len(tokens)):
                 if peg_target[i-1] != pool.peg_target[i]:
