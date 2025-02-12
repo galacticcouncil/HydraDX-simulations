@@ -2082,6 +2082,7 @@ def test_add_and_remove_liquidity():
 
     initial_value = omnipool.cash_out(agent, market_prices)
     final_value = remove_state.cash_out(remove_agent, market_prices)
+
     profit = final_value - initial_value
     if profit > 0:
         raise

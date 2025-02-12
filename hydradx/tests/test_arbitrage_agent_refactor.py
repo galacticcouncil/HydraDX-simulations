@@ -889,6 +889,7 @@ def test_stableswap_router_arbitrage():
                 # estimate value from omnipool price
                 profit['USD'] += (
                     profit[asset] * omnipool.lrna_price(asset)
+
                     / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
                 )
     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
