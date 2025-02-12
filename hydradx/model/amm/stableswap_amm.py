@@ -274,7 +274,7 @@ class StableSwapPoolState(Exchange):
 
     def calculate_withdrawal_shares(self, tkn_remove, quantity, fee = None):
         if fee is None:
-            fee = self.calculate_fee(is_swap=False)
+            fee = self.calculate_fee()
         updated_d = self.calculate_d(self.modified_balances(delta={tkn_remove: -quantity}))
         return self.shares * (1 - updated_d / self.d) / (1 - fee)
 
@@ -335,18 +335,17 @@ class StableSwapPoolState(Exchange):
         for i in range(len(self.peg)):
             self.peg[i] += peg_deltas[i]
 
-    def _calculate_fee_from_peg_deltas(self, peg_deltas, is_swap: bool):
-        mult = 1 if is_swap else 2
+    def _calculate_fee_from_peg_deltas(self, peg_deltas):
         peg_diff_per_block = self.calculate_max_peg_difference(peg_deltas)
-        return max(peg_diff_per_block * mult, self.trade_fee)
+        return max(2 * peg_diff_per_block, self.trade_fee)
 
-    def calculate_fee(self, is_swap: bool = True):
+    def calculate_fee(self):
         peg_deltas = self._calculate_peg_deltas()
-        return self._calculate_fee_from_peg_deltas(peg_deltas, is_swap)
+        return self._calculate_fee_from_peg_deltas(peg_deltas)
 
-    def _update_peg(self, is_swap: bool = True) -> float:
+    def _update_peg(self) -> float:
         peg_deltas = self._calculate_peg_deltas()
-        fee = self._calculate_fee_from_peg_deltas(peg_deltas, is_swap)
+        fee = self._calculate_fee_from_peg_deltas(peg_deltas)
         self._move_peg_towards_target(peg_deltas)
         return fee
 
@@ -462,7 +461,7 @@ class StableSwapPoolState(Exchange):
         if quantity <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        fee = self._update_peg(is_swap=False)
+        fee = self._update_peg()
         shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity, fee)
 
         if shares_removed > agent.holdings[self.unique_id]:
@@ -496,7 +495,7 @@ class StableSwapPoolState(Exchange):
         elif shares_removed <= 0:
             return self.fail_transaction('Withdraw quantity must be > 0.')
 
-        _fee = self._update_peg(is_swap=False)
+        _fee = self._update_peg()
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
         initial_d = self.calculate_d()
@@ -534,7 +533,7 @@ class StableSwapPoolState(Exchange):
             quantity: float,
             tkn_add: str
     ):
-        fee = self._update_peg(is_swap=False)
+        fee = self._update_peg()
         updated_reserves = {
             tkn: self.liquidity[tkn] + (quantity if tkn == tkn_add else 0) for tkn in self.asset_list
         }
@@ -615,7 +614,7 @@ class StableSwapPoolState(Exchange):
             fail_overdraft: bool = True
     ):
 
-        trade_fee = self._update_peg(is_swap=False)
+        trade_fee = self._update_peg()
         initial_d = self.d
         d1 = initial_d + initial_d * quantity / self.shares
 
@@ -669,7 +668,7 @@ class StableSwapPoolState(Exchange):
         elif shares_removed <= 0:
             raise ValueError('Withdraw quantity must be > 0.')
 
-        self._update_peg(is_swap=False)
+        self._update_peg()
         share_fraction = shares_removed / self.shares
 
         delta_tkns = {}
