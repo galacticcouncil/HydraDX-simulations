@@ -881,7 +881,7 @@ def test_fuzz_arb_repegging(fee, balance_pct, amp, repeg_pct, max_repeg):
     agent = Agent(holdings={'DOT': arb_size})
 
     peg_target = init_vDOT_price * (1 + repeg_pct)
-    pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_target_update=max_repeg)
+    pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_update=max_repeg)
     pool.swap(agent, 'DOT', 'vDOT', sell_quantity=arb_size)
     pool.set_peg_target(peg_target)
     pool.swap(agent, 'vDOT', 'DOT', sell_quantity=agent.holdings['vDOT'])
@@ -909,7 +909,7 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct, max_repeg):
         agent = Agent(holdings={liq_tkn: liq_size})
 
         peg_target = init_vDOT_price * (1 + repeg_pct)
-        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_target_update=max_repeg)
+        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=init_vDOT_price, max_peg_update=max_repeg)
 
         pool.add_liquidity(agent, liq_size, liq_tkn)
         pool.set_peg_target(peg_target)
@@ -948,7 +948,7 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
             agent = Agent(holdings={tkn_sell: arb_size})
 
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
-                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg)
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
             pool.set_peg_target(peg_target)
             pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])
@@ -983,7 +983,7 @@ def test_fuzz_arb_repegging_lp_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg
         liq_size = tokens[liq_tkn] / 2
         agent = Agent(holdings={liq_tkn: liq_size})
 
-        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+        pool = StableSwapPoolState(tokens, amp, trade_fee=fee, peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg)
 
         pool.add_liquidity(agent, liq_size, liq_tkn)
         pool.set_peg_target(peg_target)
@@ -1069,7 +1069,7 @@ def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg,
             agent = Agent(holdings={tkn_sell: sell_size})
 
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
-                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_target_update=max_repeg)
+                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg)
             pool.set_peg_target(peg_target)
             pool.time_step += block_ct  # fast forward some blocks
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=sell_size)

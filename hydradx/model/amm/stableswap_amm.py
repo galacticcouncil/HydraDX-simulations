@@ -18,7 +18,7 @@ class StableSwapPoolState(Exchange):
             shares: float = 0,
             peg: float or list = None,
             peg_target: float or list = None,
-            max_peg_target_update: float = float('inf')
+            max_peg_update: float = float('inf')
     ):
         """
         Tokens should be in the form of:
@@ -51,7 +51,7 @@ class StableSwapPoolState(Exchange):
 
         self.set_peg(peg)
         self.set_peg_target(peg_target)
-        self.max_peg_target_update = max_peg_target_update
+        self.max_peg_update = max_peg_update
 
         self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
@@ -317,7 +317,7 @@ class StableSwapPoolState(Exchange):
         block_ct = max([self.time_step - self.peg_target_updated_at, 1])
         for i in range(len(self.peg)):
             peg_diff = self.peg_target[i] - self.peg[i]
-            max_peg_move = self.max_peg_target_update * self.peg[i] * block_ct
+            max_peg_move = self.max_peg_update * self.peg[i] * block_ct
             if abs(peg_diff) <= max_peg_move:
                 peg_deltas.append(peg_diff)
             elif self.peg[i] < self.peg_target[i]:
