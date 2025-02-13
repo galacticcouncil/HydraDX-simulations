@@ -44,8 +44,6 @@ class DynamicFee:
 
 class OmnipoolState(Exchange):
     unique_id: str = 'omnipool'
-    _asset_fee: DynamicFee
-    _lrna_fee: DynamicFee
 
     def __init__(self,
                  tokens: dict[str: dict],
@@ -968,6 +966,12 @@ class OmnipoolState(Exchange):
             'omnipool_shares': self.lrna[i] * self.shares[s] / self.lrna[s],
             'subpool_shares': self.lrna[i] * sub_pool.shares / self.lrna[s]
         }
+        for j in range(len(sub_pool.peg)):
+            assert sub_pool.peg[j] == 1  # non-1 peg not supported for subpools
+            assert sub_pool.peg_target[j] == 1
+        sub_pool.peg.append(1)
+        sub_pool.peg_target.append(1)
+
 
         self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
         self.liquidity[s] += self.lrna[i] * sub_pool.shares / self.lrna[s]
