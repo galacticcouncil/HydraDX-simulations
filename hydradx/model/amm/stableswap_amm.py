@@ -119,9 +119,13 @@ class StableSwapPoolState(Exchange):
             adjusted_liquidity[tkn] = balances[tkn] * self.peg[i]
         return adjusted_liquidity
 
-    def calculate_d(self, reserves=(), max_iterations=128) -> float:
+    def calculate_d(self, reserves=(), max_iterations=128, peg_deltas=None) -> float:
         reserves = reserves or list(self.liquidity.values())
-        xp_sorted = sorted([reserves[i] * self.peg[i] for i in range(self.n_coins)])
+        if peg_deltas is None:
+            peg = [self.peg[i] for i in range(self.n_coins)]
+        else:
+            peg = [self.peg[i] + peg_deltas[i] for i in range(self.n_coins)]
+        xp_sorted = sorted([reserves[i] * peg[i] for i in range(self.n_coins)])
         s = sum(xp_sorted)
         if s == 0:
             return 0
@@ -167,35 +171,23 @@ class StableSwapPoolState(Exchange):
 
         return y / self.peg[self.asset_list.index(tkn_omit)]
 
-    # price is denominated in the first asset by default
-    def spot_price(self, i: int = 1):
-        """
-        return the price of TKN denominated in NUMÉRAIRE
-        """
-        balances = list(self.liquidity.values())
-        if i == 0:  # price of the numeraire is always 1
-            return 1
-        return self.price_at_balance(balances, self.d, i)
-
     def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        new_state = self.copy()
-        fee_min = new_state._update_peg()
         if fee is None:
             fee = 0
+        fee_min = self.calculate_fee()
         fee = max(fee, fee_min)
-        return new_state.price(tkn_sell, tkn_buy) * (1 - fee)
+        return self.price(tkn_sell, tkn_buy) * (1 - fee)
 
     def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        new_state = self.copy()
-        fee_min = new_state._update_peg()
         if fee is None:
             fee = 0
+        fee_min = self.calculate_fee()
         fee = max(fee, fee_min)
-        return new_state.price(tkn_buy, tkn_sell) / (1 - fee)
+        return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
     def sell_limit(self, tkn_buy, tkn_sell):  # TODO: fix this
         return self.liquidity[tkn_buy]
@@ -225,18 +217,21 @@ class StableSwapPoolState(Exchange):
             return 0
         i = list(self.liquidity.keys()).index(tkn)
         j = list(self.liquidity.keys()).index(denomination)
-        return self.price_at_balance(
-            balances=list(self.liquidity.values()),
-            d=self.d,
-            i=i, j=j
-        )
+        peg_deltas = self._calculate_peg_deltas()
+        d = self.calculate_d(peg_deltas=peg_deltas)
+        return self.price_at_balance(balances=list(self.liquidity.values()), d=d, i=i, j=j, peg_deltas=peg_deltas)
 
-    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0):
+    def price_at_balance(self, balances: list, d: float, i: int = 1, j: int = 0, peg_deltas = None):
         n = self.n_coins
         ann = self.ann
 
+        if peg_deltas is None:
+            peg = [self.peg[i] for i in range(n)]
+        else:
+            peg = [self.peg[i] + peg_deltas[i] for i in range(n)]
+
         c = d
-        adj_balances = [balances[k] * self.peg[k] for k in range(n)]
+        adj_balances = [balances[k] * peg[k] for k in range(n)]
         sorted_bal = sorted(adj_balances)
         for x in sorted_bal:
             c = c * d / (n * x)
@@ -246,7 +241,7 @@ class StableSwapPoolState(Exchange):
 
         p = xj * (ann * xi + c) / (ann * xj + c) / xi
 
-        p_adj = p * self.peg[i] / self.peg[j]
+        p_adj = p * peg[i] / peg[j]
 
         return p_adj
 
@@ -340,11 +335,15 @@ class StableSwapPoolState(Exchange):
         peg_deltas = self._calculate_peg_deltas()
         return self._calculate_fee_from_peg_deltas(peg_deltas)
 
-    def _update_peg(self) -> float:
+    def _calculate_new_peg(self) -> tuple:
         peg_deltas = self._calculate_peg_deltas()
         fee = self._calculate_fee_from_peg_deltas(peg_deltas)
-        for i in range(len(self.peg)):
-            self.peg[i] += peg_deltas[i]
+        new_peg = [self.peg[i] + peg_deltas[i] for i in range(len(self.peg))]
+        return new_peg, fee
+
+    def _update_peg(self) -> float:
+        new_peg, fee = self._calculate_new_peg()
+        self.peg = new_peg
         return fee
 
     def swap(

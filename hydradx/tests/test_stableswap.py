@@ -78,7 +78,7 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
         trade_fee=0.0,
         unique_id='stableswap'
     )
-    spot_price_initial = initial_pool.spot_price()
+    spot_price_initial = initial_pool.price("B", "A")
 
     trade_size = 1
     initial_agent = Agent(holdings={"A": 1, "B": 1})
@@ -91,7 +91,7 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
     delta_b = initial_pool.liquidity["B"] - swap_state.liquidity["B"]
     exec_price = delta_a / delta_b
 
-    spot_price_final = swap_state.spot_price()
+    spot_price_final = swap_state.price("B", "A")
 
     if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 10e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
@@ -131,9 +131,9 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
 
     spot_price_final = swap_pool.price(tkns[i], "A")
 
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 1e-5:
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 1e-10:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 1e-5:
+    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 1e-10:
         raise AssertionError('Execution price should be lower than final spot price.')
 
 
