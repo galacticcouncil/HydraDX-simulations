@@ -330,17 +330,10 @@ class StableSwapPoolState(Exchange):
                 peg_deltas.append(-max_peg_move)
         return peg_deltas
 
-    def calculate_max_peg_difference(self, peg_deltas):
+    def _calculate_fee_from_peg_deltas(self, peg_deltas):
         block_ct = max([self.time_step - self.peg_target_updated_at, 1])
         peg_relative_changes = [peg_deltas[i] / block_ct / self.peg[i] for i in range(len(self.peg))]
-        return (1 + max(peg_relative_changes)) / (1 + min(peg_relative_changes)) - 1
-
-    def _move_peg_towards_target(self, peg_deltas: list):
-        for i in range(len(self.peg)):
-            self.peg[i] += peg_deltas[i]
-
-    def _calculate_fee_from_peg_deltas(self, peg_deltas):
-        peg_diff_per_block = self.calculate_max_peg_difference(peg_deltas)
+        peg_diff_per_block = (1 + max(peg_relative_changes)) / (1 + min(peg_relative_changes)) - 1
         return max(2 * peg_diff_per_block, self.trade_fee)
 
     def calculate_fee(self):
@@ -350,7 +343,8 @@ class StableSwapPoolState(Exchange):
     def _update_peg(self) -> float:
         peg_deltas = self._calculate_peg_deltas()
         fee = self._calculate_fee_from_peg_deltas(peg_deltas)
-        self._move_peg_towards_target(peg_deltas)
+        for i in range(len(self.peg)):
+            self.peg[i] += peg_deltas[i]
         return fee
 
     def swap(
