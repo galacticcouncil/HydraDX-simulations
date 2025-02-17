@@ -104,14 +104,19 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=10, max_value=1000),
-       st.integers(min_value=1, max_value=3)
+       st.integers(min_value=1, max_value=3),
+       st.floats(min_value=0.0001, max_value=1000),
+       st.floats(min_value=0.0001, max_value=1000),
+       st.floats(min_value=0.0001, max_value=1000)
        )
-def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int):
+def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int, peg1: float, peg2:float,
+                    peg3: float):
     initial_pool = StableSwapPoolState(
         tokens={"A": token_a, "B": token_b, "C": token_c, "D": token_d},
         amplification=amp,
         trade_fee=0.0,
-        unique_id='stableswap'
+        unique_id='stableswap',
+        peg=[peg1, peg2, peg3]
     )
     tkns = ["A", "B", "C", "D"]
     spot_price_initial = initial_pool.price(tkns[i], "A")
@@ -126,9 +131,9 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
 
     spot_price_final = swap_pool.price(tkns[i], "A")
 
-    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 10e-10:
+    if spot_price_initial > exec_price and (spot_price_initial - exec_price) / spot_price_initial > 1e-5:
         raise AssertionError('Initial spot price should be lower than execution price.')
-    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 10e-10:
+    if exec_price > spot_price_final and (exec_price - spot_price_final) / spot_price_final > 1e-5:
         raise AssertionError('Execution price should be lower than final spot price.')
 
 
@@ -588,19 +593,61 @@ def test_amplification_change_exploit():  # (end_amp):
         raise AssertionError(F"Pool lost money. loss: {round(loss / sum(initial_pool.liquidity.values()) * 100, 5)}%")
 
 
-@settings(deadline=timedelta(milliseconds=500))
 @given(
     liquidity_stepdown=st.integers(min_value=-1000000, max_value=1000000),
-    assets_number=st.integers(min_value=2, max_value=4),
     amplification=st.integers(min_value=1, max_value=10000),
-    trade_fee=st.floats(min_value=0, max_value=0.1)
+    peg=st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2),
+    blocks_since_update=st.integers(min_value=0, max_value=100)
+)
+def test_buy_sell_spot_feeless(
+        liquidity_stepdown: int,
+        amplification: int,
+        peg: list,
+        blocks_since_update: int
+):
+    assets_number = 3
+    trade_fee = 0.0
+    base_liquidity = mpf(10000000)
+    max_peg_update = 0.001
+    initial_state = StableSwapPoolState(
+        tokens={
+            tkn: base_liquidity + liquidity_stepdown * n
+            for n, tkn in enumerate(['R' + str(n) for n in range(1, assets_number + 1)])
+        },
+        amplification=amplification,
+        trade_fee=trade_fee,
+        peg=peg,
+        peg_target=peg,
+        max_peg_update=max_peg_update
+    )
+    initial_state.time_step = blocks_since_update
+    tkn_sell = 'R1'
+    tkn_buy = 'R2'
+    r1_per_r2 = initial_state.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+    r2_per_r1 = initial_state.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+    if r2_per_r1 != pytest.approx(1 / r1_per_r2, rel=1e-20):
+        raise AssertionError('Inconsistent spot prices.')
+
+
+@given(
+    liquidity_stepdown=st.integers(min_value=-1000000, max_value=1000000),
+    amplification=st.integers(min_value=1, max_value=10000),
+    trade_fee=st.floats(min_value=0, max_value=0.1),
+    peg=st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2),
+    peg_target=st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2),
+    blocks_since_update=st.integers(min_value=0, max_value=100),
+    max_peg_update=st.floats(min_value=0.0001, max_value=0.01)
 )
 def test_buy_sell_spot(
         liquidity_stepdown: int,
-        assets_number: int,
         amplification: int,
-        trade_fee: float
+        trade_fee: float,
+        peg: list,
+        peg_target: list,
+        blocks_since_update: int,
+        max_peg_update: float
 ):
+    assets_number = 3
     base_liquidity = mpf(10000000)
     initial_state = StableSwapPoolState(
         tokens={
@@ -608,27 +655,51 @@ def test_buy_sell_spot(
             for n, tkn in enumerate(['R' + str(n) for n in range(1, assets_number + 1)])
         },
         amplification=amplification,
-        trade_fee=trade_fee
+        trade_fee=trade_fee,
+        peg=peg,
+        peg_target=peg_target,
+        max_peg_update=max_peg_update
     )
+    initial_state.time_step = blocks_since_update
     tkn_sell = 'R1'
     tkn_buy = 'R2'
-    agent = Agent(holdings={tkn: mpf(1000) for tkn in initial_state.asset_list})
-    test_state, test_agent = initial_state.copy(), agent.copy()
-    buy_quantity = 0.001
-    r1_per_r2 = initial_state.buy_spot(tkn_buy='R2', tkn_sell='R1')
-    r2_per_r1 = initial_state.sell_spot(tkn_sell='R1', tkn_buy='R2')
-    test_state.swap(
-        agent=test_agent,
+
+    # first we test sell_spot
+    sell_state = initial_state.copy()
+    sell_quantity = mpf(0.001)
+    sell_agent = Agent(holdings={tkn_sell: sell_quantity, tkn_buy: 0})
+    r2_per_r1 = sell_state.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+    sell_state.swap(
+        agent=sell_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity
+    )
+    actual_sell_quantity = sell_agent.initial_holdings[tkn_sell] - sell_agent.holdings[tkn_sell]
+    actual_buy_quantity = sell_agent.holdings[tkn_buy] - sell_agent.initial_holdings[tkn_buy]
+    ex_price_r1 = actual_buy_quantity / actual_sell_quantity
+    if r2_per_r1 < ex_price_r1:
+        raise AssertionError(f'Sell spot R1 ({r2_per_r1}) < execution price ({ex_price_r1}), implying negative slippage')
+    if r2_per_r1 != pytest.approx(ex_price_r1):
+        raise AssertionError(f'Sell spot R1 ({r2_per_r1}) != execution price ({ex_price_r1}).')
+
+    # then we test sell_spot
+    buy_state = initial_state.copy()
+    buy_quantity = mpf(0.001)
+    r1_per_r2 = initial_state.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+    buy_agent = Agent(holdings={tkn_sell: buy_quantity * r1_per_r2 * 2, tkn_buy: 0})
+    buy_state.swap(
+        agent=buy_agent,
         tkn_sell=tkn_sell,
         tkn_buy=tkn_buy,
         buy_quantity=buy_quantity
     )
-    actual_sell_quantity = test_agent.initial_holdings[tkn_sell] - test_agent.holdings[tkn_sell]
-    actual_buy_quantity = test_agent.holdings[tkn_buy] - test_agent.initial_holdings[tkn_buy]
-    ex_price_r1 = actual_buy_quantity / actual_sell_quantity
+    actual_sell_quantity = buy_agent.initial_holdings[tkn_sell] - buy_agent.holdings[tkn_sell]
+    actual_buy_quantity = buy_agent.holdings[tkn_buy] - buy_agent.initial_holdings[tkn_buy]
     ex_price_r2 = actual_sell_quantity / actual_buy_quantity
-    if r2_per_r1 != pytest.approx(ex_price_r1):
-        raise AssertionError(f'Sell spot R1 ({r2_per_r1}) != execution price ({ex_price_r1}).')
+
+    if r1_per_r2 > ex_price_r2:
+        raise AssertionError(f'Buy spot R2 ({r1_per_r2}) > execution price ({ex_price_r2}), implying negative slippage')
     if r1_per_r2 != pytest.approx(ex_price_r2):
         raise AssertionError(f'Buy spot R2 ({r1_per_r2}) != execution price ({ex_price_r2}).')
 

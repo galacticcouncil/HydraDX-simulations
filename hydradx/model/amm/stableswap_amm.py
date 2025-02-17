@@ -178,20 +178,24 @@ class StableSwapPoolState(Exchange):
         return self.price_at_balance(balances, self.d, i)
 
     def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
-        if fee is None:
-            fee = self.calculate_fee()
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        else:
-            return self.price(tkn_sell, tkn_buy) * (1 - fee)
+        new_state = self.copy()
+        fee_min = new_state._update_peg()
+        if fee is None:
+            fee = 0
+        fee = max(fee, fee_min)
+        return new_state.price(tkn_sell, tkn_buy) * (1 - fee)
 
     def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
-        if fee is None:
-            fee = self.calculate_fee()
         if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
             return 0
-        else:
-            return self.price(tkn_buy, tkn_sell) / (1 - fee)
+        new_state = self.copy()
+        fee_min = new_state._update_peg()
+        if fee is None:
+            fee = 0
+        fee = max(fee, fee_min)
+        return new_state.price(tkn_buy, tkn_sell) / (1 - fee)
 
     def sell_limit(self, tkn_buy, tkn_sell):  # TODO: fix this
         return self.liquidity[tkn_buy]
