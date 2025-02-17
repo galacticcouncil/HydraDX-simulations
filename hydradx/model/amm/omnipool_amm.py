@@ -966,6 +966,12 @@ class OmnipoolState(Exchange):
             'omnipool_shares': self.lrna[i] * self.shares[s] / self.lrna[s],
             'subpool_shares': self.lrna[i] * sub_pool.shares / self.lrna[s]
         }
+        for j in range(len(sub_pool.peg)):
+            assert sub_pool.peg[j] == 1  # non-1 peg not supported for subpools
+            assert sub_pool.peg_target[j] == 1
+        sub_pool.peg.append(1)
+        sub_pool.peg_target.append(1)
+
 
         self.shares[s] += self.lrna[i] * self.shares[s] / self.lrna[s]
         self.liquidity[s] += self.lrna[i] * sub_pool.shares / self.lrna[s]
@@ -1363,7 +1369,7 @@ class OmnipoolState(Exchange):
             return 0
         else:
             return (self.lrna[tkn] / self.liquidity[tkn]) * (1 - fee)
-        
+
     def value_assets(self, assets: dict[str, float], equivalency_map: dict[str, str] = None,
                      numeraire: str = None) -> float:
         # assets is a dict of token: quantity
