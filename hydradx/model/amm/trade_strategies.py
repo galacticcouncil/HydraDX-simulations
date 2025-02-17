@@ -591,6 +591,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             balances[list(stable_pool.liquidity.keys()).index(tkn_sell)] = balance_in
             return stable_pool.price_at_balance(
                 balances,
+                stable_pool.d,
                 i=list(stable_pool.liquidity.keys()).index(tkn_buy),
                 j=list(stable_pool.liquidity.keys()).index(tkn_sell)
             )
