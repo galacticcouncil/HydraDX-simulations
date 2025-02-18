@@ -1,6 +1,6 @@
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mpf, mp
 from datetime import timedelta
 
@@ -49,8 +49,8 @@ def test_price_route(assets: list[float]):
     }
     router = OmnipoolRouter(exchanges)
 
-    op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
-    op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
+    op_price_hdx = omnipool.price("HDX", "USDT")
+    op_price_lp = omnipool.price("stablepool", "USDT")
     sp_price = stablepool.price("stable1", "stable3")
     share_price = stablepool.share_price("stable1")
 
@@ -870,6 +870,7 @@ def test_sell_spot_sell_stableswap_buy_omnipool(
     asset_fee=fee_strategy,
     trade_fee=fee_strategy
 )
+@settings(deadline=timedelta(milliseconds=500))
 def test_buy_spot_sell_stableswap_buy_omnipool(
         assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
 ):

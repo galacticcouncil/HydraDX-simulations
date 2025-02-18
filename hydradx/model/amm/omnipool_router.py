@@ -30,7 +30,7 @@ class OmnipoolRouter:
     def price_route(self, tkn: str, denomination: str, tkn_pool_id: str, denom_pool_id: str) -> float:
         if tkn_pool_id == denom_pool_id:
             if tkn_pool_id == self.omnipool_id:  # This is necessary because Omnipool has wrong price signature
-                return self.omnipool.price(self.omnipool, tkn, denomination)
+                return self.omnipool.price(tkn, denomination)
             else:
                 return self.exchanges[tkn_pool_id].price(tkn, denomination)
 
@@ -45,7 +45,7 @@ class OmnipoolRouter:
             denom_subpool_share_price = self.exchanges[denom_pool_id].share_price(denomination)
             denom_adj = denom_pool_id
 
-        return denom_subpool_share_price * self.omnipool.price(self.omnipool, tkn_adj, denom_adj) / tkn_subpool_share_price
+        return denom_subpool_share_price * self.omnipool.price(tkn_adj, denom_adj) / tkn_subpool_share_price
 
     def buy_limit(self, tkn_buy, tkn_sell=None):
         return sum([exchange.buy_limit(tkn_buy, tkn_sell) for exchange in self.exchanges.values()])
@@ -181,7 +181,7 @@ class OmnipoolRouter:
             if buy_quantity:
                 # buy a specific quantity of a stableswap asset using LRNA
                 shares_needed = stable_pool.calculate_withdrawal_shares(tkn_remove=tkn_buy, quantity=buy_quantity)
-                omnipool.lrna_swap(agent, delta_ra=shares_needed, tkn=buy_pool_id)
+                omnipool.swap(agent, tkn_sell='LRNA', buy_quantity=shares_needed, tkn_buy=buy_pool_id)
                 if omnipool.fail:
                     # if the swap failed, the transaction failed.
                     return self.fail_transaction(omnipool.fail)
@@ -224,6 +224,8 @@ class OmnipoolRouter:
                 sell_shares = omnipool.calculate_sell_from_buy(tkn_buy, stable_pool.unique_id, buy_quantity)
                 if sell_shares < 0:
                     return self.fail_transaction("Not enough liquidity in the stableswap/LRNA pool.")
+                elif sell_shares > stable_pool.shares:
+                    return self.fail_transaction("Not enough shares in the stableswap pool.")
                 stable_pool.buy_shares(agent, sell_shares, tkn_sell)
                 if stable_pool.fail:
                     return self.fail_transaction(stable_pool.fail)

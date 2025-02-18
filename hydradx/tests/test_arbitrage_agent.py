@@ -4,13 +4,16 @@ import os, json
 import pytest
 from hypothesis import given, strategies as st, settings, Phase
 from mpmath import mp, mpf
+
+from hydradx.tests.utils import find_test_directory
+
 mp.dps = 50
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount_bid, calculate_arb_amount_ask, \
     process_next_swap, execute_arb, get_arb_swaps, get_arb_swaps_simple, combine_swaps, flatten_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState, lrna_price
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.processing import get_omnipool_data, get_omnipool_data_from_file, get_centralized_market, \
     get_orderbooks_from_file  # , get_stableswap_data, get_unique_name
 from hydradx.model.amm.arbitrage_agent_general import get_arb_swaps as get_arb_swaps_general, \
@@ -89,7 +92,7 @@ def test_calculate_arb_amount_bid(
         preferred_stablecoin='USDT',
     )
 
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    orig_price = initial_state.price('DOT', 'USDT')
     buy_spot = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = buy_spot / (1 - cex_fee) * price_mult
 
@@ -101,7 +104,7 @@ def test_calculate_arb_amount_bid(
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
+    test_price = initial_state.price(tkn, numeraire)
     buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
     cex_price = bid[0] * (1 - cex_fee)
 
@@ -164,7 +167,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
         preferred_stablecoin='USDT',
     )
 
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    orig_price = initial_state.price('DOT', 'USDT')
     buy_spot = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = buy_spot / (1 - cex_fee) * price_mult
 
@@ -178,7 +181,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
     agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=tkn, tkn_sell=numeraire, buy_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
+    test_price = initial_state.price(tkn, numeraire)
     buy_spot = test_price / ((1 - lrna_fee) * (1 - asset_fee))
     cex_price = bid[0] * (1 - cex_fee)
 
@@ -248,7 +251,7 @@ def test_calculate_arb_amount_ask(
         preferred_stablecoin='USDT',
     )
 
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    orig_price = initial_state.price('DOT', 'USDT')
     sell_spot = orig_price * ((1 - lrna_fee) * (1 - asset_fee))
     ask_price = sell_spot * (1 - cex_fee) * price_mult
 
@@ -260,7 +263,7 @@ def test_calculate_arb_amount_ask(
     agent = Agent(holdings={'USDT': 1000000000, 'DOT': 1000000000, 'HDX': 1000000000}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
+    test_price = initial_state.price(tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
     cex_price = ask[0] * (1 + cex_fee)
 
@@ -323,7 +326,7 @@ def test_calculate_arb_amount_ask_max_liquidity(
         preferred_stablecoin='USDT',
     )
 
-    orig_price = initial_state.price(initial_state, 'DOT', 'USDT')
+    orig_price = initial_state.price('DOT', 'USDT')
     sell_spot = orig_price * ((1 - lrna_fee) * (1 - asset_fee))
     ask_price = sell_spot * (1 - cex_fee) * price_mult
 
@@ -337,7 +340,7 @@ def test_calculate_arb_amount_ask_max_liquidity(
     agent = Agent(holdings={'USDT': init_holding, 'DOT': init_holding, 'HDX': init_holding}, unique_id='bot')
     init_agent = agent.copy()
     initial_state.swap(agent, tkn_buy=numeraire, tkn_sell=tkn, sell_quantity=amt)
-    test_price = initial_state.price(initial_state, tkn, numeraire)
+    test_price = initial_state.price(tkn, numeraire)
     sell_spot = test_price * ((1 - lrna_fee) * (1 - asset_fee))
     cex_price = ask[0] * (1 + cex_fee)
 
@@ -406,7 +409,7 @@ def test_process_next_swap(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -423,7 +426,7 @@ def test_process_next_swap(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -440,7 +443,7 @@ def test_process_next_swap(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -502,7 +505,7 @@ def test_process_next_swap(
         }
 
         cex_swap, dex_swap = swap['cex'], swap['dex']
-        dex_spot = op_state.price(op_state, 'DOT', 'USDT')
+        dex_spot = op_state.price('DOT', 'USDT')
         if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
             raise  # check that trades match
         cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
@@ -582,7 +585,7 @@ def test_get_arb_swaps_simple(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -599,7 +602,7 @@ def test_get_arb_swaps_simple(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -616,7 +619,7 @@ def test_get_arb_swaps_simple(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -703,7 +706,7 @@ def test_get_arb_swaps_simple_with_buffer(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -720,7 +723,7 @@ def test_get_arb_swaps_simple_with_buffer(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -737,7 +740,7 @@ def test_get_arb_swaps_simple_with_buffer(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -821,7 +824,7 @@ def test_get_arb_swaps(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -838,7 +841,7 @@ def test_get_arb_swaps(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -855,7 +858,7 @@ def test_get_arb_swaps(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -1047,14 +1050,13 @@ def test_generalized_arb():
 
 def test_get_arb_swaps_output():
 
-    prefix = './'
-    if not os.path.exists(prefix + "data"):
-        prefix = 'hydradx/tests/'
+    # try to find the test directory
+    path = find_test_directory()
 
-    asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(prefix + "data/")
+    asset_list, asset_map, tokens, fees = get_omnipool_data_from_file(os.path.join(path, 'data'))
 
-    arb_file = "arbconfig2.txt"
-    with open(prefix + 'config/' + arb_file, 'r') as json_file:
+    arb_file = 'arbconfig2.txt'
+    with open(os.path.join(path, 'config', arb_file), 'r') as json_file:
         cfg = json.load(json_file)
 
     for d in cfg:
@@ -1064,7 +1066,7 @@ def test_get_arb_swaps_output():
 
     order_book_assets = {}
 
-    ob_objs = get_orderbooks_from_file(prefix + "data/")
+    ob_objs = get_orderbooks_from_file(os.path.join(path, 'data'))
 
     for arb_cfg in cfg:
         tkn_pair = arb_cfg['order_book']
@@ -1101,15 +1103,15 @@ def test_get_arb_swaps_output():
     )
 
     liq_file = "liqconfig.txt"
-    with open(prefix + 'config/' + liq_file, 'r') as json_file:
+    with open(os.path.join(path, 'config', liq_file), 'r') as json_file:
         max_liquidity = json.load(json_file)
 
     all_swaps = get_arb_swaps(op_state, cex_dict, cfg, max_liquidity=max_liquidity)
 
-    # with open(f'./output/arb_swaps.json', 'w') as output_file:
+    # with open(os.path.join(path, 'output', 'arb_swaps.json'), 'w') as output_file:
     #     json.dump(all_swaps, output_file)
 
-    with open(prefix + 'output/arb_swaps.json', 'r') as output_file:
+    with open(os.path.join(path, 'output', 'arb_swaps.json'), 'r') as output_file:
         loaded_swaps = json.load(output_file)
 
     assert all_swaps == loaded_swaps

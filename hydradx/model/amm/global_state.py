@@ -4,8 +4,8 @@ from typing import Callable
 
 from .agents import Agent
 from .agents import AgentArchiveState
-from .amm import AMM
-from .money_market import MoneyMarket
+from .exchange import Exchange
+from .liquidations import money_market
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
@@ -13,8 +13,8 @@ from .otc import OTC
 class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
-                 pools: dict[str: AMM],
-                 money_market: MoneyMarket = None,
+                 pools: dict[str: Exchange],
+                 money_market: money_market = None,
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
@@ -41,8 +41,7 @@ class GlobalState:
             for asset in self.asset_list:
                 if asset not in agent.holdings:
                     agent.holdings[asset] = 0
-        self._evolve_function = evolve_function
-        self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.evolve_function = evolve_function
         self.datastreams = save_data
         self.save_data = {
             tag: save_data[tag].assemble(self)
@@ -88,7 +87,7 @@ class GlobalState:
             money_market=self.money_market.copy() if self.money_market else None,
             otcs=[otc.copy() for otc in self.otcs],
             external_market=self.external_market.copy(),
-            evolve_function=copy.copy(self._evolve_function),
+            evolve_function=copy.copy(self.evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
         )
@@ -110,8 +109,10 @@ class GlobalState:
         self.time_step += 1
         for pool in self.pools.values():
             pool.update()
-        if self._evolve_function:
-            return self._evolve_function(self)
+        if self.evolve_function:
+            return self.evolve_function(self)
+        else:
+            return self
 
     def execute_swap(
             self,
@@ -149,13 +150,15 @@ class GlobalState:
 
         return prices
 
-    def cash_out(self, agent: Agent) -> float:
+    def cash_out(self, agent_id: str) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        agent = self.agents[agent_id]
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
+
         withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
 
         for key in agent.holdings.keys():
@@ -181,7 +184,7 @@ class GlobalState:
                 else:
                     # much less efficient, but works for any pool
                     new_state = self.copy()
-                    new_pool: AMM = new_state.pools[pool_id]
+                    new_pool: Exchange = new_state.pools[pool_id]
                     new_agent = new_state.agents[agent.unique_id]
                     new_pool.remove_liquidity(agent=new_agent, quantity=agent.holdings[key], tkn_remove=tkn)
                     withdraw_holdings = {
@@ -192,7 +195,7 @@ class GlobalState:
         prices = self.market_prices(withdraw_holdings)
         return value_assets(prices, withdraw_holdings)
 
-    def pool_val(self, pool: AMM):
+    def pool_val(self, pool: Exchange):
         """ get the total value of all liquidity in the pool. """
         total = 0
         for asset in pool.asset_list:
@@ -266,7 +269,7 @@ class GlobalState:
                     f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
                 ])) +
                 f'{newline}{newline}'
-                f'evolution function: {self.evolve_function}'
+                f'evolution function: {self.evolve_function.__name__ if self.evolve_function else "None"}'
                 f'{newline}'
         )
 
@@ -287,10 +290,6 @@ def value_assets(prices: dict, assets: dict) -> float:
         assets[i] * prices[i] if i in prices else 0
         for i in assets.keys()
     ])
-
-
-GlobalState.value_assets = staticmethod(value_assets)
-
 
 def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
     """
@@ -387,7 +386,7 @@ def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, ran
     return transform
 
 
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, iters: int = 20,
+def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: int = 20,
                                     min_amt: float = 0) -> float:
     """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
 
@@ -438,7 +437,7 @@ def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: MoneyMarket, cd
     return delta_debt_down
 
 
-def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: MoneyMarket, cdp_i: int, treasury_agent: Agent,
+def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent,
                            delta_debt: float) -> None:
     cdp = mm.cdps[cdp_i]
     penalty = mm.liquidation_penalty[cdp.collateral_asset]
@@ -515,7 +514,7 @@ def find_partial_otc_sell_amount(omnipool, otc):
     sell_asset = otc.sell_asset
 
     # if no arbitrage can happen at spot price, we cannot even partially satisfy the OTC order
-    if omnipool.price(omnipool, buy_asset, sell_asset) > otc.price:
+    if omnipool.price(buy_asset, sell_asset) > otc.price:
         return 0
 
     sell_amt = otc.sell_amount

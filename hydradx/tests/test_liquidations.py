@@ -400,7 +400,7 @@ def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
 def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: float):
     omnipool = omnipool_setup_for_liquidation_testing()
     init_pool = omnipool.copy()
-    dot_price = omnipool.price(omnipool, "DOT", "USDT")
+    dot_price = omnipool.price("DOT", "USDT")
 
     collat_ratio = 0.75
 
@@ -447,7 +447,7 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
     collat_ratio = 5.0
     collateral_amt = 200
     omnipool = omnipool_setup_for_liquidation_testing()
-    dot_price = omnipool.price(omnipool, "DOT", "USDT")
+    dot_price = omnipool.price("DOT", "USDT")
 
     debt_amt = collat_ratio * collateral_amt
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
@@ -474,7 +474,7 @@ def test_omnipool_liquidate_cdp_not_profitable():
     omnipool = omnipool_setup_for_liquidation_testing()
     for tkn in omnipool.asset_list:  # reduce TVL to increase slippage for the test
         omnipool.liquidity[tkn] /= 2000
-    dot_price = omnipool.price(omnipool, "DOT", "USDT")
+    dot_price = omnipool.price("DOT", "USDT")
 
     debt_amt = collat_ratio * collateral_amt
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
@@ -527,30 +527,30 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
 
     # CDP1 should be fully liquidated
     collateral_amt1 = 200
-    debt_amt1 = ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
+    debt_amt1 = ratio1 * collateral_amt1 * omnipool.price("DOT", "USDT")
     cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
 
     # CDP2 should not be liquidated at all
     collateral_amt2 = 1000000
-    debt_amt2 = ratio2 * collateral_amt2 * omnipool.price(omnipool, "HDX", "USDT")
+    debt_amt2 = ratio2 * collateral_amt2 * omnipool.price("HDX", "USDT")
     cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
 
     # CDP3 should be fully liquidated, due to lower liquidation threshold for HDX
     collateral_amt3 = 1000
-    debt_amt3 = ratio2 * collateral_amt3 * omnipool.price(omnipool, "USDT", "HDX")
+    debt_amt3 = ratio2 * collateral_amt3 * omnipool.price("USDT", "HDX")
     cdp3 = CDP('HDX', 'USDT', debt_amt3, collateral_amt3)
 
     # CDP4 should be fully liquidated, with debt left over
     collateral_amt4 = 10000
-    debt_amt4 = ratio3 * collateral_amt4 * omnipool.price(omnipool, "HDX", "USDT")
+    debt_amt4 = ratio3 * collateral_amt4 * omnipool.price("HDX", "USDT")
     cdp4 = CDP('USDT', 'HDX', debt_amt4, collateral_amt4)
 
     liq_agent = Agent()
     mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
         oracles={
-            ("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT"),
-            ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT")
+            ("DOT", "USDT"): omnipool.price("DOT", "USDT"),
+            ("HDX", "USDT"): omnipool.price("HDX", "USDT")
         },
         liquidation_threshold={"DOT": 0.7, "HDX": 0.7, "USDT": 0.3},
         cdps=[cdp1, cdp2, cdp3, cdp4],
@@ -583,22 +583,22 @@ def test_liquidate_against_omnipool_partial_liquidation():
     dot_liq_threshold = 0.6
     collateral_amt1 = 200
     collat_ratio1 = 0.7
-    debt_amt1 = collat_ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
+    debt_amt1 = collat_ratio1 * collateral_amt1 * omnipool.price("DOT", "USDT")
     cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
 
     hdx_full_liq_threshold = 0.7
     hdx_liq_threshold = 0.7
     collateral_amt2 = 10000000
     collat_ratio2 = 0.7
-    debt_amt2 = collat_ratio2 * collateral_amt2 * omnipool.price(omnipool, "HDX", "USDT")
+    debt_amt2 = collat_ratio2 * collateral_amt2 * omnipool.price("HDX", "USDT")
     cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
 
     liq_agent = Agent(holdings={"HDX": mpf(0), "USDT": mpf(0), "DOT": mpf(0)})
     mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
         oracles={
-            ("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT"),
-            ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT")
+            ("DOT", "USDT"): omnipool.price("DOT", "USDT"),
+            ("HDX", "USDT"): omnipool.price("HDX", "USDT")
         },
         full_liquidation_threshold={"DOT": dot_full_liq_threshold, "HDX": hdx_full_liq_threshold, "USDT": 0.7},
         liquidation_threshold={"DOT": dot_liq_threshold, "HDX": hdx_liq_threshold, "USDT": 0.7},
@@ -630,20 +630,20 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
     omnipool = omnipool_setup_for_liquidation_testing()
 
     collateral_amt1 = 200
-    debt_amt1 = ratio1 * collateral_amt1 * omnipool.price(omnipool, "DOT", "USDT")
+    debt_amt1 = ratio1 * collateral_amt1 * omnipool.price("DOT", "USDT")
     cdp1 = CDP('USDT', 'DOT', debt_amt1, collateral_amt1)
 
     collateral_amt2 = 10
     price_mult = 10  # this offsets the oracle price from Omnipool price, making liquidation unprofitable
-    debt_amt2 = 0.7 * collateral_amt2 * price_mult * omnipool.price(omnipool, "WETH", "USDT")
+    debt_amt2 = 0.7 * collateral_amt2 * price_mult * omnipool.price("WETH", "USDT")
     cdp2 = CDP('USDT', 'WETH', debt_amt2, collateral_amt2)
 
     liq_agent = Agent()
     mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000, "WETH": 1000000},
-        oracles={("DOT", "USDT"): omnipool.price(omnipool, "DOT", "USDT"),
-                 ("HDX", "USDT"): omnipool.price(omnipool, "HDX", "USDT"),
-                 ("WETH", "USDT"): price_mult * omnipool.price(omnipool, "WETH", "USDT")},
+        oracles={("DOT", "USDT"): omnipool.price("DOT", "USDT"),
+                 ("HDX", "USDT"): omnipool.price("HDX", "USDT"),
+                 ("WETH", "USDT"): price_mult * omnipool.price("WETH", "USDT")},
         liquidation_threshold=0.7,
         cdps=[cdp1, cdp2],
         min_ltv=0.6,
@@ -678,13 +678,13 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     liq_threshold = mpf(0.7)
     full_liq_threshold = mpf(0.8)
 
-    debt_amt1 = ratio1 * mpf(collateral_amt1) * price_mult * omnipool.price(omnipool, "DOT", "USDT")
+    debt_amt1 = ratio1 * mpf(collateral_amt1) * price_mult * omnipool.price("DOT", "USDT")
     cdp1 = CDP('USDT', 'DOT', debt_amt1, mpf(collateral_amt1))
 
     liq_agent = Agent()
     mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): price_mult * omnipool.price(omnipool, "DOT", "USDT")},
+        oracles={("DOT", "USDT"): price_mult * omnipool.price("DOT", "USDT")},
         liquidation_threshold=liq_threshold,
         full_liquidation_threshold=full_liq_threshold,
         partial_liquidation_pct=0.5,
@@ -701,7 +701,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     if cdp1.debt_amt == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
-        assert ratio1 > 1
+        assert ratio1 > 1/(1 + mm.liquidation_penalty['DOT'])
     elif cdp1.debt_amt == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
             pass
@@ -729,7 +729,7 @@ def test_set_mm_oracles_to_external_market():
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000},
         oracles={("DOT", "USDT"): 100, ("HDX", "USDT"): 100, ("DOT", "HDX"): 100},
     )
-    prices = {tkn: omnipool.price(omnipool, tkn, "USDT") for tkn in omnipool.asset_list}
+    prices = {tkn: omnipool.price(tkn, "USDT") for tkn in omnipool.asset_list}
     state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={}, external_market=prices)
     _set_mm_oracles_to_external_market(state, "USDT")
     for tkn1 in mm.liquidity:
@@ -935,8 +935,8 @@ def test_liquidate_against_omnipool_and_settle_otc():
 
 def test_update_prices_and_process():
     omnipool = omnipool_setup_for_liquidation_testing()
-    dot_price = omnipool.price(omnipool, "DOT", "USDT")
-    hdx_price = omnipool.price(omnipool, "HDX", "USDT")
+    dot_price = omnipool.price("DOT", "USDT")
+    hdx_price = omnipool.price("HDX", "USDT")
 
     price_list = [{'DOT': 5, 'HDX': 0.03, 'USDT': 1, 'WETH': 2600, 'iBTC': 46000},
                   {'DOT': 5, 'HDX': 0.04, 'USDT': 1, 'WETH': 2700, 'iBTC': 47000}]

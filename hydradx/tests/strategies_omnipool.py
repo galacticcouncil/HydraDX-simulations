@@ -164,7 +164,6 @@ def omnipool_config(
         tvl_cap=tvl_cap_usd or float('inf'),
         asset_fee=draw(st.floats(min_value=0, max_value=0.1)) if asset_fee is None else asset_fee,
         lrna_fee=draw(st.floats(min_value=0, max_value=0.1)) if lrna_fee is None else lrna_fee,
-        imbalance=imbalance if imbalance is not None else draw(st.floats(min_value=-1, max_value=1)),
         withdrawal_fee=withdrawal_fee
     )
 

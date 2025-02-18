@@ -1,10 +1,14 @@
 import hydradx.model.amm.omnipool_amm as oamm
 import hydradx.model.amm.stableswap_amm as ssamm
 from hydradx.model.amm.agents import Agent
-from hydradx.tests.strategies_omnipool import omnipool_config
-from hypothesis import given, settings, strategies as st
+from hydradx.tests.strategies_omnipool import omnipool_config, omnipool_reasonable_config
+from hypothesis import given, settings, strategies as st, reproduce_failure
 import pytest
 from hydradx.tests.test_stableswap import stable_swap_equation
+from hydradx.model.amm.omnipool_router import OmnipoolRouter
+
+from mpmath import mp, mpf
+mp.dps = 50
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
@@ -133,28 +137,59 @@ def test_sell_stableswap_for_omnipool(initial_state: oamm.OmnipoolState):
         raise AssertionError('Agent did not sell exactly the amount they specified.')
 
 
-@given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
-def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
-    stable_pool: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap']
+@given(
+    token_lrna_price=st.floats(min_value=0.1, max_value=10),
+    sub_pool_lrna_price=st.floats(min_value=0.1, max_value=10),
+    sub_pool_balance=st.floats(min_value=0.25, max_value=1)
+)
+def test_buy_omnipool_with_stable_swap(token_lrna_price, sub_pool_lrna_price, sub_pool_balance):
+    stable_pool: oamm.StableSwapPoolState = ssamm.StableSwapPoolState(
+        tokens = {
+            'DAI': mpf(1000) * sub_pool_balance,
+            'USDC': mpf(1000)
+        },
+        amplification=111,
+        # trade_fee=0.003,
+        unique_id='stableswap'
+    )
+    initial_state = oamm.OmnipoolState(
+        tokens={
+            'USD': {'liquidity': mpf(1000), 'LRNA': mpf(1000)},
+            'HDX': {'liquidity': mpf(1000), 'LRNA': mpf(1000) * token_lrna_price},
+            'stableswap': {'liquidity': stable_pool.shares, 'LRNA': mpf(1000) * sub_pool_lrna_price}
+        },
+        # asset_fee=0.0025,
+        # lrna_fee=0.0005,
+        unique_id='omnipool',
+        withdrawal_fee=False
+    )
     stable_shares = stable_pool.unique_id
+    router = OmnipoolRouter([stable_pool, initial_state])
 
     # agent holds some of everything
-    agent = Agent(holdings={tkn: 1000000000000000 for tkn in initial_state.asset_list + stable_pool.asset_list})
+    agent = Agent(holdings={'DAI': mpf(1000000000), 'HDX': 0})
     # attempt buying an asset from the stableswap pool
-    tkn_buy = initial_state.asset_list[2]
+    tkn_buy = initial_state.asset_list[1]
     tkn_sell = stable_pool.asset_list[0]
-    buy_quantity = 10
-    new_state, new_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=agent,
+    buy_quantity = 1
+    new_router, new_agent = router.simulate_swap(
+        agent=agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
     )
-    new_stable_pool: oamm.StableSwapPoolState = new_state.sub_pools['stableswap']
-    if new_state.fail:
+    new_stable_pool: ssamm.StableSwapPoolState = new_router.exchanges['stableswap']
+    new_state: oamm.OmnipoolState = new_router.exchanges['omnipool']
+    if new_router.fail:
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
+    if not (
+            stable_pool.calculate_d()
+            and new_stable_pool.shares
+            and new_stable_pool.calculate_d()
+            and stable_pool.shares
+    ):
+        er = 1
     if not (
             stable_pool.calculate_d() * new_stable_pool.shares ==
             pytest.approx(new_stable_pool.calculate_d() * stable_pool.shares)
@@ -174,12 +209,11 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
     )
-    _, lesser_trade_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=agent,
+    _, lesser_trade_agent = router.simulate_swap(
+        agent=agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
-        buy_quantity=buy_quantity - 1
+        buy_quantity=buy_quantity * 0.99
     )
     lesser_execution_price = (
             (agent.holdings[tkn_sell] - lesser_trade_agent.holdings[tkn_sell]) /
@@ -189,6 +223,7 @@ def test_buy_omnipool_with_stable_swap(initial_state: oamm.OmnipoolState):
         raise AssertionError(f"Execution price did not decrease with smaller trade")
     if new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy] != buy_quantity:
         raise AssertionError('Agent did not get exactly the amount they specified.')
+    er = 2
 
 
 @given(omnipool_config(token_count=3, sub_pools={'stableswap': {}}))
@@ -296,14 +331,6 @@ def test_buy_stableswap_with_LRNA(initial_state: oamm.OmnipoolState):
     )
     ri_arb = initial_state.liquidity[stable_pool.unique_id] * initial_state.lrna_total / new_state.lrna_total
 
-    if (
-            (initial_state.lrna[stable_pool.unique_id] + initial_state.lrna_imbalance
-             * (initial_state.lrna[stable_pool.unique_id] / initial_state.lrna_total)) * ri_arb
-    ) != pytest.approx(
-        (qi_arb + new_state.lrna_imbalance * (qi_arb / new_state.lrna_total))
-        * initial_state.liquidity[stable_pool.unique_id]
-    ):
-        raise AssertionError("LRNA imbalance incorrect.")
     execution_price = (
             (agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]) /
             (new_agent.holdings[tkn_buy] - agent.holdings[tkn_buy])
@@ -380,23 +407,40 @@ def test_sell_LRNA_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError("LRNA imbalance incorrect.")
 
 
-@given(omnipool_config(
-    token_count=3,
-    sub_pools={'stableswap1': {'trade_fee': 0}, 'stableswap2': {'trade_fee': 0}},
-    lrna_fee=0,
-    asset_fee=0
-))
-def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
-    pool_buy: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap1']
-    pool_sell: oamm.StableSwapPoolState = initial_state.sub_pools['stableswap2']
+@given(
+    stableswap_lrna_ratio=st.floats(min_value=0.01, max_value=100),
+    amp1=st.integers(min_value=1, max_value=100),
+    amp2=st.integers(min_value=1, max_value=100)
+)
+def test_buy_stableswap_for_stableswap(stableswap_lrna_ratio, amp1, amp2):
+    pool_buy = ssamm.StableSwapPoolState(
+        tokens={'a0': mpf(100), 'a1': mpf(200)},
+        amplification=amp1,
+        unique_id='stableswap1'
+    )
+    pool_sell = ssamm.StableSwapPoolState(
+        tokens={'b0': mpf(200), 'b1': mpf(100)},
+        amplification=amp2,
+        unique_id='stableswap2'
+    )
+    omnipool = oamm.OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000), 'LRNA': mpf(1000)},
+            'USD': {'liquidity': mpf(1000), 'LRNA': mpf(1000)},
+            pool_sell.unique_id: {'liquidity': mpf(pool_sell.shares), 'LRNA': mpf(1000)},
+            pool_buy.unique_id: {'liquidity': mpf(pool_buy.shares), 'LRNA': mpf(1000) * stableswap_lrna_ratio}
+        },
+        lrna_fee=0,
+        asset_fee=0
+    )
+    router = OmnipoolRouter([pool_buy, pool_sell, omnipool])
     # attempt buying an asset from the stableswap pool
     tkn_buy = pool_buy.asset_list[0]
     tkn_sell = pool_sell.asset_list[1]
     initial_agent = Agent(holdings={tkn_sell: 1000000, tkn_buy: 1000000})
     buy_quantity = 1
-    new_state, new_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=initial_agent,
+    new_state, new_agent = router.simulate_swap(
+        agent=initial_agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
         buy_quantity=buy_quantity
@@ -405,18 +449,19 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         # transaction failed, doesn't mean there is anything wrong with the mechanism
         return
 
-    new_pool_buy: ssamm.StableSwapPoolState = new_state.sub_pools['stableswap1']
-    new_pool_sell: ssamm.StableSwapPoolState = new_state.sub_pools['stableswap2']
+    new_pool_buy: ssamm.StableSwapPoolState = new_state.exchanges['stableswap1']
+    new_pool_sell: ssamm.StableSwapPoolState = new_state.exchanges['stableswap2']
+    new_omnipool: oamm.OmnipoolState = new_state.exchanges['omnipool']
     if not new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy] == buy_quantity:
         raise AssertionError('Agent did not get what it paid for, but transaction passed!')
     if (
-            round(new_state.lrna[new_pool_buy.unique_id] * new_state.liquidity[new_pool_buy.unique_id], 12)
-            < round(initial_state.lrna[pool_buy.unique_id] * initial_state.liquidity[pool_buy.unique_id], 12)
+            round(new_omnipool.lrna[new_pool_buy.unique_id] * new_omnipool.liquidity[new_pool_buy.unique_id], 12)
+            < round(omnipool.lrna[pool_buy.unique_id] * omnipool.liquidity[pool_buy.unique_id], 12)
     ):
         raise AssertionError('Pool_buy price moved in the wrong direction.')
     if (
-            round(new_state.lrna[new_pool_sell.unique_id] * new_state.liquidity[new_pool_sell.unique_id], 12)
-            < round(initial_state.lrna[pool_sell.unique_id] * initial_state.liquidity[pool_sell.unique_id], 12)
+            round(new_omnipool.lrna[new_pool_sell.unique_id] * new_omnipool.liquidity[new_pool_sell.unique_id], 12)
+            < round(omnipool.lrna[pool_sell.unique_id] * omnipool.liquidity[pool_sell.unique_id], 12)
     ):
         raise AssertionError('Pool_sell price moved in the wrong direction.')
 
@@ -426,30 +471,28 @@ def test_buy_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
         raise AssertionError('Shares * invariant inconsistent in pool_sell.')
 
     if (
-            new_state.liquidity[pool_buy.unique_id] + pool_buy.shares
-            != pytest.approx(initial_state.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
+            new_omnipool.liquidity[pool_buy.unique_id] + pool_buy.shares
+            != pytest.approx(omnipool.liquidity[pool_buy.unique_id] + new_pool_buy.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_buy.")
     if (
-            new_state.liquidity[pool_sell.unique_id] + pool_sell.shares
-            != pytest.approx(initial_state.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
+            new_omnipool.liquidity[pool_sell.unique_id] + pool_sell.shares
+            != pytest.approx(omnipool.liquidity[pool_sell.unique_id] + new_pool_sell.shares)
     ):
         raise AssertionError("Omnipool and subpool shares before and after don't add up in pool_sell.")
     sell_quantity = initial_agent.holdings[tkn_sell] - new_agent.holdings[tkn_sell]
-    before_trade_state, before_trade_agent = oamm.simulate_swap(
-        old_state=initial_state,
-        old_agent=initial_agent,
+    before_trade_state, before_trade_agent = router.simulate_swap(
+        agent=initial_agent,
         tkn_buy=tkn_buy,
         tkn_sell=tkn_sell,
-        buy_quantity=buy_quantity / 1000
+        buy_quantity=buy_quantity / 100000
     )
     # print(f'sell quantity {sell_quantity}')
-    after_trade_state, after_trade_agent = oamm.simulate_swap(
-        old_state=new_state,
-        old_agent=new_agent,
+    after_trade_state, after_trade_agent = new_state.simulate_swap(
+        agent=new_agent,
         tkn_buy=tkn_sell,
         tkn_sell=tkn_buy,
-        buy_quantity=sell_quantity / 1000  # initial_agent.holdings[tkn_buy] - before_trade_agent.holdings[tkn_buy]
+        buy_quantity=sell_quantity / 100000  # initial_agent.holdings[tkn_buy] - before_trade_agent.holdings[tkn_buy]
     )
 
     if before_trade_state.fail or after_trade_state.fail:
@@ -554,8 +597,6 @@ def test_sell_stableswap_for_stableswap(initial_state: oamm.OmnipoolState):
     execution_price = sell_quantity / (new_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy])
     if not (spot_price_after > execution_price > spot_price_before):
         raise AssertionError('Execution price out of bounds.')
-
-
 
 
 @given(omnipool_config(

@@ -15,6 +15,9 @@ from hydradx.model.processing import get_omnipool_data, get_centralized_market, 
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from mpmath import mp, mpf
+
+from hydradx.tests.utils import find_test_directory
+
 mp.dps = 50
 
 
@@ -88,7 +91,7 @@ def test_calculate_arb_amount_bid(
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    orig_price = initial_dex.price('DOT', 'USDT')
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = dex_price * (1 + cex_fee) * price_mult
     bid_quantity = 100000
@@ -177,7 +180,7 @@ def test_calculate_arb_amount_bid_max_liquidity(
         asset_fee=asset_fee,
         preferred_stablecoin='USDT',
     )
-    orig_price = initial_dex.price(initial_dex, 'DOT', 'USDT')
+    orig_price = initial_dex.price('DOT', 'USDT')
     dex_price = orig_price / ((1 - lrna_fee) * (1 - asset_fee))
     bid_price = dex_price / (1 - cex_fee) * price_mult
     bid_quantity = 100000
@@ -445,8 +448,8 @@ def test_process_next_swap(
     bid_multiples = [0.999, 0.99, 0.9, 0.8]
     ask_multiples = [1.001, 1.01, 1.1, 1.2]
 
-    hdxusd_spot = initial_dex.price(initial_dex, 'HDX', 'USDT') * hdxusd_price_mult
-    dotusd_spot = initial_dex.price(initial_dex, 'DOT', 'USDT') * dotusd_price_mult
+    hdxusd_spot = initial_dex.price('HDX', 'USDT') * hdxusd_price_mult
+    dotusd_spot = initial_dex.price('DOT', 'USDT') * dotusd_price_mult
 
     initial_cex = CentralizedMarket(
         order_book={
@@ -504,7 +507,7 @@ def test_process_next_swap(
         }
 
         cex_swap, dex_swap = swap['cex'], swap['dex']
-        dex_spot = initial_dex.price(initial_dex, 'DOT', 'USDT')
+        dex_spot = initial_dex.price('DOT', 'USDT')
         if cex_swap['buy_asset'] != dex_swap['sell_asset'] or cex_swap['sell_asset'] != dex_swap['buy_asset']:
             raise AssertionError('Cex and dex swaps are not in the same pair.')
         cex_numeraire_amt = cex_swap['amount'] * cex_swap['price']
@@ -586,7 +589,7 @@ def test_get_arb_swaps(
         preferred_stablecoin='USDT',
     )
 
-    dotusd_spot = op_state.price(op_state, 'DOT', 'USDT')
+    dotusd_spot = op_state.price('DOT', 'USDT')
     dotusd_spot_adj = dotusd_spot * dotusd_price_mult
 
     dot_usdt_order_book = {
@@ -603,7 +606,7 @@ def test_get_arb_swaps(
     dot_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in dot_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in dot_usdt_order_book['asks']])
 
-    hdxusd_spot = op_state.price(op_state, 'HDX', 'USDT')
+    hdxusd_spot = op_state.price('HDX', 'USDT')
     hdxusd_spot_adj = hdxusd_spot * hdxusd_price_mult
 
     hdx_usdt_order_book = {
@@ -620,7 +623,7 @@ def test_get_arb_swaps(
     hdx_usdt_order_book_obj = OrderBook([[bid['price'], bid['amount']] for bid in hdx_usdt_order_book['bids']],
                                         [[ask['price'], ask['amount']] for ask in hdx_usdt_order_book['asks']])
 
-    hdxdot_spot = op_state.price(op_state, 'HDX', 'DOT')
+    hdxdot_spot = op_state.price('HDX', 'DOT')
     hdxdot_spot_adj = hdxdot_spot * hdxdot_price_mult
 
     hdx_dot_order_book = {
@@ -699,9 +702,8 @@ def test_combine_step():
     # }
     # uncomment above to test with live data, below for archived data
 
-    input_path = './data/'
-    if not os.path.exists(input_path):
-        input_path = 'hydradx/tests/data/'
+    input_path = find_test_directory()
+    input_path = os.path.join(input_path, 'data')
     asset_list, asset_numbers, tokens, fees = get_omnipool_data_from_file(input_path)
 
     cex = {}
@@ -822,17 +824,13 @@ def test_combine_step():
 def test_stableswap_router_arbitrage():
     # omnipool = get_omnipool()
     # save_omnipool(omnipool)
-    path = os.getcwd()
-    if not os.path.exists(os.path.join(path, 'archive')):
-        path = os.path.join(path, 'hydradx', 'tests', 'archive')
-    else:
-        path = os.path.join(path, 'archive')
-    omnipool = load_omnipool(path)
+    archive_path = os.path.join(find_test_directory(), 'archive')
+    omnipool = load_omnipool(archive_path)
     fourpool, btcpool, twopool = omnipool.sub_pools.values()
     router = OmnipoolRouter(
         exchanges=[omnipool, twopool, fourpool, btcpool]
     )
-    input_path = './data/'
+    input_path = os.path.join(find_test_directory(), 'data')
     if not os.path.exists(input_path):
         input_path = 'hydradx/tests/data/'
     cex = {}
@@ -882,6 +880,18 @@ def test_stableswap_router_arbitrage():
     initial_agent = agent.copy()
     execute_arb(exchanges, agent, swaps)
     profit = calculate_profit(initial_agent, agent, equivalency_map)
+    for asset in profit:
+        if asset not in exchanges['binance'].asset_list and (
+                asset not in equivalency_map or equivalency_map[asset] not in exchanges['binance'].asset_list):
+            if 'USD' not in profit:
+                profit['USD'] = 0
+            if asset in omnipool.asset_list:
+                # estimate value from omnipool price
+                profit['USD'] += (
+                    profit[asset] * omnipool.lrna_price(asset)
+
+                    / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
+                )
     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
     print(profit_total)
     if profit_total <= 0:

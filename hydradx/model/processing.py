@@ -806,16 +806,6 @@ def query_sqlPad(query: str):
         print(f"There was a problem with your request: {str(e)}")
 
 
-def distribute_value(num_positions, total_value, concentration = 0):
-    if num_positions == 1:
-        return [total_value]
-    top_20 = num_positions / 5
-    ratio = (1 / (1 - concentration)) ** (1 / top_20)
-    positions = [ratio ** (-i) for i in range(num_positions)]
-    total = sum(positions)
-    return [p * total_value / total for p in positions]
-
-
 def download_history_files():
     import gdown
     # navigate to model directory
@@ -918,3 +908,14 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
                     tkn_data += [line for line in json.load(f) if line[2] == tkn]
         print(f"Retrieved balance of {tkn} from {date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}.")
         return {data[1]: data[3] for data in tkn_data[left:end]}
+
+
+def distribute_value(num_positions, total_value, concentration = 0):
+    if num_positions == 1:
+        return [total_value]
+    top_20 = num_positions / 5
+    ratio = (1 / (1 - concentration)) ** (1 / top_20)
+    positions = [ratio ** (-i) for i in range(num_positions)]
+    total = sum(positions)
+    return [p * total_value / total for p in positions]
+
