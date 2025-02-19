@@ -231,6 +231,7 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
 
 
 @given(st.lists(asset_quantity_strategy, min_size=16, max_size=16))
+@reproduce_failure('6.39.6', b'AXicY2AgFjC1z135SiOQaPVogPXEM5untYIA5AUGlQ==')
 def test_swap_stableswap2(assets: list[float]):
     tokens = {
         "HDX": {'liquidity': assets[0], 'LRNA': assets[1]},
