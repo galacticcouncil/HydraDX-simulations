@@ -219,33 +219,69 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
-@given(stableswap_config(precision=0.000000001))
-def test_buy_shares(initial_pool: StableSwapPoolState):
-    initial_agent = Agent(
-        holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]}
-    )
+@given(liq = st.lists(st.floats(min_value=100000, max_value=1000000), min_size=3, max_size=3),
+       amp = st.floats(min_value=5, max_value=1000),
+       pegs = st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2))
+def test_buy_shares_with_add_liquidity(liq: list[float], amp: float, pegs: list[float]):
+    tokens = {"A": liq[0], "B": liq[1], "C": liq[2]}
+    initial_pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(0), peg=pegs)
+    initial_agent = Agent(holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]})
     # agent holds all the shares
     tkn_add = initial_pool.asset_list[0]
     pool_name = initial_pool.unique_id
     delta_tkn = 10
-    initial_agent.holdings.update({tkn_add: 10})
+    initial_agent.holdings.update({tkn_add: 2 * delta_tkn})
 
     add_liquidity_pool, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
     buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
-        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
+        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=True
     )
 
-    if (
-            add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add], rel=1e-12)
-            or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name], rel=1e-12)
-            or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add], rel=1e-12)
-            or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares, rel=1e-12)
-            or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d(), rel=1e-12)
-    ):
-        raise AssertionError("Asset values don't match.")
+    if delta_shares != buy_shares_agent.holdings[pool_name]:
+        raise AssertionError("Agent shares don't match.")
+    if add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add], rel=1e-12):
+        raise AssertionError("Agent tkn remaining doesn't match.")
+    if add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add], rel=1e-12):
+        raise AssertionError("Pool liquidity doesn't match.")
+    if add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares, rel=1e-12):
+        raise AssertionError("Pool shares don't match.")
+    if add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d(), rel=1e-12):
+        raise AssertionError("Pool d doesn't match.")
+
+
+@given(liq = st.lists(st.floats(min_value=100000, max_value=1000000), min_size=3, max_size=3),
+       amp = st.floats(min_value=5, max_value=1000),
+       pegs = st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2),
+       fee = st.floats(min_value=0, max_value=0.1),
+       add_pct = st.floats(min_value=1e-7, max_value=0.5))
+def test_buy_shares_increases_invariant_to_shares_ratio(liq, amp, pegs, fee, add_pct):
+    tokens = {"A": liq[0], "B": liq[1], "C": liq[2]}
+    initial_pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=pegs)
+    tkn_add = initial_pool.asset_list[0]
+    add_amt = add_pct * initial_pool.liquidity[tkn_add]
+    initial_agent = Agent(holdings={tkn_add: add_amt * 2})
+
+    # make sure we have delta_shares amount that agent holdings can handle
+    temp_pool, temp_agent = stableswap.simulate_add_liquidity(initial_pool, initial_agent, add_amt, tkn_add)
+    delta_shares = temp_agent.holdings[temp_pool.unique_id]
+
+    init_ratio = initial_pool.d / initial_pool.shares
+    buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
+        initial_pool, initial_agent, delta_shares, tkn_add, fail_overdraft=True
+    )
+
+    if buy_shares_pool.fail:
+        raise AssertionError("Agent has insufficient holdings.")
+
+    final_ratio = buy_shares_pool.d / buy_shares_pool.shares
+
+    if buy_shares_agent.holdings[initial_pool.unique_id] != delta_shares:
+        raise AssertionError("Agent shares don't match.")
+    if (init_ratio - final_ratio)/init_ratio > 1e-15:
+        raise AssertionError("Invariant not held.")
 
 
 @given(
@@ -1199,3 +1235,72 @@ def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg,
                 if pool.peg[i] != peg_target[i-1]:
                     if 1 + max_total_repeg != pool.peg[i]:
                         raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated sufficiently')
+
+
+def test_martin_buy_shares():
+    amp = 1000
+    # fee = 0.01  # very high fee of 1% to exaggerate impact
+    fee = 0.
+    tvl = 2_000_000
+    trade_size = 100
+    peg1 = 1/2
+    peg2 = 1/3
+
+    r1, r2 = peg1, peg2  # this makes pool evenly balanced at peg
+
+    tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
+              'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
+    pool.time_step = 4
+    peg_target = [0.48, 1/3]
+    pool.set_peg_target(peg_target)
+
+    pool.time_step = 5
+    agent = Agent(holdings={'TKN2': mpf(11)})
+
+    initial_balance = 11
+
+    pool.buy_shares(
+        agent, mpf(4.7134647938), "TKN2"
+    )
+    final_balance = agent.holdings["TKN2"]
+    spent = initial_balance - final_balance
+    print(f"{spent=}")
+    print(f"{agent=}")
+
+
+def test_colin_buy_shares():
+    amp = 1000
+    fee = 0.01  # very high fee of 1% to exaggerate impact
+    tvl = 2_000_000
+
+    r1, r2 = 1, 1  # this makes pool evenly balanced at peg
+
+    tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
+              'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
+    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee))
+
+    initial_balance = 11
+    buy_amt = mpf(4.7134647938)
+
+    agent = Agent(holdings={'TKN2': mpf(initial_balance)})
+
+
+    pool.buy_shares(
+        agent, buy_amt, "TKN2"
+    )
+    final_balance = agent.holdings["TKN2"]
+    spent = initial_balance - final_balance
+
+    pool_feeless = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(0))
+
+    agent_feeless = Agent(holdings={'TKN2': mpf(initial_balance)})
+
+
+    pool_feeless.buy_shares(
+        agent_feeless, buy_amt, "TKN2"
+    )
+    final_balance_feeless = agent_feeless.holdings["TKN2"]
+    spent_feeless = initial_balance - final_balance_feeless
+    print(f"{spent=}")
+    print(f"{agent=}")

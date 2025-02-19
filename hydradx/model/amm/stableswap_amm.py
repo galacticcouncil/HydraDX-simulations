@@ -635,9 +635,9 @@ class StableSwapPoolState(Exchange):
 
         y1 = self.calculate_y(reserves_reduced, d1, tkn_add)
         dy = y1 - asset_reserve
-        dy_0 = y - asset_reserve
+        dy_0 = y - self.liquidity[tkn_add]
         fee_amount = dy - dy_0
-        delta_tkn = dy + fee_amount
+        delta_tkn = dy
 
         if delta_tkn > agent.holdings[tkn_add]:
             if fail_overdraft:
