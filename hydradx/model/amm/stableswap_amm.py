@@ -358,6 +358,8 @@ class StableSwapPoolState(Exchange):
 
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
+            if min(reserves) <= 0:
+                return self.fail_transaction('Pool has insufficient liquidity.')
             sell_quantity = (self.calculate_y(reserves, self.d, tkn_sell) - self.liquidity[tkn_sell]) / (1 - fee)
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
@@ -685,6 +687,15 @@ class StableSwapPoolState(Exchange):
             self.liquidity[tkn] -= delta_tkns[tkn]
             agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
         return self
+
+    def cash_out(self, agent: Agent, prices: dict[str: float]) -> float:
+        if self.unique_id not in agent.holdings:
+            print(f'Error: agent does not have any shares in {self.unique_id}.')
+            return 0
+
+        share_fraction = agent.holdings[self.unique_id] / self.shares
+        delta_tkns = {tkn: share_fraction * self.liquidity[tkn] for tkn in self.asset_list}  # delta_tkn is positive
+        return sum([delta_tkns[tkn] * prices[tkn] for tkn in self.asset_list])
 
 
 def simulate_swap(
