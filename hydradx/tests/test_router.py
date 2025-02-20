@@ -294,7 +294,7 @@ def test_swap_stableswap2(assets: list[float]):
                 raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} <= 0")
         elif tkn == sell_tkn:
             if agent1.holdings[tkn] + trade_size != agent1.initial_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn] + trade_size} != {init_holdings[tkn]}")
+                raise ValueError(f"agent1 holdings {agent1.holdings[tkn] + trade_size} != {agent1.initial_holdings[tkn]}")
         else:
             if tkn not in agent1.initial_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
                 raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
