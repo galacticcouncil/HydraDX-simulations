@@ -147,12 +147,7 @@ class StableSwapPoolState(Exchange):
     Given a value for D and the balances of all tokens except 1, calculate what the balance of the final token should be
     """
 
-    # def calculate_y(self, reserves: list, d: float, tkn_omit: str, max_iterations=128):
     def calculate_y(self, reserves: dict, d: float, max_iterations=128):
-
-        # get all the balances except tkn_out and sort them from low to high
-        # pegs = [self.peg[i] for i, tkn in enumerate(self.asset_list) if tkn != tkn_omit]
-        # balances = sorted([reserves[i] * pegs[i] for i in range(self.n_coins - 1)])
 
         peg_dict = {}
         peg_tkn_omitted = None
@@ -163,6 +158,8 @@ class StableSwapPoolState(Exchange):
                 if peg_tkn_omitted is not None:
                     raise AssertionError("reserves missing more than one token")
                 peg_tkn_omitted = self.peg[i]
+
+        # get all the balances except tkn_out and sort them from low to high
         balances = sorted([reserves[tkn] * peg_dict[tkn] for tkn in reserves])
 
         s = sum(balances)
