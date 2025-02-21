@@ -36,10 +36,10 @@ class Exchange:
         return 0
 
     def buy_limit(self, tkn_buy, tkn_sell):
-        return 0
+        return float('inf')
 
     def sell_limit(self, tkn_buy, tkn_sell):
-        return 0
+        return float('inf')
 
     def swap(
         self,

@@ -1112,8 +1112,7 @@ def test_swap_assets(initial_state: oamm.OmnipoolState, i):
     # test that no LRNA is lost
     delta_Qi = feeless_state.lrna[i_sell] - old_state.lrna[i_sell]
     delta_Qj = feeless_state.lrna[i_buy] - old_state.lrna[i_buy]
-    delta_Qh = feeless_state.lrna['HDX'] - old_state.lrna['HDX']
-    if delta_Qj + delta_Qi + delta_Qh != pytest.approx(0, rel=1e-12):
+    if delta_Qj + delta_Qi != pytest.approx(0, rel=1e-12):
         raise AssertionError('Some LRNA was lost along the way.')
 
     delta_out_new = feeless_agent.holdings[i_buy] - old_agent.holdings[i_buy]

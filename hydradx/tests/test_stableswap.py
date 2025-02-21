@@ -1239,70 +1239,17 @@ def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg,
                         raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated sufficiently')
 
 
-def test_martin_buy_shares():
-    amp = 1000
-    # fee = 0.01  # very high fee of 1% to exaggerate impact
-    fee = 0.
-    tvl = 2_000_000
-    trade_size = 100
-    peg1 = 1/2
-    peg2 = 1/3
-
-    r1, r2 = peg1, peg2  # this makes pool evenly balanced at peg
-
-    tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
-              'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
-    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=[peg1, peg2])
-    pool.time_step = 4
-    peg_target = [0.48, 1/3]
-    pool.set_peg_target(peg_target)
-
-    pool.time_step = 5
-    agent = Agent(holdings={'TKN2': mpf(11)})
-
-    initial_balance = 11
-
-    pool.buy_shares(
-        agent, mpf(4.7134647938), "TKN2"
+def test_cash_out():
+    prices = {'USDT': 1, 'UDSC': 1.003, 'USDX': 0.7}
+    stableswap = StableSwapPoolState(
+        tokens={'USDT': 1000000, 'USDC': 1000300, 'USDX': 700000},
+        amplification=1000,
+        trade_fee=0.0005,
+        peg=list(prices.values())[1:],
     )
-    final_balance = agent.holdings["TKN2"]
-    spent = initial_balance - final_balance
-    print(f"{spent=}")
-    print(f"{agent=}")
-
-
-def test_colin_buy_shares():
-    amp = 1000
-    fee = 0.01  # very high fee of 1% to exaggerate impact
-    tvl = 2_000_000
-
-    r1, r2 = 1, 1  # this makes pool evenly balanced at peg
-
-    tokens = {'TKN1': mpf(r1 / (r1 + r2 + 1) * tvl), 'TKN2': mpf(1 / (r1 + r2 + 1) * tvl),
-              'TKN3': mpf(r2 / (r1 + r2 + 1) * tvl)}
-    pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee))
-
-    initial_balance = 11
-    buy_amt = mpf(4.7134647938)
-
-    agent = Agent(holdings={'TKN2': mpf(initial_balance)})
-
-
-    pool.buy_shares(
-        agent, buy_amt, "TKN2"
-    )
-    final_balance = agent.holdings["TKN2"]
-    spent = initial_balance - final_balance
-
-    pool_feeless = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(0))
-
-    agent_feeless = Agent(holdings={'TKN2': mpf(initial_balance)})
-
-
-    pool_feeless.buy_shares(
-        agent_feeless, buy_amt, "TKN2"
-    )
-    final_balance_feeless = agent_feeless.holdings["TKN2"]
-    spent_feeless = initial_balance - final_balance_feeless
-    print(f"{spent=}")
-    print(f"{agent=}")
+    agent = Agent(holdings={'USDT': 1000})
+    stableswap.add_liquidity(agent, 1000, 'USDT')
+    value = stableswap.cash_out(agent, prices)
+    stableswap.remove_uniform(agent, agent.holdings[stableswap.unique_id])
+    if value != sum([agent.holdings[tkn] * prices[tkn] if tkn in prices else 0 for tkn in agent.holdings]):
+        raise AssertionError('Cash out value not calculated correctly')

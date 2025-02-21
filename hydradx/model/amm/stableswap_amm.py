@@ -368,6 +368,8 @@ class StableSwapPoolState(Exchange):
 
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
+            if min(reserves) <= 0:
+                return self.fail_transaction('Pool has insufficient liquidity.')
             sell_quantity = (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - fee)
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
@@ -693,6 +695,23 @@ class StableSwapPoolState(Exchange):
             self.liquidity[tkn] -= delta_tkns[tkn]
             agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
         return self
+
+    def cash_out(self, agent: Agent, prices: dict[str: float]) -> float:
+        if self.unique_id not in agent.holdings:
+            print(f'Error: agent does not have any shares in {self.unique_id}.')
+            return 0
+
+        new_state, new_agent = simulate_remove_uniform(
+            old_state=self,
+            old_agent=agent,
+            shares_removed=agent.holdings[self.unique_id]
+        )
+
+        return sum([
+            (new_agent.holdings[tkn] - (agent.holdings[tkn] if tkn in agent.holdings else 0)) * prices[tkn]
+            if tkn in prices else 0
+            for tkn in new_agent.holdings.keys()
+        ])
 
 
 def simulate_swap(
