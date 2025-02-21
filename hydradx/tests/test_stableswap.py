@@ -1199,3 +1199,19 @@ def test_peg_update(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg,
                 if pool.peg[i] != peg_target[i-1]:
                     if 1 + max_total_repeg != pool.peg[i]:
                         raise AssertionError(f'Peg of asset {pool.asset_list[i]} not updated sufficiently')
+
+
+def test_cash_out():
+    prices = {'USDT': 1, 'UDSC': 1.003, 'USDX': 0.7}
+    stableswap = StableSwapPoolState(
+        tokens={'USDT': 1000000, 'USDC': 1000300, 'USDX': 700000},
+        amplification=1000,
+        trade_fee=0.0005,
+        peg=list(prices.values())[1:],
+    )
+    agent = Agent(holdings={'USDT': 1000})
+    stableswap.add_liquidity(agent, 1000, 'USDT')
+    value = stableswap.cash_out(agent, prices)
+    stableswap.remove_uniform(agent, agent.holdings[stableswap.unique_id])
+    if value != sum([agent.holdings[tkn] * prices[tkn] if tkn in prices else 0 for tkn in agent.holdings]):
+        raise AssertionError('Cash out value not calculated correctly')
