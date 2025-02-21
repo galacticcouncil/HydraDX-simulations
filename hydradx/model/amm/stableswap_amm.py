@@ -368,7 +368,7 @@ class StableSwapPoolState(Exchange):
 
         if buy_quantity:
             reserves = self.modified_balances(delta={tkn_buy: -buy_quantity}, omit=[tkn_sell])
-            if min(reserves) <= 0:
+            if min(reserves.values()) <= 0:
                 return self.fail_transaction('Pool has insufficient liquidity.')
             sell_quantity = (self.calculate_y(reserves, self.d) - self.liquidity[tkn_sell]) / (1 - fee)
         elif sell_quantity:
