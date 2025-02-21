@@ -228,7 +228,6 @@ def test_buy_shares_with_add_liquidity(liq: list[float], amp: float, pegs: list[
     tokens = {"A": liq[0], "B": liq[1], "C": liq[2]}
     initial_pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(0), peg=pegs)
     initial_agent = Agent(holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]})
-    # agent holds all the shares
     tkn_add = initial_pool.asset_list[0]
     pool_name = initial_pool.unique_id
     delta_tkn = 10
@@ -239,7 +238,7 @@ def test_buy_shares_with_add_liquidity(liq: list[float], amp: float, pegs: list[
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
     buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
-        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=True
+        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add
     )
 
     if delta_shares != buy_shares_agent.holdings[pool_name]:
@@ -272,7 +271,7 @@ def test_buy_shares_increases_invariant_to_shares_ratio(liq, amp, pegs, fee, add
 
     init_ratio = initial_pool.d / initial_pool.shares
     buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
-        initial_pool, initial_agent, delta_shares, tkn_add, fail_overdraft=True
+        initial_pool, initial_agent, delta_shares, tkn_add
     )
 
     if buy_shares_pool.fail:

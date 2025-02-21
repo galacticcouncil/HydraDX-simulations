@@ -617,8 +617,7 @@ class StableSwapPoolState(Exchange):
             self,
             agent: Agent,
             quantity: float,
-            tkn_add: str,
-            fail_overdraft: bool = True
+            tkn_add: str
     ):
 
         trade_fee = self._update_peg()
@@ -650,12 +649,7 @@ class StableSwapPoolState(Exchange):
         delta_tkn = dy
 
         if delta_tkn > agent.holdings[tkn_add]:
-            if fail_overdraft:
-                return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
-            else:
-                # instead of failing, just round down
-                delta_tkn = agent.holdings[tkn_add]
-                return self.add_liquidity(agent, delta_tkn, tkn_add)
+            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         self.liquidity[tkn_add] += delta_tkn
         agent.holdings[tkn_add] -= delta_tkn
@@ -763,14 +757,12 @@ def simulate_buy_shares(
         old_state: StableSwapPoolState,
         old_agent: Agent,
         quantity: float,
-        tkn_add: str,
-        fail_overdraft: bool = True
+        tkn_add: str
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     return new_state.buy_shares(
         agent=new_agent,
         quantity=quantity,
-        tkn_add=tkn_add,
-        fail_overdraft=fail_overdraft
+        tkn_add=tkn_add
     ), new_agent
