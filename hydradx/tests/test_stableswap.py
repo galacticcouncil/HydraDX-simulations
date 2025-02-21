@@ -183,12 +183,14 @@ def test_share_price(token_a: int, token_b: int, amp: int):
 def test_round_trip_dy(initial_pool: StableSwapPoolState):
     d = initial_pool.calculate_d()
     asset_a = initial_pool.asset_list[0]
-    other_reserves = [initial_pool.liquidity[a] for a in list(filter(lambda k: k != asset_a, initial_pool.asset_list))]
-    y = initial_pool.calculate_y(reserves=other_reserves, d=d, tkn_omit=asset_a)
+    other_reserves = {tkn: initial_pool.liquidity[tkn] for tkn in initial_pool.liquidity}
+    other_reserves.pop(asset_a)
+    y = initial_pool.calculate_y(reserves=other_reserves, d=d)
     if y != pytest.approx(initial_pool.liquidity[asset_a]) or y < initial_pool.liquidity[asset_a]:
         raise AssertionError('Round-trip calculation incorrect.')
-    modified_d = initial_pool.calculate_d(initial_pool.modified_balances(delta={asset_a: 1}))
-    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d, tkn_omit=asset_a) != pytest.approx(y + 1):
+    balances_list = list(initial_pool.modified_balances(delta={asset_a: 1}).values())
+    modified_d = initial_pool.calculate_d(balances_list)
+    if initial_pool.calculate_y(reserves=other_reserves, d=modified_d) != pytest.approx(y + 1):
         raise AssertionError('Round-trip calculation incorrect.')
 
 
@@ -219,33 +221,68 @@ def test_remove_asset(initial_pool: StableSwapPoolState):
         raise AssertionError("Asset values don't match.")
 
 
-@given(stableswap_config(precision=0.000000001))
-def test_buy_shares(initial_pool: StableSwapPoolState):
-    initial_agent = Agent(
-        holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]}
-    )
-    # agent holds all the shares
+@given(liq = st.lists(st.floats(min_value=100000, max_value=1000000), min_size=3, max_size=3),
+       amp = st.floats(min_value=5, max_value=1000),
+       pegs = st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2))
+def test_buy_shares_with_add_liquidity(liq: list[float], amp: float, pegs: list[float]):
+    tokens = {"A": liq[0], "B": liq[1], "C": liq[2]}
+    initial_pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(0), peg=pegs)
+    initial_agent = Agent(holdings={tkn: 0 for tkn in initial_pool.asset_list + [initial_pool.unique_id]})
     tkn_add = initial_pool.asset_list[0]
     pool_name = initial_pool.unique_id
     delta_tkn = 10
-    initial_agent.holdings.update({tkn_add: 10})
+    initial_agent.holdings.update({tkn_add: 2 * delta_tkn})
 
     add_liquidity_pool, add_liquidity_agent = stableswap.simulate_add_liquidity(
         initial_pool, initial_agent, delta_tkn, tkn_add
     )
     delta_shares = add_liquidity_agent.holdings[pool_name] - initial_agent.holdings[pool_name]
     buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
-        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add, fail_overdraft=False
+        initial_pool.copy(), initial_agent.copy(), delta_shares, tkn_add
     )
 
-    if (
-            add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add], rel=1e-12)
-            or add_liquidity_agent.holdings[pool_name] != pytest.approx(buy_shares_agent.holdings[pool_name], rel=1e-12)
-            or add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add], rel=1e-12)
-            or add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares, rel=1e-12)
-            or add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d(), rel=1e-12)
-    ):
-        raise AssertionError("Asset values don't match.")
+    if delta_shares != buy_shares_agent.holdings[pool_name]:
+        raise AssertionError("Agent shares don't match.")
+    if add_liquidity_agent.holdings[tkn_add] != pytest.approx(buy_shares_agent.holdings[tkn_add], rel=1e-12):
+        raise AssertionError("Agent tkn remaining doesn't match.")
+    if add_liquidity_pool.liquidity[tkn_add] != pytest.approx(buy_shares_pool.liquidity[tkn_add], rel=1e-12):
+        raise AssertionError("Pool liquidity doesn't match.")
+    if add_liquidity_pool.shares != pytest.approx(buy_shares_pool.shares, rel=1e-12):
+        raise AssertionError("Pool shares don't match.")
+    if add_liquidity_pool.calculate_d() != pytest.approx(buy_shares_pool.calculate_d(), rel=1e-12):
+        raise AssertionError("Pool d doesn't match.")
+
+
+@given(liq = st.lists(st.floats(min_value=100000, max_value=1000000), min_size=3, max_size=3),
+       amp = st.floats(min_value=5, max_value=1000),
+       pegs = st.lists(st.floats(min_value=0.1, max_value=10), min_size=2, max_size=2),
+       fee = st.floats(min_value=0, max_value=0.1),
+       add_pct = st.floats(min_value=1e-7, max_value=0.5))
+def test_buy_shares_increases_invariant_to_shares_ratio(liq, amp, pegs, fee, add_pct):
+    tokens = {"A": liq[0], "B": liq[1], "C": liq[2]}
+    initial_pool = StableSwapPoolState(tokens, mpf(amp), trade_fee=mpf(fee), peg=pegs)
+    tkn_add = initial_pool.asset_list[0]
+    add_amt = add_pct * initial_pool.liquidity[tkn_add]
+    initial_agent = Agent(holdings={tkn_add: add_amt * 2})
+
+    # make sure we have delta_shares amount that agent holdings can handle
+    temp_pool, temp_agent = stableswap.simulate_add_liquidity(initial_pool, initial_agent, add_amt, tkn_add)
+    delta_shares = temp_agent.holdings[temp_pool.unique_id]
+
+    init_ratio = initial_pool.d / initial_pool.shares
+    buy_shares_pool, buy_shares_agent = stableswap.simulate_buy_shares(
+        initial_pool, initial_agent, delta_shares, tkn_add
+    )
+
+    if buy_shares_pool.fail:
+        raise AssertionError("Agent has insufficient holdings.")
+
+    final_ratio = buy_shares_pool.d / buy_shares_pool.shares
+
+    if buy_shares_agent.holdings[initial_pool.unique_id] != delta_shares:
+        raise AssertionError("Agent shares don't match.")
+    if (init_ratio - final_ratio)/init_ratio > 1e-15:
+        raise AssertionError("Invariant not held.")
 
 
 @given(
