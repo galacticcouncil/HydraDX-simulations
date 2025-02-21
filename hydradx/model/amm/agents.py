@@ -23,10 +23,10 @@ class Agent:
         }
         The values of share_prices reflect the price at which those shares were acquired.
         """
-        self.holdings = holdings or {}
-        self.initial_holdings = copy.copy(self.holdings)
-        self.share_prices = share_prices or {}
-        self.delta_r = delta_r or {}
+        self.holdings = {tkn: val for tkn, val in holdings.items()} if holdings is not None else {}
+        self.initial_holdings = {tkn: val for tkn, val in holdings.items()} if holdings is not None else {}
+        self.share_prices = {k: val for k, val in share_prices.items()} if share_prices is not None else {}
+        self.delta_r = {k: val for k, val in delta_r.items()} if delta_r is not None else {}
         self.trade_strategy = trade_strategy
         self.asset_list = list(self.holdings.keys())
         self.unique_id = unique_id
