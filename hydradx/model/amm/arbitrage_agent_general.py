@@ -1,7 +1,6 @@
-from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.exchange import Exchange
-from hydradx.model.amm.centralized_market import CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from .agents import Agent
+from .exchange import Exchange
+from .centralized_market import CentralizedMarket
 
 
 # note that this function mutates exchanges, agents, and max_liquidity
