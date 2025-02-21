@@ -693,9 +693,17 @@ class StableSwapPoolState(Exchange):
             print(f'Error: agent does not have any shares in {self.unique_id}.')
             return 0
 
-        share_fraction = agent.holdings[self.unique_id] / self.shares
-        delta_tkns = {tkn: share_fraction * self.liquidity[tkn] for tkn in self.asset_list}  # delta_tkn is positive
-        return sum([delta_tkns[tkn] * prices[tkn] for tkn in self.asset_list])
+        new_state, new_agent = simulate_remove_uniform(
+            old_state=self,
+            old_agent=agent,
+            shares_removed=agent.holdings[self.unique_id]
+        )
+
+        return sum([
+            (new_agent.holdings[tkn] - (agent.holdings[tkn] if tkn in agent.holdings else 0)) * prices[tkn]
+            if tkn in prices else 0
+            for tkn in new_agent.holdings.keys()
+        ])
 
 
 def simulate_swap(
