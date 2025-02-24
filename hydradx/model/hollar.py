@@ -80,7 +80,8 @@ class LiquidityFacility:
             tkn_buy: str,
             tkn_sell: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0
+            sell_quantity: float = 0,
+            enforce_holdings: bool = True
     ):
         assert buy_quantity >= 0
         assert sell_quantity >= 0
@@ -102,12 +103,20 @@ class LiquidityFacility:
             assert sell_quantity <= max_buy_amt
             assert buy_quantity <= self.liquidity[tkn_buy]
 
-        assert agent.is_holding(tkn_sell, sell_quantity)
-        agent.holdings[tkn_sell] -= sell_quantity
-        if tkn_buy not in agent.holdings:
-            agent.holdings[tkn_buy] = 0
-        agent.holdings[tkn_buy] += buy_quantity
+        agent.transfer_from(tkn_sell, sell_quantity, enforce_holdings)
+        agent.transfer_to(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
             self.liquidity[tkn_buy] -= buy_quantity
         else:
             self.liquidity[tkn_sell] += sell_quantity
+
+    def arb(self, agent: Agent, tkn: str) -> None:
+        if tkn not in self.asset_list:
+            raise ValueError("Token not supported by facility")
+        max_buy_amt, buy_price = self.get_buy_params(tkn)
+        if max_buy_amt == 0:
+            return
+        agent.transfer_to(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
+        self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
+        self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
+        agent.transfer_from(self.native_stable, max_buy_amt)  # burn Hollar that was minted

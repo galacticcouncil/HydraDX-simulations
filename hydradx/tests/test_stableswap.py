@@ -67,6 +67,36 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
         raise AssertionError('Some assets were lost along the way.')
 
 
+def test_swap_agent_changes():
+    trade_fee = 0.0001
+    sell_amt = 1000
+    pool = StableSwapPoolState(
+        tokens={'A': 1000000, 'B': 1000000},
+        amplification=1000,
+        trade_fee=trade_fee
+    )
+    agent = Agent(holdings={'A': 1000000, 'B': 1000000})
+    new_pool, new_agent = simulate_swap(
+        pool, agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt
+    )
+    if new_agent.holdings['A'] != agent.holdings['A'] - sell_amt:
+        raise AssertionError('Agent holdings not updated properly.')
+    if new_agent.holdings['B'] + new_pool.liquidity['B'] != agent.holdings['B'] + pool.liquidity['B']:
+        raise AssertionError('Agent holdings not updated properly.')
+
+    empty_agent = Agent()
+    with pytest.raises(ValueError):
+        simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+
+    new_pool, new_agent = simulate_swap(
+        pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt, enforce_holdings=False
+    )
+    if new_agent.holdings['A'] != -sell_amt:
+        raise AssertionError('Agent holdings not updated properly.')
+    if new_agent.holdings['B'] + new_pool.liquidity['B'] != pool.liquidity['B']:
+        raise AssertionError('Agent holdings not updated properly.')
+
+
 @given(st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=10, max_value=1000)
@@ -464,12 +494,14 @@ def test_exploitability(initial_lp: int, trade_size: int):
 
     trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
     trade_agent.holdings['USDA'] = trade_size
+    init_buy_tkn = trade_agent.holdings['USDB']
     trade_state.swap(
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
         sell_quantity=trade_size
     )
+    buy_amt = trade_agent.holdings['USDB'] - init_buy_tkn
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
     withdraw_state.remove_liquidity(
@@ -478,7 +510,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
         tkn_remove='USDA'
     )
 
-    max_arb_size = trade_size
+    max_arb_size = buy_amt
     min_arb_size = 0
 
     for i in range(10):
@@ -488,7 +520,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
             agent=final_agent,
             tkn_sell='USDB',
             tkn_buy='USDA',
-            buy_quantity=arb_size
+            sell_quantity=arb_size
         )
 
         profit = sum(final_agent.holdings.values()) - trade_size - initial_lp

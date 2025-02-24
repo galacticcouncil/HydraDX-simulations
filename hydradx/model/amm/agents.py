@@ -62,11 +62,29 @@ class Agent:
         return copy_self
         # return copy.deepcopy(self)
 
-    def is_holding(self, tkn, amt=None):
+    def get_holdings(self, tkn) -> float:
+        if tkn not in self.holdings:
+            return 0
+        return self.holdings[tkn]
+
+    def is_holding(self, tkn, amt=None) -> bool:
         if amt is None:
-            return tkn in self.holdings and self.holdings[tkn] > 0
+            return self.get_holdings(tkn) > 0
         else:
-            return tkn in self.holdings and self.holdings[tkn] >= amt
+            return self.get_holdings(tkn) >= amt
+
+    def transfer_to(self, tkn: str, amt: float) -> None:
+        if tkn not in self.holdings:
+            self.holdings[tkn] = 0
+        self.holdings[tkn] += amt
+
+    def transfer_from(self, tkn: str, amt: float, enforce_holdings: bool = True) -> None:
+        if enforce_holdings:
+            if not self.is_holding(tkn, amt):
+                raise ValueError(f"Agent {self.unique_id} does not have enough {tkn} to transfer {amt}")
+        elif tkn not in self.holdings:
+            self.holdings[tkn] = 0
+        self.holdings[tkn] -= amt
 
 
 class AgentArchiveState:

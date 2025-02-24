@@ -362,7 +362,8 @@ class StableSwapPoolState(Exchange):
             tkn_sell: str,
             tkn_buy: str,
             buy_quantity: float = 0,
-            sell_quantity: float = 0
+            sell_quantity: float = 0,
+            enforce_holdings = True
     ):
         fee = self._update_peg()
 
@@ -375,15 +376,11 @@ class StableSwapPoolState(Exchange):
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - fee)
 
-        if agent.holdings[tkn_sell] < sell_quantity:
-            return self.fail_transaction('Agent has insufficient funds.')
         elif self.liquidity[tkn_buy] <= buy_quantity:
             return self.fail_transaction('Pool has insufficient liquidity.')
 
-        if tkn_buy not in agent.holdings:
-            agent.holdings[tkn_buy] = 0
-        agent.holdings[tkn_buy] += buy_quantity
-        agent.holdings[tkn_sell] -= sell_quantity
+        agent.transfer_from(tkn_sell, sell_quantity, enforce_holdings)
+        agent.transfer_to(tkn_buy, buy_quantity)
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
@@ -714,11 +711,12 @@ def simulate_swap(
         tkn_sell: str,
         tkn_buy: str,
         buy_quantity: float = 0,
-        sell_quantity: float = 0
+        sell_quantity: float = 0,
+        enforce_holdings = True
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity), new_agent
+    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity, enforce_holdings), new_agent
 
 
 def simulate_add_liquidity(
