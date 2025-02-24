@@ -245,6 +245,28 @@ def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy
 
 
 @given(
+    ratios = st.lists(st.floats(min_value=0.01, max_value=1), min_size=2, max_size=2),
+    buyback_speed = st.floats(min_value=1/1_000_000, max_value=1),
+    max_buy_price = st.floats(min_value=0.99, max_value=1),
+    buy_tkn_i = st.integers(min_value=0, max_value=1),
+    liquidity = st.lists(st.floats(min_value=1, max_value=1_000_000), min_size=2, max_size=2),
+)
+def test_insufficient_liquidity(ratios, buyback_speed, max_buy_price, buy_tkn_i, liquidity):
+    liquidity = {'USDT': liquidity[0], 'USDC': liquidity[1]}
+    usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
+    usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
+    pools = [usdt_pool, usdc_pool]
+    sell_price = 1.001
+    tkn = list(liquidity.keys())[buy_tkn_i]
+    buy_fee = 0.0001
+    facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+
+    max_sell_amt, buy_price = facility.get_buy_params(tkn)
+    if max_sell_amt * buy_price > facility.liquidity[tkn]:
+        raise ValueError("Liquidity facility should not be able to sell more than it has")
+
+
+@given(
     ratios = st.lists(st.floats(min_value=0.01, max_value=0.1), min_size=2, max_size=2),
     buyback_speed = st.floats(min_value=1/10_000, max_value=1),
     max_buy_price = st.floats(min_value=0.999, max_value=1),

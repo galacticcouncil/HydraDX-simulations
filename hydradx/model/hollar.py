@@ -72,6 +72,7 @@ class LiquidityFacility:
         buy_price = exec_price / (1 - self.buy_fee[tkn])
         if buy_price > self.max_buy_price[tkn]:
             return 0, 0
+        max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
         return max_buy_amt, buy_price
 
     def swap(
@@ -106,6 +107,8 @@ class LiquidityFacility:
         agent.transfer_from(tkn_sell, sell_quantity, enforce_holdings)
         agent.transfer_to(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
+            if buy_quantity > self.liquidity[tkn_buy]:
+                raise ValueError("Insufficient liquidity in facility")  # only reached due to rounding errors
             self.liquidity[tkn_buy] -= buy_quantity
         else:
             self.liquidity[tkn_sell] += sell_quantity
