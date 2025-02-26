@@ -6,6 +6,8 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mpf
 from hydradx.model.amm.omnix_solver_simple import  find_solution_outer_approx
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+
 
 def amount_to_float(amount, decimals):
     return amount / 10**decimals
@@ -20,6 +22,7 @@ class AMMStore:
         self._data = data
         self._omnipool_assets = None
         self._assets = None
+        self._stablepools = {}
         self.__parse()
 
     def tkn_symbol(self, asset_id: int):
@@ -35,6 +38,7 @@ class AMMStore:
     def __parse(self):
         assets = {}
         omnipool_assets= []
+        stablepools = {}
         for entry in self._data:
             if "Omnipool" in entry:
                 asset = entry["Omnipool"]
@@ -42,12 +46,26 @@ class AMMStore:
                 asset["asset_id"] = symbol
                 omnipool_assets.append(asset)
                 assets[asset["asset_id"]] = {"decimals": asset["decimals"]}
-            elif "Stableswap" in entry:
-                print(f"Stableswap")
-                raise Exception("not yet available")
+            elif "StableSwap" in entry:
+                stable_asset= entry["StableSwap"]
+                pool_id = stable_asset["pool_id"]
+                asset_id = self.tkn_symbol(stable_asset["asset_id"])
+                reserve = stable_asset["reserve"]
+                decimals = stable_asset["decimals"]
+                amplification = stable_asset["amplification"]
+                fee = stable_asset["fee"]
+
+                stable_pool = stablepools.get(pool_id, {})
+                stable_pool["assets"] = stable_pool.get("assets", []) + [asset_id]
+                stable_pool["reserves"] = stable_pool.get("reserves", []) + [reserve]
+                stable_pool["fee"] = fee
+                stable_pool["amplification"] = amplification
+                stablepools[pool_id] = stable_pool
+                assets[asset_id] = {"decimals": decimals}
             else:
                 raise Exception("unsupported pool")
         self._omnipool_assets = omnipool_assets
+        self._stablepools = stablepools
         self._assets = assets
 
     def omnipool_state(self):
@@ -77,6 +95,25 @@ class AMMStore:
         initial_state.last_lrna_fee = lrna_fee
 
         return initial_state
+
+    def stablepools(self):
+        print(self._stablepools)
+        r = []
+        for pool_id, pool in self._stablepools.items():
+            tokens = {}
+            for tkn, reserve in zip(pool["assets"], pool["reserves"]):
+                tokens[tkn] = amount_to_float(reserve, self.tkn_decimals(tkn))
+
+            fee = pool["fee"]
+            fee = fee[0] / fee[1]
+            pool = StableSwapPoolState(
+                tokens=tokens,
+                amplification=pool["amplification"],
+                trade_fee=fee,
+                unique_id=str(pool_id)
+            )
+            r.append(pool)
+        return r
 
 
 def serialize_intents(data, amm_data: AMMStore):
@@ -111,6 +148,9 @@ if __name__ == "__main__":
     intent_data = json.load(open(intent_input))
     intents = serialize_intents(intent_data, amm_store)
     initial_state = amm_store.omnipool_state()
+    stablepools = amm_store.stablepools()
     intents = copy.deepcopy(intents)
-    x = find_solution_outer_approx(initial_state, intents)
+    x = find_solution_outer_approx(initial_state, intents, amm_list=stablepools)
     pprint(f"Solution: {x}")
+
+
