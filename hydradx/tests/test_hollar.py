@@ -262,7 +262,7 @@ def test_insufficient_liquidity(ratios, buyback_speed, max_buy_price, buy_tkn_i,
     facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = facility.get_buy_params(tkn)
-    if max_sell_amt * buy_price > facility.liquidity[tkn]:
+    if max_sell_amt * buy_price - facility.liquidity[tkn] > 1e-15:
         raise ValueError("Liquidity facility should not be able to sell more than it has")
 
 
