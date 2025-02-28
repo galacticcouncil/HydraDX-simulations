@@ -1,8 +1,8 @@
 import copy
 
-from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from .agents import Agent
+from .omnipool_amm import OmnipoolState
+from .stableswap_amm import StableSwapPoolState
 
 class OmnipoolRouter:
     """
