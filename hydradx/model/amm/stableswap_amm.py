@@ -646,15 +646,13 @@ class StableSwapPoolState(Exchange):
         fee_amount = dy - dy_0
         delta_tkn = dy
 
-        if delta_tkn > agent.holdings[tkn_add]:
+        if not agent.validate_holdings(tkn_add, delta_tkn):
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         self.liquidity[tkn_add] += delta_tkn
-        agent.holdings[tkn_add] -= delta_tkn
+        agent.transfer_from(tkn_add, delta_tkn)
         self.shares += quantity
-        if self.unique_id not in agent.holdings:
-            agent.holdings[self.unique_id] = 0
-        agent.holdings[self.unique_id] += quantity
+        agent.transfer_to(self.unique_id, quantity)
         return self
 
     def remove_uniform(

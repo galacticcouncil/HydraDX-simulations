@@ -596,7 +596,7 @@ class OmnipoolState(Exchange):
             delta_Ri = sell_quantity
             if delta_Ri <= 0:
                 return self.fail_transaction('sell amount must be greater than zero', agent)
-            if delta_Ri > agent.holdings[i]:
+            if not agent.validate_holdings(i, delta_Ri):
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
             # get the fees we will be using
@@ -641,10 +641,8 @@ class OmnipoolState(Exchange):
             self.liquidity[j] += -buy_quantity or delta_Rj
             self.lrna['HDX'] += delta_QH
 
-            if j not in agent.holdings:
-                agent.holdings[j] = 0
-            agent.holdings[i] -= delta_Ri
-            agent.holdings[j] -= -buy_quantity or delta_Rj
+            agent.transfer_from(i, delta_Ri)
+            agent.transfer_to(j, buy_quantity or -delta_Rj)
 
             return_val = self
 
