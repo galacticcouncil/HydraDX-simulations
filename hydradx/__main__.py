@@ -97,7 +97,6 @@ class AMMStore:
         return initial_state
 
     def stablepools(self):
-        print(self._stablepools)
         r = []
         for pool_id, pool in self._stablepools.items():
             tokens = {}
@@ -110,7 +109,7 @@ class AMMStore:
                 tokens=tokens,
                 amplification=pool["amplification"],
                 trade_fee=fee,
-                unique_id=str(pool_id)
+                unique_id=str(self.tkn_symbol(pool_id))
             )
             r.append(pool)
         return r
