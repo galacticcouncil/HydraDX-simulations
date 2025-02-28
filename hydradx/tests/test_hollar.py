@@ -118,7 +118,7 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
     sell_amt = max_sell_amt * sell_ratio
     agent = Agent(holdings = {tkn_sell: sell_amt})
     facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
-    if agent.is_holding(tkn_sell):
+    if agent.validate_holdings(tkn_sell):
         raise ValueError("Agent should have 0 holdings after selling")
     buy_amt = agent.get_holdings(tkn_buy)
     exec_price = buy_amt / sell_amt
@@ -133,8 +133,8 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
 
     # test buy USDT from facility
     buy_facility = copy.deepcopy(init_facility)
-    buy_agent = Agent()
-    buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_amt, enforce_holdings=False)
+    buy_agent = Agent(enforce_holdings=False)
+    buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_amt)
     if buy_agent.get_holdings(tkn_buy) != buy_amt:
         raise ValueError("Agent has incorrect amount of buy token")
     if abs(-buy_agent.get_holdings(tkn_sell) - sell_amt)/sell_amt >= 1e-15:
@@ -200,7 +200,7 @@ def test_buy_hollar_from_facility(ratios, buyback_speed, sell_price, buy_tkn_i):
     agent = Agent(holdings = {tkn_sell: sell_amt})
     facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
     buy_amt = agent.get_holdings(tkn_buy)
-    if agent.is_holding(tkn_sell):
+    if agent.validate_holdings(tkn_sell):
         raise ValueError("Agent should have 0 holdings after selling")
     if agent.get_holdings(tkn_buy) != sell_amt / sell_price:
         raise ValueError("Agent has incorrect amount of HOLLAR")
@@ -209,8 +209,8 @@ def test_buy_hollar_from_facility(ratios, buyback_speed, sell_price, buy_tkn_i):
 
     # test buy HOLLAR
     buy_facility = copy.deepcopy(init_facility)
-    buy_agent = Agent()
-    buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_amt, enforce_holdings=False)
+    buy_agent = Agent(enforce_holdings=False)
+    buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_amt)
     if buy_agent.get_holdings(tkn_buy) != buy_amt:
         raise ValueError("Agent has incorrect amount of HOLLAR")
     if abs(-buy_agent.get_holdings(tkn_sell) - sell_amt) / pool_buy.liquidity[tkn_sell] >= 1e-15:
@@ -240,8 +240,9 @@ def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy
     max_sell_amt, buy_price = facility.get_buy_params(tkn_buy)
     sell_amt = max_sell_amt + sell_extra
     agent = Agent(holdings = {tkn_sell: sell_amt})
-    with pytest.raises(AssertionError):
-        facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
+    facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
+    if not facility.fail:
+        raise AssertionError("Swap should have failed")
 
 
 @given(
@@ -262,7 +263,7 @@ def test_insufficient_liquidity(ratios, buyback_speed, max_buy_price, buy_tkn_i,
     facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = facility.get_buy_params(tkn)
-    if max_sell_amt * buy_price - facility.liquidity[tkn] > 1e-15:
+    if (max_sell_amt * buy_price - facility.liquidity[tkn]) / facility.liquidity[tkn] > 1e-15:
         raise ValueError("Liquidity facility should not be able to sell more than it has")
 
 
@@ -287,10 +288,10 @@ def test_arb_loop_known_profitable(ratios, buyback_speed, max_buy_price, buy_tkn
     agent = Agent()
     facility.arb(agent, tkn)
     # arb function should result in agent's USDT holdings going up
-    if not agent.is_holding(tkn):
+    if not agent.validate_holdings(tkn):
         raise ValueError("Agent should have positive USDT holdings after arb")
     # agent should have no HOLLAR after arb
-    if agent.is_holding('HOLLAR'):
+    if agent.validate_holdings('HOLLAR'):
         raise ValueError("Agent should have 0 HOLLAR holdings after arb")
 
 
@@ -315,5 +316,5 @@ def test_arb_loop_known(ratios, buyback_speed, max_buy_price, buy_tkn_i, buy_fee
     agent = Agent()
     facility.arb(agent, tkn)
     # agent should have no HOLLAR after arb
-    if agent.is_holding('HOLLAR'):
+    if agent.validate_holdings('HOLLAR'):
         raise ValueError("Agent should have 0 HOLLAR holdings after arb")

@@ -63,6 +63,10 @@ class LiquidityFacility:
 
         self.native_stable = native_stable
 
+    def fail_transaction(self, error: str):
+        self.fail = error
+        return self
+
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self.pools[tkn]
         imbalance = (pool.liquidity[self.native_stable] - pool.liquidity[tkn]) / 2
@@ -78,37 +82,45 @@ class LiquidityFacility:
     def swap(
             self,
             agent: Agent,
-            tkn_buy: str,
-            tkn_sell: str,
+            tkn_buy: str = None,
+            tkn_sell: str = None,
             buy_quantity: float = 0,
-            sell_quantity: float = 0,
-            enforce_holdings: bool = True
+            sell_quantity: float = 0
     ):
-        assert buy_quantity >= 0
-        assert sell_quantity >= 0
+        if buy_quantity < 0:
+            return self.fail_transaction("Negative buy quantity")
+        if sell_quantity < 0:
+            return self.fail_transaction("Negative sell quantity")
+        if tkn_buy is None and tkn_sell is None:
+            return self.fail_transaction("No tokens specified")
 
         if tkn_buy == self.native_stable:  # trader buying HOLLAR
-            assert tkn_sell in self.asset_list
+            if tkn_sell not in self.asset_list:
+                return self.fail_transaction("Token not supported by facility")
             if buy_quantity == 0:
                 buy_quantity = sell_quantity / self.sell_price[tkn_sell]
             elif sell_quantity == 0:
                 sell_quantity = buy_quantity * self.sell_price[tkn_sell]
         else:
-            assert tkn_sell == self.native_stable
-            assert tkn_buy in self.asset_list
+            if tkn_sell != self.native_stable:
+                return self.fail_transaction("Swap must involve native stablecoin")
+            if tkn_buy not in self.asset_list:
+                return self.fail_transaction("Token not supported by facility")
             max_buy_amt, buy_price = self.get_buy_params(tkn_buy)
             if buy_quantity == 0:
                 buy_quantity = sell_quantity * buy_price
             elif sell_quantity == 0:
                 sell_quantity = buy_quantity / buy_price
-            assert sell_quantity <= max_buy_amt
-            assert buy_quantity <= self.liquidity[tkn_buy]
+            if sell_quantity > max_buy_amt:
+                return self.fail_transaction("Max buy amount exceeded")
+            if buy_quantity > self.liquidity[tkn_buy]:
+                return self.fail_transaction("Insufficient liquidity in facility")
 
-        agent.transfer_from(tkn_sell, sell_quantity, enforce_holdings)
+        if not agent.validate_holdings(tkn_sell, sell_quantity):
+            return self.fail_transaction("Agent does not have enough tokens to sell")
+        agent.transfer_from(tkn_sell, sell_quantity)
         agent.transfer_to(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
-            if buy_quantity > self.liquidity[tkn_buy]:
-                raise ValueError("Insufficient liquidity in facility")  # only reached due to rounding errors
             self.liquidity[tkn_buy] -= buy_quantity
         else:
             self.liquidity[tkn_sell] += sell_quantity

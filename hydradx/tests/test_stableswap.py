@@ -85,15 +85,15 @@ def test_swap_agent_changes():
         raise AssertionError('Agent holdings not updated properly.')
 
     empty_agent = Agent()
-    with pytest.raises(ValueError):
-        simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+    fail_pool, fail_agent = simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+    if not fail_pool.fail:
+        raise AssertionError('Swap should have failed due to insufficient funds.')
 
-    new_pool, new_agent = simulate_swap(
-        pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt, enforce_holdings=False
-    )
-    if new_agent.holdings['A'] != -sell_amt:
+    empty_agent = Agent(enforce_holdings=False)
+    new_pool, new_agent = simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+    if new_agent.get_holdings('A') != -sell_amt:
         raise AssertionError('Agent holdings not updated properly.')
-    if new_agent.holdings['B'] + new_pool.liquidity['B'] != pool.liquidity['B']:
+    if new_agent.get_holdings('B') + new_pool.liquidity['B'] != pool.liquidity['B']:
         raise AssertionError('Agent holdings not updated properly.')
 
 
