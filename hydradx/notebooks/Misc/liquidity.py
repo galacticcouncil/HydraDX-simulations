@@ -15,10 +15,7 @@
 
 # +
 from matplotlib import pyplot as plt
-from datetime import datetime
-import math
 import sys
-from pprint import pprint
 
 sys.path.append('../..')
 from model.amm.omnipool_router import OmnipoolRouter
@@ -27,6 +24,8 @@ from model.amm.stableswap_amm import simulate_swap as simulate_stableswap_swap
 from model.amm.omnipool_amm import OmnipoolState, DynamicFee
 from model.amm.agents import Agent
 
+# add silly test comment
+# try again... add silly test comment
 
 
 # +
@@ -150,9 +149,6 @@ router_gigadot = OmnipoolRouter(exchanges=exchanges)
 agent = Agent(enforce_holdings=False)
 sell_amts = []
 for buy_size in buy_sizes:
-    # new_state, new_agent = router_gigadot.simulate_swap(
-    #     agent, tkn_buy='DOT', tkn_sell='USDT', buy_quantity=buy_size
-    # )
     new_state, new_agent = simulate_stableswap_swap(
         gigadot_pool, agent, tkn_buy='DOT', tkn_sell='vDOT', buy_quantity=buy_size
     )
