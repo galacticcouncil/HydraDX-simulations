@@ -129,7 +129,7 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
     if (pool_sell_amt - buy_amt)/pool_sell_amt > 1e-15:
         raise AssertionError("Liquidity facility not giving arbitragable prices")
     if abs(buy_amt - (init_facility.liquidity[tkn_buy] - facility.liquidity[tkn_buy])) / facility.liquidity[tkn_buy] >= 1e-15:
-        raise ValueError("Liquidity facility did deduct correct amount of tokens")
+        raise ValueError("Liquidity facility did not deduct correct amount of tokens")
 
     # test buy USDT from facility
     buy_facility = copy.deepcopy(init_facility)
@@ -140,7 +140,43 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
     if abs(-buy_agent.get_holdings(tkn_sell) - sell_amt)/sell_amt >= 1e-15:
         raise ValueError("Agent sold incorrect amount")
     if abs(buy_amt - (init_facility.liquidity[tkn_buy] - buy_facility.liquidity[tkn_buy])) / buy_facility.liquidity[tkn_buy] >= 1e-15:
-        raise ValueError("Liquidity facility did deduct correct amount of tokens")
+        raise ValueError("Liquidity facility did not deduct correct amount of tokens")
+
+
+@given(
+    ratios = st.lists(st.floats(min_value=0.95, max_value=1.05), min_size=2, max_size=2),
+    buyback_speed = st.floats(min_value=1/1_000_000, max_value=1),
+    max_buy_price = st.floats(min_value=0.99, max_value=1),
+    buy_fee = st.floats(min_value=0, max_value=0.01),
+    buy_tkn_i = st.integers(min_value=0, max_value=1),
+)
+def test_sell_hollar_fails_when_balanced(ratios, buyback_speed, max_buy_price, buy_fee, buy_tkn_i):
+    liquidity = {'USDT': 1_000_000, 'USDC': 1_000_000}
+    usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
+    usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
+    pools = [usdt_pool, usdc_pool]
+    sell_price = 1.001
+    tkn_buy = list(liquidity.keys())[buy_tkn_i]
+    tkn_sell = 'HOLLAR'
+    init_facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+
+    max_sell_amt, buy_price = init_facility.get_buy_params(tkn_buy)
+    assert max_sell_amt == 0
+
+    # test sell Hollar to facility
+    facility = copy.deepcopy(init_facility)
+    sell_amt = 10
+    agent = Agent(holdings = {tkn_sell: sell_amt})
+    facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
+    if not facility.fail:
+        raise ValueError("Should not be able to sell HOLLAR when pools are balanced")
+
+    # test buy USDT from facility
+    buy_facility = copy.deepcopy(init_facility)
+    buy_agent = Agent(enforce_holdings=False)
+    buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=10)
+    if not buy_facility.fail:
+        raise ValueError("Should not be able to buy USDT when pools are balanced")
 
 
 @given(
@@ -205,7 +241,7 @@ def test_buy_hollar_from_facility(ratios, buyback_speed, sell_price, buy_tkn_i):
     if agent.get_holdings(tkn_buy) != sell_amt / sell_price:
         raise ValueError("Agent has incorrect amount of HOLLAR")
     if abs(sell_amt - (facility.liquidity[tkn_sell] - init_facility.liquidity[tkn_sell])) / facility.liquidity[tkn_sell] >= 1e-15:
-        raise ValueError("Liquidity facility did deduct correct amount of tokens")
+        raise ValueError("Liquidity facility did not deduct correct amount of tokens")
 
     # test buy HOLLAR
     buy_facility = copy.deepcopy(init_facility)
@@ -216,7 +252,7 @@ def test_buy_hollar_from_facility(ratios, buyback_speed, sell_price, buy_tkn_i):
     if abs(-buy_agent.get_holdings(tkn_sell) - sell_amt) / pool_buy.liquidity[tkn_sell] >= 1e-15:
         raise ValueError("Agent sold incorrect amount")
     if abs(sell_amt - (facility.liquidity[tkn_sell] - init_facility.liquidity[tkn_sell])) / buy_facility.liquidity[tkn_sell] >= 1e-15:
-        raise ValueError("Liquidity facility did deduct correct amount of tokens")
+        raise ValueError("Liquidity facility did not deduct correct amount of tokens")
 
 
 @given(

@@ -380,8 +380,8 @@ class StableSwapPoolState(Exchange):
         if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction('Agent has insufficient funds.')
 
-        agent.transfer_from(tkn_sell, sell_quantity)
-        agent.transfer_to(tkn_buy, buy_quantity)
+        agent.remove(tkn_sell, sell_quantity)
+        agent.add(tkn_buy, buy_quantity)
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 

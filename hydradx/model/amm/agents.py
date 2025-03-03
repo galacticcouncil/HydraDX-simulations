@@ -78,18 +78,16 @@ class Agent:
         else:
             return self.get_holdings(tkn) >= amt
 
-    def transfer_to(self, tkn: str, amt: float) -> None:
+    def add(self, tkn: str, amt: float) -> None:
         if tkn not in self.holdings:
             self.holdings[tkn] = 0
         self.holdings[tkn] += amt
 
-    def transfer_from(self, tkn: str, amt: float) -> None:
-        if self.enforce_holdings:
-            if not self.validate_holdings(tkn, amt):
-                raise ValueError(f"Agent {self.unique_id} does not have enough {tkn} to transfer {amt}")
-        elif tkn not in self.holdings:
-            self.holdings[tkn] = 0
-        self.holdings[tkn] -= amt
+    def remove(self, tkn: str, amt: float) -> None:
+        if not self.enforce_holdings or self.validate_holdings(tkn, amt):
+            if tkn not in self.holdings:
+                self.holdings[tkn] = 0
+            self.holdings[tkn] -= amt
 
 
 class AgentArchiveState:
