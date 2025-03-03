@@ -337,7 +337,17 @@ class OmnipoolRouter:
         if len(tkn_sell_pools) == 0:
             raise ValueError(f'No pool with {tkn_sell} in asset list')
 
-        return [(tkn_sell_pool, tkn_buy_pool) for tkn_buy_pool in tkn_buy_pools for tkn_sell_pool in tkn_sell_pools]
+        routes = []
+        for tkn_buy_pool in tkn_buy_pools:
+            if tkn_buy_pool not in self.omnipool.asset_list + [self.omnipool_id]:
+                if tkn_sell in self.exchanges[tkn_buy_pool].asset_list:
+                    routes.append((tkn_buy_pool, tkn_buy_pool))
+            else:
+                for tkn_sell_pool in tkn_sell_pools:
+                    if tkn_sell_pool in self.omnipool.asset_list + [self.omnipool_id]:
+                        routes.append((tkn_sell_pool, tkn_buy_pool))
+
+        return routes
 
     def find_best_route(self, tkn_buy, tkn_sell) -> tuple[str, str]:
         """
