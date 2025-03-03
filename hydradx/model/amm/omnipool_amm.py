@@ -1256,7 +1256,7 @@ class OmnipoolState(Exchange):
         # if nft_id is None and not agent.is_holding(k):
         #     return self.fail_transaction('Agent does not have liquidity in this pool.', agent)
         if nft_id is None:
-            if quantity is not None and not agent.is_holding(k, quantity):
+            if quantity is not None and not agent.validate_holdings(k, quantity):
                 return self.fail_transaction('Agent does not have enough liquidity in this pool.', agent)
         else:
             if nft_id not in agent.nfts:

@@ -114,7 +114,7 @@ class money_market:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
-        assert agent.is_holding(collateral_asset, collateral_amt)
+        assert agent.validate_holdings(collateral_asset, collateral_amt)
         price = self.get_oracle_price(collateral_asset, borrow_asset)
         assert price * collateral_amt * self.min_ltv >= borrow_amt
         self.borrowed[borrow_asset] += borrow_amt
@@ -127,7 +127,7 @@ class money_market:
 
     def repay(self, agent: Agent, cdp_i: int) -> None:
         cdp = self.cdps[cdp_i][1]
-        assert agent.is_holding(cdp.debt_asset, cdp.debt_amt)
+        assert agent.validate_holdings(cdp.debt_asset, cdp.debt_amt)
         agent.holdings[cdp.debt_asset] -= cdp.debt_amt
         self.borrowed[cdp.debt_asset] -= cdp.debt_amt
         if cdp.collateral_asset not in agent.holdings:

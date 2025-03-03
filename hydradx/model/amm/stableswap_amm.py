@@ -374,16 +374,14 @@ class StableSwapPoolState(Exchange):
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - fee)
-
-        if agent.holdings[tkn_sell] < sell_quantity:
-            return self.fail_transaction('Agent has insufficient funds.')
         elif self.liquidity[tkn_buy] <= buy_quantity:
             return self.fail_transaction('Pool has insufficient liquidity.')
 
-        if tkn_buy not in agent.holdings:
-            agent.holdings[tkn_buy] = 0
-        agent.holdings[tkn_buy] += buy_quantity
-        agent.holdings[tkn_sell] -= sell_quantity
+        if not agent.validate_holdings(tkn_sell, sell_quantity):
+            return self.fail_transaction('Agent has insufficient funds.')
+
+        agent.remove(tkn_sell, sell_quantity)
+        agent.add(tkn_buy, buy_quantity)
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
