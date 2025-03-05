@@ -1,0 +1,352 @@
+import copy
+
+from matplotlib import pyplot as plt
+import sys, os
+import streamlit as st
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+sys.path.append(project_root)
+
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_buy_shares
+from hydradx.model.amm.stableswap_amm import simulate_swap as simulate_stableswap_swap
+from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
+from hydradx.model.amm.omnipool_amm import simulate_swap as simulate_omnipool_swap
+from hydradx.model.amm.agents import Agent
+
+
+# current Omnipool numbers
+
+lrna_price = 25  # price of LRNA in USDT
+current_omnipool_liquidity = {'HDX': 85_500_000, '2-Pool': 15_000_000,
+                      'DOT': 2_717_000, 'vDOT': 905_800,
+                      'WETH': 905.5, 'ASTR': 50_080_000,
+                      'GLMR': 14_080_000, '4-Pool': 1_265_000,
+                      'BNC': 5_972_000, 'tBTC': 10.79,
+                      'CFG': 5_476_000, 'iBTC': 10.42,
+                      'WBTC': 10.29, 'PHA': 5_105_000,
+                      'KSM': 32_790, 'INTR': 67_330_000,
+                      'vASTR': 7_165_000, 'KILT': 4_490_000,
+                      'AAVE': 965.4, 'SOL': 754.4,
+                      'ZTG': 8_229_000, 'CRU': 442_600,
+                      '2-Pool-Btc': 0.6296, 'RING': 32_760_000}
+
+usd_values = {'HDX': 1_000_000, '2-Pool': 15_000_000, 'DOT': 13_250_000,
+              'vDOT': 6_475_000, 'WETH': 2_050_000, 'ASTR': 1_900_000,
+              'GLMR': 1_660_000, '4-Pool': 1_290_000, 'BNC': 1_085_000,
+              'tBTC': 900_000, 'CFG': 870_000, 'iBTC': 870_000,
+              'WBTC': 860_000, 'PHA': 760_000, 'KSM': 640_000,
+              'INTR': 370_000, 'vASTR': 320_000, 'KILT': 250_000,
+              'AAVE': 190_000, 'SOL': 100_000, 'ZTG': 94_000,
+              'CRU': 71_000, '2-Pool-Btc': 55_000, 'RING': 47_000}
+
+lrna_amounts = {key: value / lrna_price for key, value in usd_values.items()}
+
+tokens = {
+    tkn: {'liquidity': current_omnipool_liquidity[tkn], 'LRNA': lrna_amounts[tkn]}
+    for tkn in current_omnipool_liquidity
+}
+
+lrna_fee = DynamicFee(
+    minimum=0.0005, maximum=0.0010, amplification=1,  # TODO get these numbers right
+    decay=0.000001
+)
+asset_fee = DynamicFee(
+    minimum=0.0025, maximum=0.01, amplification=2,  # TODO get these numbers right
+    decay=0.00001
+)
+tokens_2_pool = {'USDT': 9_000_000, 'USDC': 8_000_000}
+tokens_4_pool = {
+    'USDT': 362000, 'USDC2': 262000,
+    'DAI': 368000, 'USDT2': 323000
+}
+
+current_ss_2_pool = StableSwapPoolState(
+    tokens=tokens_2_pool, amplification=100, trade_fee=0.0002, unique_id='2-Pool'  # TODO get these numbers right
+)
+current_ss_4_pool = StableSwapPoolState(
+    tokens=tokens_4_pool, amplification=320, trade_fee=0.0002, unique_id='4-Pool'
+)
+
+# Extract labels and values
+labels = list(lrna_amounts.keys())
+sizes = list(lrna_amounts.values())
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+ax.set_title("Current Omnipool")
+st.pyplot(fig)
+
+
+# current pools
+
+current_omnipool = OmnipoolState(
+    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
+)
+
+
+# vDOT, DOT moved to gigaDOT pool
+
+usd_value_vdot = usd_values['vDOT']
+usd_value_dot = usd_values['DOT']
+tokens_gigadot_pool = {
+    'vDOT': current_omnipool_liquidity['vDOT'] * 2/3,
+    'DOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 2/3,
+    'aDOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 2/3,
+}
+
+omnipool_gigadot_tokens = {tkn: value for tkn, value in current_omnipool_liquidity.items()}
+omnipool_gigadot_tokens['DOT'] -= current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot
+del omnipool_gigadot_tokens['vDOT']
+
+# scale LRNA by diff in tokens
+gigadot_lrna_amounts = {tkn: omnipool_gigadot_tokens[tkn] / current_omnipool_liquidity[tkn] * lrna_amounts[tkn] for tkn in omnipool_gigadot_tokens}
+
+tokens = {
+    tkn: {'liquidity': omnipool_gigadot_tokens[tkn], 'LRNA': gigadot_lrna_amounts[tkn]}
+    for tkn in omnipool_gigadot_tokens
+}
+
+gigadot_pool = StableSwapPoolState(
+    tokens=tokens_gigadot_pool, amplification=100, trade_fee=0.0002, unique_id='gigaDOT'
+)
+
+omnipool_gigadot = OmnipoolState(
+    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
+)
+
+# exchanges_gigadot = {'omnipool': omnipool_gigadot, '2-Pool': current_ss_2_pool.copy(), '4-Pool': current_ss_4_pool.copy(), 'gigaDOT': gigadot_pool}
+# exchanges_gigadot = {'omnipool': omnipool_gigadot, '2-Pool': current_ss_2_pool.copy(), 'gigaDOT': gigadot_pool}
+# router_gigadot = OmnipoolRouter(exchanges=exchanges_gigadot)
+
+# Extract labels and values
+labels = list(gigadot_lrna_amounts.keys())
+sizes = list(gigadot_lrna_amounts.values())
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+ax.set_title("Omnipool without gigaDOT")
+st.pyplot(fig)
+
+
+# mini gigaDOT
+
+usd_value_vdot = usd_values['vDOT']
+usd_value_dot = usd_values['DOT']
+tokens_minigigadot_pool = {
+    'vDOT': current_omnipool_liquidity['vDOT'] * 1/3,
+    'DOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 1/3,
+    'aDOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 1/3,
+}
+
+omnipool_gigadot_tokens = {tkn: value for tkn, value in current_omnipool_liquidity.items()}
+del omnipool_gigadot_tokens['vDOT']
+
+# scale LRNA by diff in tokens
+gigadot_lrna_amounts = {tkn: omnipool_gigadot_tokens[tkn] / current_omnipool_liquidity[tkn] * lrna_amounts[tkn] for tkn in omnipool_gigadot_tokens}
+
+tokens = {
+    tkn: {'liquidity': omnipool_gigadot_tokens[tkn], 'LRNA': gigadot_lrna_amounts[tkn]}
+    for tkn in omnipool_gigadot_tokens
+}
+
+minigigadot_pool = StableSwapPoolState(
+    tokens=tokens_minigigadot_pool, amplification=100, trade_fee=0.0002, unique_id='gigaDOT'
+)
+
+omnipool_minigigadot = OmnipoolState(
+    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
+)
+
+# Extract labels and values
+labels = list(omnipool_minigigadot.lrna.keys())
+sizes = list(omnipool_minigigadot.lrna.values())
+# print(omnipool_with_gigadot.lrna['gigaDOT'])
+print(gigadot_pool.share_price('DOT'))
+print(usd_values['DOT'])
+
+# Create pie chart
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+ax.set_title("Omnipool without vDOT")
+st.pyplot(fig)
+
+
+# gigaDOT in Omnipool
+
+gigadot_price = gigadot_pool.share_price('DOT') * usd_values['DOT'] / current_omnipool_liquidity['DOT']
+tokens_op_with_gigadot = {tkn: value for tkn, value in omnipool_gigadot_tokens.items()}
+tokens_op_with_gigadot['gigaDOT'] = gigadot_pool.shares
+gigaDOT_lrna = gigadot_price * gigadot_pool.shares / lrna_price
+lrna_op_with_gigadot = {tkn: value for tkn, value in gigadot_lrna_amounts.items()}
+lrna_op_with_gigadot['gigaDOT'] = gigaDOT_lrna
+tokens = {
+    tkn: {'liquidity': tokens_op_with_gigadot[tkn], 'LRNA': lrna_op_with_gigadot[tkn]}
+    for tkn in tokens_op_with_gigadot
+}
+omnipool_with_gigadot = OmnipoolState(
+    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
+)
+
+# Extract labels and values
+labels = list(omnipool_with_gigadot.lrna.keys())
+sizes = list(omnipool_with_gigadot.lrna.values())
+# print(omnipool_with_gigadot.lrna['gigaDOT'])
+print(gigadot_pool.share_price('DOT'))
+print(usd_values['DOT'])
+
+# Create pie chart
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+ax.set_title("Omnipool with gigaDOT")
+st.pyplot(fig)
+
+
+# model
+
+agent = Agent(enforce_holdings=False)
+buy_sizes = [1, 10, 100, 1000, 10000]  # buying DOT with vDOT, DOT with USDT, vDOT with USDT
+buy_sizes.sort()
+# tkn_pairs = [('DOT', 'vDOT'), ('DOT', 'USDT'), ('vDOT', 'USDT')]
+# tkn_pairs = [('DOT', 'vDOT'), ('DOT', 'USDT')]
+sell_amts_omnipool = []
+sell_amts_gigadot = []
+sell_amts_minigigadot = []
+sell_amts_gigadot_in_omnipool = []
+for buy_size in buy_sizes:
+    sell_amts_omnipool_dict = {}
+    sell_amts_gigadot_dict = {}
+    sell_amts_gigadot_in_omnipool_dict = {}
+    sell_amts_minigigadot_dict = {}
+
+    # DOT -> vDOT
+    tkn_sell, tkn_buy = 'DOT', 'vDOT'
+    # current Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        current_omnipool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # gigadot
+    new_state, new_agent = simulate_stableswap_swap(
+        gigadot_pool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    sell_amts_gigadot_in_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # mini gigadot
+    new_state, new_agent = simulate_stableswap_swap(
+        minigigadot_pool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_minigigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+
+    # DOT -> USDT
+    tkn_sell, tkn_buy = 'DOT', '2-Pool'
+    # current Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        current_omnipool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # gigadot Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_gigadot, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # gigadot in Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_with_gigadot, agent, tkn_buy='2-Pool', tkn_sell='gigaDOT', buy_quantity=buy_size
+    )
+    withdraw_amt = -new_agent.get_holdings('gigaDOT')
+    new_state, new_agent = simulate_buy_shares(
+        gigadot_pool, agent, quantity=withdraw_amt, tkn_add='DOT'
+    )
+    sell_amts_gigadot_in_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # mini gigadot
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_minigigadot, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_minigigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+
+    # vDOT -> USDT
+    tkn_sell, tkn_buy = 'vDOT', '2-Pool'
+    # current Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        current_omnipool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+    )
+    sell_amts_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # gigadot Omnipool, route through DOT
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_gigadot, agent, tkn_buy=tkn_buy, tkn_sell='DOT', buy_quantity=buy_size
+    )
+    new_state, new_agent = simulate_stableswap_swap(
+        gigadot_pool, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
+    )
+    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # gigadot in Omnipool
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_with_gigadot, agent, tkn_buy='2-Pool', tkn_sell='gigaDOT', buy_quantity=buy_size
+    )
+    withdraw_amt = -new_agent.get_holdings('gigaDOT')
+    new_state, new_agent = simulate_buy_shares(
+        gigadot_pool, agent, quantity=withdraw_amt, tkn_add='vDOT'
+    )
+    sell_amts_gigadot_in_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+    # minigigadot
+    new_state, new_agent = simulate_omnipool_swap(
+        omnipool_minigigadot, agent, tkn_buy=tkn_buy, tkn_sell='DOT', buy_quantity=buy_size
+    )
+    new_state, new_agent = simulate_stableswap_swap(
+        minigigadot_pool, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
+    )
+    sell_amts_minigigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
+
+    sell_amts_omnipool.append(sell_amts_omnipool_dict)
+    sell_amts_gigadot.append(sell_amts_gigadot_dict)
+    sell_amts_gigadot_in_omnipool.append(sell_amts_gigadot_in_omnipool_dict)
+    sell_amts_minigigadot.append(sell_amts_minigigadot_dict)
+
+
+# graph slippage
+
+current_slippage = {}
+gigadot_slippage = {}
+gigadot_in_op_slippage = {}
+minigigadot_slippage = {}
+for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
+    current_prices = [sell_amts_omnipool[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
+    gigadot_prices = [sell_amts_gigadot[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
+    gigadot_in_op_prices = [sell_amts_gigadot_in_omnipool[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
+    minigigadot_prices = [sell_amts_minigigadot[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
+    lowest_current_price = current_prices[0]
+    lowest_gigadot_price = gigadot_prices[0]
+    lowest_gigadot_in_op_price = gigadot_in_op_prices[0]
+    lowest_minigigadot_price = minigigadot_prices[0]
+    current_slippage[tkn_pair] = [(current_prices[i] - lowest_current_price) / lowest_current_price for i in range(len(buy_sizes))]
+    gigadot_slippage[tkn_pair] = [(gigadot_prices[i] - lowest_gigadot_price) / lowest_gigadot_price for i in range(len(buy_sizes))]
+    gigadot_in_op_slippage[tkn_pair] = [(gigadot_in_op_prices[i] - lowest_gigadot_in_op_price) / lowest_gigadot_in_op_price for i in range(len(buy_sizes))]
+    minigigadot_slippage[tkn_pair] = [(minigigadot_prices[i] - lowest_minigigadot_price) / lowest_minigigadot_price for i in range(len(buy_sizes))]
+
+for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
+    # plt.figure(figsize=(10,6))  # Set figure size
+    # plt.plot(buy_sizes, current_slippage[tkn_pair], label='current')
+    # plt.plot(buy_sizes, gigadot_slippage[tkn_pair], label='GigaDOT')
+    # plt.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], label='GigaDOT in Omnipool')
+    # plt.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='MiniGigaDOT')
+    # plt.legend()
+    # plt.title(str(tkn_pair) + " slippage")
+    # plt.xlabel('Buy size')
+    # plt.ylabel('Slippage')
+    # plt.show()
+    fig, ax = plt.subplots(figsize=(10, 6))  # Create figure
+
+    # Plot different slippage data
+    ax.plot(buy_sizes, current_slippage[tkn_pair], label='Current')
+    ax.plot(buy_sizes, gigadot_slippage[tkn_pair], label='GigaDOT')
+    ax.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], label='GigaDOT in Omnipool')
+    ax.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='MiniGigaDOT')
+
+    # Add labels, legend, and title
+    ax.legend()
+    ax.set_title(str(tkn_pair) + " Slippage")
+    ax.set_xlabel('Buy size')
+    ax.set_ylabel('Slippage')
+
+    # Display the plot in Streamlit
+    st.pyplot(fig)
