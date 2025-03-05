@@ -80,7 +80,6 @@ def omnipool_reasonable_config(
         lrna_fee=None,
         asset_fee=None,
         tvl_cap_usd=0,
-        imbalance=None,
         remove_liquidity_volatility_threshold: float = 0
 ):
     asset_dict: dict = asset_dict or draw(assets_reasonable_config(token_count))
@@ -95,7 +94,6 @@ def omnipool_reasonable_config(
         min_withdrawal_fee=0.0001,
     )
 
-    test_state.lrna_imbalance = -draw(asset_quantity_strategy) if imbalance is None else imbalance
     test_state.update()
     return test_state
 

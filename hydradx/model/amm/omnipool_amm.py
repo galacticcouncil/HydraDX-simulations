@@ -579,6 +579,8 @@ class OmnipoolState(Exchange):
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
             if delta_Ri < 0:
                 return self.fail_transaction(f'insufficient LRNA in {tkn_sell}', agent)
+            if delta_Ri == float('inf'):
+                return self.fail_transaction('not enough liquidity in sell pool to buy that much', agent)
             # including both buy_quantity and sell_quantity potentially introduces a 'hack'
             # where you could include both and *not* have them match, but we're not worried about that
             # because this is not a production environment. Just don't do it.
@@ -596,7 +598,7 @@ class OmnipoolState(Exchange):
             delta_Ri = sell_quantity
             if delta_Ri <= 0:
                 return self.fail_transaction('sell amount must be greater than zero', agent)
-            if delta_Ri > agent.holdings[i]:
+            if not agent.validate_holdings(i, delta_Ri):
                 return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
 
             # get the fees we will be using
@@ -641,10 +643,8 @@ class OmnipoolState(Exchange):
             self.liquidity[j] += -buy_quantity or delta_Rj
             self.lrna['HDX'] += delta_QH
 
-            if j not in agent.holdings:
-                agent.holdings[j] = 0
-            agent.holdings[i] -= delta_Ri
-            agent.holdings[j] -= -buy_quantity or delta_Rj
+            agent.remove(i, delta_Ri)
+            agent.add(j, buy_quantity or -delta_Rj)
 
             return_val = self
 

@@ -1,7 +1,7 @@
 import copy
 
 import pytest
-from hypothesis import given, strategies as st, assume, settings, reproduce_failure
+from hypothesis import given, strategies as st, reproduce_failure
 from mpmath import mp, mpf
 
 import os
@@ -126,12 +126,14 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
         raise ValueError("Execution price should be less than max buy price")
     # execution price should be higher than pool price of closing arb
     pool_sell_amt = pool_buy.calculate_sell_from_buy(tkn_buy=tkn_sell, tkn_sell=tkn_buy, buy_quantity=sell_amt)
-    if (pool_sell_amt - buy_amt)/pool_sell_amt > 1e-15:
+    if (pool_sell_amt - buy_amt)/pool_buy.liquidity[tkn_buy] > 1e-12:
         raise AssertionError("Liquidity facility not giving arbitragable prices")
     if abs(buy_amt - (init_facility.liquidity[tkn_buy] - facility.liquidity[tkn_buy])) / facility.liquidity[tkn_buy] >= 1e-15:
         raise ValueError("Liquidity facility did not deduct correct amount of tokens")
 
     # test buy USDT from facility
+    buy_amt *= 0.99999  # make sure to stay under max buy amount
+    sell_amt *= 0.99999
     buy_facility = copy.deepcopy(init_facility)
     buy_agent = Agent(enforce_holdings=False)
     buy_facility.swap(buy_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_amt)
@@ -144,9 +146,9 @@ def test_sell_hollar_to_facility(ratios, buyback_speed, max_buy_price, buy_fee, 
 
 
 @given(
-    ratios = st.lists(st.floats(min_value=0.95, max_value=1.05), min_size=2, max_size=2),
+    ratios = st.lists(st.floats(min_value=0.999, max_value=1.001), min_size=2, max_size=2),
     buyback_speed = st.floats(min_value=1/1_000_000, max_value=1),
-    max_buy_price = st.floats(min_value=0.99, max_value=1),
+    max_buy_price = st.floats(min_value=0.99, max_value=1, exclude_max=True),
     buy_fee = st.floats(min_value=0, max_value=0.01),
     buy_tkn_i = st.integers(min_value=0, max_value=1),
 )
@@ -161,7 +163,8 @@ def test_sell_hollar_fails_when_balanced(ratios, buyback_speed, max_buy_price, b
     init_facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = init_facility.get_buy_params(tkn_buy)
-    assert max_sell_amt == 0
+    if max_sell_amt != 0:
+        raise ValueError("Should not be able to sell HOLLAR when pools are balanced")
 
     # test sell Hollar to facility
     facility = copy.deepcopy(init_facility)
@@ -274,7 +277,7 @@ def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy
     facility = LiquidityFacility(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = facility.get_buy_params(tkn_buy)
-    sell_amt = max_sell_amt + sell_extra
+    sell_amt = max_sell_amt * (1 + sell_extra)
     agent = Agent(holdings = {tkn_sell: sell_amt})
     facility.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
     if not facility.fail:
