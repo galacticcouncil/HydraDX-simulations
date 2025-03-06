@@ -3,7 +3,7 @@ import pytest
 from hydradx.model.amm.agents import Agent
 
 
-def test_is_holding():
+def test_validate_holdings():
     holdings = {'USDT': 100, 'DOT': 0}
     agent = Agent(holdings=holdings)
     if agent.validate_holdings('USDT') != True:
@@ -31,7 +31,7 @@ def test_get_holdings():
         raise
 
 
-def test_transfer_to():
+def test_add():
     holdings = {'USDT': 100, 'DOT': 0}
     agent = Agent(holdings=holdings)
     agent.add('USDT', 50)
@@ -45,7 +45,7 @@ def test_transfer_to():
         raise
 
 
-def test_transfer_from():
+def test_remove():
     holdings = {'USDT': 100, 'DOT': 0}
     agent = Agent(holdings=holdings)
     agent.remove('USDT', 50)

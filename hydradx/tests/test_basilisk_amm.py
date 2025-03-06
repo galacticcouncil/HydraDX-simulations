@@ -1,5 +1,5 @@
 import pytest
-from hypothesis import given, strategies as st, assume, reproduce_failure
+from hypothesis import given, strategies as st, assume
 from hydradx.model.amm import basilisk_amm as bamm
 from hydradx.model.amm.agents import Agent
 from mpmath import mp, mpf
