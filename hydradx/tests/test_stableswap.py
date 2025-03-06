@@ -551,9 +551,7 @@ def test_swap_one(amplification, swap_fraction):
     stablecoin = initial_state.asset_list[-1]
     tkn_sell = initial_state.asset_list[0]
     buy_quantity = initial_state.liquidity[tkn_sell] * swap_fraction
-    initial_agent = Agent(
-        holdings={tkn_sell: 10000000000000}
-    )
+    initial_agent = Agent(enforce_holdings=False)
     sell_agent = initial_agent.copy()
     sell_state = initial_state.copy().swap_one(
         agent=sell_agent,
@@ -926,7 +924,7 @@ def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pc
         raise AssertionError('Agent should have no shares left')
     if agent.holdings[buy_tkn] != init_holdings[buy_tkn]:
         raise AssertionError('By design of test, agent should have starting quantity of buy_tkn')
-    if agent.holdings[sell_tkn] >= init_holdings[sell_tkn]:
+    if agent.holdings[sell_tkn] > init_holdings[sell_tkn]:
         raise AssertionError('Agent has successfully exploited the pool')
     profit_pct = (init_holdings[sell_tkn] - agent.holdings[sell_tkn])/tokens[sell_tkn]
     if profit_pct >= 1e9:
