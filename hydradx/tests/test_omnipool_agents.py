@@ -1,18 +1,23 @@
 import copy
 import math
+from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st  # , settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 
 # from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.global_state import GlobalState, historical_prices
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all, dca_with_lping
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 from hydradx.model.run import run
 from hydradx.tests.utils import randomize_object
 from mpmath import mp, mpf
+
+settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
+settings.load_profile("long")
+
 mp.dps = 50
 
 asset_price_strategy = st.floats(min_value=0.0001, max_value=100000)
@@ -136,6 +141,41 @@ def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_pre
     if old_value > new_value:
         if new_value != pytest.approx(old_value, rel=1e-15):
             raise AssertionError(f'Arbitrageur lost money. old_value: {old_value}, new_value: {new_value}')
+
+
+@given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3),
+       st.integers(min_value=2, max_value=5))
+def test_omnipool_arbitrager_periodic(omnipool: oamm.OmnipoolState, market: list, frequency: int):
+    omnipool.trade_limit_per_block = float('inf')
+    holdings = {'LRNA': 1000000000}
+    for asset in omnipool.asset_list:
+        holdings[asset] = 1000000000
+    arb_precision = 5
+    strat = omnipool_arbitrage('omnipool', arb_precision, frequency=frequency)
+
+    agent = Agent(holdings=holdings, trade_strategy=strat)
+    external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
+    external_market[omnipool.stablecoin] = 1.0
+
+    timesteps = 10
+    price_list = [copy.deepcopy(external_market)]
+    for i in range(timesteps):
+        prices = {asset: price * .8 if asset != "USD" else 1 for asset, price in price_list[-1].items()}
+        price_list.append(prices)
+
+    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market,
+                        evolve_function=historical_prices(price_list))
+    events = run(state, time_steps=timesteps, silent=True)
+
+    for i in range(1, timesteps):
+        if i % frequency == 0:  # there should be trade between steps i and i-1
+            for asset in omnipool.asset_list:
+                if events[i].pools['omnipool'].liquidity[asset] == events[i-1].pools['omnipool'].liquidity[asset]:
+                    raise AssertionError(f'Arbitrageur did not trade at timestep {i}.')
+        else:  # there should be no trade between steps i and i-1
+            for asset in omnipool.asset_list:
+                if events[i].pools['omnipool'].liquidity[asset] != events[i-1].pools['omnipool'].liquidity[asset]:
+                    raise AssertionError(f'Arbitrageur traded at timestep {i}.')
 
 
 @given(omnipool_reasonable_config(token_count=3))

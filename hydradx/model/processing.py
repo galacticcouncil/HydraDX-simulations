@@ -16,6 +16,7 @@ from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
 from .amm.omnipool_amm import OmnipoolState
 from .amm.stableswap_amm import StableSwapPoolState
+from .amm.omnipool_router import OmnipoolRouter
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -446,6 +447,14 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
             omnipool.sub_pools[subpool.unique_id] = subpool
 
         return omnipool
+
+
+def get_omnipool_router(rpc='wss://rpc.hydradx.cloud'):
+    omnipool = get_omnipool(rpc)
+    stableswaps = omnipool.sub_pools
+    omnipool.sub_pools = {}
+    router = OmnipoolRouter([omnipool, *stableswaps.values()])
+    return router
 
 
 def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
@@ -908,3 +917,14 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
                     tkn_data += [line for line in json.load(f) if line[2] == tkn]
         print(f"Retrieved balance of {tkn} from {date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}.")
         return {data[1]: data[3] for data in tkn_data[left:end]}
+
+
+def distribute_value(num_positions, total_value, concentration = 0):
+    if num_positions == 1:
+        return [total_value]
+    top_20 = num_positions / 5
+    ratio = (1 / (1 - concentration)) ** (1 / top_20)
+    positions = [ratio ** (-i) for i in range(num_positions)]
+    total = sum(positions)
+    return [p * total_value / total for p in positions]
+
