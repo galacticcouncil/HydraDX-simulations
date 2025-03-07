@@ -37,6 +37,20 @@ def stable_swap_equation(pool: StableSwapPoolState):  # d: float, a: float, n: i
     return side1 == pytest.approx(side2)
 
 
+def test_big_buy_fails():
+    initial_pool = StableSwapPoolState(
+        tokens={'A': 1000000, 'B': 1000000},
+        amplification=1000,
+        trade_fee=0.0
+    )
+    agent = Agent(enforce_holdings=False)
+    new_pool, new_agent = simulate_swap(
+        initial_pool, agent, tkn_sell='A', tkn_buy='B', buy_quantity=10000000
+    )
+    if not new_pool.fail:
+        raise AssertionError('Swap should have failed due to insufficient funds.')
+
+
 @given(stableswap_config(trade_fee=0))
 def test_swap_invariant(initial_pool: StableSwapPoolState):
     # print(f'testing with {len(initial_pool.asset_list)} assets')
