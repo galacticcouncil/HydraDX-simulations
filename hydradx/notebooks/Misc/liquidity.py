@@ -40,6 +40,7 @@ usd_values = {'HDX': 1_000_000, '2-Pool': 15_000_000, 'DOT': 13_250_000,
               'CRU': 71_000, '2-Pool-Btc': 55_000, 'RING': 47_000}
 
 usd_prices = {tkn: value / current_omnipool_liquidity[tkn] for tkn, value in usd_values.items()}
+usd_prices['aDOT'] = usd_prices['DOT']
 
 lrna_amounts = {key: value / lrna_price for key, value in usd_values.items()}
 
@@ -69,12 +70,6 @@ current_ss_4_pool = StableSwapPoolState(
     tokens=tokens_4_pool, amplification=320, trade_fee=0.0002, unique_id='4-Pool'
 )
 
-# Extract labels and values
-labels = list(lrna_amounts.keys())
-sizes = list(lrna_amounts.values())
-
-
-### 🌟 Sidebar Graph ###
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
@@ -84,16 +79,33 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 st.sidebar.subheader("Liquidity distribution")
-# fig_sidebar, ax_sidebar = plt.subplots()
-# ax_sidebar.plot(x, y2, label="Cosine Wave", color="red")
-# ax_sidebar.legend()
-# st.sidebar.pyplot(fig_sidebar)  # Display in the sidebar
 
-fig, ax = plt.subplots(figsize=(10, 10))
-ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-ax.set_title("Current Omnipool")
+# Custom function to display actual values instead of percentages
+def actual_value_labels(pct, all_values):
+    absolute = pct / 100.0 * sum(all_values)  # Convert % to actual value
+    if absolute >= 1_000_000:  # If value is 1 million or more
+        return f"${absolute / 1_000_000:.3g}m"
+    elif absolute >= 1_000:  # If value is 1 thousand or more
+        return f"${absolute / 1_000:.3g}k"
+    else:  # If value is below 1,000
+        return f"${absolute:.3g}"
+
+def display_liquidity_usd(ax, usd_dict, title):
+    labels = list(usd_dict.keys())
+    sizes = list(usd_dict.values())
+
+    ax.pie(sizes, labels=labels, autopct=lambda pct: actual_value_labels(pct, sizes), startangle=140)
+    ax.set_title(title)
+
+def display_liquidity(ax, lrna_dict, title):
+    tvls = {tkn: lrna_dict[tkn] * lrna_price for tkn in lrna_dict}
+    display_liquidity_usd(ax, tvls, title)
+
+
+x_size, y_size = 10, 10
+fig, ax = plt.subplots(figsize=(x_size, y_size))
+display_liquidity(ax, lrna_amounts, "Current Omnipool")
 st.sidebar.pyplot(fig)
-
 
 # current pools
 
@@ -132,19 +144,29 @@ omnipool_gigadot = OmnipoolState(
     tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
 )
 
-# exchanges_gigadot = {'omnipool': omnipool_gigadot, '2-Pool': current_ss_2_pool.copy(), '4-Pool': current_ss_4_pool.copy(), 'gigaDOT': gigadot_pool}
-# exchanges_gigadot = {'omnipool': omnipool_gigadot, '2-Pool': current_ss_2_pool.copy(), 'gigaDOT': gigadot_pool}
-# router_gigadot = OmnipoolRouter(exchanges=exchanges_gigadot)
 
-# Extract labels and values
-labels = list(gigadot_lrna_amounts.keys())
-sizes = list(gigadot_lrna_amounts.values())
+def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title):
 
-fig, ax = plt.subplots(figsize=(10, 10))
-ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-ax.set_title("Omnipool without gigaDOT")
-st.sidebar.pyplot(fig)
+    omnipool_tvl = sum(omnipool_lrna.values()) * lrna_price
+    stableswap_usd = {tkn: ss_liquidity[tkn] * prices[tkn] for tkn in ss_liquidity}
+    stableswap_tvl = sum(stableswap_usd.values())
+    scaling_factor = (stableswap_tvl / omnipool_tvl) ** 0.5
+    ss_x_size, ss_y_size = x_size * scaling_factor, y_size * scaling_factor
 
+
+    total_x_size, total_y_size = ss_x_size + x_size, ss_y_size + y_size
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(total_x_size, total_y_size))
+    fig.suptitle(title, fontsize=16, fontweight="bold")
+    # fig.subplots_adjust(top=1.35)
+    fig.subplots_adjust(hspace=-0.4)  # Adjust the spacing (lower values reduce the gap)
+    display_liquidity(ax1, omnipool_lrna, "Omnipool")
+    display_liquidity_usd(ax2, stableswap_usd, "gigaDOT")
+    ax2.set_position([ax2.get_position().x0, ax2.get_position().y0, ax2.get_position().width * scaling_factor, ax2.get_position().height * scaling_factor])
+
+    st.sidebar.pyplot(fig)
+
+display_op_and_ss(omnipool_gigadot.lrna, gigadot_pool.liquidity, usd_prices, "Removing DOT & vDOT")
 
 # mini gigaDOT
 
@@ -175,23 +197,13 @@ omnipool_minigigadot = OmnipoolState(
     tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
 )
 
-# Extract labels and values
-labels = list(omnipool_minigigadot.lrna.keys())
-sizes = list(omnipool_minigigadot.lrna.values())
-# print(omnipool_with_gigadot.lrna['gigaDOT'])
-print(gigadot_pool.share_price('DOT'))
-print(usd_values['DOT'])
-
-# Create pie chart
-fig, ax = plt.subplots(figsize=(10, 10))
-ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-ax.set_title("Omnipool without vDOT")
-st.sidebar.pyplot(fig)
+display_op_and_ss(omnipool_minigigadot.lrna, minigigadot_pool.liquidity, usd_prices,"Removing only vDOT")
 
 
 # gigaDOT in Omnipool
 
 gigadot_price = gigadot_pool.share_price('DOT') * usd_values['DOT'] / current_omnipool_liquidity['DOT']
+usd_prices['gigaDOT'] = gigadot_price
 tokens_op_with_gigadot = {tkn: value for tkn, value in omnipool_gigadot_tokens.items()}
 tokens_op_with_gigadot['gigaDOT'] = gigadot_pool.shares
 gigaDOT_lrna = gigadot_price * gigadot_pool.shares / lrna_price
@@ -205,18 +217,8 @@ omnipool_with_gigadot = OmnipoolState(
     tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
 )
 
-# Extract labels and values
-labels = list(omnipool_with_gigadot.lrna.keys())
-sizes = list(omnipool_with_gigadot.lrna.values())
-# print(omnipool_with_gigadot.lrna['gigaDOT'])
-print(gigadot_pool.share_price('DOT'))
-print(usd_values['DOT'])
-
-# Create pie chart
-fig, ax = plt.subplots(figsize=(10, 10))
-ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-ax.set_title("Omnipool with gigaDOT")
-st.sidebar.pyplot(fig)
+# display_liquidity(omnipool_with_gigadot.lrna, "Omnipool with gigaDOT", x_size, y_size)
+display_op_and_ss(omnipool_with_gigadot.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT in Omnipool")
 
 
 # gigaDOT as 2-pool
@@ -229,6 +231,8 @@ gigaDOT2_tokens = {'vDOT': gigaDOT2_vdot, 'aDOT': gigaDOT2_adot}
 gigaDOT2_pool = StableSwapPoolState(
     tokens=gigaDOT2_tokens, amplification=100, trade_fee=0.0002, unique_id='gigaDOT'
 )
+
+display_op_and_ss(omnipool_gigadot.lrna, gigaDOT2_tokens, usd_prices, "gigaDOT with 2 assets")
 
 
 # dummy money market aDOT wrapper & unwrapper
@@ -247,8 +251,6 @@ def money_market_swap(agent, tkn_buy, tkn_sell, quantity):
 agent = Agent(enforce_holdings=False)
 buy_sizes = [1, 10, 100, 1000, 10000]  # buying DOT with vDOT, DOT with USDT, vDOT with USDT
 buy_sizes.sort()
-# tkn_pairs = [('DOT', 'vDOT'), ('DOT', 'USDT'), ('vDOT', 'USDT')]
-# tkn_pairs = [('DOT', 'vDOT'), ('DOT', 'USDT')]
 sell_amts_omnipool = []
 sell_amts_gigadot = []
 sell_amts_minigigadot = []
@@ -388,23 +390,13 @@ for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
     gigadot2_slippage[tkn_pair] = [(gigadot2_prices[i] - lowest_gigadot2_price) / lowest_gigadot2_price for i in range(len(buy_sizes))]
 
 for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
-    # plt.figure(figsize=(10,6))  # Set figure size
-    # plt.plot(buy_sizes, current_slippage[tkn_pair], label='current')
-    # plt.plot(buy_sizes, gigadot_slippage[tkn_pair], label='GigaDOT')
-    # plt.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], label='GigaDOT in Omnipool')
-    # plt.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='MiniGigaDOT')
-    # plt.legend()
-    # plt.title(str(tkn_pair) + " slippage")
-    # plt.xlabel('Buy size')
-    # plt.ylabel('Slippage')
-    # plt.show()
     fig, ax = plt.subplots(figsize=(10, 6))  # Create figure
 
     # Plot different slippage data
     ax.plot(buy_sizes, current_slippage[tkn_pair], label='Current')
     ax.plot(buy_sizes, gigadot_slippage[tkn_pair], label='GigaDOT')
     ax.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], label='GigaDOT in Omnipool')
-    ax.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='MiniGigaDOT')
+    ax.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='Removing only vDOT')
     ax.plot(buy_sizes, gigadot2_slippage[tkn_pair], label='GigaDOT as 2-pool')
 
     # Add labels, legend, and title
@@ -415,11 +407,3 @@ for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
 
     # Display the plot in Streamlit
     st.pyplot(fig)
-
-for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
-    print(tkn_pair)
-    print(current_slippage[tkn_pair][-1])
-    print(gigadot_slippage[tkn_pair][-1])
-    print(gigadot_in_op_slippage[tkn_pair][-1])
-    print(minigigadot_slippage[tkn_pair][-1])
-    print(gigadot2_slippage[tkn_pair][-1])
