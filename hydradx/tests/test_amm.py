@@ -1,7 +1,7 @@
 import random
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
@@ -273,14 +273,15 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
                 'X': 0,  # random via draw(asset_quantity_strategy)
                 'Y': 0
             },
-            trade_fee=-1  # i.e. choose one randomly via draw(fee_strategy)
+            trade_fee=0  # i.e. choose one randomly via draw(fee_strategy)
         )
     },
     agents={
         'arbitrager': Agent()
     }
-), asset_price_strategy)
-def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
+), asset_price_strategy, st.floats(min_value=0, max_value=0.1))
+def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float, trade_fee: float):
+    initial_state.trade_fee = trade_fee
     initial_state.external_market['Y'] = initial_state.price('X') * target_price
     algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
     recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
@@ -299,8 +300,8 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
                 / (1 - state.pools['X/Y'].trade_fee())
         )
 
-    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
-    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_state = copy.deepcopy(algebraic_function.execute(initial_state.copy(), 'arbitrager'))
+    recursive_state = copy.deepcopy(recursive_function.execute(initial_state.copy(), 'arbitrager'))
     algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
                         / algebraic_state.pools['X/Y'].liquidity['Y'])
     recursive_result = (recursive_state.pools['X/Y'].liquidity['X']

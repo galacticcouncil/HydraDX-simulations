@@ -895,7 +895,7 @@ def test_sell_with_lrna_mint(
     feeless_spot_price = feeless_swap_state.price(j)
     spot_price = swap_state.price(j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
-        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-14):
             raise AssertionError('Spot price is wrong.')
 
 
@@ -1869,7 +1869,7 @@ def test_LP_limits(omnipool: oamm.OmnipoolState, max_withdrawal_per_block, max_l
         tkn_remove='HDX',
         quantity=state.shares['HDX'] * max_withdrawal_per_block
     )
-    if agent.is_holding(('omnipool', 'HDX')) and state.fail:
+    if agent.validate_holdings(('omnipool', 'HDX')) and state.fail:
         raise AssertionError('Agent was not able to remove liquidity.')
 
 

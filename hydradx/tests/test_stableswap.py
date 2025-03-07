@@ -37,6 +37,20 @@ def stable_swap_equation(pool: StableSwapPoolState):  # d: float, a: float, n: i
     return side1 == pytest.approx(side2)
 
 
+def test_big_buy_fails():
+    initial_pool = StableSwapPoolState(
+        tokens={'A': 1000000, 'B': 1000000},
+        amplification=1000,
+        trade_fee=0.0
+    )
+    agent = Agent(enforce_holdings=False)
+    new_pool, new_agent = simulate_swap(
+        initial_pool, agent, tkn_sell='A', tkn_buy='B', buy_quantity=10000000
+    )
+    if not new_pool.fail:
+        raise AssertionError('Swap should have failed due to insufficient funds.')
+
+
 @given(stableswap_config(trade_fee=0))
 def test_swap_invariant(initial_pool: StableSwapPoolState):
     # print(f'testing with {len(initial_pool.asset_list)} assets')
@@ -65,6 +79,36 @@ def test_swap_invariant(initial_pool: StableSwapPoolState):
             raise AssertionError('Invariant has varied.')
     if initial_state.total_wealth() != pytest.approx(new_state.total_wealth()):
         raise AssertionError('Some assets were lost along the way.')
+
+
+def test_swap_agent_changes():
+    trade_fee = 0.0001
+    sell_amt = 1000
+    pool = StableSwapPoolState(
+        tokens={'A': 1000000, 'B': 1000000},
+        amplification=1000,
+        trade_fee=trade_fee
+    )
+    agent = Agent(holdings={'A': 1000000, 'B': 1000000})
+    new_pool, new_agent = simulate_swap(
+        pool, agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt
+    )
+    if new_agent.holdings['A'] != agent.holdings['A'] - sell_amt:
+        raise AssertionError('Agent holdings not updated properly.')
+    if new_agent.holdings['B'] + new_pool.liquidity['B'] != agent.holdings['B'] + pool.liquidity['B']:
+        raise AssertionError('Agent holdings not updated properly.')
+
+    empty_agent = Agent()
+    fail_pool, fail_agent = simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+    if not fail_pool.fail:
+        raise AssertionError('Swap should have failed due to insufficient funds.')
+
+    empty_agent = Agent(enforce_holdings=False)
+    new_pool, new_agent = simulate_swap(pool, empty_agent, tkn_sell='A', tkn_buy='B', sell_quantity=sell_amt)
+    if new_agent.get_holdings('A') != -sell_amt:
+        raise AssertionError('Agent holdings not updated properly.')
+    if new_agent.get_holdings('B') + new_pool.liquidity['B'] != pool.liquidity['B']:
+        raise AssertionError('Agent holdings not updated properly.')
 
 
 @given(st.integers(min_value=1000, max_value=1000000),
@@ -458,27 +502,29 @@ def test_exploitability(initial_lp: int, trade_size: int):
     for tkn in initial_state.asset_list:
         lp_state.add_liquidity(
             agent=lp_agent,
-            quantity=lp_agent.holdings[tkn],
+            quantity=lp_agent.get_holdings(tkn),
             tkn_add=tkn
         )
 
     trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
     trade_agent.holdings['USDA'] = trade_size
+    init_buy_tkn = trade_agent.get_holdings('USDB')
     trade_state.swap(
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
         sell_quantity=trade_size
     )
+    buy_amt = trade_agent.get_holdings('USDB') - init_buy_tkn
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
     withdraw_state.remove_liquidity(
         agent=withdraw_agent,
-        shares_removed=trade_agent.holdings['stableswap'],
+        shares_removed=trade_agent.get_holdings('stableswap'),
         tkn_remove='USDA'
     )
 
-    max_arb_size = trade_size
+    max_arb_size = buy_amt
     min_arb_size = 0
 
     for i in range(10):
@@ -488,7 +534,7 @@ def test_exploitability(initial_lp: int, trade_size: int):
             agent=final_agent,
             tkn_sell='USDB',
             tkn_buy='USDA',
-            buy_quantity=arb_size
+            sell_quantity=arb_size
         )
 
         profit = sum(final_agent.holdings.values()) - trade_size - initial_lp
@@ -519,9 +565,7 @@ def test_swap_one(amplification, swap_fraction):
     stablecoin = initial_state.asset_list[-1]
     tkn_sell = initial_state.asset_list[0]
     buy_quantity = initial_state.liquidity[tkn_sell] * swap_fraction
-    initial_agent = Agent(
-        holdings={tkn_sell: 10000000000000}
-    )
+    initial_agent = Agent(enforce_holdings=False)
     sell_agent = initial_agent.copy()
     sell_state = initial_state.copy().swap_one(
         agent=sell_agent,
@@ -894,7 +938,7 @@ def test_fuzz_exploit_loop(add_tkn_usdt, remove_tkn_usdt, trade_pct_size, add_pc
         raise AssertionError('Agent should have no shares left')
     if agent.holdings[buy_tkn] != init_holdings[buy_tkn]:
         raise AssertionError('By design of test, agent should have starting quantity of buy_tkn')
-    if agent.holdings[sell_tkn] >= init_holdings[sell_tkn]:
+    if agent.holdings[sell_tkn] > init_holdings[sell_tkn]:
         raise AssertionError('Agent has successfully exploited the pool')
     profit_pct = (init_holdings[sell_tkn] - agent.holdings[sell_tkn])/tokens[sell_tkn]
     if profit_pct >= 1e9:

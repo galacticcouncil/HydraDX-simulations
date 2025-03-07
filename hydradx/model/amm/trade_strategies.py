@@ -501,15 +501,15 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
             # asset_fee = omnipool.last_fee[asset]
             asset_LRNA_fee = omnipool.lrna_fee(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            if arb_precision < 2:
-                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
-                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
-
-                if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
-                    skip_ct += 1
-                    if i < usd_index:
-                        usd_index -= 1
-                    continue
+            # if arb_precision < 2:
+            #     low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            #     high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            #
+            #     if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
+            #         skip_ct += 1
+            #         if i < usd_index:
+            #             usd_index -= 1
+            #         continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
@@ -553,7 +553,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
                         omnipool.swap(
                             agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
                             sell_quantity=dq[i])
-                    else:
+                    elif dq[i] < 0:
                         omnipool.swap(
                             agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
                             buy_quantity=-dq[i])
