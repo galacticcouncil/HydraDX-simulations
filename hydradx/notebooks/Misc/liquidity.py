@@ -73,10 +73,26 @@ current_ss_4_pool = StableSwapPoolState(
 labels = list(lrna_amounts.keys())
 sizes = list(lrna_amounts.values())
 
+
+### 🌟 Sidebar Graph ###
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            min-width: 400px;
+            max-width: 800px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+st.sidebar.subheader("Liquidity distribution")
+# fig_sidebar, ax_sidebar = plt.subplots()
+# ax_sidebar.plot(x, y2, label="Cosine Wave", color="red")
+# ax_sidebar.legend()
+# st.sidebar.pyplot(fig_sidebar)  # Display in the sidebar
+
 fig, ax = plt.subplots(figsize=(10, 10))
 ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
 ax.set_title("Current Omnipool")
-st.pyplot(fig)
+st.sidebar.pyplot(fig)
 
 
 # current pools
@@ -127,7 +143,7 @@ sizes = list(gigadot_lrna_amounts.values())
 fig, ax = plt.subplots(figsize=(10, 10))
 ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
 ax.set_title("Omnipool without gigaDOT")
-st.pyplot(fig)
+st.sidebar.pyplot(fig)
 
 
 # mini gigaDOT
@@ -170,7 +186,7 @@ print(usd_values['DOT'])
 fig, ax = plt.subplots(figsize=(10, 10))
 ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
 ax.set_title("Omnipool without vDOT")
-st.pyplot(fig)
+st.sidebar.pyplot(fig)
 
 
 # gigaDOT in Omnipool
@@ -200,7 +216,7 @@ print(usd_values['DOT'])
 fig, ax = plt.subplots(figsize=(10, 10))
 ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
 ax.set_title("Omnipool with gigaDOT")
-st.pyplot(fig)
+st.sidebar.pyplot(fig)
 
 
 # gigaDOT as 2-pool
