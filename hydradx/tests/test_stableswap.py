@@ -488,25 +488,25 @@ def test_exploitability(initial_lp: int, trade_size: int):
     for tkn in initial_state.asset_list:
         lp_state.add_liquidity(
             agent=lp_agent,
-            quantity=lp_agent.holdings[tkn],
+            quantity=lp_agent.get_holdings(tkn),
             tkn_add=tkn
         )
 
     trade_state, trade_agent = lp_state.copy(), lp_agent.copy()
     trade_agent.holdings['USDA'] = trade_size
-    init_buy_tkn = trade_agent.holdings['USDB']
+    init_buy_tkn = trade_agent.get_holdings('USDB')
     trade_state.swap(
         agent=trade_agent,
         tkn_sell='USDA',
         tkn_buy='USDB',
         sell_quantity=trade_size
     )
-    buy_amt = trade_agent.holdings['USDB'] - init_buy_tkn
+    buy_amt = trade_agent.get_holdings('USDB') - init_buy_tkn
 
     withdraw_state, withdraw_agent = trade_state.copy(), trade_agent.copy()
     withdraw_state.remove_liquidity(
         agent=withdraw_agent,
-        shares_removed=trade_agent.holdings['stableswap'],
+        shares_removed=trade_agent.get_holdings('stableswap'),
         tkn_remove='USDA'
     )
 
