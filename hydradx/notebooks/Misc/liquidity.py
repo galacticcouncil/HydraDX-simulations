@@ -178,15 +178,15 @@ tokens_minigigadot_pool = {
     'aDOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 1/3,
 }
 
-omnipool_gigadot_tokens = {tkn: value for tkn, value in current_omnipool_liquidity.items()}
-del omnipool_gigadot_tokens['vDOT']
+omnipool_minigigadot_tokens = {tkn: value for tkn, value in current_omnipool_liquidity.items()}
+del omnipool_minigigadot_tokens['vDOT']
 
 # scale LRNA by diff in tokens
-gigadot_lrna_amounts = {tkn: omnipool_gigadot_tokens[tkn] / current_omnipool_liquidity[tkn] * lrna_amounts[tkn] for tkn in omnipool_gigadot_tokens}
+minigigadot_lrna_amounts = {tkn: omnipool_minigigadot_tokens[tkn] / current_omnipool_liquidity[tkn] * lrna_amounts[tkn] for tkn in omnipool_minigigadot_tokens}
 
 tokens = {
-    tkn: {'liquidity': omnipool_gigadot_tokens[tkn], 'LRNA': gigadot_lrna_amounts[tkn]}
-    for tkn in omnipool_gigadot_tokens
+    tkn: {'liquidity': omnipool_minigigadot_tokens[tkn], 'LRNA': minigigadot_lrna_amounts[tkn]}
+    for tkn in omnipool_minigigadot_tokens
 }
 
 minigigadot_pool = StableSwapPoolState(
