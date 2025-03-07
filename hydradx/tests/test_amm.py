@@ -265,39 +265,24 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
             raise AssertionError('Arbitrageur lost money :(')
 
 
-# @given(global_state_config(
-#     external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
-#     pools={
-#         'X/Y': ConstantProductPoolState(
-#             {
-#                 'X': 0,  # random via draw(asset_quantity_strategy)
-#                 'Y': 0
-#             },
-#             trade_fee=-1  # i.e. choose one randomly via draw(fee_strategy)
-#         )
-#     },
-#     agents={
-#         'arbitrager': Agent()
-#     }
-# ), asset_price_strategy)
-@given(
-    xyk_fee=st.floats(min_value=0.0001, max_value=0.1),
-    x_price=st.floats(min_value=0.01, max_value=1000),
-    y_price=st.floats(min_value=0.01, max_value=1000),
-    target_price=st.floats(min_value=0.01, max_value=1000)
-)
-@reproduce_failure('6.127.5', b'AXic07DfwAAGGvYf0BkOEJoBAGE2BC4=')
-def test_arbitrage_accuracy(xyk_fee, x_price, y_price, target_price):
-    agents = {'arbitrager': Agent()}
-    x_liq = 1_000_000/x_price
-    y_liq = 1_000_000/y_price
-    market_prices = {'X': x_price, 'Y': y_liq/x_liq * target_price}
-    pools = {'X/Y': ConstantProductPoolState({'X': x_liq, 'Y': y_liq}, trade_fee=xyk_fee)}
-    initial_state = GlobalState(
-        pools=pools,
-        agents=agents,
-        external_market=market_prices
-    )
+@given(global_state_config(
+    external_market={'X': 0, 'Y': 0},  # config function will fill these in with random values
+    pools={
+        'X/Y': ConstantProductPoolState(
+            {
+                'X': 0,  # random via draw(asset_quantity_strategy)
+                'Y': 0
+            },
+            trade_fee=0  # i.e. choose one randomly via draw(fee_strategy)
+        )
+    },
+    agents={
+        'arbitrager': Agent()
+    }
+), asset_price_strategy, st.floats(min_value=0, max_value=0.1))
+def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float, trade_fee: float):
+    initial_state.trade_fee = trade_fee
+    initial_state.external_market['Y'] = initial_state.price('X') * target_price
     algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
     recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
 
@@ -315,8 +300,8 @@ def test_arbitrage_accuracy(xyk_fee, x_price, y_price, target_price):
                 / (1 - state.pools['X/Y'].trade_fee())
         )
 
-    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
-    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_state = copy.deepcopy(algebraic_function.execute(initial_state.copy(), 'arbitrager'))
+    recursive_state = copy.deepcopy(recursive_function.execute(initial_state.copy(), 'arbitrager'))
     algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
                         / algebraic_state.pools['X/Y'].liquidity['Y'])
     recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
