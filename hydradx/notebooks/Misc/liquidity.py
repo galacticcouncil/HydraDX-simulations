@@ -389,19 +389,24 @@ for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
     minigigadot_slippage[tkn_pair] = [(minigigadot_prices[i] - lowest_minigigadot_price) / lowest_minigigadot_price for i in range(len(buy_sizes))]
     gigadot2_slippage[tkn_pair] = [(gigadot2_prices[i] - lowest_gigadot2_price) / lowest_gigadot2_price for i in range(len(buy_sizes))]
 
-for tkn_pair in [('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]:
+# Define markers for better visibility
+markers = ['o', 's', '^', 'D', 'x']  # Circle, square, triangle, diamond, cross
+
+# Mapping token pairs to marker indices
+for idx, tkn_pair in enumerate([('DOT', 'vDOT'), ('DOT', '2-Pool'), ('vDOT', '2-Pool')]):
     fig, ax = plt.subplots(figsize=(10, 6))  # Create figure
 
-    # Plot different slippage data
-    ax.plot(buy_sizes, current_slippage[tkn_pair], label='Current')
-    ax.plot(buy_sizes, gigadot_slippage[tkn_pair], label='GigaDOT')
-    ax.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], label='GigaDOT in Omnipool')
-    ax.plot(buy_sizes, minigigadot_slippage[tkn_pair], label='Removing only vDOT')
-    ax.plot(buy_sizes, gigadot2_slippage[tkn_pair], label='GigaDOT as 2-pool')
+    # Plot different slippage data with markers
+    ax.plot(buy_sizes, current_slippage[tkn_pair], marker=markers[0], linestyle='-', label='Current', linewidth=2)
+    ax.plot(buy_sizes, gigadot_slippage[tkn_pair], marker=markers[1], linestyle='--', label='GigaDOT', linewidth=2)
+    ax.plot(buy_sizes, gigadot_in_op_slippage[tkn_pair], marker=markers[2], linestyle='-.', label='GigaDOT in Omnipool', linewidth=2)
+    ax.plot(buy_sizes, minigigadot_slippage[tkn_pair], marker=markers[3], linestyle=':', label='Removing only vDOT', linewidth=2)
+    ax.plot(buy_sizes, gigadot2_slippage[tkn_pair], marker=markers[4], linestyle='-', label='GigaDOT as 2-pool', linewidth=2)
 
-    # Add labels, legend, and title
+    # Add grid, labels, legend, and title
+    ax.grid(True, linestyle='--', alpha=0.6)  # Add light grid lines for better readability
     ax.legend()
-    ax.set_title(str(tkn_pair) + " Slippage")
+    ax.set_title(f"{tkn_pair} Slippage")
     ax.set_xlabel('Buy size')
     ax.set_ylabel('Slippage')
 
