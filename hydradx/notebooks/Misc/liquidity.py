@@ -49,26 +49,8 @@ tokens = {
     for tkn in current_omnipool_liquidity
 }
 
-lrna_fee = DynamicFee(
-    minimum=0.0005, maximum=0.0010, amplification=1,  # TODO get these numbers right
-    decay=0.000001
-)
-asset_fee = DynamicFee(
-    minimum=0.0025, maximum=0.01, amplification=2,  # TODO get these numbers right
-    decay=0.00001
-)
-tokens_2_pool = {'USDT': 9_000_000, 'USDC': 8_000_000}
-tokens_4_pool = {
-    'USDT': 362000, 'USDC2': 262000,
-    'DAI': 368000, 'USDT2': 323000
-}
-
-current_ss_2_pool = StableSwapPoolState(
-    tokens=tokens_2_pool, amplification=100, trade_fee=0.0002, unique_id='2-Pool'  # TODO get these numbers right
-)
-current_ss_4_pool = StableSwapPoolState(
-    tokens=tokens_4_pool, amplification=320, trade_fee=0.0002, unique_id='4-Pool'
-)
+lrna_fee = 0.0005
+asset_fee = 0.0015
 
 st.markdown("""
     <style>
@@ -102,52 +84,63 @@ def display_liquidity(ax, lrna_dict, title):
     display_liquidity_usd(ax, tvls, title)
 
 
-x_size, y_size = 10, 10
-fig, ax = plt.subplots(figsize=(x_size, y_size))
-display_liquidity(ax, lrna_amounts, "Current Omnipool")
-st.sidebar.pyplot(fig)
+
 
 # current pools
 
-current_omnipool = OmnipoolState(
-    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
-)
-
-
-# vDOT, DOT moved to gigaDOT pool
-
-usd_value_vdot = usd_values['vDOT']
-usd_value_dot = usd_values['DOT']
-tokens_gigadot_pool = {
-    'vDOT': current_omnipool_liquidity['vDOT'] * 2/3,
-    'DOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 2/3,
-    'aDOT': current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot * 2/3,
-}
-
-omnipool_gigadot_tokens = {tkn: value for tkn, value in current_omnipool_liquidity.items()}
-omnipool_gigadot_tokens['DOT'] -= current_omnipool_liquidity['DOT'] * usd_value_vdot / usd_value_dot
-del omnipool_gigadot_tokens['vDOT']
-
-# scale LRNA by diff in tokens
-gigadot_lrna_amounts = {tkn: omnipool_gigadot_tokens[tkn] / current_omnipool_liquidity[tkn] * lrna_amounts[tkn] for tkn in omnipool_gigadot_tokens}
-
-tokens = {
-    tkn: {'liquidity': omnipool_gigadot_tokens[tkn], 'LRNA': gigadot_lrna_amounts[tkn]}
-    for tkn in omnipool_gigadot_tokens
-}
+current_omnipool = OmnipoolState(tokens=tokens, lrna_fee=lrna_fee, asset_fee=asset_fee)
 
 amp_2pool = 320
 amp_3pool = amp_2pool * (4 / 27)
-gigadot_pool = StableSwapPoolState(
-    tokens=tokens_gigadot_pool, amplification=amp_2pool, trade_fee=0.0002, unique_id='gigaDOT'
-)
 
-omnipool_gigadot = OmnipoolState(
-    tokens=tokens, lrna_fee=copy.deepcopy(lrna_fee), asset_fee=copy.deepcopy(asset_fee)
-)
+def get_omnipool_minus_vDOT(omnipool, op_dot_tvl_mult=1):
+    omnipool_gigadot_liquidity = {tkn: value for tkn, value in omnipool.liquidity.items()}
+    del omnipool_gigadot_liquidity['vDOT']
+    omnipool_gigadot_lrna = {tkn: value for tkn, value in omnipool.lrna.items()}
+    del omnipool_gigadot_lrna['vDOT']
+
+    omnipool_gigadot_liquidity['DOT'] *= op_dot_tvl_mult
+    omnipool_gigadot_lrna['DOT'] *= op_dot_tvl_mult
+
+    tokens = {
+        tkn: {'liquidity': omnipool_gigadot_liquidity[tkn], 'LRNA': omnipool_gigadot_lrna[tkn]}
+        for tkn in omnipool_gigadot_liquidity
+    }
+
+    omnipool_gigadot = OmnipoolState(tokens=tokens, lrna_fee=lrna_fee, asset_fee=asset_fee)
+    return omnipool_gigadot
+
+def set_up_gigaDOT_3pool(omnipool, amp: float, gigaDOT_tvl_mult=1):
+    op_vDOT = omnipool.liquidity['vDOT']
+    gigaDOT_dot = omnipool.liquidity['DOT'] * omnipool.lrna['vDOT'] / omnipool.lrna['DOT']
+    gigadot_tokens = {
+        'vDOT': op_vDOT / 3 * gigaDOT_tvl_mult,
+        'DOT': gigaDOT_dot / 3 * gigaDOT_tvl_mult,
+        'aDOT': gigaDOT_dot / 3 * gigaDOT_tvl_mult
+    }
+    gigadot_pool = StableSwapPoolState(
+        tokens=gigadot_tokens, amplification=amp, trade_fee=0.0002, unique_id='gigaDOT'
+    )
+    return gigadot_pool
+
+def set_up_gigaDOT_2pool(omnipool, amp: float, gigaDOT_tvl_mult=1):
+    op_vDOT = omnipool.liquidity['vDOT']
+    gigaDOT_dot = omnipool.liquidity['DOT'] * omnipool.lrna['vDOT'] / omnipool.lrna['DOT']
+    gigadot_tokens = {
+        'vDOT': op_vDOT / 2 * gigaDOT_tvl_mult,
+        'aDOT': gigaDOT_dot / 2 * gigaDOT_tvl_mult
+    }
+    gigadot_pool = StableSwapPoolState(
+        tokens=gigadot_tokens, amplification=amp, trade_fee=0.0002, unique_id='gigaDOT'
+    )
+    return gigadot_pool
+
+omnipool_minus_vDOT = get_omnipool_minus_vDOT(current_omnipool)
+gigadot_pool = set_up_gigaDOT_3pool(current_omnipool, amp_3pool)
+gigadot2_pool = set_up_gigaDOT_2pool(current_omnipool, amp_2pool)
 
 
-def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title):
+def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title, x_size, y_size):
 
     omnipool_tvl = sum(omnipool_lrna.values()) * lrna_price
     stableswap_usd = {tkn: ss_liquidity[tkn] * prices[tkn] for tkn in ss_liquidity}
@@ -155,35 +148,24 @@ def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title):
     scaling_factor = (stableswap_tvl / omnipool_tvl) ** 0.5
     ss_x_size, ss_y_size = x_size * scaling_factor, y_size * scaling_factor
 
-
     total_x_size, total_y_size = ss_x_size + x_size, ss_y_size + y_size
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(total_x_size, total_y_size))
     fig.suptitle(title, fontsize=16, fontweight="bold")
     # fig.subplots_adjust(top=1.35)
-    fig.subplots_adjust(hspace=-0.4)  # Adjust the spacing (lower values reduce the gap)
+    fig.subplots_adjust(hspace=-0.5)  # Adjust the spacing (lower values reduce the gap)
     display_liquidity(ax1, omnipool_lrna, "Omnipool")
     display_liquidity_usd(ax2, stableswap_usd, "gigaDOT")
     ax2.set_position([ax2.get_position().x0, ax2.get_position().y0, ax2.get_position().width * scaling_factor, ax2.get_position().height * scaling_factor])
 
     st.sidebar.pyplot(fig)
 
-display_op_and_ss(omnipool_gigadot.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT with 3 assets")
-
-
-# gigaDOT as 2-pool
-gigaDOT_tokens = {tkn: value for tkn, value in gigadot_pool.liquidity.items()}
-usd_prices['aDOT'] = usd_prices['DOT']
-gigaDOT_tvl = sum([gigaDOT_tokens[tkn] * usd_prices[tkn] for tkn in gigaDOT_tokens])
-gigaDOT2_adot = gigaDOT_tvl / usd_prices['DOT'] / 2
-gigaDOT2_vdot = gigaDOT_tvl / usd_prices['vDOT'] / 2
-gigaDOT2_tokens = {'vDOT': gigaDOT2_vdot, 'aDOT': gigaDOT2_adot}
-gigaDOT2_pool = StableSwapPoolState(
-    tokens=gigaDOT2_tokens, amplification=amp_2pool, trade_fee=0.0002, unique_id='gigaDOT'
-)
-
-display_op_and_ss(omnipool_gigadot.lrna, gigaDOT2_tokens, usd_prices, "gigaDOT with 2 assets")
-
+x_size, y_size = 10, 10
+display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT with 3 assets", x_size, y_size)
+display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot2_pool.liquidity, usd_prices, "gigaDOT with 2 assets", x_size, y_size)
+fig, ax = plt.subplots(figsize=(x_size, y_size))
+display_liquidity(ax, lrna_amounts, "Current Omnipool")
+st.sidebar.pyplot(fig)
 
 # dummy money market aDOT wrapper & unwrapper
 def money_market_swap(agent, tkn_buy, tkn_sell, quantity):
@@ -228,7 +210,7 @@ for buy_size in buy_sizes:
     sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
     # gigaDOT as 2-pool
     new_state, new_agent = simulate_stableswap_swap(
-        gigaDOT2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
+        gigadot2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
     )
     money_market_swap(new_agent, 'aDOT', tkn_sell, -new_agent.get_holdings('aDOT'))
     sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
@@ -237,7 +219,7 @@ for buy_size in buy_sizes:
     tkn_sell, tkn_buy = '2-Pool', 'DOT'
     # gigadot Omnipool
     new_state, new_agent = simulate_omnipool_swap(
-        omnipool_gigadot, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
+        omnipool_minus_vDOT, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
     )
     sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
     sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)  # gigaDOT as 2-pool
@@ -249,16 +231,16 @@ for buy_size in buy_sizes:
         gigadot_pool, agent, tkn_buy=tkn_buy, tkn_sell='DOT', buy_quantity=buy_size
     )
     new_state, new_agent = simulate_omnipool_swap(  # buy DOT with 2-Pool
-        omnipool_gigadot, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
+        omnipool_minus_vDOT, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
     )
     sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
     # gigaDOT as 2-pool
     new_state, new_agent = simulate_stableswap_swap(  # buy vDOT with aDOT
-        gigaDOT2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
+        gigadot2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
     )
     money_market_swap(new_agent, 'aDOT', 'DOT', -new_agent.get_holdings('aDOT'))  # buy aDOT with DOT
     new_state, new_agent = simulate_omnipool_swap(  # buy DOT with 2-Pool
-        omnipool_gigadot, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
+        omnipool_minus_vDOT, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
     )
     sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
 
