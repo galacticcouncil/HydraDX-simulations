@@ -129,8 +129,8 @@ def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title, x_size, y_size
 # This function returns a tuple: (custom_omnipool, custom_pool)
 def create_custom_scenario(omnipool, gigaDOT = None, op_mult = 1, pool_mult = 1):
     new_tokens = {
-        tkn: {'liquidity': current_omnipool.liquidity[tkn], 'LRNA': current_omnipool.lrna[tkn]}
-        for tkn in current_omnipool.liquidity
+        tkn: {'liquidity': omnipool.liquidity[tkn], 'LRNA': omnipool.lrna[tkn]}
+        for tkn in omnipool.liquidity
     }
     new_tokens['DOT']['liquidity'] *= op_mult
     new_tokens['DOT']['LRNA'] *= op_mult
