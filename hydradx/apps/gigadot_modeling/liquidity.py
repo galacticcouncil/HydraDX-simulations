@@ -247,8 +247,8 @@ def money_market_swap(agent, tkn_buy, tkn_sell, quantity):
     assert tkn_sell in ['DOT', 'aDOT']
     if not agent.validate_holdings(tkn_sell, quantity):
         raise ValueError("Insufficient holdings.")
-    agent.transfer_to(tkn_buy, quantity)
-    agent.transfer_from(tkn_sell, quantity)
+    agent.add(tkn_buy, quantity)
+    agent.remove(tkn_sell, quantity)
 
 # model
 
