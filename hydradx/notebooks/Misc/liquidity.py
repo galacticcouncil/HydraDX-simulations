@@ -60,7 +60,28 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-st.sidebar.subheader("Liquidity distribution")
+# Add custom scenario inputs at the top of the sidebar:
+st.sidebar.subheader("Custom Scenario Setup")
+
+baseline_option = st.sidebar.selectbox(
+    "Choose baseline scenario for custom scenario",
+    ["Current Omnipool", "gigaDOT with 3 assets", "gigaDOT with 2 assets"],
+    key="baseline_custom"
+)
+
+# Multiplier for the Omnipool DOT/vDOT amounts:
+op_multiplier = st.sidebar.number_input(
+    "DOT/vDOT in Omnipool multiplier",
+    min_value=0.1, value=1.0, step=0.1, key="op_mult"
+)
+
+# Multiplier for the size of the gigaDOT pool:
+pool_multiplier = st.sidebar.number_input(
+    "gigaDOT pool size multiplier",
+    min_value=0.1, value=1.0, step=0.1, key="pool_mult"
+)
+
+
 
 # Custom function to display actual values instead of percentages
 def actual_value_labels(pct, all_values):
@@ -84,6 +105,54 @@ def display_liquidity(ax, lrna_dict, title):
     display_liquidity_usd(ax, tvls, title)
 
 
+def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title, x_size, y_size):
+
+    omnipool_tvl = sum(omnipool_lrna.values()) * lrna_price
+    stableswap_usd = {tkn: ss_liquidity[tkn] * prices[tkn] for tkn in ss_liquidity}
+    stableswap_tvl = sum(stableswap_usd.values())
+    scaling_factor = (stableswap_tvl / omnipool_tvl) ** 0.5
+    ss_x_size, ss_y_size = x_size * scaling_factor, y_size * scaling_factor
+
+    total_x_size, total_y_size = ss_x_size + x_size, ss_y_size + y_size
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(total_x_size, total_y_size))
+    fig.suptitle(title, fontsize=16, fontweight="bold")
+    # fig.subplots_adjust(top=1.35)
+    fig.subplots_adjust(hspace=-0.5)  # Adjust the spacing (lower values reduce the gap)
+    display_liquidity(ax1, omnipool_lrna, "Omnipool")
+    display_liquidity_usd(ax2, stableswap_usd, "gigaDOT")
+    ax2.set_position([ax2.get_position().x0, ax2.get_position().y0, ax2.get_position().width * scaling_factor, ax2.get_position().height * scaling_factor])
+
+    st.sidebar.pyplot(fig)
+
+# Function to create a custom scenario from a chosen baseline.
+# This function returns a tuple: (custom_omnipool, custom_pool)
+def create_custom_scenario(omnipool, gigaDOT = None, op_mult = 1, pool_mult = 1):
+    new_tokens = {
+        tkn: {'liquidity': current_omnipool.liquidity[tkn], 'LRNA': current_omnipool.lrna[tkn]}
+        for tkn in current_omnipool.liquidity
+    }
+    new_tokens['DOT']['liquidity'] *= op_mult
+    new_tokens['DOT']['LRNA'] *= op_mult
+    if 'vDOT' in new_tokens:
+        new_tokens['vDOT']['liquidity'] *= op_mult
+        new_tokens['vDOT']['LRNA'] *= op_mult
+
+    custom_omnipool = OmnipoolState(tokens=new_tokens, lrna_fee=lrna_fee, asset_fee=asset_fee)
+
+    if gigaDOT is not None:
+        new_tokens = {tkn: amt * pool_mult for tkn, amt in gigaDOT.liquidity.items()}
+        custom_gigaDOT = StableSwapPoolState(
+            tokens=new_tokens, amplification=gigaDOT.amplification, trade_fee=gigaDOT.trade_fee, unique_id=gigaDOT.unique_id
+        )
+    else:
+        custom_gigaDOT = None
+
+    return custom_omnipool, custom_gigaDOT
+
+st.sidebar.subheader("Liquidity distribution")
+
+x_size, y_size = 10, 10
 
 
 # current pools
@@ -138,29 +207,32 @@ def set_up_gigaDOT_2pool(omnipool, amp: float, gigaDOT_tvl_mult=1):
 omnipool_minus_vDOT = get_omnipool_minus_vDOT(current_omnipool)
 gigadot_pool = set_up_gigaDOT_3pool(current_omnipool, amp_3pool)
 gigadot2_pool = set_up_gigaDOT_2pool(current_omnipool, amp_2pool)
+scenario_dict = {
+    "Current Omnipool": (current_omnipool, None),
+    "gigaDOT with 3 assets": (omnipool_minus_vDOT, gigadot_pool),
+    "gigaDOT with 2 assets": (omnipool_minus_vDOT, gigadot2_pool)
+}
 
+omnipool_baseline, gigadot_baseline = scenario_dict[baseline_option]
+custom_omnipool, custom_pool = create_custom_scenario(omnipool_baseline, gigadot_baseline, op_multiplier, pool_multiplier)
+scenario_dict["Custom Scenario"] = (custom_omnipool, custom_pool)
 
-def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title, x_size, y_size):
+st.sidebar.markdown("### Custom Scenario Pie Charts")
+# For the custom scenario, if there is a custom pool (gigaDOT scenario), graph both the omnipool part and the pool part.
+if op_multiplier != 1 or pool_multiplier != 1:
+    if custom_pool is not None:
+        display_op_and_ss(custom_omnipool.lrna, custom_pool.liquidity, usd_prices,
+                          f"Custom Scenario: {baseline_option}", x_size, y_size)
+    else:
+        # Otherwise, just display the omnipool liquidity chart.
+        fig_custom, ax_custom = plt.subplots(figsize=(10, 10))
+        display_liquidity(ax_custom, custom_omnipool.lrna, f"Custom Scenario: {baseline_option}")
+        st.sidebar.pyplot(fig_custom)
+else:
+    st.sidebar.write("*Change multipliers to something other than 1 to get a custom scenario.*")
 
-    omnipool_tvl = sum(omnipool_lrna.values()) * lrna_price
-    stableswap_usd = {tkn: ss_liquidity[tkn] * prices[tkn] for tkn in ss_liquidity}
-    stableswap_tvl = sum(stableswap_usd.values())
-    scaling_factor = (stableswap_tvl / omnipool_tvl) ** 0.5
-    ss_x_size, ss_y_size = x_size * scaling_factor, y_size * scaling_factor
+st.sidebar.markdown("### Baseline Scenarios")
 
-    total_x_size, total_y_size = ss_x_size + x_size, ss_y_size + y_size
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(total_x_size, total_y_size))
-    fig.suptitle(title, fontsize=16, fontweight="bold")
-    # fig.subplots_adjust(top=1.35)
-    fig.subplots_adjust(hspace=-0.5)  # Adjust the spacing (lower values reduce the gap)
-    display_liquidity(ax1, omnipool_lrna, "Omnipool")
-    display_liquidity_usd(ax2, stableswap_usd, "gigaDOT")
-    ax2.set_position([ax2.get_position().x0, ax2.get_position().y0, ax2.get_position().width * scaling_factor, ax2.get_position().height * scaling_factor])
-
-    st.sidebar.pyplot(fig)
-
-x_size, y_size = 10, 10
 display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT with 3 assets", x_size, y_size)
 display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot2_pool.liquidity, usd_prices, "gigaDOT with 2 assets", x_size, y_size)
 fig, ax = plt.subplots(figsize=(x_size, y_size))
@@ -184,95 +256,89 @@ agent = Agent(enforce_holdings=False)
 buy_sizes = [1, 10, 100, 1000, 10000]  # buying DOT with vDOT, DOT with USDT, vDOT with USDT
 buy_sizes.sort()
 sell_amts_omnipool = []
-# current Omnipool
-for buy_size in buy_sizes:
-    sell_amts_omnipool_dict = {}
+
+routes = {
+    "Current Omnipool": {
+        ('DOT', 'vDOT'): [{'tkn_sell': 'DOT', 'tkn_buy': 'vDOT', 'pool': "omnipool"}],
+        ('2-Pool', 'DOT'): [{'tkn_sell': '2-Pool', 'tkn_buy': 'DOT', 'pool': "omnipool"}],
+        ('2-Pool', 'vDOT'): [{'tkn_sell': '2-Pool', 'tkn_buy': 'vDOT', 'pool': "omnipool"}],
+    },
+    "gigaDOT with 3 assets": {
+        ('DOT', 'vDOT'): [{'tkn_sell': 'DOT', 'tkn_buy': 'vDOT', 'pool': "gigaDOT"}],
+        ('2-Pool', 'DOT'): [{'tkn_sell': '2-Pool', 'tkn_buy': 'DOT', 'pool': "omnipool"}],
+        ('2-Pool', 'vDOT'): [
+            {'tkn_sell': '2-Pool', 'tkn_buy': 'DOT', 'pool': "omnipool"},
+            {'tkn_sell': 'DOT', 'tkn_buy': 'vDOT', 'pool': "gigaDOT"}
+        ]
+    },
+    "gigaDOT with 2 assets": {
+        ('DOT', 'vDOT'): [
+            {'tkn_sell': 'DOT', 'tkn_buy': 'aDOT', 'pool': "money market"},
+            {'tkn_sell': 'aDOT', 'tkn_buy': 'vDOT', 'pool': "gigaDOT"}
+        ],
+        ('2-Pool', 'DOT'): [{'tkn_sell': '2-Pool', 'tkn_buy': 'DOT', 'pool': "omnipool"}],
+        ('2-Pool', 'vDOT'): [
+            {'tkn_sell': '2-Pool', 'tkn_buy': 'DOT', 'pool': "omnipool"},
+            {'tkn_sell': 'DOT', 'tkn_buy': 'aDOT', 'pool': "money market"},
+            {'tkn_sell': 'aDOT', 'tkn_buy': 'vDOT', 'pool': "gigaDOT"}
+        ]
+    }
+}
+
+if op_multiplier != 1 or pool_multiplier != 1:
+    routes["Custom Scenario"] = routes[baseline_option]
+
+sell_amts_dicts = {}
+for scenario in routes:
+    sell_amts_dicts[scenario] = {}
+    omnipool, gigaDOT = scenario_dict[scenario]
     for (tkn_sell, tkn_buy) in [('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]:
-        new_state, new_agent = simulate_omnipool_swap(
-            current_omnipool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
-        )
-        sell_amts_omnipool_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-    sell_amts_omnipool.append(sell_amts_omnipool_dict)
-
-
-sell_amts_gigadot = []
-sell_amts_gigadot2 = []
-for buy_size in buy_sizes:
-    sell_amts_gigadot_dict = {}
-    sell_amts_gigadot2_dict = {}
-
-    # DOT -> vDOT
-    tkn_sell, tkn_buy = 'DOT', 'vDOT'
-    # gigadot
-    new_state, new_agent = simulate_stableswap_swap(
-        gigadot_pool, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
-    )
-    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-    # gigaDOT as 2-pool
-    new_state, new_agent = simulate_stableswap_swap(
-        gigadot2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
-    )
-    money_market_swap(new_agent, 'aDOT', tkn_sell, -new_agent.get_holdings('aDOT'))
-    sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-
-    # 2-Pool -> DOT
-    tkn_sell, tkn_buy = '2-Pool', 'DOT'
-    # gigadot Omnipool
-    new_state, new_agent = simulate_omnipool_swap(
-        omnipool_minus_vDOT, agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_size
-    )
-    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-    sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)  # gigaDOT as 2-pool
-
-    # 2-Pool -> vDOT
-    tkn_sell, tkn_buy = '2-Pool', 'vDOT'
-    # gigadot Omnipool, route through DOT
-    new_state, new_agent = simulate_stableswap_swap(  # buy vDOT with DOT
-        gigadot_pool, agent, tkn_buy=tkn_buy, tkn_sell='DOT', buy_quantity=buy_size
-    )
-    new_state, new_agent = simulate_omnipool_swap(  # buy DOT with 2-Pool
-        omnipool_minus_vDOT, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
-    )
-    sell_amts_gigadot_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-    # gigaDOT as 2-pool
-    new_state, new_agent = simulate_stableswap_swap(  # buy vDOT with aDOT
-        gigadot2_pool, agent, tkn_buy=tkn_buy, tkn_sell='aDOT', buy_quantity=buy_size
-    )
-    money_market_swap(new_agent, 'aDOT', 'DOT', -new_agent.get_holdings('aDOT'))  # buy aDOT with DOT
-    new_state, new_agent = simulate_omnipool_swap(  # buy DOT with 2-Pool
-        omnipool_minus_vDOT, agent, tkn_buy='DOT', tkn_sell=tkn_sell, buy_quantity=-new_agent.get_holdings('DOT')
-    )
-    sell_amts_gigadot2_dict[(tkn_sell, tkn_buy)] = -new_agent.get_holdings(tkn_sell)
-
-    sell_amts_gigadot.append(sell_amts_gigadot_dict)
-    sell_amts_gigadot2.append(sell_amts_gigadot2_dict)
+        sell_amts = []
+        for buy_size in buy_sizes:
+            route = routes[scenario][(tkn_sell, tkn_buy)]
+            assert tkn_sell == route[0]['tkn_sell']
+            assert tkn_buy == route[-1]['tkn_buy']
+            new_agent = agent.copy()
+            trade_amt = buy_size
+            for trade in reversed(route):
+                if trade['pool'] == "omnipool":
+                    new_state, new_agent = simulate_omnipool_swap(
+                        omnipool, agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt
+                    )
+                    assert not new_state.fail
+                elif trade['pool'] == "gigaDOT":
+                    new_state, new_agent = simulate_stableswap_swap(
+                        gigaDOT, agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt
+                    )
+                    assert not new_state.fail
+                elif trade['pool'] == "money market":
+                    money_market_swap(new_agent, trade['tkn_buy'], trade['tkn_sell'], trade_amt)
+                else:
+                    raise ValueError(f"Unknown pool type: {trade['pool']}")
+                trade_amt = -new_agent.get_holdings(trade['tkn_sell'])
+            sell_amts.append(trade_amt)
+        sell_amts_dicts[scenario][(tkn_sell, tkn_buy)] = sell_amts
 
 
 # graph slippage
 
-current_slippage = {}
-gigadot_slippage = {}
-gigadot2_slippage = {}
-for tkn_pair in [('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]:
-    current_prices = [sell_amts_omnipool[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
-    gigadot_prices = [sell_amts_gigadot[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
-    gigadot2_prices = [sell_amts_gigadot2[i][tkn_pair] / buy_sizes[i] for i in range(len(buy_sizes))]
-    assert min(gigadot2_prices) >= 0
-    lowest_current_price = current_prices[0]
-    lowest_gigadot_price = gigadot_prices[0]
-    lowest_gigadot2_price = gigadot2_prices[0]
-    current_slippage[tkn_pair] = [(current_prices[i] - lowest_current_price) / lowest_current_price for i in range(len(buy_sizes))]
-    gigadot_slippage[tkn_pair] = [(gigadot_prices[i] - lowest_gigadot_price) / lowest_gigadot_price for i in range(len(buy_sizes))]
-    gigadot2_slippage[tkn_pair] = [(gigadot2_prices[i] - lowest_gigadot2_price) / lowest_gigadot2_price for i in range(len(buy_sizes))]
+slippage = {}
+for scenario in routes:
+    slippage[scenario] = {}
+    for tkn_pair in [('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]:
+        sell_amts = sell_amts_dicts[scenario][tkn_pair]
+        prices = [sell_amts[i] / buy_sizes[i] for i in range(len(buy_sizes))]
+        lowest_price = prices[0]
+        slippage[scenario][tkn_pair] = [(prices[i] - lowest_price) / lowest_price for i in range(len(buy_sizes))]
 
 # Define markers for better visibility
 markers = ['o', 's', '^', 'D', 'x']  # Circle, square, triangle, diamond, cross
 
 # Mapping token pairs to marker indices
-for idx, tkn_pair in enumerate([('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]):
+for idx, tkn_pair in enumerate([('DOT', 'vDOT'), ('2-Pool', 'vDOT'), ('2-Pool', 'DOT')]):
     st.subheader(f"Options for {tkn_pair} Slippage")
 
-    options = ["Current", "GigaDOT as 3-pool", "GigaDOT as 2-pool"]
+    options = ["Current", "GigaDOT as 3-pool", "GigaDOT as 2-pool", "Custom Scenario"]
     # The multiselect returns a list of selected series; by default, all are selected.
     selected_series = st.multiselect(f"Select series to display for {tkn_pair}", options, default=options, key=f"multiselect_{tkn_pair}")
 
@@ -281,14 +347,17 @@ for idx, tkn_pair in enumerate([('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', '
 
     # Conditionally plot each series based on checkbox values
     if "Current" in selected_series:
-        ax.plot(buy_sizes, current_slippage[tkn_pair],
+        ax.plot(buy_sizes, slippage["Current Omnipool"][tkn_pair],
                 marker=markers[0], linestyle='-', label='Current', linewidth=2)
     if "GigaDOT as 3-pool" in selected_series:
-        ax.plot(buy_sizes, gigadot_slippage[tkn_pair],
-                marker=markers[1], linestyle='--', label='GigaDOT', linewidth=2)
+        ax.plot(buy_sizes, slippage["gigaDOT with 3 assets"][tkn_pair],
+                marker=markers[1], linestyle='--', label='GigaDOT as 3-pool', linewidth=2)
     if "GigaDOT as 2-pool" in selected_series:
-        ax.plot(buy_sizes, gigadot2_slippage[tkn_pair],
+        ax.plot(buy_sizes, slippage["gigaDOT with 2 assets"][tkn_pair],
                 marker=markers[4], linestyle='-', label='GigaDOT as 2-pool', linewidth=2)
+    if "Custom Scenario" in selected_series and "Custom Scenario" in slippage:
+        ax.plot(buy_sizes, slippage["Custom Scenario"][tkn_pair],
+                marker=markers[2], linestyle='--', label='Custom', linewidth=2)
 
     # Add grid, legend, title, and axis labels
     ax.grid(True, linestyle='--', alpha=0.6)
