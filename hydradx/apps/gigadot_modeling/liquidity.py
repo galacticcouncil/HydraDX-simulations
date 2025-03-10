@@ -7,12 +7,11 @@ import streamlit as st
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
-from hydradx.model.amm.stableswap_amm import simulate_swap as simulate_stableswap_swap, simulate_withdraw_asset
-from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
-from hydradx.model.amm.omnipool_amm import simulate_swap as simulate_omnipool_swap
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.apps.gigadot_modeling.utils import get_omnipool_minus_vDOT, set_up_gigaDOT_3pool, set_up_gigaDOT_2pool, \
-    create_custom_scenario, display_liquidity, display_op_and_ss, money_market_swap
+    create_custom_scenario, simulate_route
+from hydradx.apps.gigadot_modeling.display_utils import display_liquidity, display_op_and_ss
 
 # current Omnipool numbers
 
@@ -111,8 +110,9 @@ st.sidebar.markdown("### Custom Scenario Pie Charts")
 # For the custom scenario, if there is a custom pool (gigaDOT scenario), graph both the omnipool part and the pool part.
 if op_multiplier != 1 or pool_multiplier != 1:
     if custom_pool is not None:
-        display_op_and_ss(custom_omnipool.lrna, custom_pool.liquidity, usd_prices,
+        fig = display_op_and_ss(custom_omnipool.lrna, custom_pool.liquidity, usd_prices,
                           f"Custom Scenario: {baseline_option}", x_size, y_size)
+        st.sidebar.pyplot(fig)
     else:
         # Otherwise, just display the omnipool liquidity chart.
         fig_custom, ax_custom = plt.subplots(figsize=(10, 10))
@@ -123,8 +123,10 @@ else:
 
 st.sidebar.markdown("### Baseline Scenarios")
 
-display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT with 3 assets", x_size, y_size)
-display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot2_pool.liquidity, usd_prices, "gigaDOT with 2 assets", x_size, y_size)
+fig = display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot_pool.liquidity, usd_prices, "gigaDOT with 3 assets", x_size, y_size)
+st.sidebar.pyplot(fig)
+fig = display_op_and_ss(omnipool_minus_vDOT.lrna, gigadot2_pool.liquidity, usd_prices, "gigaDOT with 2 assets", x_size, y_size)
+st.sidebar.pyplot(fig)
 fig, ax = plt.subplots(figsize=(x_size, y_size))
 display_liquidity(ax, lrna_amounts, lrna_price, "Current Omnipool")
 st.sidebar.pyplot(fig)
@@ -175,26 +177,8 @@ for scenario in routes:
         sell_amts = []
         for buy_size in buy_sizes:
             route = routes[scenario][(tkn_sell, tkn_buy)]
-            assert tkn_sell == route[0]['tkn_sell']
-            assert tkn_buy == route[-1]['tkn_buy']
-            new_agent = agent.copy()
-            trade_amt = buy_size
-            for trade in reversed(route):
-                if trade['pool'] == "omnipool":
-                    new_state, new_agent = simulate_omnipool_swap(
-                        omnipool, agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt
-                    )
-                    assert not new_state.fail
-                elif trade['pool'] == "gigaDOT":
-                    new_state, new_agent = simulate_stableswap_swap(
-                        gigaDOT, agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt
-                    )
-                    assert not new_state.fail
-                elif trade['pool'] == "money market":
-                    money_market_swap(new_agent, trade['tkn_buy'], trade['tkn_sell'], trade_amt)
-                else:
-                    raise ValueError(f"Unknown pool type: {trade['pool']}")
-                trade_amt = -new_agent.get_holdings(trade['tkn_sell'])
+            _, _, new_agent = simulate_route(omnipool, gigaDOT, agent, buy_size, route)
+            trade_amt = -new_agent.get_holdings(tkn_sell)
             sell_amts.append(trade_amt)
         sell_amts_dicts[scenario][(tkn_sell, tkn_buy)] = sell_amts
 
