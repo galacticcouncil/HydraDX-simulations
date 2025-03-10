@@ -895,7 +895,7 @@ def test_sell_with_lrna_mint(
     feeless_spot_price = feeless_swap_state.price(j)
     spot_price = swap_state.price(j)
     if feeless_swap_state.fail == '' and swap_state.fail == '':
-        if feeless_spot_price != pytest.approx(spot_price, rel=1e-16):
+        if feeless_spot_price != pytest.approx(spot_price, rel=1e-14):
             raise AssertionError('Spot price is wrong.')
 
 

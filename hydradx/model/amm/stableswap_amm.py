@@ -374,14 +374,12 @@ class StableSwapPoolState(Exchange):
         elif sell_quantity:
             reserves = self.modified_balances(delta={tkn_sell: sell_quantity}, omit=[tkn_buy])
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(reserves, self.d)) * (1 - fee)
-        elif self.liquidity[tkn_buy] <= buy_quantity:
-            return self.fail_transaction('Pool has insufficient liquidity.')
 
         if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction('Agent has insufficient funds.')
 
-        agent.transfer_from(tkn_sell, sell_quantity)
-        agent.transfer_to(tkn_buy, buy_quantity)
+        agent.remove(tkn_sell, sell_quantity)
+        agent.add(tkn_buy, buy_quantity)
         self.liquidity[tkn_buy] -= buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
 
@@ -407,10 +405,8 @@ class StableSwapPoolState(Exchange):
             fee = self._update_peg()
             tkns_sell = list(filter(lambda t: t != tkn_buy, self.asset_list))
             for tkn in tkns_sell:
-                if tkn not in agent.holdings:
+                if not agent.validate_holdings(tkn, quantity):
                     self.fail_transaction(f'Agent does not have any {tkn}.')
-            if min([agent.holdings[tkn] for tkn in tkns_sell]) < quantity:
-                return self.fail_transaction('Agent has insufficient funds.')
 
             sell_quantity = quantity
             buy_quantity = (self.liquidity[tkn_buy] - self.calculate_y(
@@ -423,9 +419,9 @@ class StableSwapPoolState(Exchange):
 
             for tkn in tkns_sell:
                 self.liquidity[tkn] += sell_quantity
-                agent.holdings[tkn] -= sell_quantity
+                agent.remove(tkn, sell_quantity)
             self.liquidity[tkn_buy] -= buy_quantity
-            agent.holdings[tkn_buy] += buy_quantity
+            agent.add(tkn_buy, buy_quantity)
 
         elif tkn_sell:
             fee = self._update_peg()
@@ -439,15 +435,13 @@ class StableSwapPoolState(Exchange):
                 self.modified_balances(delta={tkn: -quantity for tkn in tkns_buy}, omit=[tkn_sell]),
                 self.d
             ) - self.liquidity[tkn_sell]) / (1 - fee)
-            if agent.holdings[tkn_sell] < sell_quantity:
-                return self.fail_transaction(f'Agent has insufficient funds. {agent.holdings[tkn_sell]} < {quantity}')
+            if not agent.validate_holdings(tkn_sell, sell_quantity):
+                return self.fail_transaction(f'Agent has insufficient funds.')
             for tkn in tkns_buy:
                 self.liquidity[tkn] -= buy_quantity
-                if tkn not in agent.holdings:
-                    agent.holdings[tkn] = 0
-                agent.holdings[tkn] += buy_quantity
+                agent.add(tkn, buy_quantity)
             self.liquidity[tkn_sell] += sell_quantity
-            agent.holdings[tkn_sell] -= sell_quantity
+            agent.remove(tkn_sell, sell_quantity)
 
         return self
 
@@ -473,8 +467,8 @@ class StableSwapPoolState(Exchange):
 
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= quantity
-        agent.transfer_from(self.unique_id, shares_removed)
-        agent.transfer_to(tkn_remove, quantity)
+        agent.remove(self.unique_id, shares_removed)
+        agent.add(tkn_remove, quantity)
         return self
 
     def remove_liquidity(
@@ -538,7 +532,7 @@ class StableSwapPoolState(Exchange):
         updated_d = self.calculate_d(tuple(updated_reserves.values()))
         if updated_d < initial_d:
             return self.fail_transaction('invariant decreased for some reason')
-        if agent.holdings[tkn_add] < quantity:
+        if not agent.validate_holdings(tkn_add, quantity):
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         fixed_fee = fee
@@ -562,12 +556,10 @@ class StableSwapPoolState(Exchange):
             d_diff = adjusted_d - initial_d
             shares_return = self.shares * d_diff / initial_d
 
-        if self.unique_id not in agent.holdings:
-            agent.holdings[self.unique_id] = 0
-        agent.holdings[self.unique_id] += shares_return
         self.shares += shares_return
         self.liquidity[tkn_add] += quantity
-        agent.holdings[tkn_add] -= quantity
+        agent.add(self.unique_id, shares_return)
+        agent.remove(tkn_add, quantity)
         return self
 
     def add_liquidity_spot(self, tkn_add: str, precision: float = None):
@@ -642,9 +634,9 @@ class StableSwapPoolState(Exchange):
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         self.liquidity[tkn_add] += delta_tkn
-        agent.transfer_from(tkn_add, delta_tkn)
         self.shares += quantity
-        agent.transfer_to(self.unique_id, quantity)
+        agent.remove(tkn_add, delta_tkn)
+        agent.add(self.unique_id, quantity)
         return self
 
     def remove_uniform(

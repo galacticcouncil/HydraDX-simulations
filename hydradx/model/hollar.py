@@ -62,6 +62,7 @@ class LiquidityFacility:
             raise ValueError("buy_fee must be less than or equal to 1")
 
         self.native_stable = native_stable
+        self.fail = ''
 
     def fail_transaction(self, error: str):
         self.fail = error
@@ -74,7 +75,7 @@ class LiquidityFacility:
         sell_amt = pool.calculate_sell_from_buy(tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
         exec_price = sell_amt / max_buy_amt if max_buy_amt > 0 else 0
         buy_price = exec_price / (1 - self.buy_fee[tkn])
-        if buy_price > self.max_buy_price[tkn]:
+        if buy_price > self.max_buy_price[tkn] or buy_price == 0:
             return 0, 0
         max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
         return max_buy_amt, buy_price
@@ -107,6 +108,10 @@ class LiquidityFacility:
             if tkn_buy not in self.asset_list:
                 return self.fail_transaction("Token not supported by facility")
             max_buy_amt, buy_price = self.get_buy_params(tkn_buy)
+            if max_buy_amt == 0:
+                return self.fail_transaction("Liquidity facility cannot buy Hollar")
+            elif buy_price == 0:  # should never be true
+                raise ValueError("Buy price shouldn't be 0 when max_buy_amt is nonzero")
             if buy_quantity == 0:
                 buy_quantity = sell_quantity * buy_price
             elif sell_quantity == 0:
@@ -118,8 +123,8 @@ class LiquidityFacility:
 
         if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction("Agent does not have enough tokens to sell")
-        agent.transfer_from(tkn_sell, sell_quantity)
-        agent.transfer_to(tkn_buy, buy_quantity)
+        agent.remove(tkn_sell, sell_quantity)
+        agent.add(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
             self.liquidity[tkn_buy] -= buy_quantity
         else:
@@ -131,7 +136,7 @@ class LiquidityFacility:
         max_buy_amt, buy_price = self.get_buy_params(tkn)
         if max_buy_amt == 0:
             return
-        agent.transfer_to(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
+        agent.add(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
         self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
         self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
-        agent.transfer_from(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+        agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
