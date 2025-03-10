@@ -449,7 +449,8 @@ class StableSwapPoolState(Exchange):
             self,
             agent: Agent,
             quantity: float,
-            tkn_remove: str
+            tkn_remove: str,
+            fail_on_overdraw: bool = True  # this is now ignored
     ):
         """
         Calculate a withdrawal based on the asset quantity rather than the share quantity
