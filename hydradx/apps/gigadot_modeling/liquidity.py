@@ -73,27 +73,34 @@ baseline_option = st.sidebar.selectbox(
     key="baseline_custom"
 )
 
+# Create two columns in the sidebar
+col1, col2 = st.sidebar.columns(2)
+
 # Multiplier for the Omnipool DOT/vDOT amounts:
-op_multiplier = st.sidebar.number_input(
-    "DOT/vDOT in Omnipool multiplier",
-    min_value=0.1, value=1.0, step=0.1, key="op_mult"
-)
+with col1:
+    op_multiplier = st.number_input(
+        "DOT/vDOT in Omnipool multiplier",
+        min_value=0.1, value=1.0, step=0.1, key="op_mult"
+    )
 
 # Multiplier for the size of the gigaDOT pool:
-pool_multiplier = st.sidebar.number_input(
-    "gigaDOT pool size multiplier",
-    min_value=0.1, value=1.0, step=0.1, key="pool_mult"
-)
+with col2:
+    pool_multiplier = st.number_input(
+        "gigaDOT pool size multiplier",
+        min_value=0.1, value=1.0, step=0.1, key="pool_mult"
+    )
 
-amp_2pool = st.sidebar.number_input(
-    "A for 2-Pool gigaDOT",
-    min_value=5, value=150, step=5, key="amp_2pool"
-)
+with col1:
+    amp_2pool = st.number_input(
+        "A for 2-Pool gigaDOT",
+        min_value=5, value=150, step=5, key="amp_2pool"
+    )
 
-amp_3pool = st.sidebar.number_input(
-    "A for 3-Pool gigaDOT",
-    min_value=5, value=320, step=5, key="amp_3pool"
-)
+with col2:
+    amp_3pool = st.number_input(
+        "A for 3-Pool gigaDOT",
+        min_value=5, value=320, step=5, key="amp_3pool"
+    )
 
 # current pools
 
