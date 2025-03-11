@@ -1,5 +1,7 @@
 import copy
+import math
 
+from exceptiongroup import catch
 from matplotlib import pyplot as plt
 import sys, os
 import streamlit as st
@@ -52,21 +54,7 @@ tokens = {
 lrna_fee = 0.0005
 asset_fee = 0.0015
 
-# current pools
 
-current_omnipool = OmnipoolState(tokens=tokens, lrna_fee=lrna_fee, asset_fee=asset_fee)
-
-amp_2pool = 320
-amp_3pool = amp_2pool * (4 / 27)
-
-omnipool_minus_vDOT = get_omnipool_minus_vDOT(current_omnipool)
-gigadot_pool = set_up_gigaDOT_3pool(current_omnipool, amp_3pool)
-gigadot2_pool = set_up_gigaDOT_2pool(current_omnipool, amp_2pool)
-scenario_dict = {
-    "Current Omnipool": (current_omnipool, None),
-    "gigaDOT with 3 assets": (omnipool_minus_vDOT, gigadot_pool),
-    "gigaDOT with 2 assets": (omnipool_minus_vDOT, gigadot2_pool)
-}
 
 
 st.markdown("""
@@ -97,6 +85,29 @@ pool_multiplier = st.sidebar.number_input(
     "gigaDOT pool size multiplier",
     min_value=0.1, value=1.0, step=0.1, key="pool_mult"
 )
+
+amp_2pool = st.sidebar.number_input(
+    "A for 2-Pool gigaDOT",
+    min_value=5, value=150, step=5, key="amp_2pool"
+)
+
+amp_3pool = st.sidebar.number_input(
+    "A for 3-Pool gigaDOT",
+    min_value=5, value=320, step=5, key="amp_3pool"
+)
+
+# current pools
+
+current_omnipool = OmnipoolState(tokens=tokens, lrna_fee=lrna_fee, asset_fee=asset_fee)
+
+omnipool_minus_vDOT = get_omnipool_minus_vDOT(current_omnipool)
+gigadot_pool = set_up_gigaDOT_3pool(current_omnipool, amp_3pool)
+gigadot2_pool = set_up_gigaDOT_2pool(current_omnipool, amp_2pool)
+scenario_dict = {
+    "Current Omnipool": (current_omnipool, None),
+    "gigaDOT with 3 assets": (omnipool_minus_vDOT, gigadot_pool),
+    "gigaDOT with 2 assets": (omnipool_minus_vDOT, gigadot2_pool)
+}
 
 st.sidebar.subheader("Liquidity distribution")
 
@@ -133,9 +144,17 @@ st.sidebar.pyplot(fig)
 
 # model
 
+# Multiplier for the Omnipool DOT/vDOT amounts:
+max_trade_size = st.number_input(
+    "Max trade size, in bought token (DOT or vDOT)",
+    min_value=2, value=10000, step=1, key="max_trade_size"
+)
+n = 10
+min_trade_size = 1
+step = (max_trade_size - min_trade_size) / (n - 1) if n > 1 else 0
+buy_sizes = [min_trade_size + i * step for i in range(n)]
+
 agent = Agent(enforce_holdings=False)
-buy_sizes = [1, 10, 100, 1000, 10000]  # buying DOT with vDOT, DOT with USDT, vDOT with USDT
-buy_sizes.sort()
 sell_amts_omnipool = []
 
 routes = {
@@ -177,9 +196,13 @@ for scenario in routes:
         sell_amts = []
         for buy_size in buy_sizes:
             route = routes[scenario][(tkn_sell, tkn_buy)]
-            _, _, new_agent = simulate_route(omnipool, gigaDOT, agent, buy_size, route)
-            trade_amt = -new_agent.get_holdings(tkn_sell)
-            sell_amts.append(trade_amt)
+            try:
+                _, _, new_agent = simulate_route(omnipool, gigaDOT, agent, buy_size, route)
+            except AssertionError:
+                break
+            else:
+                trade_amt = -new_agent.get_holdings(tkn_sell)
+                sell_amts.append(trade_amt)
         sell_amts_dicts[scenario][(tkn_sell, tkn_buy)] = sell_amts
 
 
@@ -190,9 +213,9 @@ for scenario in routes:
     slippage[scenario] = {}
     for tkn_pair in [('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]:
         sell_amts = sell_amts_dicts[scenario][tkn_pair]
-        prices = [sell_amts[i] / buy_sizes[i] for i in range(len(buy_sizes))]
+        prices = [sell_amts[i] / buy_sizes[i] for i in range(len(sell_amts))]
         lowest_price = prices[0]
-        slippage[scenario][tkn_pair] = [(prices[i] - lowest_price) / lowest_price for i in range(len(buy_sizes))]
+        slippage[scenario][tkn_pair] = [(prices[i] - lowest_price) / lowest_price for i in range(len(sell_amts))]
 
 # Define markers for better visibility
 markers = ['o', 's', '^', 'D', 'x']  # Circle, square, triangle, diamond, cross
@@ -210,16 +233,20 @@ for idx, tkn_pair in enumerate([('DOT', 'vDOT'), ('2-Pool', 'vDOT'), ('2-Pool', 
 
     # Conditionally plot each series based on checkbox values
     if "Current" in selected_series:
-        ax.plot(buy_sizes, slippage["Current Omnipool"][tkn_pair],
+        n = len(slippage["Current Omnipool"][tkn_pair])
+        ax.plot(buy_sizes[0:n], slippage["Current Omnipool"][tkn_pair],
                 marker=markers[0], linestyle='-', label='Current', linewidth=2)
     if "GigaDOT as 3-pool" in selected_series:
-        ax.plot(buy_sizes, slippage["gigaDOT with 3 assets"][tkn_pair],
+        n = len(slippage["gigaDOT with 3 assets"][tkn_pair])
+        ax.plot(buy_sizes[0:n], slippage["gigaDOT with 3 assets"][tkn_pair],
                 marker=markers[1], linestyle='--', label='GigaDOT as 3-pool', linewidth=2)
     if "GigaDOT as 2-pool" in selected_series:
-        ax.plot(buy_sizes, slippage["gigaDOT with 2 assets"][tkn_pair],
+        n = len(slippage["gigaDOT with 2 assets"][tkn_pair])
+        ax.plot(buy_sizes[0:n], slippage["gigaDOT with 2 assets"][tkn_pair],
                 marker=markers[4], linestyle='-', label='GigaDOT as 2-pool', linewidth=2)
     if "Custom Scenario" in selected_series and "Custom Scenario" in slippage:
-        ax.plot(buy_sizes, slippage["Custom Scenario"][tkn_pair],
+        n = len(slippage["Custom Scenario"][tkn_pair])
+        ax.plot(buy_sizes[0:n], slippage["Custom Scenario"][tkn_pair],
                 marker=markers[2], linestyle='--', label='Custom', linewidth=2)
 
     # Add grid, legend, title, and axis labels

@@ -97,10 +97,12 @@ def simulate_route(
     for trade in reversed(route):
         if trade['pool'] == "omnipool":
             new_omnipool.swap(new_agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt)
-            assert not new_omnipool.fail
+            if new_omnipool.fail:
+                raise AssertionError("Swap failed in Omnipool.")
         elif trade['pool'] == "gigaDOT":
             new_stableswap.swap(new_agent, tkn_buy=trade['tkn_buy'], tkn_sell=trade['tkn_sell'], buy_quantity=trade_amt)
-            assert not new_stableswap.fail
+            if new_stableswap.fail:
+                raise AssertionError("Swap failed in GigaDOT.")
         elif trade['pool'] == "money market":
             money_market_swap(new_agent, trade['tkn_buy'], trade['tkn_sell'], trade_amt)
         else:
