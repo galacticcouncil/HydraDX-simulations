@@ -109,3 +109,15 @@ def simulate_route(
             raise ValueError(f"Unknown pool type: {trade['pool']}")
         trade_amt = -new_agent.get_holdings(trade['tkn_sell'])
     return new_omnipool, new_stableswap, new_agent
+
+
+def get_slippage_dict(sell_amts_dicts, buy_sizes):
+    slippage = {}
+    for scenario in sell_amts_dicts:
+        slippage[scenario] = {}
+        for tkn_pair in list(sell_amts_dicts[scenario].keys()):
+            sell_amts = sell_amts_dicts[scenario][tkn_pair]
+            prices = [sell_amts[i] / buy_sizes[i] for i in range(len(sell_amts))]
+            lowest_price = prices[0]
+            slippage[scenario][tkn_pair] = [(prices[i] - lowest_price) / lowest_price for i in range(len(sell_amts))]
+    return slippage

@@ -1,10 +1,34 @@
-from hydradx.apps.gigadot_modeling.utils import simulate_route
+from hydradx.apps.gigadot_modeling.utils import simulate_route, get_omnipool_minus_vDOT, get_slippage_dict
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
+from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
+
 
 def test_liquidity():
     import hydradx.apps.gigadot_modeling.liquidity  # throws error if liquidity.py has error
+
+
+@given(strat.floats(min_value=0.01, max_value=100))
+def test_get_omnipool_minus_vDOT(dot_mult):
+    assets = {
+        'HDX': {'liquidity': 1000000, 'LRNA': 1000000},
+        'USDT': {'liquidity': 1000000, 'LRNA': 1000000},
+        'DOT': {'liquidity': 1000000, 'LRNA': 1000000},
+        'vDOT': {'liquidity': 1000000, 'LRNA': 1000000},
+    }
+    omnipool = OmnipoolState(assets)
+    new_op = get_omnipool_minus_vDOT(omnipool, op_dot_tvl_mult=dot_mult)
+    for tkn in assets:
+        if tkn == 'vDOT':
+            assert tkn not in new_op.asset_list
+        elif tkn == 'DOT':
+            assert new_op.liquidity[tkn] == omnipool.liquidity[tkn] * dot_mult
+            assert new_op.lrna[tkn] == omnipool.lrna[tkn] * dot_mult
+        else:
+            assert new_op.liquidity[tkn] == omnipool.liquidity[tkn]
+            assert new_op.lrna[tkn] == omnipool.lrna[tkn]
+
 
 def test_simulate_route():
     assets = {
@@ -77,3 +101,40 @@ def test_simulate_route():
 
         sell_amt = -1 * new_agent.get_holdings(tkn_sell)
         assert abs(sell_amt - expected_sells[i]) < 1e-5
+
+
+def test_get_slippage_dict():
+
+    def assert_slippage_matches(slippage, sell_amts_dicts, buy_sizes):
+        for route_key in sell_amts_dicts:
+            for tkn_pair in sell_amts_dicts[route_key]:
+                init_price = sell_amts_dicts[route_key][tkn_pair][0] / buy_sizes[0]
+                for i in range(len(sell_amts_dicts[route_key][tkn_pair])):
+                    sell_amt = sell_amts_dicts[route_key][tkn_pair][i]
+                    spot_sell_amt = buy_sizes[i] * init_price
+                    slip = sell_amt / spot_sell_amt - 1
+                    if slip == 0:
+                        if slippage[route_key][tkn_pair][i] != 0:
+                            raise AssertionError("Slippage doesn't match")
+                    elif abs(slippage[route_key][tkn_pair][i] - slip) / slip > 1e-14:
+                        raise AssertionError("Slippage doesn't match")
+
+    sell_amts_dicts = {
+        'route1': {('USDT', 'DOT'): [5, 10, 110]}
+    }
+    buy_sizes = [1, 2, 20]
+    slippage = get_slippage_dict(sell_amts_dicts, buy_sizes)
+    assert_slippage_matches(slippage, sell_amts_dicts, buy_sizes)
+
+    sell_amts_dicts = {
+        'route1': {
+            ('USDT', 'DOT'): [5, 10, 110],
+            ('ABC', 'DEF'): [7, 77, 777]
+        },
+        'route2': {
+            ('tkn1', 'tkn2'): [6, 12, 120]
+        }
+    }
+    buy_sizes = [1, 2, 3]
+    slippage = get_slippage_dict(sell_amts_dicts, buy_sizes)
+    assert_slippage_matches(slippage, sell_amts_dicts, buy_sizes)

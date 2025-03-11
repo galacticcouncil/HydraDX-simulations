@@ -11,7 +11,7 @@ sys.path.append(project_root)
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.apps.gigadot_modeling.utils import get_omnipool_minus_vDOT, set_up_gigaDOT_3pool, set_up_gigaDOT_2pool, \
-    create_custom_scenario, simulate_route
+    create_custom_scenario, simulate_route, get_slippage_dict
 from hydradx.apps.gigadot_modeling.display_utils import display_liquidity, display_op_and_ss
 
 # current Omnipool numbers
@@ -213,15 +213,7 @@ for scenario in routes:
 
 
 # graph slippage
-
-slippage = {}
-for scenario in routes:
-    slippage[scenario] = {}
-    for tkn_pair in [('DOT', 'vDOT'), ('2-Pool', 'DOT'), ('2-Pool', 'vDOT')]:
-        sell_amts = sell_amts_dicts[scenario][tkn_pair]
-        prices = [sell_amts[i] / buy_sizes[i] for i in range(len(sell_amts))]
-        lowest_price = prices[0]
-        slippage[scenario][tkn_pair] = [(prices[i] - lowest_price) / lowest_price for i in range(len(sell_amts))]
+slippage = get_slippage_dict(sell_amts_dicts, buy_sizes)
 
 # Define markers for better visibility
 markers = ['o', 's', '^', 'D', 'x']  # Circle, square, triangle, diamond, cross
