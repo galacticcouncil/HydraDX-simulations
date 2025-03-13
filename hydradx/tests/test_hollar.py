@@ -88,6 +88,29 @@ def test_stability_module_constructor():
         StabilityModule(liquidity, buyback_speed, bad_pools, sell_price, max_buy_price, buy_fee, native_stable)
 
 
+def test_overlapping_tokens():
+    three_pool_tokens = {'A': 1_000_000, 'HOLLAR': 1_000_000, 'B': 1_000_000}
+    three_pool = StableSwapPoolState(tokens=three_pool_tokens, amplification=1000)
+    pools = [three_pool, three_pool]
+
+    liquidity = {'A': 1_000_000, 'B': 1_000_000}
+    sell_price = 1.001
+    max_buy_price = 0.999
+    buy_fee = 0.0001
+    native_stable = 'HOLLAR'
+    usdt_buyback_speed = 1/10_000
+    usdc_buyback_speed = 1/11_000
+    buyback_speed = [usdt_buyback_speed, usdc_buyback_speed]
+    with pytest.raises(ValueError):
+        StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+
+    pool1 = StableSwapPoolState(tokens=three_pool_tokens, amplification=1000)
+    pool2 = StableSwapPoolState(tokens=three_pool_tokens, amplification=1000)
+    pools = [pool1, pool2]
+
+    StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+
+
 @given(
     ratios = st.lists(st.floats(min_value=0.01, max_value=0.1), min_size=2, max_size=2),
     buyback_speed = st.floats(min_value=1/1_000_000, max_value=1),

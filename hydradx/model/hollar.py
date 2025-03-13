@@ -30,6 +30,8 @@ class StabilityModule:
 
         if len(pools) != len(self.asset_list):
             raise ValueError("pools must have same length as asset_list")
+        if len({id(pool) for pool in pools}) != len(pools):
+            raise ValueError("pools must be unique")
         self.pools = {}
         for i, tkn in enumerate(self.asset_list):
             if tkn not in pools[i].asset_list or native_stable not in pools[i].asset_list:
