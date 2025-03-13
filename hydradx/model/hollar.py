@@ -16,6 +16,8 @@ class StabilityModule:
         assert native_stable not in liquidity  # Hollar cannot back itself
         self.liquidity = {k: v for k, v in liquidity.items()}
         self.asset_list = list(liquidity.keys())
+        self.time_step = 0
+        self.native_stable_bought = 0
 
         if isinstance(buyback_speed, list):
             if len(buyback_speed) != len(self.asset_list):
@@ -32,11 +34,13 @@ class StabilityModule:
             raise ValueError("pools must have same length as asset_list")
         if len({id(pool) for pool in pools}) != len(pools):
             raise ValueError("pools must be unique")
-        self.pools = {}
+        self.pools = {}  # references to designated stableswap pools
+        self._pool_states = {}  # copy of pool states used for calculations
         for i, tkn in enumerate(self.asset_list):
             if tkn not in pools[i].asset_list or native_stable not in pools[i].asset_list:
                 raise ValueError("pool does not have required assets")
             self.pools[tkn] = pools[i]
+            self._pool_states[tkn] = pools[i].copy()
 
         if isinstance(sell_price, list):
             self.sell_price = {tkn: price for tkn, price in zip(self.asset_list, sell_price)}
@@ -70,8 +74,14 @@ class StabilityModule:
         self.fail = error
         return self
 
+    def update(self):
+        self.time_step += 1
+        for tkn, pool in self.pools.items():
+            self._pool_states[tkn] = pool.copy()
+        self.native_stable_bought = 0
+
     def get_buy_params(self, tkn: str) -> tuple:
-        pool = self.pools[tkn]
+        pool = self._pool_states[tkn]
         imbalance = (pool.liquidity[self.native_stable] - pool.liquidity[tkn]) / 2
         max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
         sell_amt = pool.calculate_sell_from_buy(tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
@@ -80,7 +90,7 @@ class StabilityModule:
         if buy_price > self.max_buy_price[tkn] or buy_price == 0:
             return 0, 0
         max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
-        return max_buy_amt, buy_price
+        return max(max_buy_amt - self.native_stable_bought, 0), buy_price
 
     def swap(
             self,
@@ -125,6 +135,9 @@ class StabilityModule:
 
         if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction("Agent does not have enough tokens to sell")
+        # checks passed, proceed with swap
+        if tkn_sell == self.native_stable:  # trader selling HOLLAR to HSM
+            self.native_stable_bought += sell_quantity
         agent.remove(tkn_sell, sell_quantity)
         agent.add(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:

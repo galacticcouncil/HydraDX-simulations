@@ -287,11 +287,14 @@ def test_buy_hollar_from_stability_module(ratios, buyback_speed, sell_price, buy
     max_buy_price = st.floats(min_value=0.99, max_value=1),
     sell_extra = st.floats(min_value=1e-15, max_value=10),
     buy_tkn_i = st.integers(min_value=0, max_value=1),
+    n = st.integers(min_value=1, max_value=10),
 )
-def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy_tkn_i):
+def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy_tkn_i, n):
     liquidity = {'USDT': 1_000_000, 'USDC': 1_000_000}
-    usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
-    usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
+    usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100,
+                                    trade_fee=0.0001, precision=1e-8)
+    usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100,
+                                    trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
     sell_price = 1.001
     tkn_buy = list(liquidity.keys())[buy_tkn_i]
@@ -301,8 +304,10 @@ def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy
 
     max_sell_amt, buy_price = hsm.get_buy_params(tkn_buy)
     sell_amt = max_sell_amt * (1 + sell_extra)
-    agent = Agent(holdings = {tkn_sell: sell_amt})
-    hsm.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt)
+    sell_amt_n = sell_amt / n
+    agent = Agent(holdings={tkn_sell: sell_amt})
+    for i in range(n):
+        hsm.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_amt_n)
     if not hsm.fail:
         raise AssertionError("Swap should have failed")
 
@@ -380,3 +385,50 @@ def test_arb_loop_known(ratios, buyback_speed, max_buy_price, buy_tkn_i, buy_fee
     # agent should have no HOLLAR after arb
     if agent.validate_holdings('HOLLAR'):
         raise ValueError("Agent should have 0 HOLLAR holdings after arb")
+
+@given(
+    ratios = st.lists(st.floats(min_value=0.01, max_value=0.5), min_size=2, max_size=2),
+    buyback_speed = st.floats(min_value=1/1_000_000, max_value=1)
+)
+def test_swap_does_not_change_params(ratios, buyback_speed):
+    liquidity = {'USDT': mpf(1_000_000), 'USDC': mpf(1_000_000)}
+    usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * mpf(1_000_000), 'HOLLAR': mpf(1_000_000)},
+                                    amplification=100, trade_fee=0.0001, precision=1e-8)
+    usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * mpf(1_000_000), 'HOLLAR': mpf(1_000_000)},
+                                    amplification=100, trade_fee=0.0001, precision=1e-8)
+    pools = [usdt_pool, usdc_pool]
+    sell_price = 1.001
+    max_buy_price = 0.999
+    tkn_sell = 'HOLLAR'
+    buy_fee = 0.0001
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    for tkn in ['USDT', 'USDC']:
+        if tkn == 'USDT':
+            pool = usdt_pool
+        else:
+            pool = usdc_pool
+        max_buy_amt, buy_price = hsm.get_buy_params(tkn)
+        agent = Agent(enforce_holdings=False)
+        sell_quantity = max_buy_amt / 2
+        hsm.swap(agent, tkn_buy=tkn, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+        pool.swap(agent, tkn_buy=tkn_sell, tkn_sell=tkn, buy_quantity=sell_quantity)
+        if hsm.fail or pool.fail:
+            raise ValueError("Swap failed")
+        max_buy_amt2, buy_price2 = hsm.get_buy_params(tkn)
+        remaining_capacity = max_buy_amt - sell_quantity
+        if max_buy_amt2 != pytest.approx(remaining_capacity, rel=1e-20):
+            raise ValueError("Max buy amount changed")
+        if buy_price2 != buy_price:
+            raise ValueError("Buy price changed")
+        # check that update resets block
+        hsm.update()
+        if hsm.fail:
+            raise ValueError("Update failed")
+        max_buy_amt3, buy_price3 = hsm.get_buy_params(tkn)
+        if max_buy_amt3 >= max_buy_amt:
+            raise ValueError("Max buy amount should be less than before swap")
+        if max_buy_amt3 <= max_buy_amt2:
+            raise ValueError("Max buy amount should be greater than after swap but before update")
+        if buy_price3 <= buy_price:
+            raise ValueError("Buy price should be greater than before swap")
+
