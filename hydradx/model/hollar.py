@@ -2,14 +2,14 @@ from .amm.agents import Agent
 from .amm.stableswap_amm import StableSwapPoolState
 
 
-class LiquidityFacility:
+class StabilityModule:
     def __init__(
             self,
-            liquidity: dict[str: float],  # initial liquidity of facility
+            liquidity: dict[str: float],  # initial liquidity of stability module
             buyback_speed: list[float] or float,  # paramater controlling how quickly Hollar is bought back
             pools: list[StableSwapPoolState],  # pools that can be used to mint Hollar
-            sell_price: list[float] or float = 1,  # price at which facility sells Hollar
-            max_buy_price: list[float] or float = 1,  # maximum price at which facility buys Hollar
+            sell_price: list[float] or float = 1,  # price at which stability module sells Hollar
+            max_buy_price: list[float] or float = 1,  # maximum price at which stability module buys Hollar
             buy_fee: list[float] or float = 0.0001,  # fee paid to arbitrage for assisting buying back of Hollar
             native_stable: str = 'HOLLAR'  # native stablecoin name
     ):
@@ -97,7 +97,7 @@ class LiquidityFacility:
 
         if tkn_buy == self.native_stable:  # trader buying HOLLAR
             if tkn_sell not in self.asset_list:
-                return self.fail_transaction("Token not supported by facility")
+                return self.fail_transaction("Token not supported by stability module")
             if buy_quantity == 0:
                 buy_quantity = sell_quantity / self.sell_price[tkn_sell]
             elif sell_quantity == 0:
@@ -106,10 +106,10 @@ class LiquidityFacility:
             if tkn_sell != self.native_stable:
                 return self.fail_transaction("Swap must involve native stablecoin")
             if tkn_buy not in self.asset_list:
-                return self.fail_transaction("Token not supported by facility")
+                return self.fail_transaction("Token not supported by stability module")
             max_buy_amt, buy_price = self.get_buy_params(tkn_buy)
             if max_buy_amt == 0:
-                return self.fail_transaction("Liquidity facility cannot buy Hollar")
+                return self.fail_transaction("stability module cannot buy Hollar")
             elif buy_price == 0:  # should never be true
                 raise ValueError("Buy price shouldn't be 0 when max_buy_amt is nonzero")
             if buy_quantity == 0:
@@ -119,7 +119,7 @@ class LiquidityFacility:
             if sell_quantity > max_buy_amt:
                 return self.fail_transaction("Max buy amount exceeded")
             if buy_quantity > self.liquidity[tkn_buy]:
-                return self.fail_transaction("Insufficient liquidity in facility")
+                return self.fail_transaction("Insufficient liquidity in stability module")
 
         if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction("Agent does not have enough tokens to sell")
@@ -132,7 +132,7 @@ class LiquidityFacility:
 
     def arb(self, agent: Agent, tkn: str) -> None:
         if tkn not in self.asset_list:
-            raise ValueError("Token not supported by facility")
+            raise ValueError("Token not supported by stability module")
         max_buy_amt, buy_price = self.get_buy_params(tkn)
         if max_buy_amt == 0:
             return
