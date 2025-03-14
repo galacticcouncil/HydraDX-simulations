@@ -115,6 +115,8 @@ class ConstantProductPoolState(Exchange):
             buy_quantity *= 1 - trade_fee
     
         elif buy_quantity != 0:
+            if buy_quantity >= self.liquidity[tkn_buy]:
+                return self.fail_transaction('Not enough liquidity in the pool.', agent)
             # calculate input price from a given payout
             sell_quantity = buy_quantity * self.liquidity[tkn_sell] / (self.liquidity[tkn_buy] - buy_quantity)
             if math.isnan(sell_quantity):

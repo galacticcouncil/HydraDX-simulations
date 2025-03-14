@@ -3,7 +3,7 @@ import math
 from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st, settings, reproduce_failure
+from hypothesis import given, strategies as st, reproduce_failure  # , settings
 
 # from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
@@ -72,28 +72,23 @@ def test_back_and_forth_trader(omnipool: oamm.OmnipoolState, pct: float):
 @given(omnipool_reasonable_config(asset_fee=0.0, lrna_fee=0.0, token_count=3), reasonable_market(token_count=3),
        arb_precision_strategy)
 def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
-    holdings = {'LRNA': 1000000000}
-    for asset in omnipool.asset_list:
-        holdings[asset] = 1000000000
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
+    agent = Agent(enforce_holdings=False)
     external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
     external_market[omnipool.stablecoin] = 1.0
     state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
     strat = omnipool_arbitrage('omnipool', arb_precision)
 
-    old_holdings = copy.deepcopy(agent.holdings)
-
     strat.execute(state, 'agent')
-    new_holdings = state.agents['agent'].holdings
+    assert not omnipool.fail
+    new_holdings = {tkn: agent.get_holdings(tkn) for tkn in omnipool.asset_list}
 
     old_value, new_value = 0, 0
 
     # Trading should result in net zero LRNA trades
-    if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
+    if agent.get_holdings("LRNA") / omnipool.lrna_total != pytest.approx(0, abs=1e-15):
         raise
 
     for asset in omnipool.asset_list:
-        old_value += old_holdings[asset] * external_market[asset]
         new_value += new_holdings[asset] * external_market[asset]
 
         # Trading should bring pool to market price
@@ -101,8 +96,8 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
             raise
 
     # Trading should be profitable
-    if old_value > new_value:
-        if new_value != pytest.approx(old_value, rel=1e-12):
+    if 0 > new_value:
+        if new_value != pytest.approx(0, abs=1e-12):
             raise
 
 

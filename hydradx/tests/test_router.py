@@ -182,11 +182,11 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     router = OmnipoolRouter(exchanges)
     omnipool2 = omnipool.copy()
     stablepool2_copy = stablepool2.copy()
-    agent1 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
-    agent2 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
+    agent1 = Agent(enforce_holdings=False)
+    agent2 = Agent(enforce_holdings=False)
     trade_size = trade_size_mult * min(assets[4], assets[2])
 
-    buy_quantity = 1000
+    buy_quantity = 100
 
     # test buy
     router.swap_route(agent1, tkn_sell="DOT", tkn_buy="USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2",
@@ -253,18 +253,9 @@ def test_swap_stableswap2(assets: list[float]):
     stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
     exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
     router = OmnipoolRouter(exchanges)
-    trade_size = 1000
+    trade_size = 100
 
-    # test buy
-    # calculate sell_amount to give agent enough holdings
-    temp_agent = Agent(holdings={sell_tkn: 10_000_000})
-    temp_router, temp_agent = router.simulate_swap_route(temp_agent, buy_tkn, sell_tkn, buy_quantity=trade_size,
-                                                         buy_pool_id="stablepool2", sell_pool_id="stablepool")
-    if temp_router.fail:
-        raise ValueError(f"trade failed")
-    sell_amt = temp_agent.initial_holdings[sell_tkn] - temp_agent.holdings[sell_tkn]
-    init_holdings = {sell_tkn: sell_amt * 2}
-    agent1 = Agent(holdings={sell_tkn: sell_amt * 2})
+    agent1 = Agent(enforce_holdings=False)
 
     # try buy
     router.swap_route(agent1, buy_tkn, sell_tkn, buy_quantity=trade_size, buy_pool_id="stablepool2",
@@ -272,37 +263,44 @@ def test_swap_stableswap2(assets: list[float]):
     if router.fail:
         raise ValueError(f"trade failed")
 
-    for tkn in list(agent1.holdings.keys()) + list(init_holdings.keys()):
+    assets = agent1.holdings.keys()
+    if buy_tkn not in assets:
+        assets.append(buy_tkn)
+    if sell_tkn not in assets:
+        assets.append(sell_tkn)
+
+    for tkn in assets:
+        holdings = agent1.get_holdings(tkn)
         if tkn == buy_tkn:
-            if agent1.holdings[tkn] != pytest.approx(trade_size, rel=1e-12):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn] + trade_size}")
+            if holdings != pytest.approx(trade_size, rel=1e-12):
+                raise ValueError(f"agent1 holdings {holdings} != {trade_size}")
         elif tkn == sell_tkn:
-            if agent1.holdings[tkn] >= init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} >= {init_holdings[tkn]}")
-        else:
-            if tkn not in init_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
-            elif tkn in agent1.holdings and tkn in init_holdings and agent1.holdings[tkn] != init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn]}")
+            if holdings >= 0:
+                raise ValueError(f"agent1 holdings {holdings} >= 0")
+        elif holdings != 0:
+                raise ValueError(f"agent1 holdings {holdings} != 0")
 
     # test sell
-    agent1 = Agent(holdings={sell_tkn: trade_size})
+    agent1 = Agent(enforce_holdings=False)
     router.swap_route(agent1, tkn_sell="stable1", tkn_buy="USDT", sell_quantity=trade_size, buy_pool_id="stablepool2",
                       sell_pool_id="stablepool")
     if router.fail:
         raise ValueError(f"trade failed")
-    for tkn in list(agent1.holdings.keys()) + list(agent1.initial_holdings.keys()):
+    assets = agent1.holdings.keys()
+    if buy_tkn not in assets:
+        assets.append(buy_tkn)
+    if sell_tkn not in assets:
+        assets.append(sell_tkn)
+    for tkn in assets:
+        holdings = agent1.get_holdings(tkn)
         if tkn == buy_tkn:
-            if agent1.holdings[tkn] <= 0:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} <= 0")
+            if holdings <= 0:
+                raise ValueError(f"agent1 holdings {holdings} <= 0")
         elif tkn == sell_tkn:
-            if agent1.holdings[tkn] + trade_size != agent1.initial_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn] + trade_size} != {agent1.initial_holdings[tkn]}")
-        else:
-            if tkn not in agent1.initial_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
-            elif tkn in agent1.holdings and tkn in agent1.initial_holdings and agent1.holdings[tkn] != agent1.initial_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {agent1.initial_holdings[tkn]}")
+            if holdings + trade_size != 0:
+                raise ValueError(f"agent1 holdings {holdings + trade_size} != 0")
+        elif holdings != 0:
+            raise ValueError(f"agent1 holdings {holdings} != 0")
 
 
 def test_swap():

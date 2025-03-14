@@ -156,7 +156,7 @@ def test_liquidate_not_liquidatable():
         raise
     if agent.holdings["USDT"] != liquidate_amt:
         raise
-    if agent.is_holding("DOT"):
+    if agent.validate_holdings("DOT"):
         raise
     if cdp.collateral_amt != collat_amt:
         raise
@@ -282,7 +282,7 @@ def test_borrow():
     mm.borrow(agent, borrow_asset, collateral_asset, borrow_amt, collat_amt)
     if agent.holdings[borrow_asset] != borrow_amt:
         raise
-    if agent.is_holding(collateral_asset):
+    if agent.validate_holdings(collateral_asset):
         raise
     if len(mm.cdps) != 1:
         raise
