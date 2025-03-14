@@ -1,186 +1,313 @@
 import copy
 
+from sympy import andre
+
 from .agents import Agent
+from .oracle import Oracle
 
 
 class CDP:
     def __init__(
             self,
-            debt_asset,
-            collateral_asset,
-            debt_amt,
-            collateral_amt,
+            debt_assets: dict[str: float],
+            collateral_assets: dict[str: float],
+            liquidation_threshold: float = None,
             agent=None
     ):
-        self.debt_asset = debt_asset
-        self.collateral_asset = collateral_asset
-        self.debt_amt = debt_amt
-        self.collateral_amt = collateral_amt
+        self.debt = debt_assets
+        self.collateral_assets = collateral_assets
+        self.asset_list = list(debt_assets.keys() | collateral_assets.keys())
+        self.liquidation_threshold = liquidation_threshold
         if agent is not None:
             self.agent = agent
         else:
             self.agent = Agent()
 
     def __repr__(self):
-        return f"CDP({self.debt_asset}, {self.collateral_asset}, {self.debt_amt}, {self.collateral_amt})"
+        newline = '\n'
+        return (
+            f"CDP("
+            f"    debt:"
+            f"{newline.join([f"        {tkn}: {self.debt[tkn]}" for tkn in self.debt.keys()])}\n\n"
+            f"    collateral:"
+            f"{newline.join([f"        {tkn}: {self.collateral_assets[tkn]}" for tkn in self.collateral_assets.keys()])}\n\n"
+        )
 
     def copy(self):
-        return CDP(self.debt_asset, self.collateral_asset, self.debt_amt, self.collateral_amt)
+        return CDP(
+            self.debt,
+            self.collateral_assets,
+            self.liquidation_threshold
+        )
 
     def validate(self) -> bool:
-        if self.debt_amt < 0 or self.collateral_amt < 0:
+        if min(self.debt.values) < 0 or min(self.collateral_assets.values()) < 0:
             return False
-        if self.debt_asset == self.collateral_asset:
-            return False
+        # if sorted(list(self.debt_assets.keys())) == sorted(list(self.collateral_assets.keys)):
+        #     return False
         return True
+
+
+class MoneyMarketAsset:
+    def __init__(
+            self,
+            name: str,
+            liquidity: float,
+            liquidation_bonus: float,
+            liquidation_threshold: float,
+            ltv: float,
+            emode_liquidation_bonus: float = 0,
+            emode_liquidation_threshold: float = 0,
+            emode_ltv: float = 0,
+            emode_label: str = '',
+    ):
+        self.name = name
+        self.liquidity = liquidity
+        self.liquidation_bonus = liquidation_bonus
+        self.liquidation_threshold = liquidation_threshold
+        self.ltv = ltv
+        self.emode_liquidation_bonus = emode_liquidation_bonus
+        self.emode_liquidation_threshold = emode_liquidation_threshold
+        self.emode_ltv = emode_ltv
+        self.emode_label = emode_label
 
 
 class MoneyMarket:
     def __init__(
             self,
-            liquidity: dict[str: float],
-            oracles: dict,
-            liquidation_threshold: float or dict[str: float] = 0.7,
-            min_ltv: float or dict[str: float] = 0.6,
-            liquidation_penalty: float or dict[str: float] = 0.01,
+            oracle: Oracle,
+            assets: list[MoneyMarketAsset],
             cdps: list = None,
-            full_liquidation_threshold: float or dict[str: float] = None,
-            partial_liquidation_pct: float = 1.0
+            full_liquidation_threshold: float = 0.95,
+            close_factor: float = 0.5
     ):
-        self.liquidity = liquidity
-        if isinstance(liquidation_threshold, dict):
-            self.liquidation_threshold = liquidation_threshold
-        else:
-            self.liquidation_threshold = {asset: liquidation_threshold for asset in liquidity}
-        self.min_ltv = min_ltv
-        if isinstance(liquidation_penalty, dict):
-            self.liquidation_penalty = liquidation_penalty
-        else:
-            self.liquidation_penalty = {asset: liquidation_penalty for asset in liquidity}
+        self.liquidity = {
+            asset.name: asset.liquidity
+            for asset in assets
+        }
+        self.borrowed = {asset: 0 for asset in self.liquidity}
+        self.asset_list = list(self.liquidity.keys())
 
-        if full_liquidation_threshold is None:
-            self.full_liquidation_threshold = {key: value for key, value in self.liquidation_threshold.items()}
-        elif isinstance(full_liquidation_threshold, dict):
-            self.full_liquidation_threshold = full_liquidation_threshold
-        else:
-            self.full_liquidation_threshold = {asset: full_liquidation_threshold for asset in liquidity}
+        self.ltv = {
+            (asset1.name, asset2.name):
+            asset1.emode_ltv if asset1.emode_label == asset2.emode_label else asset1.emode_ltv
+            for asset1 in assets
+            for asset2 in assets if asset2 != asset1
+        }
+        self.liquidation_bonus = {
+            (asset1.name, asset2.name):
+            asset1.emode_liquidation_bonus if asset1.emode_label == asset2.emode_label else asset1.liquidation_bonus
+            for asset1 in assets
+            for asset2 in assets if asset2 != asset1
+        }
+        self.liquidation_threshold = {
+            (asset1.name, asset2.name):
+            asset1.emode_liquidation_threshold if asset1.emode_label == asset2.emode_label else asset1.liquidation_threshold
+            for asset1 in assets
+            for asset2 in assets if asset2 != asset1
+        }
 
-        self.oracles = oracles  # MoneyMarket should never mutate the oracles
-        self.cdps = [] if cdps is None else cdps
-        self.borrowed = {asset: 0 for asset in liquidity}
+        self.oracle = oracle  # MoneyMarket should never mutate the oracles
+        self.cdps: list[CDP] = [] if cdps is None else cdps
         for cdp in self.cdps:
-            self.borrowed[cdp.debt_asset] += cdp.debt_amt
+            if not cdp.liquidation_threshold:
+                cdp.liquidation_threshold = self.get_liquidation_threshold(cdp)
 
-        self.partial_liquidation_pct = partial_liquidation_pct
+        for cdp in self.cdps:
+            for tkn in cdp.debt:
+                self.borrowed[tkn] += cdp.debt[tkn]
+
+        self.partial_liquidation_pct = close_factor
         if not self.validate():
             raise ValueError("money_market initialization failed.")
+        self.full_liquidation_threshold = full_liquidation_threshold
+        self.fail = ''
 
     def __repr__(self):
-        return f"money_market({self.liquidity}, {self.liquidation_threshold}, {self.liquidation_penalty})"
+        return f"money_market({self.liquidity}, {self.liquidation_threshold}, {self.liquidation_bonus})"
 
     def copy(self):
         return copy.deepcopy(self)
 
-    def get_oracle_price(self, tkn: str, numeraire: str):
-        if (tkn, numeraire) in self.oracles:
-            return self.oracles[(tkn, numeraire)]
-        elif (numeraire, tkn) in self.oracles:
-            return 1 / self.oracles[(numeraire, tkn)]
+    def fail_transaction(self, fail: str):
+        self.fail = fail
+        return self
+
+    def get_oracle_price(self, tkn: str):
+        if self.oracle.price[tkn] is not None:
+            return self.oracle.price[tkn]
         else:
             raise ValueError("Oracle price not found.")
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
         return [cdp for cdp in self.cdps if (
-                (collateral_tkn is None or cdp.collateral_asset == collateral_tkn) and
-                (debt_tkn is None or cdp.debt_asset == debt_tkn))]
+                (collateral_tkn is None or collateral_tkn in cdp.collateral_assets) and
+                (debt_tkn is None or debt_tkn in cdp.debt))]
+
+    def get_health_factor(self, cdp: CDP) -> float:
+        prices = {tkn: self.get_oracle_price(tkn) for tkn in cdp.collateral_assets.keys() | cdp.debt.keys()}
+        health_factor = (
+            sum([
+                cdp.collateral_assets[c_tkn] * prices[c_tkn]
+                for c_tkn in cdp.collateral_assets
+            ]) * self.get_liquidation_threshold(cdp)
+            / sum([
+            cdp.debt[d_tkn] * prices[d_tkn]
+                for d_tkn in cdp.debt
+            ])
+        )
+        return health_factor
+
+    def get_ltv(self, collateral_tkn: str, debt_tkn: str) -> float:
+        return self.ltv[(collateral_tkn, debt_tkn)] if (collateral_tkn, debt_tkn) in self.ltv else 0
+
+    def get_liquidation_threshold(self, cdp: CDP) -> float:
+        return self.liquidation_threshold[cdp.collateral_assets]
+
+    def get_liquidation_bonus(self, collateral_tkn: str, debt_tkn: str) -> float:
+        return self.liquidation_bonus[(collateral_tkn, debt_tkn)] if (collateral_tkn, debt_tkn) in self.liquidation_bonus else 0
 
     def is_liquidatable(self, cdp: CDP) -> bool:
-        if cdp.collateral_amt == 0:
+        if sum(cdp.collateral_assets.values()) == 0:
             return False
-        price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
-        return cdp.debt_amt / (cdp.collateral_amt * price) > self.liquidation_threshold[cdp.collateral_asset]
+        health_factor = self.get_health_factor(cdp)
+        return health_factor < 1
 
     def is_fully_liquidatable(self, cdp: CDP) -> bool:
-        price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
-        return cdp.debt_amt / (cdp.collateral_amt * price) > self.full_liquidation_threshold[cdp.collateral_asset]
+        if sum(cdp.collateral_assets.values()) == 0:
+            return False
+        health_factor = self.get_health_factor(cdp)
+        return health_factor < self.full_liquidation_threshold
 
-    def _calculate_debt(self, cdp: CDP, delta_debt: float) -> float:
-        if not self.is_liquidatable(cdp):
-            return 0
-        max_debt = cdp.debt_amt * (1 if self.is_fully_liquidatable(cdp) else self.partial_liquidation_pct)
-        return min(delta_debt, max_debt)
-
-    def get_liquidate_collateral_amt(self, cdp: CDP, delta_debt: float) -> float:
-        conversion = (1 + self.liquidation_penalty[cdp.collateral_asset]) / self.get_oracle_price(cdp.collateral_asset,
-                                                                                                  cdp.debt_asset)
-        actual_debt_liq = self._calculate_debt(cdp, delta_debt)
-        return actual_debt_liq * conversion
-
-    def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
+    def borrow(self, borrow_asset: str, collateral_asset: str, borrow_amt: float,
                collateral_amt: float) -> None:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
-        assert agent.is_holding(collateral_asset, collateral_amt)
-        price = self.get_oracle_price(collateral_asset, borrow_asset)
-        assert price * collateral_amt * self.min_ltv >= borrow_amt
+        # assert agent.is_holding(collateral_asset, collateral_amt)
+        price = self.get_oracle_price(collateral_asset) / self.get_oracle_price(borrow_asset)
+        assert price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset) >= borrow_amt
         self.borrowed[borrow_asset] += borrow_amt
-        if borrow_asset not in agent.holdings:
-            agent.holdings[borrow_asset] = 0
-        agent.holdings[borrow_asset] += borrow_amt
-        agent.holdings[collateral_asset] -= collateral_amt
-        cdp = CDP(borrow_asset, collateral_asset, borrow_amt, collateral_amt, agent)
+        # if borrow_asset not in agent.holdings:
+        #     agent.holdings[borrow_asset] = 0
+        # agent.holdings[borrow_asset] += borrow_amt
+        # agent.holdings[collateral_asset] -= collateral_amt
+        cdp = CDP({borrow_asset: borrow_amt}, {collateral_asset: collateral_amt})
         self.cdps.append(cdp)
 
     def repay(self, cdp_i: int) -> None:
         cdp = self.cdps[cdp_i]
-        agent = self.cdps[cdp_i].agent
-        assert agent.is_holding(cdp.debt_asset, cdp.debt_amt)
-        agent.holdings[cdp.debt_asset] -= cdp.debt_amt
-        self.borrowed[cdp.debt_asset] -= cdp.debt_amt
-        if cdp.collateral_asset not in agent.holdings:
-            agent.holdings[cdp.collateral_asset] = 0
-        agent.holdings[cdp.collateral_asset] += cdp.collateral_amt
+        # agent = self.cdps[cdp_i].agent
+        # assert agent.is_holding(cdp.debt_assets, cdp.debt_amt)
+        # agent.holdings[cdp.debt_assets] -= cdp.debt_amt
+        for tkn in cdp.debt:
+            self.borrowed[tkn] -= cdp.debt[tkn]
+        # if cdp.collateral_assets not in agent.holdings:
+        #     agent.holdings[cdp.collateral_assets] = 0
+        # agent.holdings[cdp.collateral_assets] += cdp.collateral_amt
         self.cdps.pop(cdp_i)
 
-    def liquidate(self, cdp: CDP, agent: Agent, debt_amt: float) -> None:
+    def liquidate(self, cdp: CDP, agent: Agent) -> None:
         if not self.is_liquidatable(cdp):
             return
-        elif not self.is_fully_liquidatable(cdp) and debt_amt / cdp.debt_amt > self.partial_liquidation_pct:
-            return
-        price = self.get_oracle_price(cdp.collateral_asset, cdp.debt_asset)
-        collateral_amt = self.get_liquidate_collateral_amt(cdp, debt_amt)
-        if debt_amt > cdp.debt_amt or debt_amt > agent.holdings[cdp.debt_asset]:
-            raise ValueError("Debt amount exceeds CDP debt or agent holdings.")
-        if collateral_amt > cdp.collateral_amt:
-            real_debt_amt = price * cdp.collateral_amt / (1 + self.liquidation_penalty[cdp.collateral_asset])
-            real_collat_amt = cdp.collateral_amt
+
+        prices = {tkn: self.get_oracle_price(tkn) for tkn in cdp.collateral_assets.keys() | cdp.debt.keys()}
+
+        total_debt_value = sum([
+            prices[d_tkn] * cdp.debt[d_tkn]
+            for d_tkn in cdp.debt
+        ])
+
+        if self.is_fully_liquidatable(cdp):
+            liquidation_amount = total_debt_value
         else:
-            real_debt_amt = debt_amt
-            real_collat_amt = collateral_amt
-        cdp.debt_amt -= real_debt_amt
-        self.borrowed[cdp.debt_asset] -= real_debt_amt
-        agent.holdings[cdp.debt_asset] -= real_debt_amt
-        cdp.collateral_amt -= real_collat_amt
-        if cdp.collateral_asset not in agent.holdings:
-            agent.holdings[cdp.collateral_asset] = 0
-        agent.holdings[cdp.collateral_asset] += real_collat_amt
+            liquidation_amount = self.partial_liquidation_pct * total_debt_value
+
+        liquidation_amount = min(liquidation_amount, total_debt_value)
+
+        # Calculate debt repayment amounts proportionally
+        debt_repayments = {}
+        remaining_liquidation_amount = liquidation_amount
+        for d_tkn, d_amt in cdp.debt.items():
+            repayment_pct = min(1.0, remaining_liquidation_amount / total_debt_value)
+            repayment_amt = d_amt * repayment_pct
+
+            debt_repayments[d_tkn] = repayment_amt
+            remaining_liquidation_amount -= prices[d_tkn] * repayment_amt
+
+        # Prioritize collateral with the highest liquidation bonuses
+        collateral_claims = {}
+        remaining_collateral_value = liquidation_amount
+
+        for c_tkn, c_amt in cdp.collateral_assets.items():
+            if remaining_collateral_value <= 0:
+                break
+
+            best_bonus = 0
+            best_debt_tkn = None
+            for d_tkn in cdp.debt.keys():
+                bonus = self.get_liquidation_bonus(c_tkn, d_tkn)
+                if bonus > best_bonus:
+                    best_bonus = bonus
+                    best_debt_tkn = d_tkn
+
+            if best_debt_tkn is None:
+                continue
+
+            claimable_value = prices[c_tkn] * c_amt
+            claim_value = min(claimable_value, remaining_collateral_value * (1 + best_bonus))
+            claim_amt = claim_value / prices[c_tkn]
+            remaining_collateral_value -= claim_value / (1 + best_bonus)
+
+            collateral_claims[c_tkn] = claim_amt
+
+        # Execute liquidation
+        for d_tkn, d_repay in debt_repayments.items():
+            cdp.debt[d_tkn] -= d_repay
+            agent.holdings[d_tkn] = agent.holdings.get(d_tkn, 0) - d_repay
+            self.liquidity[d_tkn] += d_repay
+
+        for c_tkn, c_claim in collateral_claims.items():
+            cdp.collateral_assets[c_tkn] -= c_claim
+            agent.holdings[c_tkn] = agent.holdings.get(c_tkn, 0) + c_claim
+            self.liquidity[c_tkn] -= c_claim
+
+        # Remove cdp if all debt is repaid
+        if sum(cdp.debt.values()) <= 0:
+            self.cdps.remove(cdp)
 
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
         if self.partial_liquidation_pct < 0 or self.partial_liquidation_pct > 1:
             return False
         for cdp in self.cdps:
-            cdp_borrowed[cdp.debt_asset] += cdp.debt_amt
+            for tkn in cdp.debt:
+                if tkn not in self.liquidity:
+                    return False
+                if cdp.debt[tkn] < 0:
+                    return False
+                if cdp.debt[tkn] > self.liquidity[tkn]:
+                    return False
+                cdp_borrowed[tkn] += cdp.debt[tkn]
         for asset in self.liquidity:
             if asset not in self.borrowed:
                 return False
             if asset in cdp_borrowed and self.borrowed[asset] != cdp_borrowed[asset]:
                 return False
+            for asset2 in [asset2 for asset2 in self.liquidity if asset2 != asset]:
+                if (asset, asset2) not in self.ltv:
+                    return False
+                if (asset, asset2) not in self.liquidation_bonus:
+                    return False
+                if (asset, asset2) not in self.liquidation_threshold:
+                    return False
         for k in self.liquidation_threshold:
-            if k not in self.full_liquidation_threshold:
+            # if k not in self.full_liquidation_threshold:
+            #     return False
+            if self.liquidation_threshold[k] > self.full_liquidation_threshold:
                 return False
-            if self.liquidation_threshold[k] > self.full_liquidation_threshold[k]:
-                return False
-        return len(self.liquidity) == len(self.borrowed) == len(cdp_borrowed) == len(self.liquidation_threshold) == len(
-            self.liquidation_penalty) == len(self.full_liquidation_threshold)
+        if not (len(self.liquidity) == len(self.borrowed) == len(cdp_borrowed) ):
+            return False
+        if not(len(self.liquidation_threshold) == len(self.liquidation_bonus) == len(self.ltv)):
+            return False
+        return True
