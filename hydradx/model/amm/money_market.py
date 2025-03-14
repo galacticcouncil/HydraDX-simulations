@@ -52,6 +52,7 @@ class MoneyMarketAsset:
     def __init__(
             self,
             name: str,
+            price: float,
             liquidity: float,
             liquidation_bonus: float,
             liquidation_threshold: float,
@@ -62,6 +63,7 @@ class MoneyMarketAsset:
             emode_label: str = '',
     ):
         self.name = name
+        self.price = price
         self.liquidity = liquidity
         self.liquidation_bonus = liquidation_bonus
         self.liquidation_threshold = liquidation_threshold
@@ -75,10 +77,9 @@ class MoneyMarketAsset:
 class MoneyMarket:
     def __init__(
             self,
-            oracle: Oracle,
             assets: list[MoneyMarketAsset],
             cdps: list = None,
-            full_liquidation_threshold: float = 0.95,
+            full_liquidation_threshold: float = 0.95,  # this should maybe be per-asset or per-asset-pair
             close_factor: float = 0.5
     ):
         self.liquidity = {
@@ -87,6 +88,10 @@ class MoneyMarket:
         }
         self.borrowed = {asset: 0 for asset in self.liquidity}
         self.asset_list = list(self.liquidity.keys())
+        self.prices = {
+            asset.name: asset.price
+            for asset in assets
+        }  # MoneyMarket should never mutate the oracles
 
         self.ltv = {
             (asset1.name, asset2.name):
@@ -107,7 +112,6 @@ class MoneyMarket:
             for asset2 in assets if asset2 != asset1
         }
 
-        self.oracle = oracle  # MoneyMarket should never mutate the oracles
         self.cdps: list[CDP] = [] if cdps is None else cdps
         for cdp in self.cdps:
             if not cdp.liquidation_threshold:
@@ -134,8 +138,8 @@ class MoneyMarket:
         return self
 
     def get_oracle_price(self, tkn: str):
-        if self.oracle.price[tkn] is not None:
-            return self.oracle.price[tkn]
+        if self.prices[tkn] is not None:
+            return self.prices[tkn]
         else:
             raise ValueError("Oracle price not found.")
 
