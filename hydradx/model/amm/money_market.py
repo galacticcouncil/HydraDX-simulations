@@ -180,7 +180,113 @@ class MoneyMarket:
         """Get the liquidation threshold for a collateral-debt asset pair."""
         return self.liquidation_threshold.get((collateral_asset, debt_asset), 0)
 
-        def borrow(self, borrow_asset: str, collateral_asset: str, borrow_amt: float,
+    def cdp_liquidation_threshold(self, cdp: CDP) -> float:
+        """
+        Calculate the liquidation threshold for a CDP with multiple assets.
+
+        Args:
+            cdp: A CDP instance with collateral and debt assets
+
+        Returns:
+            float: The calculated liquidation threshold as a decimal (0.0-1.0)
+        """
+        # Calculate all asset values in market reference currency
+        collateral_values = {}
+        debt_values = {}
+
+        # Process collateral assets
+        for asset_name, balance in cdp.collateral.items():
+            if balance <= 0:
+                continue
+
+            price = self.prices[asset_name]
+            value = balance * price
+            collateral_values[asset_name] = {"amount": balance, "value": value}
+
+        # Process debt assets
+        for asset_name, debt in cdp.debt.items():
+            if debt <= 0:
+                continue
+
+            price = self.prices[asset_name]
+            value = debt * price
+            debt_values[asset_name] = {"amount": debt, "value": value}
+
+        # Check for self-borrowing (same asset used as both collateral and debt)
+        self_borrowing_assets = [
+            asset for asset in cdp.asset_list
+            if asset in cdp.collateral and asset in cdp.debt
+               and cdp.collateral.get(asset, 0) > 0 and cdp.debt.get(asset, 0) > 0
+        ]
+
+        if self_borrowing_assets:
+            # For self-borrowing, use any threshold involving this asset as collateral
+            asset = self_borrowing_assets[0]
+            for other_asset in self.asset_list:
+                if other_asset != asset:
+                    threshold = self.get_liquidation_threshold(asset, other_asset)
+                    if threshold > 0:
+                        return threshold
+            return 0.7  # Default if not found
+
+        # Match each debt asset with the best collateral asset (highest liquidation threshold)
+        matches = []
+        remaining_collateral = {k: {"amount": v["amount"], "value": v["value"]} for k, v in collateral_values.items()}
+
+        # Process each debt asset
+        for debt_asset, debt_info in debt_values.items():
+            debt_value = debt_info["value"]
+
+            # Find the best collateral assets for this debt based on liquidation threshold
+            collateral_options = []
+
+            for collateral_asset in remaining_collateral:
+                if remaining_collateral[collateral_asset]["value"] > 0:
+                    # Get the threshold between these specific assets
+                    threshold = self.get_liquidation_threshold(collateral_asset, debt_asset)
+
+                    collateral_options.append({
+                        "asset": collateral_asset,
+                        "threshold": threshold
+                    })
+
+            # Sort collateral options by threshold (highest first)
+            collateral_options.sort(key=lambda x: x["threshold"], reverse=True)
+
+            # Match debt with best collateral options
+            debt_remaining = debt_value
+
+            for option in collateral_options:
+                collateral_asset = option["asset"]
+                threshold = option["threshold"]
+
+                available_collateral = remaining_collateral[collateral_asset]["value"]
+                match_amount = min(available_collateral, debt_remaining)
+
+                if match_amount > 0:
+                    matches.append({
+                        "value": match_amount,
+                        "threshold": threshold
+                    })
+
+                    remaining_collateral[collateral_asset]["value"] -= match_amount
+                    debt_remaining -= match_amount
+
+                    if debt_remaining <= 0:
+                        break
+
+        # Calculate weighted average of thresholds
+        total_matched_value = sum(match["value"] for match in matches)
+
+        if total_matched_value == 0:
+            return 0  # Edge case: no collateral or no debt
+
+        weighted_sum = sum(match["value"] * match["threshold"] for match in matches)
+        weighted_threshold = weighted_sum / total_matched_value
+
+        return weighted_threshold
+
+    def borrow(self, borrow_asset: str, collateral_asset: str, borrow_amt: float,
                collateral_amt: float) -> None:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
