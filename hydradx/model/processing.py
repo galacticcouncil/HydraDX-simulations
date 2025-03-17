@@ -5,7 +5,6 @@ import json
 import os
 import time
 from csv import reader
-from pprint import pprint
 from zipfile import ZipFile
 
 import requests
@@ -14,6 +13,7 @@ from hydradxapi import HydraDX
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
+from .amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
 from .amm.omnipool_amm import OmnipoolState
 from .amm.stableswap_amm import StableSwapPoolState
 from .amm.omnipool_router import OmnipoolRouter
@@ -928,3 +928,181 @@ def distribute_value(num_positions, total_value, concentration = 0):
     total = sum(positions)
     return [p * total_value / total for p in positions]
 
+
+def get_money_market():
+    from substrateinterface import SubstrateInterface
+    from .abi.pool_address_provider import POOL_ADDRESS_PROVIDER_ABI
+    from .abi.ui_pool_data_provider import UI_POOL_DATA_PROVIDER_ABI, UI_POOL_DATA_PROVIDER_ADDRESS
+
+    # --- Configuration ---
+    RPC_URL = "wss://rpc.hydradx.cloud"
+    POOL_ADDRESS_PROVIDER_ADDRESS = "0xf3Ba4D1b50f78301BDD7EAEa9B67822A15FCA691"
+    BORROWERS_API_ENDPOINT = "https://omniwatch.play.hydration.cloud/api/borrowers/by-health"
+
+    class CustomPoaMiddleware:
+        def __init__(self, w3):
+            self.w3 = w3
+
+        def wrap_make_request(self, make_request):
+            def middleware(method, params):
+                response = make_request(method, params)
+                result = response.get('result')
+                if result and isinstance(result, dict) and 'extraData' in result:
+                    # Just ignore extraData validation issues
+                    pass
+                return response
+
+            return middleware
+
+    def substrate_to_checksum(substrate_address):
+        """Converts a Substrate address to an Ethereum checksum address, or returns input if already checksummed"""
+        if substrate_address[:2] == '0x':
+            try:
+                return Web3.to_checksum_address(substrate_address)  # handles hex and checksum
+            except:
+                return None  # Handles invalid hex.
+        try:
+            # Use substrateinterface to directly convert to an Ethereum address
+            substrate = SubstrateInterface(url="wss://rpc.hydradx.cloud")
+            # Use decode_ss58 to get the public key in hex format
+            public_key_hex = substrate.ss58_decode(substrate_address)
+
+            # Create Ethereum address from the public key
+            address = '0x' + public_key_hex[2:]  # Correctly skip the first byte (0x2a or similar)
+
+            return Web3.to_checksum_address(address)
+
+        except Exception as e:
+            print(f"Error converting address {substrate_address}: {e}")
+            return None
+
+    from web3 import Web3, LegacyWebSocketProvider
+
+    provider = LegacyWebSocketProvider(RPC_URL)
+    w3 = Web3(provider)
+    w3.middleware_onion.add(CustomPoaMiddleware)
+    if not w3.is_connected():
+        raise Exception("Failed to connect to RPC endpoint.")
+
+    address_provider_contract = w3.eth.contract(address=Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+                                                abi=POOL_ADDRESS_PROVIDER_ABI)
+    pool_address = address_provider_contract.functions.getPool().call()
+    pool_address = substrate_to_checksum(pool_address)  # Convert the pool address
+    print(f"Pool Address: {pool_address}")
+    data_provider_contract = w3.eth.contract(address=UI_POOL_DATA_PROVIDER_ADDRESS, abi=UI_POOL_DATA_PROVIDER_ABI)
+
+    fields = [entry['name'] for entry in UI_POOL_DATA_PROVIDER_ABI[4]['outputs'][0]['components']]
+
+    try:
+        raw_data = data_provider_contract.functions.getReservesData(
+            Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+            # reserves_list
+        ).call()
+        reserves_data = {
+            tkn[2]: {
+                fields[i]: tkn[i]
+                for i in range(len(fields))
+            }
+            for tkn in raw_data[0]
+        }
+        # correct decimals for python
+        for tkn in reserves_data:
+            reserves_data[tkn]['baseLTVasCollateral'] /= 10000
+            reserves_data[tkn]['reserveLiquidationThreshold'] /= 10000
+            reserves_data[tkn]['reserveLiquidationBonus'] /= 10000
+            reserves_data[tkn]['reserveFactor'] /= 10000
+            reserves_data[tkn]['eModeLtv'] /= 10000
+            reserves_data[tkn]['eModeLiquidationThreshold'] /= 10000
+            reserves_data[tkn]['eModeLiquidationBonus'] /= 10000
+            reserves_data[tkn]['liquidityIndex'] /= 1e27
+            reserves_data[tkn]['variableBorrowIndex'] /= 1e27
+            reserves_data[tkn]['priceInMarketReferenceCurrency'] /= 1e8
+
+    except Exception as e:
+        print(f"Error getting reserve list: {e}")
+        reserves_data = {}
+        return None
+
+    borrowers = []
+
+    try:
+        response = requests.get(BORROWERS_API_ENDPOINT)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        borrowers_data = response.json()["borrowers"]
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching borrowers from API: {e}")
+
+    for borrower_entry in borrowers_data:
+        borrower_info = borrower_entry[1]
+        borrower_address = borrower_entry[0]  # borrower_info["account"]
+        asset_map = {reserves_data[tkn]['underlyingAsset']: tkn for tkn in reserves_data}
+
+        # Convert to checksummed address *before* passing to Web3.py
+        checksummed_borrower_address = substrate_to_checksum(borrower_address)
+        user_config = data_provider_contract.functions.getUserReservesData(
+            Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+            checksummed_borrower_address
+        ).call()
+        borrowers.append({
+            "borrower": checksummed_borrower_address,  # Store the checksummed address
+            "config": {
+                'assets': {
+                    asset_map[tkn[0]]: {
+                        # "underlyingAsset": tkn[0],
+                        "balance": (
+                            tkn[1] * reserves_data[asset_map[tkn[0]]]['liquidityIndex']
+                            / 10 ** reserves_data[asset_map[tkn[0]]]['decimals']
+                        ),
+                        # "usageAsCollateralEnabledOnUser": tkn[2],
+                        # "stableBorrowRate": tkn[3],
+                        "debt": (
+                            tkn[4] * reserves_data[asset_map[tkn[0]]]['variableBorrowIndex']
+                            / 10 ** reserves_data[asset_map[tkn[0]]]['decimals']
+                        ),
+                        # "principalStableDebt": tkn[5] / 10 ** reserves_data[asset_map[tkn[0]]]['decimals'],
+                        # "stableBorrowLastUpdateTimestamp": tkn[6],
+                    }
+                    for tkn in user_config[0]
+                },
+                'unknown number': user_config[1]
+            },
+            "totalCollateralBase": borrower_info["totalCollateralBase"],
+            "totalDebtBase": borrower_info["totalDebtBase"],
+            "healthFactor": borrower_info["healthFactor"],
+            "availableBorrowsBase": borrower_info["availableBorrowsBase"],
+            "currentLiquidationThreshold": borrower_info["currentLiquidationThreshold"],
+            "ltv": borrower_info["ltv"],
+            "updated": borrower_info["updated"],
+            "account": borrower_info["account"],
+            # "pool": borrower_info["pool"]
+        })
+
+
+    mm = MoneyMarket(
+        assets=[MoneyMarketAsset(
+            name=tkn,
+            price=reserves_data[tkn]['priceInMarketReferenceCurrency'],
+            liquidity=reserves_data[tkn]['availableLiquidity'],
+            liquidation_bonus=reserves_data[tkn]['reserveLiquidationBonus'] - 1,
+            liquidation_threshold=reserves_data[tkn]['reserveLiquidationThreshold'],
+            ltv=reserves_data[tkn]['baseLTVasCollateral'],
+            emode_liquidation_bonus=reserves_data[tkn]['eModeLiquidationBonus'] - 1,
+            emode_liquidation_threshold=reserves_data[tkn]['eModeLiquidationThreshold'],
+            emode_ltv=reserves_data[tkn]['eModeLtv'],
+            emode_label=reserves_data[tkn]['eModeLabel'],
+        ) for tkn in reserves_data],
+        cdps=[CDP(
+            debt={
+                tkn: position['config']['assets'][tkn]['debt']
+                for tkn in position['config']['assets']
+                if position['config']['assets'][tkn]['debt'] > 0
+            },
+            collateral={
+                tkn: position['config']['assets'][tkn]['balance']
+                for tkn in position['config']['assets']
+                if position['config']['assets'][tkn]['balance'] > 0
+            },
+            liquidation_threshold=position['currentLiquidationThreshold'],
+        ) for position in borrowers]
+    )
+    return mm
