@@ -203,7 +203,7 @@ class GlobalState:
         return total
 
     def impermanent_loss(self, agent: Agent) -> float:
-        return self.cash_out(agent) / self.deposit_val(agent) - 1
+        return self.cash_out(agent.unique_id) / self.deposit_val(agent) - 1
 
     def deposit_val(self, agent: Agent) -> float:
         return value_assets(
@@ -212,7 +212,7 @@ class GlobalState:
         )
 
     def withdraw_val(self, agent: Agent) -> float:
-        return self.cash_out(agent)
+        return self.cash_out(agent.unique_id)
 
     def external_market_trade(
             self,
@@ -367,6 +367,15 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
 
     return transform
 
+
+def money_market_update(price_list: list[dict[str: float]]) -> Callable:
+    def transform(state: GlobalState) -> GlobalState:
+        for tkn in price_list[state.time_step]:
+            state.external_market[tkn] = price_list[state.time_step][tkn]
+            state.money_market.prices[tkn] = price_list[state.time_step][tkn]
+        return state
+
+    return transform
 
 def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20, rand: bool = False) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
