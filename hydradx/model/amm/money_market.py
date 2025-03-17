@@ -8,12 +8,14 @@ class CDP:
             debt: dict[str: float],
             collateral: dict[str: float],
             liquidation_threshold: float = None,
+            health_factor: float = 0,
             agent=None
     ):
         self.debt: dict[str: float] = debt
         self.collateral: dict[str: float] = collateral
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
+        self.health_factor = health_factor
         if agent is not None:
             self.agent = agent
         else:
@@ -112,6 +114,8 @@ class MoneyMarket:
         for cdp in self.cdps:
             if not cdp.liquidation_threshold:
                 cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
+            if not cdp.health_factor:
+                cdp.health_factor = self.get_health_factor(cdp)
 
         for cdp in self.cdps:
             for tkn in cdp.debt:
@@ -122,12 +126,54 @@ class MoneyMarket:
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
+        self.assets = assets
 
     def __repr__(self):
-        return f"money_market({self.liquidity}, {self.liquidation_threshold}, {self.liquidation_bonus})"
+        return (
+            f"money_market("
+            f"    liquidity: {self.liquidity}\n"
+            f"    liquidation threshold: {self.liquidation_threshold}\n"
+            f"    liquidation bonus: {self.liquidation_bonus})\n"
+            f"    total borrowed: {self.borrowed}\n"
+            f"    total collateral: {dict(
+                [(tkn, sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])) 
+                 for tkn in self.asset_list]
+            )}\n"
+        )
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def add_new_asset(self, new_asset: MoneyMarketAsset):
+        for existing_asset in self.assets:
+            self.liquidation_bonus[(existing_asset.name, new_asset.name)] = (
+                existing_asset.emode_liquidation_bonus if existing_asset.emode_label == new_asset.emode_label
+                else existing_asset.liquidation_bonus
+            )
+            self.liquidation_bonus[(new_asset.name, existing_asset.name)] = (
+                new_asset.emode_liquidation_bonus if existing_asset.emode_label == new_asset.emode_label
+                else new_asset.liquidation_bonus
+            )
+            self.ltv[(existing_asset.name, new_asset.name)] = (
+                existing_asset.emode_ltv if existing_asset.emode_label == new_asset.emode_label
+                else existing_asset.ltv
+            )
+            self.ltv[(new_asset.name, existing_asset.name)] = (
+                new_asset.emode_ltv if existing_asset.emode_label == new_asset.emode_label
+                else new_asset.ltv
+            )
+            self.liquidation_threshold[(existing_asset.name, new_asset.name)] = (
+                existing_asset.emode_liquidation_threshold if existing_asset.emode_label == new_asset.emode_label
+                else existing_asset.liquidation_threshold
+            )
+            self.liquidation_threshold[(new_asset.name, existing_asset.name)] = (
+                new_asset.emode_liquidation_threshold if existing_asset.emode_label == new_asset.emode_label
+                else new_asset.liquidation_threshold
+            )
+        self.liquidity[new_asset.name] = new_asset.liquidity
+        self.prices[new_asset.name] = new_asset.price
+        self.borrowed[new_asset.name] = 0
+        self.asset_list.append(new_asset.name)
 
     def fail_transaction(self, fail: str):
         self.fail = fail
@@ -165,7 +211,7 @@ class MoneyMarket:
         return self.liquidation_bonus[(collateral_tkn, debt_tkn)] if (collateral_tkn, debt_tkn) in self.liquidation_bonus else 0
 
     def is_liquidatable(self, cdp: CDP) -> bool:
-        if sum(cdp.collateral.values()) == 0:
+        if sum(cdp.collateral.values()) == 0 or sum(cdp.debt.values()) == 0:
             return False
         health_factor = self.get_health_factor(cdp)
         return health_factor < 1
@@ -319,17 +365,16 @@ class MoneyMarket:
         if self.is_fully_liquidatable(cdp):
             return cdp.debt[debt_asset]
         else:
-            debt_value = cdp.debt[debt_asset] * self.get_oracle_price(debt_asset)
             return min(
                 cdp.debt[debt_asset],
-                debt_value * self.partial_liquidation_pct / self.get_oracle_price(debt_asset)
+                cdp.debt[debt_asset] * self.partial_liquidation_pct
             )
 
-    def calculate_liquidation(self, cdp: CDP, debt_asset: str, delta_debt: float = -1) -> dict[str: float]:
+    def calculate_liquidation(self, cdp: CDP, debt_asset: str, repay_amount: float = -1) -> dict[str: float]:
         assert debt_asset in cdp.debt
-        if delta_debt < 0:
-            delta_debt = self.get_maximum_repayment(cdp, debt_asset)
-        debt_value = delta_debt * self.get_oracle_price(debt_asset)
+        if repay_amount < 0:
+            repay_amount = self.get_maximum_repayment(cdp, debt_asset)
+        debt_value = repay_amount * self.get_oracle_price(debt_asset)
         returns = {}
         for collateral_asset in sorted(
                 cdp.collateral.keys(),
@@ -341,11 +386,11 @@ class MoneyMarket:
                 / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
             )
             repay_amount = (  # amount of debt repayment that can be covered by this collateral
-                delta_debt if debt_value < collateral_value
-                else delta_debt * collateral_value / debt_value
+                repay_amount if debt_value < collateral_value
+                else repay_amount * collateral_value / debt_value
             )
             returns[collateral_asset] = (
-                cdp.collateral[collateral_asset] if repay_amount < delta_debt
+                cdp.collateral[collateral_asset] if repay_amount < repay_amount
                 else min(
                     repay_amount * self.get_oracle_price(debt_asset) / self.get_oracle_price(collateral_asset)
                     * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
@@ -354,21 +399,16 @@ class MoneyMarket:
             )
         return returns
 
-    def liquidate(self, cdp: CDP, debt_asset: str, agent: Agent):
+    def liquidate(self, cdp: CDP, debt_asset: str, agent: Agent, repay_amount: float = -1):
         if not self.is_liquidatable(cdp):
             return
-        repay_amount = (
-            cdp.debt[debt_asset] if self.is_fully_liquidatable(cdp)
-            else min(
-                cdp.debt[debt_asset],
-                cdp.debt[debt_asset] * self.partial_liquidation_pct
-            )
-        )
+        if repay_amount < 0:
+            repay_amount = self.get_maximum_repayment(cdp, debt_asset)
 
         collateral = self.calculate_liquidation(cdp, debt_asset, repay_amount)
-        for collateral_asset in collateral:
-            if not agent.validate_holdings(collateral_asset, collateral[collateral_asset]):
-                return self.fail_transaction(f"Agent doesn't have enough {collateral_asset}.")
+        if not agent.validate_holdings(debt_asset, repay_amount):
+            return self.fail_transaction(f"Agent doesn't have enough {debt_asset}.")
+
         for collateral_asset in collateral:
             agent.add(collateral_asset, collateral[collateral_asset])
             cdp.collateral[collateral_asset] -= collateral[collateral_asset]
