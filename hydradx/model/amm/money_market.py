@@ -24,11 +24,11 @@ class CDP:
     def __repr__(self):
         newline = '\n'
         return (
-            f"CDP("
-            f"    debt:"
-            f"{newline.join([f"        {tkn}: {self.debt[tkn]}" for tkn in self.debt.keys()])}\n\n"
-            f"    collateral:"
-            f"{newline.join([f"        {tkn}: {self.collateral[tkn]}" for tkn in self.collateral.keys()])}\n\n"
+            f"CDP:\n"
+            f"    debt:\n"
+            f"{newline.join([f"        {tkn}: {self.debt[tkn]}" for tkn in self.debt.keys()])}\n"
+            f"    collateral:\n"
+            f"{newline.join([f"        {tkn}: {self.collateral[tkn]}" for tkn in self.collateral.keys()])}\n"
         )
 
     def copy(self):
@@ -89,8 +89,8 @@ class MoneyMarket:
         self.prices = {
             asset.name: asset.price
             for asset in assets
-        }  # MoneyMarket should never mutate the oracles
-
+        }
+        self.assets = assets
         self.ltv = {
             (asset1.name, asset2.name):
             asset1.emode_ltv if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.emode_ltv
@@ -126,7 +126,6 @@ class MoneyMarket:
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
-        self.assets = assets
 
     def __repr__(self):
         return (
@@ -174,6 +173,7 @@ class MoneyMarket:
         self.prices[new_asset.name] = new_asset.price
         self.borrowed[new_asset.name] = 0
         self.asset_list.append(new_asset.name)
+        self.assets.append(new_asset)
 
     def fail_transaction(self, fail: str):
         self.fail = fail
