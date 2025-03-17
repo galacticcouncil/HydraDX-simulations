@@ -20,72 +20,70 @@ def test_stability_module_constructor():
     usdt_pool = StableSwapPoolState(tokens={'USDT': 1_000_000, 'HOLLAR': 1_000_000}, amplification=1000, trade_fee=0.0001)
     usdc_pool = StableSwapPoolState(tokens={'USDC': 1_000_000, 'HOLLAR': 1_000_000}, amplification=1000, trade_fee=0.0001)
     pools = [usdt_pool, usdc_pool]
-    sell_price = 1.001
+    sell_fee = 0.0002
     max_buy_price = 0.999
     buy_fee = 0.0001
     native_stable = 'HOLLAR'
-    StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+    StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
     # stability module should allow differing params for different assets
     usdt_buyback_speed = 1/10_000
     usdc_buyback_speed = 1/11_000
     buyback_speed = [usdt_buyback_speed, usdc_buyback_speed]
-    usdt_sel_price = 1.001
-    usdc_sell_price = 1.002
-    sell_price = [usdt_sel_price, usdc_sell_price]
+    sell_fee = [0.0001, 0.0002]
     usdt_max_buy_price = 0.999
     usdc_max_buy_price = 0.998
     max_buy_price = [usdt_max_buy_price, usdc_max_buy_price]
     usdt_buy_fee = 0.0001
     usdc_buy_fee = 0.0002
     buy_fee = [usdt_buy_fee, usdc_buy_fee]
-    StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+    StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
     # stability module should fail if buyback_speed is not in [0, 1]
     bad_buyback_speed = 1.1
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, bad_buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, bad_buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
     bad_buyback_speed = -0.1
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, bad_buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, bad_buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
-    # stability module should fail if sell_price is < 1
-    bad_sell_price = 0.999
+    # stability module should fail if sell_fee is < 0
+    bad_sell_fee = -.0001
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, bad_sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, bad_sell_fee, max_buy_price, buy_fee, native_stable)
 
     # stability module should fail if max_buy_price is not in (0, 1]
     bad_max_buy_price = 1.1
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, bad_max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, bad_max_buy_price, buy_fee, native_stable)
     bad_max_buy_price = 0
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, bad_max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, bad_max_buy_price, buy_fee, native_stable)
 
     # stability module should fail if buy_fee is not in [0, 1]
     bad_buy_fee = 1.1
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, bad_buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, bad_buy_fee, native_stable)
     bad_buy_fee = -0.1
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, bad_buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, bad_buy_fee, native_stable)
 
     # stability module should fail if native_stablecoin is in liquidity
     bad_native_stable = 'USDT'
     with pytest.raises(AssertionError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, bad_native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee, bad_native_stable)
 
     # stability module should fail if a pool does not have correct stablecoin
     bad_usdt_pool = StableSwapPoolState(tokens={'aUSDT': 1_000_000, 'HOLLAR': 1_000_000}, amplification=1000, trade_fee=0.0001)
     bad_pools = [bad_usdt_pool, usdc_pool]
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, bad_pools, sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, bad_pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
     # stability module should fail if a pool does not have native stablecoin
     bad_usdt_pool = StableSwapPoolState(tokens={'USDT': 1_000_000, 'USDC': 1_000_000}, amplification=1000, trade_fee=0.0001)
     bad_pools = [bad_usdt_pool, usdc_pool]
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, bad_pools, sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, bad_pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
 
 def test_overlapping_tokens():
@@ -94,7 +92,7 @@ def test_overlapping_tokens():
     pools = [three_pool, three_pool]
 
     liquidity = {'A': 1_000_000, 'B': 1_000_000}
-    sell_price = 1.001
+    sell_fee = 0.001
     max_buy_price = 0.999
     buy_fee = 0.0001
     native_stable = 'HOLLAR'
@@ -102,13 +100,13 @@ def test_overlapping_tokens():
     usdc_buyback_speed = 1/11_000
     buyback_speed = [usdt_buyback_speed, usdc_buyback_speed]
     with pytest.raises(ValueError):
-        StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
     pool1 = StableSwapPoolState(tokens=three_pool_tokens, amplification=1000)
     pool2 = StableSwapPoolState(tokens=three_pool_tokens, amplification=1000)
     pools = [pool1, pool2]
 
-    StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee, native_stable)
+    StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee, native_stable)
 
 
 @given(
@@ -125,10 +123,10 @@ def test_sell_hollar_to_stability_module(ratios, buyback_speed, max_buy_price, b
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
     pool_buy = pools[buy_tkn_i]
-    sell_price = 1.001
+    sell_fee = 0.001
     tkn_buy = list(liquidity.keys())[buy_tkn_i]
     tkn_sell = 'HOLLAR'
-    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = init_hsm.get_buy_params(tkn_buy)
     assert max_sell_amt > 0  # this test case focuses on parameters in which HSM can buy HOLLAR
@@ -180,10 +178,10 @@ def test_sell_hollar_fails_when_balanced(ratios, buyback_speed, max_buy_price, b
     usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    sell_price = 1.001
+    sell_fee = 0.001
     tkn_buy = list(liquidity.keys())[buy_tkn_i]
     tkn_sell = 'HOLLAR'
-    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = init_hsm.get_buy_params(tkn_buy)
     if max_sell_amt != 0:
@@ -218,10 +216,10 @@ def test_sell_hollar_to_stability_module_fee(ratios, buyback_speed, max_buy_pric
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
     pool_buy = pools[buy_tkn_i]
-    sell_price = 1.001
+    sell_fee = 0.001
     tkn_buy = list(liquidity.keys())[buy_tkn_i]
     tkn_sell = 'HOLLAR'
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
     max_sell_amt, buy_price = hsm.get_buy_params(tkn_buy)
     assert max_sell_amt > 0  # this test case focuses on parameters in which stability module can buy HOLLAR
     agent = Agent(holdings = {tkn_sell: max_sell_amt})
@@ -239,10 +237,10 @@ def test_sell_hollar_to_stability_module_fee(ratios, buyback_speed, max_buy_pric
 @given(
     ratios = st.lists(st.floats(min_value=0.01, max_value=0.1), min_size=2, max_size=2),
     buyback_speed = st.floats(min_value=1/1_000_000, max_value=1),
-    sell_price = st.floats(min_value=1, max_value=1.1),
+    sell_fee = st.floats(min_value=0, max_value=0.1),
     buy_tkn_i = st.integers(min_value=0, max_value=1),
 )
-def test_buy_hollar_from_stability_module(ratios, buyback_speed, sell_price, buy_tkn_i):
+def test_buy_hollar_from_stability_module(ratios, buyback_speed, sell_fee, buy_tkn_i):
     # stability module should work with this params
     liquidity = {'USDT': 1_000_000, 'USDC': 1_000_000}
     usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=1000, trade_fee=0.0001)
@@ -254,7 +252,7 @@ def test_buy_hollar_from_stability_module(ratios, buyback_speed, sell_price, buy
     tkn_buy = 'HOLLAR'
     max_buy_price = 0.999
     buy_fee = 0.0001
-    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    init_hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     # test sell USDT
     hsm = copy.deepcopy(init_hsm)
@@ -264,7 +262,7 @@ def test_buy_hollar_from_stability_module(ratios, buyback_speed, sell_price, buy
     buy_amt = agent.get_holdings(tkn_buy)
     if agent.validate_holdings(tkn_sell):
         raise ValueError("Agent should have 0 holdings after selling")
-    if agent.get_holdings(tkn_buy) != sell_amt / sell_price:
+    if agent.get_holdings(tkn_buy) != sell_amt / (1+sell_fee):
         raise ValueError("Agent has incorrect amount of HOLLAR")
     if abs(sell_amt - (hsm.liquidity[tkn_sell] - init_hsm.liquidity[tkn_sell])) / hsm.liquidity[tkn_sell] >= 1e-15:
         raise ValueError("Stability module did not deduct correct amount of tokens")
@@ -296,11 +294,11 @@ def test_large_trade_fails(ratios, buyback_speed, max_buy_price, sell_extra, buy
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100,
                                     trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    sell_price = 1.001
+    sell_fee = 0.001
     tkn_buy = list(liquidity.keys())[buy_tkn_i]
     tkn_sell = 'HOLLAR'
     buy_fee = 0.0001
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = hsm.get_buy_params(tkn_buy)
     sell_amt = max_sell_amt * (1 + sell_extra)
@@ -324,10 +322,10 @@ def test_insufficient_liquidity(ratios, buyback_speed, max_buy_price, buy_tkn_i,
     usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    sell_price = 1.001
+    sell_fee = 0.001
     tkn = list(liquidity.keys())[buy_tkn_i]
     buy_fee = 0.0001
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     max_sell_amt, buy_price = hsm.get_buy_params(tkn)
     if (max_sell_amt * buy_price - hsm.liquidity[tkn]) / hsm.liquidity[tkn] > 1e-15:
@@ -342,14 +340,14 @@ def test_insufficient_liquidity(ratios, buyback_speed, max_buy_price, buy_tkn_i,
     buy_fee = st.floats(min_value=0.0001, max_value=0.01),
 )
 def test_arb_loop_known_profitable(ratios, buyback_speed, max_buy_price, buy_tkn_i, buy_fee):
-    sell_price = 1.001
+    sell_fee = 0.001
 
     liquidity = {'USDT': 1_000_000, 'USDC': 1_000_000}
     tkn = list(liquidity.keys())[buy_tkn_i]
     usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     # signature of arb function is arb(self, agent: Agent, tkn: str) -> None:
     agent = Agent()
@@ -370,14 +368,14 @@ def test_arb_loop_known_profitable(ratios, buyback_speed, max_buy_price, buy_tkn
     buy_fee = st.floats(min_value=0, max_value=0.01),
 )
 def test_arb_loop_known(ratios, buyback_speed, max_buy_price, buy_tkn_i, buy_fee):
-    sell_price = 1.001
+    sell_fee = 0.001
 
     liquidity = {'USDT': 1_000_000, 'USDC': 1_000_000}
     tkn = list(liquidity.keys())[buy_tkn_i]
     usdt_pool = StableSwapPoolState(tokens={'USDT': ratios[0] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * 1_000_000, 'HOLLAR': 1_000_000}, amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
 
     # signature of arb function is arb(self, agent: Agent, tkn: str) -> None:
     agent = Agent()
@@ -397,11 +395,11 @@ def test_swap_does_not_change_params(ratios, buyback_speed):
     usdc_pool = StableSwapPoolState(tokens={'USDC': ratios[1] * mpf(1_000_000), 'HOLLAR': mpf(1_000_000)},
                                     amplification=100, trade_fee=0.0001, precision=1e-8)
     pools = [usdt_pool, usdc_pool]
-    sell_price = 1.001
+    sell_fee = 0.001
     max_buy_price = 0.999
     tkn_sell = 'HOLLAR'
     buy_fee = 0.0001
-    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_price, max_buy_price, buy_fee)
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price, buy_fee)
     for tkn in ['USDT', 'USDC']:
         if tkn == 'USDT':
             pool = usdt_pool
