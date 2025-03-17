@@ -929,7 +929,7 @@ def distribute_value(num_positions, total_value, concentration = 0):
     return [p * total_value / total for p in positions]
 
 
-def get_money_market():
+def get_current_money_market():
     from substrateinterface import SubstrateInterface
     from .abi.pool_address_provider import POOL_ADDRESS_PROVIDER_ABI
     from .abi.ui_pool_data_provider import UI_POOL_DATA_PROVIDER_ABI, UI_POOL_DATA_PROVIDER_ADDRESS
