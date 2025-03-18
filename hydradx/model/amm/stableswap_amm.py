@@ -450,7 +450,7 @@ class StableSwapPoolState(Exchange):
             agent: Agent,
             quantity: float,
             tkn_remove: str,
-            fail_on_overdraw: bool = True
+            fail_on_overdraw: bool = True  # this is now ignored
     ):
         """
         Calculate a withdrawal based on the asset quantity rather than the share quantity
@@ -463,20 +463,13 @@ class StableSwapPoolState(Exchange):
         fee = self._update_peg()
         shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity, fee)
 
-        if shares_removed > agent.holdings[self.unique_id]:
-            if fail_on_overdraw:
-                return self.fail_transaction('Agent tried to remove more shares than it owns.')
-            else:
-                # just round down
-                shares_removed = agent.holdings[self.unique_id]
+        if not agent.validate_holdings(self.unique_id, shares_removed):
+            return self.fail_transaction('Agent tried to remove more shares than it owns.')
 
-        if tkn_remove not in agent.holdings:
-            agent.holdings[tkn_remove] = 0
-
-        agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= quantity
-        agent.holdings[tkn_remove] += quantity
+        agent.remove(self.unique_id, shares_removed)
+        agent.add(tkn_remove, quantity)
         return self
 
     def remove_liquidity(
@@ -718,6 +711,17 @@ def simulate_add_liquidity(
     new_state = old_state.copy()
     new_agent = old_agent.copy()
     return new_state.add_liquidity(new_agent, quantity, tkn_add), new_agent
+
+
+def simulate_withdraw_asset(
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,
+        tkn_remove: str
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+    return new_state.withdraw_asset(new_agent, quantity, tkn_remove), new_agent
 
 
 def simulate_remove_liquidity(
