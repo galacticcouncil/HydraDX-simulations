@@ -8,8 +8,8 @@ class StabilityModule:
             liquidity: dict[str: float],  # initial liquidity of stability module
             buyback_speed: list[float] or float,  # paramater controlling how quickly Hollar is bought back
             pools: list[StableSwapPoolState],  # pools that can be used to mint Hollar
-            sell_price: list[float] or float = 1,  # price at which stability module sells Hollar
-            max_buy_price: list[float] or float = 1,  # maximum price at which stability module buys Hollar
+            sell_price_fee: list[float] or float = 0.0001,  # fee paid by traders buying Hollar
+            max_buy_price_coef: list[float] or float = 1,  # maximum price at which stability module buys Hollar
             buy_fee: list[float] or float = 0.0001,  # fee paid to arbitrage for assisting buying back of Hollar
             native_stable: str = 'HOLLAR'  # native stablecoin name
     ):
@@ -42,20 +42,20 @@ class StabilityModule:
             self.pools[tkn] = pools[i]
             self._pool_states[tkn] = pools[i].copy()
 
-        if isinstance(sell_price, list):
-            self.sell_price = {tkn: price for tkn, price in zip(self.asset_list, sell_price)}
+        if isinstance(sell_price_fee, list):
+            self.sell_price_fee = {tkn: fee for tkn, fee in zip(self.asset_list, sell_price_fee)}
         else:
-            self.sell_price = {tkn: sell_price for tkn in self.asset_list}
-        if min(self.sell_price.values()) < 1:
-            raise ValueError("sell_price must be greater than or equal to 1")
+            self.sell_price_fee = {tkn: sell_price_fee for tkn in self.asset_list}
+        if min(self.sell_price_fee.values()) < 0:
+            raise ValueError("sell_price_fee must be non-negative")
 
-        if isinstance(max_buy_price, list):
-            self.max_buy_price = {tkn: price for tkn, price in zip(self.asset_list, max_buy_price)}
+        if isinstance(max_buy_price_coef, list):
+            self.max_buy_price_coef = {tkn: price for tkn, price in zip(self.asset_list, max_buy_price_coef)}
         else:
-            self.max_buy_price = {tkn: max_buy_price for tkn in self.asset_list}
-        if max(self.max_buy_price.values()) > 1:
+            self.max_buy_price_coef = {tkn: max_buy_price_coef for tkn in self.asset_list}
+        if max(self.max_buy_price_coef.values()) > 1:
             raise ValueError("max_buy_price must be less than or equal to 1")
-        if min(self.max_buy_price.values()) <= 0:
+        if min(self.max_buy_price_coef.values()) <= 0:
             raise ValueError("max_buy_price must be greater than 0")
 
         if isinstance(buy_fee, list):
@@ -80,14 +80,29 @@ class StabilityModule:
             self._pool_states[tkn] = pool.copy()
         self.native_stable_bought = 0
 
+    def get_peg(self, tkn: str) -> float:
+        pool = self._pool_states[tkn]
+        i_tkn = pool.asset_list.index(tkn)
+        i_native_stable = pool.asset_list.index(self.native_stable)
+        return pool.peg[i_tkn] / pool.peg[i_native_stable]
+
+    # def update_peg(self, tkn: str) -> tuple:
+    #     pool = self.pools[tkn]  # actual current pool state
+    #     fee = pool._update_peg()
+    #     i_tkn = pool.asset_list.index(tkn)
+    #     i_native_stable = pool.asset_list.index(self.native_stable)
+    #     return pool.peg[i_native_stable] / pool.peg[i_tkn], fee
+
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self._pool_states[tkn]
-        imbalance = (pool.liquidity[self.native_stable] - pool.liquidity[tkn]) / 2
+        peg = self.get_peg(tkn)
+        imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
         max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
         sell_amt = pool.calculate_sell_from_buy(tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
         exec_price = sell_amt / max_buy_amt if max_buy_amt > 0 else 0
         buy_price = exec_price / (1 - self.buy_fee[tkn])
-        if buy_price > self.max_buy_price[tkn] or buy_price == 0:
+
+        if buy_price > self.max_buy_price_coef[tkn] / peg or buy_price == 0:
             return 0, 0
         max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
         return max(max_buy_amt - self.native_stable_bought, 0), buy_price
@@ -110,10 +125,12 @@ class StabilityModule:
         if tkn_buy == self.native_stable:  # trader buying HOLLAR
             if tkn_sell not in self.asset_list:
                 return self.fail_transaction("Token not supported by stability module")
+            peg = self.get_peg(tkn_sell)
+            sell_price = (1 + self.sell_price_fee[tkn_sell]) / peg
             if buy_quantity == 0:
-                buy_quantity = sell_quantity / self.sell_price[tkn_sell]
+                buy_quantity = sell_quantity / sell_price
             elif sell_quantity == 0:
-                sell_quantity = buy_quantity * self.sell_price[tkn_sell]
+                sell_quantity = buy_quantity * sell_price
         else:
             if tkn_sell != self.native_stable:
                 return self.fail_transaction("Swap must involve native stablecoin")
