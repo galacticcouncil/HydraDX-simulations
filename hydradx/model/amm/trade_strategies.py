@@ -1095,7 +1095,9 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
         swaps = get_arb_swaps(
             exchanges=state.pools,
             config=config,
-            max_liquidity={pool: copy.copy(agent.holdings) for pool in config_pools}
+            max_liquidity={
+                pool: copy.copy(agent.holdings) for pool in config_pools
+            } if agent.enforce_holdings else None
         )
         execute_arb(state.pools, agent, swaps)
         return state
