@@ -1103,40 +1103,43 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
     return TradeStrategy(strategy, name='general arbitrage')
 
 
-def liquidate_cdps() -> TradeStrategy:
-
+def liquidate_cdps(pool_id: str) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         mm = state.money_market
         agent = state.agents[agent_id]
-        omnipool = next(filter(lambda pool: isinstance(pool, OmnipoolState), state.pools.values()), None)
-        if omnipool is None:
-            raise ValueError("No Omnipool found in state.")
+        pool = state.pools[pool_id]
+        # omnipool = next(filter(lambda pool: isinstance(pool, OmnipoolState), state.pools.values()), None)
+        # if omnipool is None:
+        #     raise ValueError("No Omnipool found in state.")
         for cdp in mm.cdps:
             if mm.is_liquidatable(cdp):
                 for asset in cdp.debt:
                     delta_debt = mm.get_maximum_repayment(cdp, asset)
                     if delta_debt > cdp.debt[asset]:
-                        raise ValueError("Debt amount exceeds CDP debt.")
+                        return state
+                        # raise ValueError("Debt amount exceeds CDP debt.")
                     if delta_debt <= 0:
-                        raise ValueError("delta_debt must be positive.")
+                        return state
+                        # raise ValueError("delta_debt must be positive.")
 
                     # need to simulate Omnipool swap to see if we can profitably liquidate
                     # simulate buying debt_amt with collateral
                     collateral_profit = mm.calculate_liquidation(cdp, asset, delta_debt)
                     debt_profit = 0
                     for c in collateral_profit:
-                        debt_profit += omnipool.calculate_buy_from_sell(
+                        debt_profit += pool.calculate_buy_from_sell(
                             tkn_buy=asset, tkn_sell=c, sell_quantity=collateral_profit[c]
                         )
                     if debt_profit > delta_debt:
                         # liquidate
                         for c in collateral_profit:
-                            omnipool.swap(
-                                agent=agent,
-                                tkn_buy=asset,
-                                tkn_sell=c,
-                                sell_quantity=collateral_profit[c]
-                            )
+                            if collateral_profit[c] > 0:
+                                pool.swap(
+                                    agent=agent,
+                                    tkn_buy=asset,
+                                    tkn_sell=c,
+                                    sell_quantity=collateral_profit[c]
+                                )
                         mm.liquidate(cdp, asset, agent, delta_debt)
         return state
 
