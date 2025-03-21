@@ -1,15 +1,17 @@
 import copy
 
 from .agents import Agent
+from .exchange import Exchange
 from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
 
-class OmnipoolRouter:
+class OmnipoolRouter(Exchange):
     """
     Handles routing between Omnipool and Stableswap subpools that have LP assets in Omnipool
     """
 
     def __init__(self, exchanges: dict or list):
+        super().__init__()
         self.exchanges = exchanges if type(exchanges) == dict else {ex.unique_id: ex for ex in exchanges}
         self.omnipool_id = None
         for exchange_id in self.exchanges:
@@ -21,6 +23,7 @@ class OmnipoolRouter:
         if self.omnipool_id is None:
             raise ValueError('No Omnipool in exchange list')
         self.omnipool: OmnipoolState = self.exchanges[self.omnipool_id]
+        self.asset_list = list(set([tkn for exchange in self.exchanges.values() for tkn in exchange.asset_list]))
         self.fail = ''
 
     def copy(self):
@@ -133,7 +136,7 @@ class OmnipoolRouter:
         #     shares_bought = self.exchanges[buy_pool].calculate_sell_from_buy(sell_pool, tkn_buy, sell_quantity)
         #     return self.exchanges[sell_pool].calculate_sell_from_buy(tkn_sell, buy_pool, shares_bought)
 
-    def fail_transaction(self, fail_message):
+    def fail_transaction(self, fail_message: str):
         self.fail = fail_message
         return self
 
