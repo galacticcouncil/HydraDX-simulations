@@ -8,14 +8,12 @@ class CDP:
             debt: dict[str: float],
             collateral: dict[str: float],
             liquidation_threshold: float = None,
-            health_factor: float = 0,
             agent=None
     ):
         self.debt: dict[str: float] = debt
         self.collateral: dict[str: float] = collateral
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
-        self.health_factor = health_factor
         if agent is not None:
             self.agent = agent
         else:
@@ -77,7 +75,7 @@ class MoneyMarket:
             self,
             assets: list[MoneyMarketAsset],
             cdps: list = None,
-            full_liquidation_threshold: float = 0.95,  # this should maybe be per-asset or per-asset-pair
+            full_liquidation_threshold: float = 0.95,
             close_factor: float = 0.5
     ):
         self.liquidity = {
@@ -114,8 +112,6 @@ class MoneyMarket:
         for cdp in self.cdps:
             if not cdp.liquidation_threshold:
                 cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
-            if not cdp.health_factor:
-                cdp.health_factor = self.get_health_factor(cdp)
 
         for cdp in self.cdps:
             for tkn in cdp.debt:
@@ -368,59 +364,79 @@ class MoneyMarket:
 
     def get_maximum_repayment(self, cdp: CDP, debt_asset: str) -> float:
         assert debt_asset in cdp.debt
-        if self.is_fully_liquidatable(cdp):
+        health_factor = self.get_health_factor(cdp)
+        if health_factor < self.full_liquidation_threshold:
+            # fully liquidatable
             return cdp.debt[debt_asset]
+        elif health_factor < 1:
+            # partially liquidatable
+            return cdp.debt[debt_asset] * self.partial_liquidation_pct
         else:
-            return min(
-                cdp.debt[debt_asset],
-                cdp.debt[debt_asset] * self.partial_liquidation_pct
-            )
+            return 0
 
-    def calculate_liquidation(self, cdp: CDP, debt_asset: str, repay_amount: float = -1) -> dict[str: float]:
+    def calculate_liquidation(
+            self,
+            cdp: CDP,
+            collateral_asset: str,
+            debt_asset: str,
+            repay_amount: float = -1
+    ) -> dict[str: float]:
+        """
+        return the amount of debt repaid and the amount of collateral liquidated
+        as a tuple: (collateral_liquidated, debt_repaid)
+        """
         assert debt_asset in cdp.debt
         if repay_amount < 0:
             repay_amount = self.get_maximum_repayment(cdp, debt_asset)
+        if repay_amount == 0:
+            return 0, 0
         debt_value = repay_amount * self.get_oracle_price(debt_asset)
-        returns = {}
-        for collateral_asset in sorted(
-                cdp.collateral.keys(),
-                key=lambda x: self.get_liquidation_bonus(x, debt_asset),
-                reverse=True
-        ):
-            collateral_value = (
-                cdp.collateral[collateral_asset] * self.get_oracle_price(collateral_asset)
-                / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
+        collateral_value = (
+            cdp.collateral[collateral_asset] * self.get_oracle_price(collateral_asset)
+            / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
+        )
+        debt_repaid = (  # amount of debt repayment that can be covered by this collateral
+            repay_amount if debt_value < collateral_value
+            else repay_amount * collateral_value / debt_value
+        )
+        payout = (
+            cdp.collateral[collateral_asset] if repay_amount < debt_repaid
+            else min(
+                repay_amount * self.get_oracle_price(debt_asset) / self.get_oracle_price(collateral_asset)
+                * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
+                cdp.collateral[collateral_asset]
             )
-            repay_amount = (  # amount of debt repayment that can be covered by this collateral
-                repay_amount if debt_value < collateral_value
-                else repay_amount * collateral_value / debt_value
-            )
-            returns[collateral_asset] = (
-                cdp.collateral[collateral_asset] if repay_amount < repay_amount
-                else min(
-                    repay_amount * self.get_oracle_price(debt_asset) / self.get_oracle_price(collateral_asset)
-                    * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
-                    cdp.collateral[collateral_asset]
-                )
-            )
-        return returns
+        )
+        return payout, debt_repaid
 
-    def liquidate(self, cdp: CDP, debt_asset: str, agent: Agent, repay_amount: float = -1):
-        if not self.is_liquidatable(cdp):
+    def liquidate(
+            self,
+            cdp: CDP,
+            agent: Agent,
+            debt_asset: str,
+            collateral_asset: str,
+            repay_amount: float = -1
+    ):
+        payout, debt_repaid = self.calculate_liquidation(
+            cdp=cdp,
+            collateral_asset=collateral_asset,
+            debt_asset=debt_asset,
+            repay_amount=repay_amount
+        )
+        if payout == 0:
             return self.fail_transaction("CDP cannot be liquidated.")
-        if repay_amount < 0:
-            repay_amount = self.get_maximum_repayment(cdp, debt_asset)
-
-        collateral = self.calculate_liquidation(cdp, debt_asset, repay_amount)
-        if not agent.validate_holdings(debt_asset, repay_amount):
+        if not agent.validate_holdings(debt_asset, debt_repaid):
             return self.fail_transaction(f"Agent doesn't have enough {debt_asset}.")
 
-        for collateral_asset in collateral:
-            agent.add(collateral_asset, collateral[collateral_asset])
-            cdp.collateral[collateral_asset] -= collateral[collateral_asset]
+        agent.add(collateral_asset, payout)
+        cdp.collateral[collateral_asset] -= payout
 
-        agent.remove(debt_asset, repay_amount)
-        cdp.debt[debt_asset] -= repay_amount
+        agent.remove(debt_asset, debt_repaid)
+        cdp.debt[debt_asset] -= debt_repaid
+        if cdp.debt[debt_asset] == 0:
+            del cdp.debt[debt_asset]
+        if cdp.collateral[collateral_asset] == 0:
+            del cdp.collateral[collateral_asset]
         cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
 
