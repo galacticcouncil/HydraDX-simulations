@@ -10,8 +10,8 @@ class CDP:
             liquidation_threshold: float = None,
             agent=None
     ):
-        self.debt: dict[str: float] = debt
-        self.collateral: dict[str: float] = collateral
+        self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
+        self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
         if agent is not None:
