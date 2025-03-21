@@ -192,15 +192,18 @@ class MoneyMarket:
 
     def get_health_factor(self, cdp: CDP) -> float:
         prices = {tkn: self.get_oracle_price(tkn) for tkn in cdp.collateral.keys() | cdp.debt.keys()}
+        debt_total = sum([
+            cdp.debt[d_tkn] * prices[d_tkn]
+                for d_tkn in cdp.debt
+        ])
+        if debt_total == 0:
+            return 0
         health_factor = (
             sum([
                 cdp.collateral[c_tkn] * prices[c_tkn]
                 for c_tkn in cdp.collateral
             ]) * self.cdp_liquidation_threshold(cdp)
-            / sum([
-            cdp.debt[d_tkn] * prices[d_tkn]
-                for d_tkn in cdp.debt
-            ])
+            / debt_total
         )
         return health_factor
 
@@ -217,10 +220,13 @@ class MoneyMarket:
         return health_factor < 1
 
     def is_fully_liquidatable(self, cdp: CDP) -> bool:
-        if sum(cdp.collateral.values()) == 0:
+        if sum(cdp.collateral.values()) == 0 or sum(cdp.debt.values()) == 0:
             return False
         health_factor = self.get_health_factor(cdp)
         return health_factor < self.full_liquidation_threshold
+
+    def is_toxic(self, cdp: CDP) -> bool:
+        return self.value_assets(cdp.collateral) < self.value_assets(cdp.debt)
 
     def get_liquidation_threshold(self, collateral_asset, debt_asset) -> float:
         """Get the liquidation threshold for a collateral-debt asset pair."""
@@ -401,7 +407,7 @@ class MoneyMarket:
 
     def liquidate(self, cdp: CDP, debt_asset: str, agent: Agent, repay_amount: float = -1):
         if not self.is_liquidatable(cdp):
-            return
+            return self.fail_transaction("CDP cannot be liquidated.")
         if repay_amount < 0:
             repay_amount = self.get_maximum_repayment(cdp, debt_asset)
 
@@ -417,6 +423,9 @@ class MoneyMarket:
         cdp.debt[debt_asset] -= repay_amount
         cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
+
+    def value_assets(self, assets: dict[str: float]) -> float:
+        return sum([assets[tkn] * self.get_oracle_price(tkn) for tkn in assets])
 
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
