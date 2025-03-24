@@ -1071,141 +1071,56 @@ def test_get_money_market():
         raise ValueError("MoneyMarket should be returned")
 
 
-def test_graph():
-    from hydradx.model import processing
-    from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
-    from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-    from hydradx.model.amm.trade_strategies import liquidate_cdps
-    mm = processing.get_current_money_market()
-    original_cdps = mm.cdps
-    print(mm)
+def test_multiple_collateral():
+    omnipool = omnipool_setup_for_liquidation_testing()
+    initial_price = {'DOT': 7, 'HDX': 0.02, 'USDT': 1}
+    final_price = {'DOT': 5, 'HDX': 0.02, 'USDT': 1}
 
-    from hydradx.model.amm.money_market import CDP
-    # replace DOT collateral with HDX
-    hdx = MoneyMarketAsset(
-        name='HDX',
-        price=0.01,
-        liquidity=100000000,
-        liquidation_bonus=0.07,
-        liquidation_threshold=0.7,
-        ltv=0.6
+    initial_liquidity = {'USDT': 1000000, 'DOT': 1000000, 'HDX': 100000000}
+    default_liquidation_threshold = 0.7
+    liquidation_bonus = {
+        'DOT': 0.05,
+        'HDX': 0.05,
+        'USDT': 0.015,
+    }
+    default_ltv = 0.6
+    assets = [
+        MoneyMarketAsset(
+            name=tkn,
+            price=initial_price[tkn],
+            liquidity=initial_liquidity[tkn],
+            liquidation_bonus=liquidation_bonus[tkn],
+            liquidation_threshold=default_liquidation_threshold,
+            ltv=default_ltv,
+        ) for tkn in initial_liquidity
+    ]
+    mm = MoneyMarket(
+        assets=assets,
     )
-    mm.add_new_asset(hdx)
-    # distribution = processing.distribute_value(
-    #     num_positions=50,
-    #     total_value=1000000,
-    #     concentration=0.8
-    # )
-    price_ratio = mm.get_oracle_price('DOT') / mm.get_oracle_price('HDX')
-    hdx_cdps = []
-    for cdp in original_cdps:
-        if 'DOT' in cdp.collateral:
-            hdx_collateral = cdp.collateral['DOT'] * price_ratio * 8 / 7
-            other_collateral = {tkn: cdp.collateral[tkn] for tkn in cdp.collateral if tkn != 'DOT'}
-            debt_value = sum([cdp.debt[tkn] * mm.prices[tkn] for tkn in cdp.debt])
-            new_cdp = CDP(
-                collateral={'HDX': hdx_collateral, **other_collateral},
-                debt={'USDT': debt_value / mm.prices['USDT']}
-            )
-            precision = 20
-            new_cdp.health_factor = mm.get_health_factor(new_cdp)
-            if abs(cdp.health_factor - new_cdp.health_factor) / cdp.health_factor > 2 ** -precision:
-                for i in range(precision):
-                    # print(f"target: {cdp.health_factor}, value: {new_cdp.health_factor}")
-                    if mm.get_health_factor(new_cdp) < cdp.health_factor:
-                        new_cdp.collateral['HDX'] += hdx_collateral * 2 ** -i
-                    else:
-                        new_cdp.collateral['HDX'] -= hdx_collateral * 2 ** -i
-                    new_cdp.health_factor = mm.get_health_factor(new_cdp)
-
-            hdx_cdps.append(new_cdp)
-
-    # scale
-    hdx_target = 10000000
-    hdx_total = sum([position.collateral['HDX'] for position in hdx_cdps])
-    scale_ratio = hdx_target / hdx_total
-    print(scale_ratio)
-    for cdp in hdx_cdps:
-        health_factor = cdp.health_factor
-        cdp.debt['USDT'] *= scale_ratio
-        for tkn in cdp.collateral:
-            cdp.collateral[tkn] *= scale_ratio
-        if abs(mm.get_health_factor(cdp) - health_factor) > 0.0000001:
-            print('inaccurate health factor')
-    mm.cdps = hdx_cdps
-
-    omnipool_router = processing.get_omnipool_router()
-
-    omnipool = omnipool_router.exchanges['omnipool']
-    lrna_price_1 = mm.get_oracle_price('DOT') / omnipool.lrna_price('DOT')
-    lrna_price_2 = mm.get_oracle_price('vDOT') / omnipool.lrna_price('vDOT')
-    # print(lrna_price_1, lrna_price_2)
-    lrna_price = (lrna_price_1 + lrna_price_2) / 2
-
-    for exchange in [exchange for exchange in omnipool_router.exchanges.values() if isinstance(exchange, StableSwapPoolState)]:
-        priced_assets = [tkn[:-2] for tkn in exchange.asset_list if tkn[:-2] in mm.prices]
-        pool_price = sum(mm.get_oracle_price(tkn) for tkn in priced_assets) / len(priced_assets)
-        print(f"Average price of assets in {exchange.unique_id} is {pool_price}.")
-        # print(exchange, '\n')
-        for tkn in exchange.asset_list:
-            tkn_name = tkn[:-2]
-            tkn_price = pool_price
-            new_liquidity = exchange.liquidity[tkn]
-            new_lrna = new_liquidity * tkn_price / lrna_price
-            new_shares = new_liquidity
-            if tkn_name not in omnipool.asset_list:
-                omnipool.add_token(
-                    tkn=tkn_name,
-                    liquidity=new_liquidity,
-                    lrna=new_lrna,
-                    shares=new_shares,
-                    protocol_shares=new_shares
-                )
-            else:
-                omnipool.liquidity[tkn_name] += new_liquidity
-                omnipool.lrna[tkn_name] += new_lrna
-                omnipool.shares[tkn_name] += new_shares
-                omnipool.protocol_shares[tkn_name] += new_shares
-
-    from hydradx.model.amm.trade_strategies import liquidate_cdps, omnipool_arbitrage, general_arbitrage
-    from hydradx.model.amm.global_state import GlobalState, money_market_update
-    from hydradx.model.amm.infinite_liquidity import CEXDummy
-    from hydradx.model.amm.agents import Agent
-    import hydradx.model.run as run
-
-    time_steps = 100
-    initial_price = {'HDX': hdx.price}
-    final_price = {'HDX': 0.005}
-    prices = [{
-        tkn: initial_price[tkn] + (final_price[tkn] - initial_price[tkn]) * (i / time_steps)
-        for tkn in initial_price
-    } for i in range(time_steps + 1)]
-    binance = CEXDummy(mm.prices)
-
-    def update_prices(state):
-        state.external_market.update(prices[state.time_step])
-        state.pools['dummy exchange'].prices = state.external_market.copy()
-        state.money_market.prices = state.external_market.copy()
-
+    liquidator = Agent(
+        trade_strategy=liquidate_cdps('omnipool'),
+        enforce_holdings=False
+    )
     initial_state = GlobalState(
+        agents={'liquidator': liquidator},
+        pools={'omnipool': omnipool},
         money_market=mm,
-        pools={
-            'omnipool': omnipool,
-            'binanace': binance
-        },
-        agents={
-            'liquidator': Agent(
-                enforce_holdings=False,
-                trade_strategy=liquidate_cdps('omnipool')
-            ),
-            'arbitrageur': Agent(
-                enforce_holdings=False,
-                trade_strategy=general_arbitrage(
-                    exchanges=[omnipool, binance]
-                )
-            )
-        },
-        evolve_function=update_prices,
-        external_market=mm.prices.copy()
+        evolve_function=money_market_update([initial_price, final_price])
     )
-    events = run.run(initial_state, time_steps)
+
+    collateral = {'USDT': final_price['DOT'], 'DOT': 1}
+    mm.prices = final_price
+    # liquidate half
+    cdp1 = CDP(
+        {'HDX': mm.value_assets(collateral) / final_price['HDX'] * default_liquidation_threshold / 0.95 - 0.00001},
+        collateral
+    )
+    # liquidate all
+    cdp2 = CDP(
+        {'HDX': mm.value_assets(collateral) / final_price['HDX'] * default_liquidation_threshold / 0.95 + 0.00001},
+        collateral
+    )
+    mm.prices = initial_price
+    mm.cdps = [cdp1, cdp2]
+    final_state = run.run(initial_state, 1)[-1]
+    er = 1
