@@ -1103,6 +1103,7 @@ def get_current_money_market():
                 if position['config']['assets'][tkn]['balance'] > 0
             },
             liquidation_threshold=position['currentLiquidationThreshold'],
+            health_factor=position['healthFactor'],
         ) for position in borrowers]
     )
     return mm
