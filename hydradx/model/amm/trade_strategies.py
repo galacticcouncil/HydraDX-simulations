@@ -1115,6 +1115,8 @@ def liquidate_cdps(pool_id: str) -> TradeStrategy:
             for debt_tkn, collateral_tkn in sorted([
                 (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys() for collateral_tkn in cdp.collateral.keys()
             ], key=lambda tkns: mm.get_liquidation_bonus(tkns[1], tkns[0]), reverse=True):
+                if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral:
+                    continue
                 assert cdp.debt[debt_tkn] > 0
                 assert cdp.collateral[collateral_tkn] > 0
                 collateral_received, debt_paid = mm.calculate_liquidation(
