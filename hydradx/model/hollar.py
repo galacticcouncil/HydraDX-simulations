@@ -86,13 +86,6 @@ class StabilityModule:
         i_native_stable = pool.asset_list.index(self.native_stable)
         return pool.peg[i_tkn] / pool.peg[i_native_stable]
 
-    # def update_peg(self, tkn: str) -> tuple:
-    #     pool = self.pools[tkn]  # actual current pool state
-    #     fee = pool._update_peg()
-    #     i_tkn = pool.asset_list.index(tkn)
-    #     i_native_stable = pool.asset_list.index(self.native_stable)
-    #     return pool.peg[i_native_stable] / pool.peg[i_tkn], fee
-
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self._pool_states[tkn]
         peg = self.get_peg(tkn)

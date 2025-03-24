@@ -1,4 +1,5 @@
 import copy
+import math
 
 import pytest
 from hypothesis import given, strategies as st, reproduce_failure
@@ -444,4 +445,44 @@ def test_swap_does_not_change_params(ratios, buyback_speed, susds_price):
             raise ValueError("Max buy amount should be greater than after swap but before update")
         if buy_price3 <= buy_price:
             raise ValueError("Buy price should be greater than before swap")
+
+
+def test_peg_updated_during_block():
+    peg_raise_n = 10
+    daily_return = 0.01  # 1% return in a day
+    daily_blocks = 7200
+    mult_inc = math.pow(1 + daily_return, peg_raise_n / daily_blocks)
+    ratios = [mpf(0.5), mpf(0.5)]
+    susds_price = 1.5
+    buyback_speed = mpf(1/10_000)
+    liquidity = {'USDT': mpf(1_000_000), 'SUSDS': mpf(1_000_000)}
+    usdt_pool = StableSwapPoolState({'USDT': ratios[0] * mpf(1_000_000), 'HOLLAR': mpf(1_000_000)},100, trade_fee=0.0001,)
+    susds_pool = StableSwapPoolState({'HOLLAR': 1_000_000, 'SUSDS': ratios[1] * 1_000_000 / susds_price},100,
+                                     trade_fee=0.0001, peg=susds_price)
+    pools = [usdt_pool, susds_pool]
+    sell_fee = 0.001
+    max_buy_price_coef = 0.999
+    buy_fee = 0.0001
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price_coef, buy_fee)
+    hsm2 = copy.deepcopy(hsm)
+    profit_diff = []
+    for t in range(daily_blocks):
+        if t % peg_raise_n == 0:
+            # do arb in first pool
+            agent = Agent()
+            hsm.arb(agent, 'SUSDS')
+            # update peg target for both pools
+            old_peg_target = hsm.pools['SUSDS'].peg_target[1]
+            assert old_peg_target == hsm2.pools['SUSDS'].peg_target[1]
+            hsm.pools['SUSDS'].set_peg_target(old_peg_target * mult_inc)
+            hsm2.pools['SUSDS'].set_peg_target(old_peg_target * mult_inc)
+            hsm.update()  # pushes update to internal pool_state object
+            hsm2.update()
+            # do arb in second pool
+            agent2 = Agent()
+            hsm2.arb(agent2, 'SUSDS')
+            # calculate profit difference
+            profit_diff.append(agent2.get_holdings('SUSDS') - agent.get_holdings('SUSDS'))
+    total_profit_diff = sum(profit_diff)
+    print('done')
 
