@@ -8,12 +8,14 @@ class CDP:
             debt: dict[str: float],
             collateral: dict[str: float],
             liquidation_threshold: float = None,
+            health_factor: float = None,
             agent=None
     ):
         self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
         self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
+        self.health_factor = health_factor
         if agent is not None:
             self.agent = agent
         else:
@@ -112,8 +114,9 @@ class MoneyMarket:
         for cdp in self.cdps:
             if not cdp.liquidation_threshold:
                 cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
+            if cdp.health_factor is None:
+                cdp.health_factor = self.get_health_factor(cdp)
 
-        for cdp in self.cdps:
             for tkn in cdp.debt:
                 self.borrowed[tkn] += cdp.debt[tkn]
 
