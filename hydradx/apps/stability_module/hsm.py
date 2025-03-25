@@ -5,7 +5,7 @@ import streamlit as st
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState, balance_ratio_at_price
 from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule
 
@@ -13,13 +13,15 @@ hsm_liquidity = {'USDT': 1000000}
 initial_tvl = 1000000
 sell_price_fee = 0.01
 buy_fee = 0.0001
+amp = 100
 
 st.sidebar.header("Parameters")
 st.sidebar.markdown("*Percentage of the stableswap pool that is Hollar initiailly, in absolute token quantities*")
-hol_pct = st.sidebar.number_input(
-    "Hollar percentage in pool",
-    min_value=0.5, max_value=1.0, value=0.97, step=0.001, key="hol_pct", format="%.3f"
+init_price = st.sidebar.number_input(
+    "Initial price of Hollar in USDT",
+    min_value=0.001, max_value=1.0, value=0.9, step=0.001, key="init_price", format="%.3f"
 )
+hol_pct = balance_ratio_at_price(amp, init_price)
 hours = st.sidebar.number_input(
     "Hours to simulate",
     min_value=1, max_value=10000, value=100, step=1, key="hours"
@@ -38,7 +40,7 @@ max_buy_price_coef = st.sidebar.number_input(
 
 init_hollar = initial_tvl * hol_pct
 tokens = {'HOLLAR': init_hollar, 'USDT': initial_tvl * (1 - hol_pct)}
-pool = StableSwapPoolState(tokens=tokens, amplification=100, trade_fee=0.0001)
+pool = StableSwapPoolState(tokens=tokens, amplification=amp, trade_fee=0.0001)
 hsm = StabilityModule(
     liquidity = hsm_liquidity,
     buyback_speed = buyback_speed,
