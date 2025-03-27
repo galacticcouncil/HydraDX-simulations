@@ -93,13 +93,13 @@ with col2:
 with col1:
     amp_2pool = st.number_input(
         "A for 2-Pool gigaDOT",
-        min_value=5, value=150, step=5, key="amp_2pool"
+        min_value=5, value=22, step=1, key="amp_2pool"
     )
 
 with col2:
     amp_3pool = st.number_input(
         "A for 3-Pool gigaDOT",
-        min_value=5, value=320, step=5, key="amp_3pool"
+        min_value=5, value=50, step=1, key="amp_3pool"
     )
 
 # current pools
