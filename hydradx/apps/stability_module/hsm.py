@@ -16,7 +16,7 @@ st.sidebar.text(
 
 hsm_liquidity = {'USDT': 1000000}
 initial_tvl = 1000000
-sell_price_fee = 0.01
+sell_price_fee = 0.01  # dummy value, not used in this simulation
 amp = 100
 
 st.sidebar.header("Parameters")
