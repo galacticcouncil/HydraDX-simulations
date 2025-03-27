@@ -9,6 +9,11 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState, balance_ratio_
 from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule
 
+st.sidebar.text(
+    "Initial HSM liquidity is 1 million USDT. Initial stableswap pool is USDT/Hollar pool with 1 million total tokens"
+    " (USDT and Hollar combined). A is 100."
+)
+
 hsm_liquidity = {'USDT': 1000000}
 initial_tvl = 1000000
 sell_price_fee = 0.01
@@ -78,6 +83,8 @@ hollar_burned = init_hollar - pool.liquidity['HOLLAR']
 fig1, ax1 = plt.subplots()
 ax1.plot(buy_amts)
 ax1.set_title("max buy amounts from stability module")
+ax1.set_xlabel("blocks")
+ax1.set_ylabel("Hollar")
 st.pyplot(fig1)
 
 # Plot 2: stability module buy prices
@@ -85,6 +92,7 @@ fig2, ax2 = plt.subplots()
 ax2.plot(buy_prices, label='HSM prices')
 ax2.plot(buy_spots, label='pool prices', linestyle='--')
 ax2.set_title("Prices")
+ax2.set_xlabel("blocks")
 ax2.legend()
 st.pyplot(fig2)
 
@@ -92,12 +100,14 @@ st.pyplot(fig2)
 fig3, ax3 = plt.subplots()
 price_ratios = [(buy_price / buy_spot) - 1 for buy_price, buy_spot in zip(buy_prices, buy_spots) if buy_price > 0]
 ax3.plot(price_ratios)
+ax3.set_xlabel("blocks")
 ax3.set_title("HSM buy price / pool spot price - 1")
 st.pyplot(fig3)
 
 # Plot 4: stability module USDT liquidity
 fig4, ax4 = plt.subplots()
 ax4.plot(hsm_liquidity_history)
+ax4.set_xlabel("blocks")
 ax4.set_title("stability module USDT liquidity")
 st.pyplot(fig4)
 
@@ -106,10 +116,13 @@ usdt_spent = [1000000 - hsm_liquidity for hsm_liquidity in hsm_liquidity_history
 fig5, ax5 = plt.subplots()
 ax5.plot(usdt_spent, buy_spots)
 ax5.set_title("buy spot price vs USDT spent")
+ax5.set_xlabel("USDT spent")
 st.pyplot(fig5)
 
 # Plot 6: profits
 fig6, ax6 = plt.subplots()
 ax6.plot(profits)
 ax6.set_title("arbitrager profits")
+ax6.set_xlabel("blocks")
+ax6.set_ylabel("USDT")
 st.pyplot(fig6)
