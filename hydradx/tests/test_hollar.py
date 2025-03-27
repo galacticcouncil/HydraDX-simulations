@@ -486,3 +486,32 @@ def test_peg_updated_during_block():
     total_profit_diff = sum(profit_diff)
     print('done')
 
+
+def test_hsm_max_liquidity():
+    liquidity = {'USDT': mpf(1_000_000), 'SUSDS': mpf(1_000_000)}
+    max_liquidity = {'SUSDS': 2_000_000}
+    susds_price = 1.05
+    usdt_pool = StableSwapPoolState(tokens={'USDT': mpf(1_000_000), 'HOLLAR': mpf(1_000_000)}, amplification=100,
+                                    trade_fee=0.0002)
+    susds_pool = StableSwapPoolState(tokens={'HOLLAR': 1_000_000, 'SUSDS': 1_000_000 / susds_price}, amplification=100,
+                                     trade_fee=0.0002, peg=susds_price)
+    pools = [usdt_pool, susds_pool]
+    sell_fee = 0.001
+    max_buy_price_coef = 0.999
+    buy_fee = 0.0001
+    buyback_speed = mpf(1/10_000)
+    # test that setting max liquidity works
+    StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price_coef, buy_fee, max_liquidity=max_liquidity)
+    # test that initial liquidity above max liquidity fails
+    max_liquidity = {'SUSDS': 500_000}
+    with pytest.raises(ValueError):
+        StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price_coef, buy_fee,
+                        max_liquidity=max_liquidity)
+    # test that trade exceeding max liquidity fails
+    max_liquidity = {'SUSDS': 2_000_000}
+    hsm = StabilityModule(liquidity, buyback_speed, pools, sell_fee, max_buy_price_coef, buy_fee,
+                          max_liquidity=max_liquidity)
+    agent = Agent(enforce_holdings=False)
+    hsm.swap(agent, 'HOLLAR', 'SUSDS', sell_quantity=2_000_000)
+    if not hsm.fail:
+        raise ValueError("Swap should have failed")

@@ -11,7 +11,8 @@ class StabilityModule:
             sell_price_fee: list[float] or float = 0.0001,  # fee paid by traders buying Hollar
             max_buy_price_coef: list[float] or float = 1,  # maximum price at which stability module buys Hollar
             buy_fee: list[float] or float = 0.0001,  # fee paid to arbitrage for assisting buying back of Hollar
-            native_stable: str = 'HOLLAR'  # native stablecoin name
+            native_stable: str = 'HOLLAR',  # native stablecoin name,
+            max_liquidity: dict[str: float] = None  # maximum liquidity of stability module
     ):
         assert native_stable not in liquidity  # Hollar cannot back itself
         self.liquidity = {k: v for k, v in liquidity.items()}
@@ -70,6 +71,15 @@ class StabilityModule:
         self.native_stable = native_stable
         self.fail = ''
 
+        self.max_liquidity = {}
+        for tkn in self.liquidity:
+            if max_liquidity is not None and tkn in max_liquidity:
+                if self.liquidity[tkn] > max_liquidity[tkn]:
+                    raise ValueError(f"Initial liquidity of {tkn} exceeds maximum liquidity")
+                self.max_liquidity[tkn] = max_liquidity[tkn]
+            else:
+                self.max_liquidity[tkn] = float('inf')
+
     def fail_transaction(self, error: str):
         self.fail = error
         return self
@@ -124,6 +134,8 @@ class StabilityModule:
                 buy_quantity = sell_quantity / sell_price
             elif sell_quantity == 0:
                 sell_quantity = buy_quantity * sell_price
+            if sell_quantity + self.liquidity[tkn_sell] > self.max_liquidity[tkn_sell]:
+                return self.fail_transaction("HSM max liquidity exceeded")
         else:
             if tkn_sell != self.native_stable:
                 return self.fail_transaction("Swap must involve native stablecoin")
