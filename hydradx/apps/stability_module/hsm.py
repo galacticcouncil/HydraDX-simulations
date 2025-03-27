@@ -19,7 +19,7 @@ st.sidebar.header("Parameters")
 st.sidebar.markdown("*Percentage of the stableswap pool that is Hollar initiailly, in absolute token quantities*")
 init_price = st.sidebar.number_input(
     "Initial price of Hollar in USDT",
-    min_value=0.001, max_value=1.0, value=0.9, step=0.001, key="init_price", format="%.3f"
+    min_value=0.001, max_value=1.0, value=0.5, step=0.001, key="init_price", format="%.3f"
 )
 hol_pct = balance_ratio_at_price(amp, init_price)
 hours = st.sidebar.number_input(
@@ -28,11 +28,10 @@ hours = st.sidebar.number_input(
 )
 blocks = hours * 300
 st.sidebar.markdown("*Buyback speed is recipricol of buyback denominator*")
-buyback_denom = st.sidebar.number_input(
-    "Buyback denominator",
-    min_value=10, max_value=1000000, value=10000, step = 10, key="buyback_denom"
+buyback_speed = st.sidebar.number_input(
+    "Buyback speed",
+    min_value=0.00001, max_value=0.001, value=0.0001, step = 0.00001, key="buyback_speed", format="%.5f"
 )
-buyback_speed = 1 / buyback_denom
 max_buy_price_coef = st.sidebar.number_input(
     "Max buy price coefficient",
     min_value=0.9, max_value=1.0, value=0.999, step=0.0001, key="max_buy_price_coef", format="%.4f"
