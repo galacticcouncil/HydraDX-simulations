@@ -9,13 +9,15 @@ class CDP:
             collateral: dict[str: float],
             liquidation_threshold: float = None,
             health_factor: float = None,
-            agent=None
+            agent=None,
+            fix_liquidation_threshold: bool = False
     ):
         self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
         self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
         self.health_factor = health_factor
+        self.fix_liquidation_threshold = fix_liquidation_threshold
         if agent is not None:
             self.agent = agent
         else:
@@ -436,11 +438,9 @@ class MoneyMarket:
 
         agent.remove(debt_asset, debt_repaid)
         cdp.debt[debt_asset] -= debt_repaid
-        if cdp.debt[debt_asset] == 0:
-            del cdp.debt[debt_asset]
-        if cdp.collateral[collateral_asset] == 0:
-            del cdp.collateral[collateral_asset]
-        cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
+
+        if not cdp.fix_liquidation_threshold:
+            cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
 
     def value_assets(self, assets: dict[str: float]) -> float:
