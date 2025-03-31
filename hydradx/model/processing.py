@@ -583,7 +583,7 @@ def load_config(filename, path='archive'):
     return config
 
 
-def get_omnipool_balance_history():
+def get_omnipool_balance_history(download_new = False):
     chunk_size = 10000
     chunks_per_file = 10
 
@@ -732,6 +732,8 @@ def get_omnipool_balance_history():
             all_data += load_history_file(filename)
 
     all_data = fix_errors(all_data)
+    if not download_new:
+        return all_data
     print("Downloading recent transactions...")
 
     # continue downloading and check for errors
@@ -1107,3 +1109,101 @@ def get_current_money_market():
         ) for position in borrowers]
     )
     return mm
+
+
+def get_omnipool_price_history(asset_name: str):
+    asset_dict = {
+        'HDX': 0,
+        'USDT': 10
+    }
+    if asset_name not in asset_dict:
+        raise ValueError("Asset not found")
+    else:
+        asset_id = asset_dict[asset_name]
+
+    while not os.path.exists('./model'):
+        os.chdir('..')
+    os.chdir('model')
+
+    endpoint = "https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql"
+    headers = {"Content-Type": "application/json"}
+
+    query = """
+    query GetOmnipoolAssetData($first: Int!, $blockID: Int!, $assetId: Int!) {
+      omnipoolAssetData(
+        first: $first,
+        filter: {
+          assetId: { equalTo: $assetId },
+          paraChainBlockHeight: { greaterThan: $blockID }
+        },
+        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC
+      ) {
+        edges {
+          node {
+            paraChainBlockHeight
+            balances
+            assetState
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+    """
+
+    # Check for existing files
+    files = sorted([f for f in os.listdir("./data/prices") if f.lower().startswith(f"{asset_name.lower()} asset state ")])
+
+    start_block_height = 0  # Default to start from the beginning
+
+    all_data = {}
+    if files:
+        print("Resuming from saved data...")
+        for file in files:
+            with open(f"./data/prices/{file}", "r") as f:
+                saved_data = json.load(f)
+            all_data.update(saved_data)
+
+        start_block_height = int(max(all_data.keys()))
+        print(f"Found {len(files)} files")
+        print(f"Resuming from block height: {start_block_height}")
+
+    variables = {"first": 10000, "blockID": start_block_height, "assetId": asset_id}
+
+    n = len(files) + 1 if files else 1
+
+    while True:
+        payload = {"query": query, "variables": variables}
+        response = requests.post(endpoint, headers=headers, json=payload)
+        response_json = response.json()
+
+        if "errors" in response_json:
+            print(f"GraphQL errors: {response_json['errors']}")
+            break
+
+        data = response_json["data"]["omnipoolAssetData"]
+
+        balances = {
+            d['node']['paraChainBlockHeight']: {
+                'liquidity': d['node']['balances']['free'],
+                'LRNA': d['node']['assetState']['hubReserve']
+            } for d in data['edges']
+        }
+
+        print(f"Page {n} fetched: {len(data['edges'])} records")
+        with open(f"./data/prices/{asset_name} asset state {n:03}.json", "w") as f:
+            f.write(json.dumps(balances))
+
+        all_data.update(balances)
+
+        if data["pageInfo"]["hasNextPage"]:
+            last_block_in_page = max(balances.keys())
+            variables["blockID"] = int(last_block_in_page)
+            n += 1
+        else:
+            break
+
+    print(f"Total records fetched: {len(all_data)}")
+
