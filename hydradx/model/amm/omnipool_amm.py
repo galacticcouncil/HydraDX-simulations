@@ -1331,13 +1331,13 @@ class OmnipoolState(Exchange):
         price of an asset i denominated in j, according to current market conditions in the omnipool
         """
         if tkn not in self.asset_list + ['LRNA']:
-            return 0
+            raise ValueError(f'{tkn} is not in the Omnipool')
         elif tkn == denominator:
             return 1
         elif not denominator or denominator == 'LRNA':
             return self.lrna_price(tkn)
         elif denominator not in self.asset_list:
-            return 0
+            raise ValueError(f'{denominator} is not in the Omnipool')
         elif tkn == 'LRNA':
             return 1 / self.lrna_price(denominator)
         elif self.liquidity[tkn] == 0:
