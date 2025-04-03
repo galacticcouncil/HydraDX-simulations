@@ -446,6 +446,9 @@ class MoneyMarket:
     def value_assets(self, assets: dict[str: float]) -> float:
         return sum([assets[tkn] * self.get_oracle_price(tkn) for tkn in assets])
 
+    def update(self):
+        pass
+
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
         if self.partial_liquidation_pct < 0 or self.partial_liquidation_pct > 1:
