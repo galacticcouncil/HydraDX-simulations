@@ -15,7 +15,11 @@ sympy
 mpmath~=1.4.0a0
 zipp>=3.19.1
 requests>=2.32.0
-python-dotenv
+python-dotenv>=1.0.1
 hydradx-api~=0.3.1
 python-dateutil~=2.8.1
 gdown~=5.2.0
+
+streamlit>=1.42.2
+ipython>=8.3.0
+cadCAD>=0.4.23
