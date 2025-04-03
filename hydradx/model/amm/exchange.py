@@ -67,7 +67,7 @@ class Exchange:
     ):
         return self
 
-    def fail_transaction(self, error: str, agent: Agent):
+    def fail_transaction(self, error: str):
         self.fail = error
         return self
 

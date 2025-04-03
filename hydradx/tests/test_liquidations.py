@@ -1,19 +1,16 @@
 import pytest
 from hypothesis import given, strategies as st, settings
 from mpmath import mp, mpf
-
+import hydradx.model.run as run
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.global_state import find_partial_liquidation_amount, omnipool_liquidate_cdp, GlobalState, \
-    liquidate_against_omnipool, liquidate_against_omnipool_and_settle_otc, _set_mm_oracles_to_external_market, \
-    update_prices_and_process
-from hydradx.model.amm.liquidations import CDP, money_market
+from hydradx.model.amm.global_state import omnipool_liquidate_cdp, GlobalState, \
+    liquidate_against_omnipool, value_assets, money_market_update
+from hydradx.model.amm.money_market import CDP, MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.otc import OTC
+from hydradx.model.amm.trade_strategies import liquidate_cdps
 
 mp.dps = 50
 
-
-# CDP tests
 
 def test_cdp_validate():
     debt_asset = "USDT"
@@ -31,7 +28,7 @@ def test_cdp_validate():
     if cdp.validate():
         raise
     cdp.collateral_amt = init_collat_amt
-    cdp.debt_asset = collateral_asset
+    cdp.debt = collateral_asset
     if cdp.validate():
         raise
 
@@ -46,7 +43,7 @@ def test_cdp_validate():
 # money_market tests
 
 def test_get_oracle_price():
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10}
     )
@@ -59,12 +56,11 @@ def test_get_oracle_price():
 
 
 def test_is_liquidatable():
-    agent = Agent()
     cdp = CDP("USDT", "DOT", 2000 * 0.7 - 0.00001, 200)
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
-        cdps=[(agent, cdp)],
+        cdps=[cdp],
         liquidation_threshold=0.7
     )
     if mm.is_liquidatable(cdp):
@@ -75,12 +71,11 @@ def test_is_liquidatable():
 
 
 def test_is_fully_liquidatable():
-    agent = Agent()
     cdp = CDP("USDT", "DOT", 2000 * 0.8 - 0.00001, 200)
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
-        cdps=[(agent, cdp)],
+        cdps=[cdp],
         liquidation_threshold=0.7,
         full_liquidation_threshold=0.8
     )
@@ -98,7 +93,7 @@ def test_get_liquidate_collateral_amt():
     penalty = 0.01
     collat_liquidated_exp = 101
     cdp = CDP("USDT", "DOT", debt_amt, collateral_amt)
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): spot_price},
         liquidation_threshold=0.1,  # very low to ensure liquidation
@@ -113,13 +108,13 @@ def test_get_liquidate_collateral_amt():
 def test_liquidate():
     debt_amt = 1000
     collat_amt = 100
-    borrow_agent = Agent()
+    # borrow_agent = Agent()
     cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
     collat_price = 11
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): collat_price},
-        cdps=[(borrow_agent, cdp)],
+        cdps=[cdp],
         liquidation_threshold=0.7,
         liquidation_penalty=0.01,
     )
@@ -142,13 +137,12 @@ def test_liquidate():
 def test_liquidate_not_liquidatable():
     debt_amt = 1000
     collat_amt = 500
-    borrow_agent = Agent()
     cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
     collat_price = 11
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): collat_price},
-        cdps=[(borrow_agent, cdp)],
+        cdps=[cdp],
         liquidation_threshold=0.7,
         liquidation_penalty=0.01,
     )
@@ -172,12 +166,11 @@ def test_liquidate_fails():
     collateral_asset = "DOT"
     init_debt_amt = 1000
     init_collat_amt = 100
-    borrow_agent = Agent()
     cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt)
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 11},
-        cdps=[(borrow_agent, cdp.copy())]
+        cdps=[cdp.copy()]
     )
     agent = Agent(holdings={"USDT": 10000, "DOT": 10000})
 
@@ -190,16 +183,15 @@ def test_liquidate_undercollateralized():
     collateral_asset = "DOT"
     init_debt_amt = 1000
     init_collat_amt = 10
-    borrow_agent = Agent()
     penalty = 0.01
 
     # not enough collateral, should liquidate all collateral and have debt left over
     cdp = CDP(debt_asset, collateral_asset, init_debt_amt, init_collat_amt)
     price = 11
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): price},
-        cdps=[(borrow_agent, cdp.copy())],
+        cdps=[cdp.copy()],
         liquidation_penalty=penalty
     )
     agent = Agent(holdings={"USDT": 10000, "DOT": 0})
@@ -216,7 +208,6 @@ def test_liquidate_undercollateralized():
         raise
 
 
-# @settings(max_examples=1)
 @given(
     st.floats(min_value=1.0, max_value=1.0),
     st.floats(min_value=0.1, max_value=1.0),
@@ -240,15 +231,14 @@ def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, li
     collat_price = mpf(11)
 
     debt_amt = collat_amt * collat_price * ltv_ratio
-    borrow_agent = Agent()
     cdp = CDP("USDT", "DOT", debt_amt, collat_amt)
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": mpf(1000000), "DOT": mpf(1000000)},
         oracles={("DOT", "USDT"): collat_price},
-        cdps=[(borrow_agent, cdp)],
+        cdps=[cdp],
         liquidation_threshold=liq_threshold,
         full_liquidation_threshold=full_liq_threshold,
-        partial_liquidation_pct=partial_liq_pct,
+        close_factor=partial_liq_pct,
         liquidation_penalty=penalty,
     )
     liquidate_amt = debt_amt * liq_pct
@@ -281,7 +271,7 @@ def test_borrow():
     borrow_amt = 500
     collat_amt = 100
     agent = Agent(holdings={collateral_asset: collat_amt})
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={borrow_asset: 1000000, collateral_asset: 1000000},
         oracles={("DOT", "USDT"): 11},
         liquidation_threshold=0.7,
@@ -293,14 +283,14 @@ def test_borrow():
         raise
     if len(mm.cdps) != 1:
         raise
-    cdp = mm.cdps[0][1]
+    cdp = mm.cdps[0]
     if cdp.debt_amt != borrow_amt:
         raise
     if cdp.collateral_amt != collat_amt:
         raise
-    if cdp.debt_asset != borrow_asset:
+    if cdp.debt != borrow_asset:
         raise
-    if cdp.collateral_asset != collateral_asset:
+    if cdp.collateral != collateral_asset:
         raise
     if not mm.validate():
         raise
@@ -318,7 +308,7 @@ def test_borrow_fails():
     collateral_asset = "DOT"
     collat_amt = 100
     agent = Agent(holdings={collateral_asset: collat_amt})
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"DOT": 1000000, "BTC": 1000000, "USDT": 1000000},
         oracles={("DOT", "USDT"): 10, ("ETH", "USDT"): 3000, ("ETH", "DOT"): 300},
         liquidation_threshold=0.7,
@@ -340,14 +330,14 @@ def test_borrow_fails():
 
 def test_repay():
     agent = Agent(holdings={"USDT": 1000})
-    cdp = CDP("USDT", "DOT", 1000, 200)
-    mm = money_market(
+    cdp = CDP("USDT", "DOT", 1000, 200, agent)
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)]
+        cdps=[cdp]
     )
-    mm.repay(agent, 0)
+    mm.repay(0)
     if agent.holdings["USDT"] != 0:
         raise
     if mm.borrowed["USDT"] != 0:
@@ -358,15 +348,15 @@ def test_repay():
 
 def test_repay_fails():
     agent = Agent(holdings={"USDT": 500})
-    cdp = CDP("USDT", "DOT", 1000, 200)
-    mm = money_market(
+    cdp = CDP("USDT", "DOT", 1000, 200, agent)
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): 10},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)]
+        cdps=[cdp]
     )
     with pytest.raises(Exception):  # should fail because agent does not have enough funds
-        mm.repay(agent, 0)
+        mm.repay(0)
 
 
 def omnipool_setup_for_liquidation_testing() -> OmnipoolState:
@@ -416,12 +406,11 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
     cdp = init_cdp.copy()
     penalty = 0.01
 
-    agent = Agent()
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)],
+        cdps=[cdp],
         min_ltv=0.6
     )
 
@@ -447,7 +436,7 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
     if treasury_agent.holdings['DOT'] > penalty * (init_cdp.collateral_amt - cdp.collateral_amt):
         raise  # treasury should collect at most penalty
     for tkn in treasury_agent.holdings:
-        if tkn != cdp.collateral_asset and treasury_agent.holdings[tkn] != 0:
+        if tkn != cdp.collateral and treasury_agent.holdings[tkn] != 0:
             raise  # treasury_agent should accrue no other token
 
 
@@ -461,12 +450,11 @@ def test_omnipool_liquidate_cdp_delta_debt_too_large():
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
     cdp = init_cdp.copy()
 
-    agent = Agent()
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)],
+        cdps=[cdp],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
@@ -489,12 +477,11 @@ def test_omnipool_liquidate_cdp_not_profitable():
     init_cdp = CDP('USDT', 'DOT', mpf(debt_amt), mpf(collateral_amt))
     cdp = init_cdp.copy()
 
-    agent = Agent()
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000},
         oracles={("DOT", "USDT"): dot_price},
         liquidation_threshold=0.7,
-        cdps=[(agent, cdp)],
+        cdps=[cdp],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
@@ -555,22 +542,21 @@ def test_liquidate_against_omnipool_full_liquidation(ratio1: float, ratio2: floa
     debt_amt4 = ratio3 * collateral_amt4 * omnipool.price("HDX", "USDT")
     cdp4 = CDP('USDT', 'HDX', debt_amt4, collateral_amt4)
 
-    liq_agent, agent1, agent2, agent3, agent4 = Agent(), Agent(), Agent(), Agent(), Agent()
-    mm = money_market(
+    liq_agent = Agent()
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
         oracles={
             ("DOT", "USDT"): omnipool.price("DOT", "USDT"),
             ("HDX", "USDT"): omnipool.price("HDX", "USDT")
         },
         liquidation_threshold={"DOT": 0.7, "HDX": 0.7, "USDT": 0.3},
-        cdps=[(agent1, cdp1), (agent2, cdp2), (agent3, cdp3), (agent4, cdp4)],
+        cdps=[cdp1, cdp2, cdp3, cdp4],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
 
     evolve_function = liquidate_against_omnipool("omnipool", "liq_agent")
-    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "agent3": agent3, "agent4": agent4,
-                                "liq_agent": liq_agent},
+    state = GlobalState(agents={"liq_agent": liq_agent},
                         pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
 
     state.evolve()
@@ -605,8 +591,7 @@ def test_liquidate_against_omnipool_partial_liquidation():
     cdp2 = CDP('USDT', 'HDX', debt_amt2, collateral_amt2)
 
     liq_agent = Agent(holdings={"HDX": mpf(0), "USDT": mpf(0), "DOT": mpf(0)})
-    agent1, agent2 = Agent(), Agent()
-    mm = money_market(
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
         oracles={
             ("DOT", "USDT"): omnipool.price("DOT", "USDT"),
@@ -614,14 +599,14 @@ def test_liquidate_against_omnipool_partial_liquidation():
         },
         full_liquidation_threshold={"DOT": dot_full_liq_threshold, "HDX": hdx_full_liq_threshold, "USDT": 0.7},
         liquidation_threshold={"DOT": dot_liq_threshold, "HDX": hdx_liq_threshold, "USDT": 0.7},
-        cdps=[(agent1, cdp1), (agent2, cdp2)],
+        cdps=[cdp1, cdp2],
         min_ltv=0.6,
         liquidation_penalty=0.01,
-        partial_liquidation_pct=0.5
+        close_factor=0.5
     )
 
     evolve_function = liquidate_against_omnipool("omnipool", "liq_agent", 100)
-    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "liq_agent": liq_agent},
+    state = GlobalState(agents={"liq_agent": liq_agent},
                         pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
 
     state.evolve()
@@ -650,20 +635,20 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
     debt_amt2 = 0.7 * collateral_amt2 * price_mult * omnipool.price("WETH", "USDT")
     cdp2 = CDP('USDT', 'WETH', debt_amt2, collateral_amt2)
 
-    liq_agent, agent1, agent2, agent3 = Agent(), Agent(), Agent(), Agent()
-    mm = money_market(
+    liq_agent = Agent()
+    mm = MoneyMarket(
         liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000, "WETH": 1000000},
         oracles={("DOT", "USDT"): omnipool.price("DOT", "USDT"),
                  ("HDX", "USDT"): omnipool.price("HDX", "USDT"),
                  ("WETH", "USDT"): price_mult * omnipool.price("WETH", "USDT")},
         liquidation_threshold=0.7,
-        cdps=[(agent1, cdp1), (agent3, cdp2)],
+        cdps=[cdp1, cdp2],
         min_ltv=0.6,
         liquidation_penalty=0.01
     )
 
     evolve_function = liquidate_against_omnipool("omnipool", "liq_agent")
-    state = GlobalState(agents={"agent1": agent1, "agent2": agent2, "agent3": agent3, "liq_agent": liq_agent},
+    state = GlobalState(agents={"liq_agent": liq_agent},
                         pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
 
     state.evolve()
@@ -676,7 +661,7 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
 
 @settings(print_blob=True)
 @given(
-    st.floats(min_value=100, max_value=1000000),
+    st.floats(min_value=100, max_value=100000),
     # st.floats(min_value=0.1, max_value=10.0),
     st.floats(min_value=0.8, max_value=1.0),
     st.floats(min_value=0.5, max_value=1.5)
@@ -691,43 +676,67 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     full_liq_threshold = mpf(0.8)
 
     debt_amt1 = ratio1 * mpf(collateral_amt1) * price_mult * omnipool.price("DOT", "USDT")
-    cdp1 = CDP('USDT', 'DOT', debt_amt1, mpf(collateral_amt1))
+    cdp1 = CDP({'USDT': debt_amt1}, {'DOT': mpf(collateral_amt1)})
 
-    liq_agent, agent1 = Agent(), Agent()
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): price_mult * omnipool.price("DOT", "USDT")},
-        liquidation_threshold=liq_threshold,
+    liq_agent = Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool'))
+    mm = MoneyMarket(
+        assets=[
+            MoneyMarketAsset(
+                name="DOT",
+                price=omnipool.price("DOT", "USDT") * price_mult,
+                liquidity=omnipool.liquidity["DOT"],
+                liquidation_bonus=0.01,
+                liquidation_threshold=liq_threshold,
+                ltv=0.6
+            ),
+            MoneyMarketAsset(
+                name="USDT",
+                price=1,
+                liquidity=omnipool.liquidity["USDT"],
+                liquidation_bonus=0.01,
+                liquidation_threshold=liq_threshold,
+                ltv=0.6
+            )
+        ],
         full_liquidation_threshold=full_liq_threshold,
-        partial_liquidation_pct=0.5,
-        cdps=[(agent1, cdp1)],
-        liquidation_penalty=0.01
+        close_factor=0.5,
+        cdps=[cdp1],
     )
 
-    evolve_function = liquidate_against_omnipool("omnipool", "liq_agent", 100)
-    state = GlobalState(agents={"agent1": agent1, "liq_agent": liq_agent},
-                        pools={"omnipool": omnipool}, money_market=mm, evolve_function=evolve_function)
+    # evolve_function = liquidate_against_omnipool("omnipool", "liq_agent", 100)
+    state = GlobalState(
+        agents={"liq_agent": liq_agent},
+        pools={"omnipool": omnipool},
+        money_market=mm,
+    )
+
+    cdp1_archive = cdp1.copy()
+    mm_archive = mm.copy()
 
     state.evolve()
+    liq_agent.trade_strategy.execute(state, 'liq_agent')
 
-    if cdp1.debt_amt == 0:  # fully liquidated
+    if cdp1.debt['USDT'] == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
-    elif cdp1.collateral_amt == 0:  # fully liquidated, bad debt remaining
-        assert ratio1 > 1/(1 + mm.liquidation_penalty['DOT'])
-    elif cdp1.debt_amt == debt_amt1:  # not liquidated
+    elif cdp1.collateral['DOT'] == 0:  # fully liquidated, bad debt remaining
+        assert ratio1 > 1/(1 + mm.liquidation_bonus[('DOT', 'USDT')])
+    elif cdp1.debt['USDT'] == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
             pass
         elif price_mult >= 1:  # 3. not profitable to liquidate
             pass
         else:
             raise ValueError("CDP should be liquidated")
-    elif 0 < cdp1.debt_amt < debt_amt1:  # partially liquidated
+    elif 0 < cdp1.debt['USDT'] < debt_amt1:  # partially liquidated
         assert ratio1 >= liq_threshold
-        if ratio1 - full_liq_threshold <= 1e-20 and cdp1.debt_amt / debt_amt1 == 1 - mm.partial_liquidation_pct:
+        if (
+                ratio1 * mm.full_liquidation_threshold - mm.liquidation_threshold[('DOT', 'USDT')] <= 1e-20
+                and cdp1.debt['USDT'] / debt_amt1 == 1 - mm.partial_liquidation_pct
+        ):
             pass  # partially liquidated due to partial_liquidation_pct
-        elif ratio1 > 1 - mm.liquidation_penalty['DOT']:  # 2. undercollateralized, partially but not fully liquidated
+        elif ratio1 > 1 - mm.liquidation_bonus[('DOT', 'USDT')]:  # 2. undercollateralized, partially but not fully liquidated
             pass
-        elif liq_agent.holdings["DOT"] / (collateral_amt1 - cdp1.collateral_amt) > 1e-25:
+        elif liq_agent.holdings["DOT"] / (collateral_amt1 - cdp1.collateral['DOT']) > 1e-25:
             raise ValueError("If liquidation agent is profitable, they should have liquidated more")
         elif liq_agent.holdings["DOT"] < 0:
             raise ValueError("Liquidation agent should not have negative holdings")
@@ -737,279 +746,298 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
 
 def test_set_mm_oracles_to_external_market():
     omnipool = omnipool_setup_for_liquidation_testing()
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 1000000},
-        oracles={("DOT", "USDT"): 100, ("HDX", "USDT"): 100, ("DOT", "HDX"): 100},
+    mm = MoneyMarket(
+        assets=[
+            MoneyMarketAsset(
+                name=tkn,
+                price=omnipool.price(tkn, "USDT"),
+                liquidity=omnipool.liquidity[tkn],
+                liquidation_bonus=0.05,
+                liquidation_threshold=0.7,
+                ltv=0.6
+            )
+            for tkn in omnipool.asset_list
+        ]
     )
-    prices = {tkn: omnipool.price(tkn, "USDT") for tkn in omnipool.asset_list}
-    state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={}, external_market=prices)
-    _set_mm_oracles_to_external_market(state, "USDT")
-    for tkn1 in mm.liquidity:
-        for tkn2 in mm.liquidity:
-            if tkn1 != tkn2:
-                if mm.get_oracle_price(tkn1, tkn2) != pytest.approx(prices[tkn1] / prices[tkn2], rel=1e-25):
-                    raise ValueError("Oracle price should be set to Omnipool spot price")
+    prices = [{tkn: omnipool.price(tkn, "USDT") for tkn in omnipool.asset_list}]
+    state = GlobalState(pools={"omnipool": omnipool}, money_market=mm, agents={}, external_market=prices[0])
+    money_market_update(prices)(state)
+    for tkn in mm.liquidity:
+        if mm.get_oracle_price(tkn) != prices[0][tkn]:
+            raise ValueError("Oracle price should be set to Omnipool spot price")
 
 
-@given(st.floats(min_value=6, max_value=6.9))
-def test_find_partial_liquidation_amount_partial(collat_ratio: float):
-    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': 0.40},
-        'HDX': {'usd price': prices['HDX'], 'weight': 0.10},
-        'USDT': {'usd price': prices['USDT'], 'weight': 0.30},
-        'WETH': {'usd price': prices['WETH'], 'weight': 0.10},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': 0.10}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = mpf(20000000)
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    omnipool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-    )
-
-    collateral_amt = 200000
-    debt_amt = collat_ratio * collateral_amt
-    cdp = CDP('USDT', 'DOT', debt_amt, collateral_amt)
-    penalty = 0.01
-
-    cdp_copy = cdp.copy()
-    agent = Agent()
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
-        liquidation_threshold=0.7,
-        cdps=[(agent, cdp_copy)],
-        min_ltv=0.6,
-        liquidation_penalty=penalty
-    )
-
-    liquidation_amount = find_partial_liquidation_amount(omnipool, mm, 0, 100)
-    if liquidation_amount >= cdp.debt_amt:
-        raise  # liquidation should be partial
-    if liquidation_amount == 0:
-        raise  # liquidation should happen
-
-    omnipool_copy = omnipool.copy()
-    treasury_agent = Agent(holdings={"USDT": mpf(0), "DOT": mpf(0)})
-    omnipool_liquidate_cdp(omnipool_copy, mm, 0, treasury_agent, liquidation_amount)
-
-    # collat_penalty = treasury_agent.holdings[cdp.collateral_asset]
-    collat_sold = cdp.collateral_amt - cdp_copy.collateral_amt
-    # if collat_penalty != pytest.approx(penalty * (collat_sold - collat_penalty), rel=1e-15):
-    #     raise
-
-    if treasury_agent.holdings[cdp.collateral_asset] < 0:
-        raise
-    if treasury_agent.holdings[cdp.collateral_asset] >= 1e10:
-        raise  # partial liquidation means no profit left over for treasury
-
-    # debt_liquidated = cdp.debt_amt - cdp_copy.debt_amt
-    # exec_price = debt_liquidated / collat_sold
-    #
-    # if exec_price != pytest.approx(collat_ratio, rel=1e-12):
-    #     raise  # execution price should be equal to collateral ratio
-
-
-def test_liquidate_against_omnipool():
-    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
-        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
-        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
-        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = 20000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    oracles = {('DOT', 'USDT'): prices['DOT']}
-
-    init_pool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-    )
-
-    # should be fully liquidated
-    cdp1 = CDP('USDT', 'DOT', 1000, 200)
-    # should be partially liquidated
-    cdp2 = CDP('USDT', 'DOT', 1000000, 1000000 / 6.5)
-    # should be fully liquidated
-    cdp3 = CDP('DOT', 'USDT', 100, 900)
-    agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
-
-    agent = Agent()
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles=oracles,
-        liquidation_threshold=0.7,
-        cdps=[(agent, cdp1), (agent, cdp2), (agent, cdp3)],
-        min_ltv=0.6,
-        liquidation_penalty=0.02
-    )
-
-    init_state = GlobalState(
-        agents=agents,
-        pools={'omnipool': init_pool},
-        money_market=mm
-    )
-
-    transform_fn = liquidate_against_omnipool("omnipool", "treasury")
-    transform_fn(init_state)
-
-    if cdp1.debt_amt != 0:
-        raise  # should be fully liquidated
-    if cdp2.debt_amt == 0 or cdp2.debt_amt == 1000000:
-        raise  # should be partially liquidated
-    if cdp3.debt_amt != 0:
-        raise  # should be fully liquidated
-    if len(init_state.money_market.cdps) != 3:
-        raise
-
-
-def test_liquidate_against_omnipool_and_settle_otc():
-    prices = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
-
-    assets = {
-        'DOT': {'usd price': prices['DOT'], 'weight': mpf(0.40)},
-        'HDX': {'usd price': prices['HDX'], 'weight': mpf(0.10)},
-        'USDT': {'usd price': prices['USDT'], 'weight': mpf(0.30)},
-        'WETH': {'usd price': prices['WETH'], 'weight': mpf(0.10)},
-        'iBTC': {'usd price': prices['iBTC'], 'weight': mpf(0.10)}
-    }
-
-    lrna_price_usd = 35
-    initial_omnipool_tvl = 20000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    init_pool = OmnipoolState(
-        tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-        },
-        preferred_stablecoin='USDT',
-    )
-
-    # should be fully liquidated
-    cdp1 = CDP('USDT', 'DOT', 1000, 200)
-    # can't be liquidated
-    cdp2 = CDP('USDT', 'DOT', 1000, 500)
-
-    # should be executed and removed
-    otc1 = OTC('DOT', 'USDT', 120, 12, partially_fillable=True)
-    # should not be executed
-    otc2 = OTC('DOT', 'USDT', 120, 5, partially_fillable=True)
-
-    agent = Agent()
-    cdps = [(agent, cdp1), (agent, cdp2)]
-    otcs = [otc1, otc2]
-    agents = {"treasury": Agent(holdings={"USDT": 0, "DOT": 0})}
-
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000},
-        oracles={("DOT", "USDT"): prices['DOT']},
-        liquidation_threshold=0.7,
-        cdps=cdps,
-        min_ltv=0.6,
-        liquidation_penalty=0.02
-    )
-
-    init_state = GlobalState(
-        agents=agents, pools={'omnipool': init_pool}, money_market=mm, otcs=otcs)
-
-    transform_fn = liquidate_against_omnipool_and_settle_otc("omnipool", "treasury")
-    transform_fn(init_state)
-
-    if cdp1.debt_amt != 0:
-        raise  # should be fully liquidated
-    # if cdp2.debt_amt != 1000:
-    #     raise  # shouldn't be liquidated at all
-    if otc1.sell_amount != 0:
-        raise  # should be completed
-    if otc2.sell_amount != 120:
-        raise  # shouldn't be traded
-    if len(init_state.money_market.cdps) != 2:
-        raise
-    if len(init_state.otcs) != 1:
-        raise
-
-
-def test_update_prices_and_process():
-    omnipool = omnipool_setup_for_liquidation_testing()
-    dot_price = omnipool.price("DOT", "USDT")
-    hdx_price = omnipool.price("HDX", "USDT")
-
-    price_list = [{'DOT': 5, 'HDX': 0.03, 'USDT': 1, 'WETH': 2600, 'iBTC': 46000},
-                  {'DOT': 5, 'HDX': 0.04, 'USDT': 1, 'WETH': 2700, 'iBTC': 47000}]
+def test_liquidations():
+    initial_price = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
+    initial_liquidity = {'USDT': 1000000, 'DOT': 1000000, 'HDX': 100000000}
+    default_liquidation_threshold = 0.7
+    default_liquidation_bonus = 0.02
+    default_ltv = 0.6
+    assets = [
+        MoneyMarketAsset(
+            name=tkn,
+            price=initial_price[tkn],
+            liquidity=initial_liquidity[tkn],
+            liquidation_bonus=default_liquidation_bonus,
+            liquidation_threshold=default_liquidation_threshold,
+            ltv=default_ltv,
+        ) for tkn in ['DOT', 'HDX', 'USDT']
+    ]
 
     # cdp1 should be liquidated fully
-    cdp1 = CDP('USDT', 'DOT', 20 * 7 * .7 - 0.00001, 20)
+    cdp1 = CDP(
+        {'USDT': initial_price['DOT'] * default_liquidation_threshold / 0.95 + 0.00001},
+        {'DOT': 1}
+    )
     # cdp2 should not be liquidated
-    cdp2 = CDP('USDT', 'HDX', 1, 1000)
-    # cdp3 should be liquidated fully
-    cdp3 = CDP('HDX', 'DOT', 20 * 5 / 0.03 * .7 + 0.00001, 20)
-
-    cdps = [(Agent(), cdp1), (Agent(), cdp2), (Agent(), cdp3)]
-
-    pool_id = "omnipool"
-    liquidating_agent_id = "liq_agent"
-
-    mm = money_market(
-        liquidity={"USDT": 1000000, "DOT": 1000000, "HDX": 100000000},
-        oracles={
-            ("DOT", "USDT"): dot_price,
-            ("HDX", "USDT"): hdx_price,
-            ("HDX", "DOT"): hdx_price / dot_price
-        },
-        liquidation_threshold=0.7,
-        cdps=cdps,
-        min_ltv=0.6,
-        liquidation_penalty=0.02
+    cdp2 = CDP({'USDT': 1}, {'HDX': 1 / initial_price['HDX'] / default_liquidation_threshold + 0.00001})
+    # cdp3 should be partially liquidated
+    cdp3 = CDP(
+        {'HDX': 20 * initial_price['DOT'] / initial_price['HDX'] * default_liquidation_threshold / 0.95 - 0.00001},
+        {'DOT': 20}
     )
 
+    cdps = [cdp1, cdp2, cdp3]
+    mm = MoneyMarket(
+        assets=assets,
+        cdps=cdps.copy(),
+    )
+
+    liquidator = Agent(enforce_holdings=False)
+    debt_amount = cdp1.debt['USDT']
+    mm.liquidate(cdp1, liquidator, 'USDT', 'DOT')
+    agent_value_1 = value_assets(mm.prices, liquidator.holdings)
+    if agent_value_1 != pytest.approx(debt_amount * default_liquidation_bonus, rel=1e-20):
+        raise ValueError("Liquidator should have profited by an amount equal to liquidation bonus.")
+
+    mm.liquidate(cdp2, liquidator,'USDT', 'HDX')
+    if value_assets(mm.prices, liquidator.holdings) != agent_value_1:
+        raise ValueError("Liquidating a healthy CDP should have no effect")
+    cdp3_debt_amount = cdp3.debt['HDX']
+    mm.liquidate(cdp3, liquidator, 'HDX', 'DOT')
+    if cdp3.debt['HDX'] == 0:
+        raise ValueError("CDP3 should not be fully liquidated")
+    elif cdp3.debt['HDX'] == cdp3_debt_amount:
+        raise ValueError("CDP3 should be partially liquidated")
+    gains = value_assets(mm.prices, liquidator.holdings) - agent_value_1
+    if gains != pytest.approx(cdp3_debt_amount / 2 * default_liquidation_bonus * initial_price['HDX'], rel=1e-20):
+        raise ValueError("Liquidator should have profited by an amount equal to liquidation bonus.")
+
+
+def test_trade_strategy():
+    omnipool = omnipool_setup_for_liquidation_testing()
+    initial_price = {'DOT': 7, 'HDX': 0.02, 'USDT': 1, 'WETH': 2500, 'iBTC': 45000}
+    final_price = {'DOT': 5, 'HDX': 0.04, 'USDT': 1, 'WETH': 2700, 'iBTC': 47000}
+    time_steps = 3
+    price_list = [
+        {
+            tkn: initial_price[tkn] + (final_price[tkn] - initial_price[tkn]) * (i / time_steps)
+            for tkn in initial_price
+        } for i in range(time_steps + 1)
+    ]
+
+    initial_liquidity = {'USDT': 1000000, 'DOT': 1000000, 'HDX': 100000000}
+    default_liquidation_threshold = 0.7
+    default_liquidation_bonus = 0.02
+    default_ltv = 0.6
+    assets = [
+        MoneyMarketAsset(
+            name=tkn,
+            price=initial_price[tkn],
+            liquidity=initial_liquidity[tkn],
+            liquidation_bonus=default_liquidation_bonus,
+            liquidation_threshold=default_liquidation_threshold,
+            ltv=default_ltv,
+        ) for tkn in ['DOT', 'HDX', 'USDT']
+    ]
+
+    # cdp1 should be liquidated fully
+    cdp1 = CDP(
+        {'USDT': final_price['DOT'] * default_liquidation_threshold / 0.95 + 0.00001},
+        {'DOT': 1}
+    )
+    # cdp2 should not be liquidated
+    cdp2 = CDP({'USDT': 1}, {'HDX': 1 / initial_price['HDX'] / default_liquidation_threshold + 0.00001})
+    # cdp3 should be partially liquidated
+    cdp3 = CDP(
+        {'HDX': 1000},
+        {'DOT': 1000 / final_price['DOT'] * final_price['HDX'] / default_liquidation_threshold * 0.95 + 0.00001}
+    )
+
+    cdps = [cdp1, cdp2, cdp3]
+    mm = MoneyMarket(
+        assets=assets,
+        cdps=cdps,
+    )
+    liquidator = Agent(
+        trade_strategy=liquidate_cdps('omnipool'),
+        enforce_holdings=False
+    )
     state = GlobalState(
-        agents={liquidating_agent_id: Agent()},
-        pools={pool_id: omnipool},
+        agents={'liquidator': liquidator},
+        pools={'omnipool': omnipool},
+        money_market=mm,
+        evolve_function=money_market_update(price_list)
+    )
+    final_state = run.run(state, time_steps)[-1]
+    final_cdp1_debt = final_state.money_market.cdps[0].debt['USDT']
+    final_cdp2_debt = final_state.money_market.cdps[1].debt['USDT']
+    final_cdp3_debt = final_state.money_market.cdps[2].debt['HDX']
+    final_mm = final_state.money_market
+    final_liquidator = final_state.agents['liquidator']
+
+    if final_cdp1_debt != 0:
+        raise ValueError("CDP1 should be fully liquidated")
+    if final_cdp2_debt != 1:
+        raise ValueError("CDP2 should not be liquidated")
+    if final_cdp3_debt != 500:
+        raise ValueError("CDP3 should be half liquidated")
+    if final_mm.get_oracle_price("HDX") != 0.04:
+        raise ValueError("Oracle price for HDX should be 0.04")
+    if final_mm.get_oracle_price("DOT") != 5:
+        raise ValueError("Oracle price for DOT should be 5")
+    profit = final_liquidator.holdings
+
+
+def test_full_liquidation_not_profitable():
+    omnipool = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': 20, 'LRNA': 20},
+            'USD': {'liquidity': 20, 'LRNA': 20}
+        }
+    )
+    mm = MoneyMarket(
+        assets=[
+            MoneyMarketAsset(
+                name='HDX',
+                price=1,
+                liquidity=10,
+                liquidation_bonus=0.02,
+                liquidation_threshold=0.7,
+                ltv=0.6
+            ),
+            MoneyMarketAsset(
+                name='USD',
+                price=1,
+                liquidity=10,
+                liquidation_bonus=0.02,
+                liquidation_threshold=0.7,
+                ltv=0.6
+            )
+        ]
+    )
+    cdp1 = CDP(
+        {'USD': 10},
+        {'HDX': 10}
+    )
+    mm.cdps = [cdp1]
+    liquidator = Agent(
+        trade_strategy=liquidate_cdps('omnipool'),
+        enforce_holdings=False
+    )
+    initial_state = GlobalState(
+        agents={'liquidator': liquidator},
+        pools={'omnipool': omnipool},
         money_market=mm
     )
+    liquidator.trade_strategy.execute(initial_state, 'liquidator')
+    if liquidator.holdings['USD'] != 0:
+        raise ValueError("Liquidator should not have USDT")
+    if liquidator.holdings['HDX'] == 0:
+        raise ValueError("Liquidator should liquidate some HDX")
+    if mm.cdps[0].debt['USD'] == 0:
+        raise ValueError("CDP should not be fully liquidated")
+    er = 1
 
-    evolve_fn = update_prices_and_process(pool_id, liquidating_agent_id, price_list, "USDT")
-    evolve_fn(state)
 
-    if cdp1.debt_amt != 0:
-        raise ValueError("CDP1 should be fully liquidated")
-    if cdp2.debt_amt != 1:
-        raise ValueError("CDP2 should not be liquidated")
-    if cdp3.debt_amt != 0:
-        raise ValueError("CDP3 should be fully liquidated")
-    if mm.get_oracle_price("HDX", "USDT") != 0.03:
-        raise ValueError("Oracle price for HDX should be 0.03")
-    if mm.get_oracle_price("DOT", "USDT") != 5:
-        raise ValueError("Oracle price for DOT should be 5")
-    if mm.get_oracle_price("HDX", "DOT") != 0.03 / 5:
-        raise ValueError("Oracle price for HDX/DOT should be 0.03 / 5 ")
+def test_get_money_market():
+    from hydradx.model.processing import get_current_money_market
+    mm = get_current_money_market()
+    if not isinstance(mm, MoneyMarket):
+        raise ValueError("MoneyMarket should be returned")
+
+
+def test_multiple_collateral():
+    omnipool = omnipool_setup_for_liquidation_testing()
+    initial_price = {tkn: omnipool.usd_price(tkn, 'USDT') for tkn in ['DOT', 'HDX', 'USDT']}
+    final_price = {'DOT': 5, 'HDX': 0.02, 'USDT': 1}
+
+    initial_liquidity = {'USDT': 1000000, 'DOT': 1000000, 'HDX': 100000000}
+    default_liquidation_threshold = 0.7
+    liquidation_bonus = {
+        'DOT': 0.05,
+        'HDX': 0.05,
+        'USDT': 0.015,
+    }
+    default_ltv = 0.6
+    assets = [
+        MoneyMarketAsset(
+            name=tkn,
+            price=initial_price[tkn],
+            liquidity=initial_liquidity[tkn],
+            liquidation_bonus=liquidation_bonus[tkn],
+            liquidation_threshold=default_liquidation_threshold,
+            ltv=default_ltv,
+        ) for tkn in initial_liquidity
+    ]
+    mm = MoneyMarket(
+        assets=assets,
+    )
+    liquidator = Agent(
+        trade_strategy=liquidate_cdps('omnipool'),
+        enforce_holdings=False
+    )
+    initial_state = GlobalState(
+        agents={'liquidator': liquidator},
+        pools={'omnipool': omnipool},
+        money_market=mm,
+        evolve_function=money_market_update([initial_price, final_price])
+    )
+
+    collateral = {'USDT': final_price['DOT'], 'DOT': 1}
+    mm.prices = final_price
+    hdx_debt_half_liquidation_point = mm.value_assets(collateral) / final_price['HDX'] * default_liquidation_threshold
+    hdx_debt_full_liquidation_point = hdx_debt_half_liquidation_point / 0.95
+    # liquidate half
+    cdp1 = CDP(
+        {'HDX': hdx_debt_full_liquidation_point - 0.00001},
+        collateral
+    )
+    # liquidate all
+    cdp2 = CDP(
+        {'HDX': hdx_debt_full_liquidation_point + 0.00001},
+        collateral
+    )
+    # liquidate half
+    cdp3 = CDP(
+        {'HDX': hdx_debt_half_liquidation_point + 0.00001},
+        collateral
+    )
+    # liquidate non
+    cdp4 = CDP(
+        {'HDX': hdx_debt_half_liquidation_point - 0.00001},
+        collateral
+    )
+    mm.prices = initial_price
+    mm.cdps = [cdp1, cdp2, cdp3, cdp4]
+    final_state = run.run(initial_state, 1)[-1]
+    final_mm = final_state.money_market
+    final_cdp1 = final_mm.cdps[0]
+    final_cdp2 = final_mm.cdps[1]
+    final_cdp3 = final_mm.cdps[2]
+    final_cdp4 = final_mm.cdps[3]
+    if final_cdp2.collateral['DOT'] > 0:
+        raise ValueError("CDP2 DOT should be fully liquidated")
+    if (final_mm.value_assets({'DOT': cdp1.collateral['DOT'] - final_cdp1.collateral['DOT']})
+            / final_mm.value_assets({'HDX': final_cdp1.debt['HDX']}) - 1
+            != pytest.approx(final_mm.liquidation_bonus[('DOT', 'HDX')], rel=1e-12)
+    ):
+        raise ValueError("CDP1 DOT should be liquidated at half the value of HDX debt + liquidation bonus")
+    if (final_mm.value_assets({'DOT': cdp3.collateral['DOT'] - final_cdp3.collateral['DOT']})
+            / final_mm.value_assets({'HDX': final_cdp3.debt['HDX']}) - 1
+            != pytest.approx(final_mm.liquidation_bonus[('DOT', 'HDX')], rel=1e-12)
+    ):
+        raise ValueError("CDP3 should be half liquidated just like CDP1")
+    if final_cdp4.debt != cdp4.debt or final_cdp4.collateral != cdp4.collateral:
+        raise ValueError("CDP4 should not be liquidated")
+    er = 1
