@@ -1145,7 +1145,7 @@ class OmnipoolState(Exchange):
 
         if not agent.validate_holdings(tkn_add, quantity):
             return self.fail_transaction(
-                f'Agent has insufficient funds ({agent.holdings[tkn_add]} < {quantity}).', agent
+                f'Agent has insufficient funds.', agent
             )
 
         if (self.lrna[tkn_add] + delta_Q) / (self.lrna_total + delta_Q) > self.weight_cap[tkn_add]:

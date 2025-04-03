@@ -11,7 +11,7 @@ from hydradx.model.amm import stableswap_amm as stableswap
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap, simulate_remove_uniform, \
-    simulate_add_liquidity
+    simulate_add_liquidity, balance_ratio_at_price
 from hydradx.model.amm.trade_strategies import random_swaps, stableswap_arbitrage
 from hydradx.tests.strategies_omnipool import stableswap_config
 
@@ -1296,3 +1296,16 @@ def test_cash_out():
     stableswap.remove_uniform(agent, agent.holdings[stableswap.unique_id])
     if value != sum([agent.holdings[tkn] * prices[tkn] if tkn in prices else 0 for tkn in agent.holdings]):
         raise AssertionError('Cash out value not calculated correctly')
+
+
+@given(
+    st.floats(min_value=0.01, max_value=100),
+    st.floats(min_value=10, max_value=10_000)
+)
+def test_balance_ratio_at_price(price, amp):
+    r = balance_ratio_at_price(amp, price, mpf(1_000_000))
+    tvl = 1_000_000
+    tokens = {"HOLLAR": r * tvl, "USDT": (1 - r) * tvl}
+    pool = StableSwapPoolState(tokens, amp)
+    spot = pool.price('HOLLAR', 'USDT')
+    assert spot == pytest.approx(price, rel=1e-15)
