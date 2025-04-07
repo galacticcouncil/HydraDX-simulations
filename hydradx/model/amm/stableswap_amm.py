@@ -758,3 +758,38 @@ def simulate_buy_shares(
         quantity=quantity,
         tkn_add=tkn_add
     ), new_agent
+
+
+def balance_ratio_at_price(
+        amplification: float,
+        price: float,
+        tkn_quantity: float = 1_000_000
+):
+    init_quantity = 1_000_000
+    # find quantity that is too high
+    for i in range(100):
+        tokens = {"A": init_quantity, "B": tkn_quantity}
+        pool = StableSwapPoolState(tokens, amplification)
+        spot = pool.price("A", "B")
+        if spot == price:
+            return init_quantity / (init_quantity + tkn_quantity)
+        elif spot < price:
+            break
+        init_quantity *= 10
+    if spot > price:
+        raise ValueError('Price is too low.')
+    # do binary search to identify quantity of asset 0.
+    max_quantity = init_quantity
+    min_quantity = 0
+    for i in range(100):
+        mid_quantity = (max_quantity + min_quantity) / 2
+        tokens = {"A": mid_quantity, "B": tkn_quantity}
+        pool = StableSwapPoolState(tokens, amplification)
+        spot = pool.price("A", "B")
+        if spot == price:
+            break
+        elif spot < price:
+            max_quantity = mid_quantity
+        else:
+            min_quantity = mid_quantity
+    return mid_quantity / (mid_quantity + tkn_quantity)

@@ -138,3 +138,7 @@ def test_get_slippage_dict():
     buy_sizes = [1, 2, 3]
     slippage = get_slippage_dict(sell_amts_dicts, buy_sizes)
     assert_slippage_matches(slippage, sell_amts_dicts, buy_sizes)
+
+
+def test_hsm():
+    from hydradx.apps.stability_module.hsm import hollar_burned
