@@ -288,7 +288,24 @@ class StableSwapPoolState(Exchange):
         return self.shares * (1 - updated_d / self.d) / (1 - fee)
 
     def copy(self):
-        return copy.deepcopy(self)
+        new_pool = StableSwapPoolState(
+            {k: v for k,v in self.liquidity.items()},
+            amplification=self.amplification,
+            precision=self.precision,
+            trade_fee=self.trade_fee,
+            unique_id=self.unique_id,
+            spot_price_precision=self.spot_price_precision,
+            shares=self.shares,
+            peg=[v for v in self.peg[1:]],
+            peg_target=[v for v in self.peg_target[1:]],
+            max_peg_update=self.max_peg_update
+        )
+        new_pool.amp_change_step = self.amp_change_step
+        new_pool.target_amp_block = self.target_amp_block
+        new_pool.time_step = self.time_step
+        new_pool.peg_target_updated_at = self.peg_target_updated_at
+        new_pool.conversion_metrics = self.conversion_metrics
+        return new_pool
 
     def __repr__(self):
         # round to given precision
