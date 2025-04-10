@@ -141,4 +141,4 @@ def test_get_slippage_dict():
 
 
 def test_hsm():
-    from hydradx.apps.stability_module.hsm import hollar_burned
+    from hydradx.apps.hollar.hsm import hollar_burned
