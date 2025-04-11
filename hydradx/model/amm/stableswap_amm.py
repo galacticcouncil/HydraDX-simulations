@@ -48,6 +48,7 @@ class StableSwapPoolState(Exchange):
         for token, quantity in tokens.items():
             self.asset_list.append(token)
             self.liquidity[token] = quantity
+        self.n_coins = len(self.asset_list)
 
         self.set_peg(peg)
         self.set_peg_target(peg_target)
@@ -59,10 +60,6 @@ class StableSwapPoolState(Exchange):
     @property
     def ann(self) -> float:
         return self.amplification * self.n_coins
-
-    @property
-    def n_coins(self) -> int:
-        return len(self.asset_list)
 
     @property
     def d(self) -> float:
