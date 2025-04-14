@@ -980,6 +980,7 @@ class OmnipoolState(Exchange):
         self.liquidity[i] = 0
         self.asset_list.remove(i)
         sub_pool.asset_list.append(i)
+        sub_pool.n_coins += 1
         return self
 
     def migrate_lp(
