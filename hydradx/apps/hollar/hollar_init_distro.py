@@ -180,6 +180,8 @@ for i in range(len(hollar_amounts_inputs)):
         hollar_amounts.append(hollar_amounts_inputs[i])
         hollar_dump_blocks.append(hollar_dump_blocks_inputs[i])
 
+price_plot_n = 100
+
 
 def model_hollar_dump(
         sell_amts,
@@ -187,7 +189,8 @@ def model_hollar_dump(
         init_stablepools,
         hsm_liquidity,
         buyback_speed,
-        num_blocks
+        num_blocks,
+        tkn_chart
 ):
     hsm_vals_dict = {}
     spot_prices_dict = {}
@@ -195,35 +198,56 @@ def model_hollar_dump(
     for i in range(len(sell_amts)):
         sell_amt = sell_amts[i]
         num_blocks_dump = hollar_dump_blocks[i]
-        stablepools = copy.deepcopy(init_stablepools)
-        pools_list = [stablepools[tkn] for tkn in hsm_liquidity]
-        agent = Agent(enforce_holdings=False)
+        stablepools = {tkn_chart: init_stablepools[tkn_chart].copy()}
+        pools_list = [stablepools[tkn_chart]]
+        # agent = Agent(enforce_holdings=False)
         arb_agent = Agent(enforce_holdings=False)
-        hsm = StabilityModule(hsm_liquidity, buyback_speed, pools_list, max_buy_price_coef=0.999)
-        spot_prices = [stablepools['aUSDT'].price('HOLLAR', 'aUSDT')]
-        init_hsm_value = sum([pegs[tkn] * hsm.liquidity[tkn] for tkn in pegs])
+        reduced_liquidity = {tkn_chart: hsm_liquidity[tkn_chart]}
+        hsm = StabilityModule(reduced_liquidity, buyback_speed, pools_list, max_buy_price_coef=0.999)
+        spot_prices = [stablepools[tkn_chart].price('HOLLAR', tkn_chart)]
+        init_hsm_value = sum([pegs[tkn] * hsm_liquidity[tkn] for tkn in pegs])
         hsm_values = [init_hsm_value]
         hollar_sell_amts = []
-        for i in range(num_blocks):
-            if len(hsm_values) > num_blocks_dump and hsm_values[-1] == hsm_values[-2]:
-                len_extend = min(num_blocks - i, 1000)
+        for j in range(num_blocks):
+            if (len(hsm_values) > num_blocks_dump and (hsm_values[-1] == hsm_values[-2]
+                    or spot_prices[-1] >= hsm.max_buy_price_coef[tkn_chart])):  # note this only works because aUSDT peg is 1
+                len_extend = min(num_blocks - j, 1000)
                 hsm_values.extend([hsm_values[-1]] * len_extend)
-                spot_prices.extend([spot_prices[-1]] * len_extend)
-                assert hollar_sell_amts[-1] == 0
+                spot_prices.extend([spot_prices[-1]] * (len_extend // price_plot_n))
+                # assert hollar_sell_amts[-1] == 0
                 hollar_sell_amts.extend([0] * len_extend)
                 break
             else:
-                before_hollar_amt = hsm.pools['aUSDT'].liquidity['HOLLAR']
+                before_hsm_liq = hsm.liquidity[tkn_chart]
                 for tkn, ss in stablepools.items():
-                    hsm.arb(arb_agent, tkn)
-                    if tkn == 'aUSDT':
-                        hollar_sold = before_hollar_amt - hsm.pools[tkn].liquidity['HOLLAR']
-                    if i < num_blocks_dump:
-                        ss.swap(agent, 'HOLLAR', tkn,  sell_quantity=sell_amt / num_blocks_dump / 4)
+                    max_buy_amt = hsm._get_max_buy_amount(tkn)  # note this ignores self.max_buy_price_coef
+                    if tkn == tkn_chart:
+                        hollar_sold = max_buy_amt  # track max_buy_amt for aUSDT
+                    if j < num_blocks_dump:  # add in Hollar dumping to net swap
+                        hollar_buy_amt = max_buy_amt - sell_amt / num_blocks_dump / 4
+                    else:
+                        hollar_buy_amt = max_buy_amt
+
+                    # hsm.arb(arb_agent, tkn)
+
+                    arb_agent.add(hsm.native_stable, max_buy_amt)  # flash mint Hollar for arb
+                    hsm.swap(arb_agent, tkn_buy=tkn, tkn_sell=hsm.native_stable, sell_quantity=max_buy_amt)
+                    if hollar_buy_amt > 0:
+                        ss.swap(arb_agent, tkn_buy=hsm.native_stable, tkn_sell=tkn, buy_quantity=hollar_buy_amt)
+                    elif hollar_buy_amt < 0:
+                        ss.swap(arb_agent, tkn_buy=tkn, tkn_sell=hsm.native_stable, sell_quantity=-hollar_buy_amt)
+                    arb_agent.remove(hsm.native_stable, max_buy_amt)  # burn Hollar that was minted
+
+                    # if i < num_blocks_dump:
+                    #     ss.swap(agent, 'HOLLAR', tkn,  sell_quantity=sell_amt / num_blocks_dump / 4)
                     ss.update()
                     hsm.update()
-                spot_prices.append(stablepools['aUSDT'].price('HOLLAR', 'aUSDT'))
-                hsm_values.append(sum([pegs[tkn] * hsm.liquidity[tkn] for tkn in pegs]))
+                after_hsm_liq = hsm.liquidity[tkn_chart]
+                hsm_delta = after_hsm_liq - before_hsm_liq
+                hsm_loss_total = hsm_delta * len(init_stablepools)
+                if (j+1) % price_plot_n == 0:
+                    spot_prices.append(stablepools[tkn_chart].price('HOLLAR', tkn_chart))
+                hsm_values.append(hsm_values[-1] + hsm_loss_total)
                 hollar_sell_amts.append(hollar_sold)
         hsm_vals_dict[(sell_amt, num_blocks_dump)] = hsm_values
         spot_prices_dict[(sell_amt, num_blocks_dump)] = spot_prices
@@ -232,12 +256,20 @@ def model_hollar_dump(
 
 if not scenario_added:
     hsm_vals_dict, spot_prices_dict, hollar_sold_dict = model_hollar_dump(
-        hollar_amounts, hollar_dump_blocks, init_stablepools, hsm_liquidity, buyback_speed, num_blocks
+        hollar_amounts, hollar_dump_blocks, init_stablepools, hsm_liquidity, buyback_speed, num_blocks, 'aUSDT'
     )
 
     fig, ax = plt.subplots()
     for (sell_amt, num_blocks_dump), spot_prices in spot_prices_dict.items():
-        ax.plot(spot_prices, label=f"{sell_amt} Hollar, {num_blocks_dump} blocks")
+        # interpolate price
+        interp_spot_prices = []
+        for i in range(len(spot_prices) - 1):
+            p = spot_prices[i]
+            next_p = spot_prices[i+1]
+            interped_prices = [p + (next_p - p) * j / price_plot_n for j in range(price_plot_n)]
+            interp_spot_prices.extend(interped_prices)
+
+        ax.plot(interp_spot_prices, label=f"{sell_amt} Hollar, {num_blocks_dump} blocks")
     ax.set_title("Spot price of Hollar (in aUSDT)")
     ax.legend()
     st.pyplot(fig)
