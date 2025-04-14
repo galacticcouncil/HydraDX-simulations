@@ -55,17 +55,12 @@ def display_op_and_ss_multiple(omnipool_lrna, ss_liquidity, prices, title, x_siz
         ss_liquidity_d[tkn] = {ss_tkn: ss_liquidity[ss_tkn] for ss_tkn in ss_liquidity}
         hollar_per_ss = ss_liquidity['HOLLAR']
 
-    omnipool_tvl = sum(omnipool_lrna.values()) * prices['LRNA']
-    stableswap_tvl = hollar_per_ss * 2
-
-    scaling_factor = (stableswap_tvl / omnipool_tvl) ** 0.5
     scaling_factor = 0.8
     ss_x_size, ss_y_size = x_size * scaling_factor, y_size * scaling_factor
     total_x_size, total_y_size = ss_x_size + x_size, ss_y_size + y_size
     num_pools = len(ss_liquidity_d)
     fig, axs = plt.subplots(num_pools + 1, 1, figsize=(total_x_size, total_y_size))
     fig.suptitle(title, fontsize=16, fontweight="bold")
-    # fig.subplots_adjust(top=1.35)
     fig.subplots_adjust(hspace=-0.1)  # Adjust the spacing (lower values reduce the gap)
     display_liquidity(axs[0], omnipool_lrna, prices['LRNA'], "Omnipool")
     i = 0
