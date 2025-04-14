@@ -103,8 +103,7 @@ class StableSwapPoolState(Exchange):
         self.amp_change_step = (amplification - self.amplification) / duration
 
     def has_converged(self, v0, v1) -> bool:
-        diff = abs(v0 - v1)
-        if (v1 <= v0 and diff < self.precision) or (v1 > v0 and diff <= self.precision):
+        if (v1 <= v0 and v0 - v1 < self.precision) or (v1 > v0 and v1 - v0 <= self.precision):
             return True
         return False
 
