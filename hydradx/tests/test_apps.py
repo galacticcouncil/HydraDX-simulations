@@ -142,3 +142,7 @@ def test_get_slippage_dict():
 
 def test_hsm():
     from hydradx.apps.hollar.hsm import hollar_burned
+
+
+def test_hollar_init_distro():
+    from hydradx.apps.hollar import hollar_init_distro
