@@ -3,7 +3,7 @@ import math
 from datetime import timedelta
 
 import pytest
-from hypothesis import given, strategies as st, reproduce_failure  # , settings
+from hypothesis import given, strategies as st, reproduce_failure, settings
 
 # from hydradx.model import run
 from hydradx.model.amm import omnipool_amm as oamm
