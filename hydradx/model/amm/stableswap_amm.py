@@ -49,20 +49,15 @@ class StableSwapPoolState(Exchange):
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
+        self.n_coins = len(self.asset_list)
+        self.ann = self.amplification * self.n_coins
+
         self.set_peg(peg)
         self.set_peg_target(peg_target)
         self.max_peg_update = max_peg_update
 
         self.shares = shares or self.calculate_d()
         self.conversion_metrics = {}
-
-    @property
-    def ann(self) -> float:
-        return self.amplification * self.n_coins
-
-    @property
-    def n_coins(self) -> int:
-        return len(self.asset_list)
 
     @property
     def d(self) -> float:
@@ -104,12 +99,6 @@ class StableSwapPoolState(Exchange):
         self.target_amp_block = self.time_step + duration
         self.amp_change_step = (amplification - self.amplification) / duration
 
-    def has_converged(self, v0, v1) -> bool:
-        diff = abs(v0 - v1)
-        if (v1 <= v0 and diff < self.precision) or (v1 > v0 and diff <= self.precision):
-            return True
-        return False
-
     def get_adjusted_liquidity(self, balances=None):
         if balances is None:
             balances = self.liquidity
@@ -120,12 +109,14 @@ class StableSwapPoolState(Exchange):
         return adjusted_liquidity
 
     def calculate_d(self, reserves=(), max_iterations=128, peg_deltas=None) -> float:
-        reserves = reserves or list(self.liquidity.values())
+        if not reserves:
+            reserves = list(self.liquidity.values())
+        n = self.n_coins
         if peg_deltas is None:
-            peg = [self.peg[i] for i in range(self.n_coins)]
+            peg = [self.peg[i] for i in range(n)]
         else:
-            peg = [self.peg[i] + peg_deltas[i] for i in range(self.n_coins)]
-        xp_sorted = sorted([reserves[i] * peg[i] for i in range(self.n_coins)])
+            peg = [self.peg[i] + peg_deltas[i] for i in range(n)]
+        xp_sorted = sorted([reserves[i] * peg[i] for i in range(n)])
         s = sum(xp_sorted)
         if s == 0:
             return 0
@@ -135,12 +126,12 @@ class StableSwapPoolState(Exchange):
 
             d_p = d
             for x in xp_sorted:
-                d_p *= d / (x * self.n_coins)
+                d_p *= d / (x * n)
 
             d_prev = d
-            d = (self.ann * s + d_p * self.n_coins) * d / ((self.ann - 1) * d + (self.n_coins + 1) * d_p)
+            d = (self.ann * s + d_p * n) * d / ((self.ann - 1) * d + (n + 1) * d_p)
 
-            if self.has_converged(d_prev, d):
+            if (d <= d_prev and d_prev - d < self.precision) or (d > d_prev and d - d_prev <= self.precision):
                 return d
 
     """
@@ -175,7 +166,7 @@ class StableSwapPoolState(Exchange):
             y_prev = y
             y = (y ** 2 + c) / (2 * y + b - d)
 
-            if self.has_converged(y_prev, y):
+            if (y <= y_prev and y_prev - y < self.precision) or (y > y_prev and y - y_prev <= self.precision):
                 return y / peg_tkn_omitted
 
         return y / peg_tkn_omitted
@@ -288,7 +279,24 @@ class StableSwapPoolState(Exchange):
         return self.shares * (1 - updated_d / self.d) / (1 - fee)
 
     def copy(self):
-        return copy.deepcopy(self)
+        new_pool = StableSwapPoolState(
+            {k: v for k,v in self.liquidity.items()},
+            amplification=self.amplification,
+            precision=self.precision,
+            trade_fee=self.trade_fee,
+            unique_id=self.unique_id,
+            spot_price_precision=self.spot_price_precision,
+            shares=self.shares,
+            peg=[v for v in self.peg[1:]],
+            peg_target=[v for v in self.peg_target[1:]],
+            max_peg_update=self.max_peg_update
+        )
+        new_pool.amp_change_step = self.amp_change_step
+        new_pool.target_amp_block = self.target_amp_block
+        new_pool.time_step = self.time_step
+        new_pool.peg_target_updated_at = self.peg_target_updated_at
+        new_pool.conversion_metrics = self.conversion_metrics
+        return new_pool
 
     def __repr__(self):
         # round to given precision

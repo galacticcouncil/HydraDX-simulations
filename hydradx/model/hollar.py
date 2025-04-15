@@ -96,6 +96,12 @@ class StabilityModule:
         i_native_stable = pool.asset_list.index(self.native_stable)
         return pool.peg[i_tkn] / pool.peg[i_native_stable]
 
+    def _get_max_buy_amount(self, tkn: str) -> float:  # note this ignores self.max_buy_price_coef
+        pool = self._pool_states[tkn]
+        peg = self.get_peg(tkn)
+        imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
+        return max([self.buyback_speed[tkn] * imbalance, 0])
+
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self._pool_states[tkn]
         peg = self.get_peg(tkn)
