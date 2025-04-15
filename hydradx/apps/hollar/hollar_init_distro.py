@@ -77,13 +77,13 @@ with col1:
 with col2:
     init_hollar_liq = st.number_input(
         "Initial Hollar liquidity",
-        min_value=100_000, value=1_000_000, step=1, key="init_hollar_liq"
+        min_value=100_000, value=2_000_000, step=1, key="init_hollar_liq"
     )
 
 with col3:
     amp = st.number_input(
         "A for stableswap pools",
-        min_value=5, value=100, step=1, key="amp"
+        min_value=5, value=20, step=1, key="amp"
     )
 
 # scale down omnipool tokens
@@ -110,7 +110,7 @@ x_size, y_size = 10, 10
 fig = display_op_and_ss_multiple(omnipool.lrna, ss_liquidity, usd_prices, "Hollar distribution", x_size, y_size)
 st.sidebar.pyplot(fig)
 
-hsm_liquidity = {'aUSDT': 1_000_000, 'aUSDC': 1_000_000, 'sUSDS': 500_000 / pegs['sUSDS'], 'sUSDE': 500_000 / pegs['sUSDE']}
+hsm_liquidity = {'aUSDT': 500_000, 'aUSDC': 500_000, 'sUSDS': 500_000 / pegs['sUSDS'], 'sUSDE': 500_000 / pegs['sUSDE']}
 init_pools_list = [init_stablepools[tkn] for tkn in hsm_liquidity]
 
 col1, col2 = st.columns(2)
@@ -134,7 +134,7 @@ with col2:
 st.subheader("Scenarios")
 
 if "num_pairs" not in st.session_state:
-    st.session_state.num_pairs = 2  # default starting value
+    st.session_state.num_pairs = 5  # default starting value
 
 col1, col2 = st.columns(2)
 if st.session_state.num_pairs < 10:
@@ -148,8 +148,8 @@ if st.session_state.num_pairs > 1:
         if scenario_removed:
             st.session_state.num_pairs -= 1
 
-default_hollar_amounts = [2000000, 3000000]
-default_dump_blocks = [10000, 10000]
+default_hollar_amounts = [1000000, 1000000, 1000000, 1000000, 1000000]
+default_dump_blocks = [100, 500, 1000, 3000, 5000]
 n = st.session_state.num_pairs
 default_hollar_amounts = default_hollar_amounts[:n] + [0] * max(0, n - len(default_hollar_amounts))
 default_dump_blocks = default_dump_blocks[:n] + [0] * max(0, n - len(default_dump_blocks))
