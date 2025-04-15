@@ -41,7 +41,7 @@ class CDP:
         )
 
     def validate(self) -> bool:
-        if min(self.debt.values) < 0 or min(self.collateral.values()) < 0:
+        if min(self.debt.values()) < 0 or min(self.collateral.values()) < 0:
             return False
         # if sorted(list(self.debt_assets.keys())) == sorted(list(self.collateral_assets.keys)):
         #     return False
@@ -180,11 +180,11 @@ class MoneyMarket:
         self.fail = fail
         return self
 
-    def get_oracle_price(self, tkn: str):
-        if self.prices[tkn] is not None:
+    def price(self, tkn: str, numeraire: str = None):
+        if numeraire is None:
             return self.prices[tkn]
         else:
-            raise ValueError("Oracle price not found.")
+            return self.prices[tkn] / self.prices[numeraire]
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
         return [cdp for cdp in self.cdps if (
@@ -192,7 +192,7 @@ class MoneyMarket:
                 (debt_tkn is None or debt_tkn in cdp.debt))]
 
     def get_health_factor(self, cdp: CDP) -> float:
-        prices = {tkn: self.get_oracle_price(tkn) for tkn in cdp.collateral.keys() | cdp.debt.keys()}
+        prices = {tkn: self.price(tkn) for tkn in cdp.collateral.keys() | cdp.debt.keys()}
         debt_total = sum([
             cdp.debt[d_tkn] * prices[d_tkn]
                 for d_tkn in cdp.debt
@@ -339,13 +339,13 @@ class MoneyMarket:
 
         return weighted_threshold
 
-    def borrow(self, borrow_asset: str, collateral_asset: str, borrow_amt: float,
-               collateral_amt: float) -> None:
+    def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
+               collateral_amt: float) -> CDP:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
-        # assert agent.is_holding(collateral_asset, collateral_amt)
-        price = self.get_oracle_price(collateral_asset) / self.get_oracle_price(borrow_asset)
+        assert agent.validate_holdings(collateral_asset, collateral_amt)
+        price = self.price(collateral_asset) / self.price(borrow_asset)
         assert price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset) >= borrow_amt
         self.borrowed[borrow_asset] += borrow_amt
         # if borrow_asset not in agent.holdings:
@@ -354,6 +354,9 @@ class MoneyMarket:
         # agent.holdings[collateral_asset] -= collateral_amt
         cdp = CDP({borrow_asset: borrow_amt}, {collateral_asset: collateral_amt})
         self.cdps.append(cdp)
+        agent.add(borrow_asset, borrow_amt)
+        agent.remove(collateral_asset, collateral_amt)
+        return cdp
 
     def repay(self, cdp_i: int) -> None:
         cdp = self.cdps[cdp_i]
@@ -385,7 +388,7 @@ class MoneyMarket:
             collateral_asset: str,
             debt_asset: str,
             repay_amount: float = -1
-    ) -> dict[str: float]:
+    ) -> tuple[float, float]:
         """
         return the amount of debt repaid and the amount of collateral liquidated
         as a tuple: (collateral_liquidated, debt_repaid)
@@ -395,9 +398,9 @@ class MoneyMarket:
             repay_amount = self.get_maximum_repayment(cdp, debt_asset)
         if repay_amount == 0:
             return 0, 0
-        debt_value = repay_amount * self.get_oracle_price(debt_asset)
+        debt_value = repay_amount * self.price(debt_asset)
         collateral_value = (
-            cdp.collateral[collateral_asset] * self.get_oracle_price(collateral_asset)
+            cdp.collateral[collateral_asset] * self.price(collateral_asset)
             / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
         )
         debt_repaid = (  # amount of debt repayment that can be covered by this collateral
@@ -407,7 +410,7 @@ class MoneyMarket:
         payout = (
             cdp.collateral[collateral_asset] if repay_amount < debt_repaid
             else min(
-                repay_amount * self.get_oracle_price(debt_asset) / self.get_oracle_price(collateral_asset)
+                repay_amount * self.price(debt_asset) / self.price(collateral_asset)
                 * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
                 cdp.collateral[collateral_asset]
             )
@@ -422,6 +425,8 @@ class MoneyMarket:
             collateral_asset: str,
             repay_amount: float = -1
     ):
+        if repay_amount > cdp.debt[debt_asset]:
+            raise ValueError("Repay amount exceeds CDP debt.")
         payout, debt_repaid = self.calculate_liquidation(
             cdp=cdp,
             collateral_asset=collateral_asset,
@@ -438,13 +443,14 @@ class MoneyMarket:
 
         agent.remove(debt_asset, debt_repaid)
         cdp.debt[debt_asset] -= debt_repaid
+        self.borrowed[debt_asset] -= debt_repaid
 
         if not cdp.fix_liquidation_threshold:
             cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
 
     def value_assets(self, assets: dict[str: float]) -> float:
-        return sum([assets[tkn] * self.get_oracle_price(tkn) for tkn in assets])
+        return sum([assets[tkn] * self.price(tkn) for tkn in assets])
 
     def update(self):
         pass
