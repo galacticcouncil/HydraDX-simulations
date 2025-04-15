@@ -110,9 +110,14 @@ class GlobalState:
         for pool in self.pools.values():
             pool.update()
         if self.evolve_function:
-            return self.evolve_function(self)
-        else:
-            return self
+            self.evolve_function(self)
+        # agent actions
+        agent_ids = list(self.agents.keys())
+        for agent_id in agent_ids:
+            agent = self.agents[agent_id]
+            if agent.trade_strategy and self.time_step % agent.trade_strategy.frequency == 0:
+                agent.trade_strategy.execute(self, agent_id)
+        return self
 
     def execute_swap(
             self,
