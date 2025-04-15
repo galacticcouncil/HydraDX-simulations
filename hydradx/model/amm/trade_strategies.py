@@ -1106,22 +1106,21 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
     return TradeStrategy(strategy, name='general arbitrage')
 
 
-def liquidate_cdps(pool_id: str) -> TradeStrategy:
+def liquidate_cdps(pool_id: str, iters: int = 16) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         agent = state.agents[agent_id]
         pool: Exchange = state.pools[pool_id]
-        mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools))
+        mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools.values()))
         if state.money_market is not None:
             mms += [state.money_market]
         for mm in mms:
             for cdp in mm.cdps:
                 best_liquidations = {}
-                # choose the best liquidation bonus first
-                for debt_tkn, collateral_tkn in sorted([
+
+                for debt_tkn, collateral_tkn in [
                     (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
                     for collateral_tkn in cdp.collateral.keys()
-                    if cdp.debt[debt_tkn] > 0 and cdp.collateral[collateral_tkn] > 0
-                ], key=lambda tkns: mm.get_liquidation_bonus(tkns[1], tkns[0]), reverse=True):
+                ]:
                     if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
                         or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
                             continue
@@ -1140,7 +1139,7 @@ def liquidate_cdps(pool_id: str) -> TradeStrategy:
                     profit = collateral_max - pool.calculate_sell_from_buy(
                         tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_paid
                     )
-                    for i in range(1, 16):
+                    for i in range(1, iters):
                         debt_delta = debt_max * 1 / 2 ** i
                         debt_up = debt_paid + debt_delta
                         debt_down = debt_paid - debt_delta
