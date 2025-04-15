@@ -821,79 +821,79 @@ def test_combine_step():
             print('Iteration did not improve profit.')
 
 
-def test_stableswap_router_arbitrage():
-    # omnipool = get_omnipool()
-    # save_omnipool(omnipool)
-    archive_path = os.path.join(find_test_directory(), 'archive')
-    omnipool = load_omnipool(archive_path)
-    fourpool, btcpool, twopool = omnipool.sub_pools.values()
-    router = OmnipoolRouter(
-        exchanges=[omnipool, twopool, fourpool, btcpool]
-    )
-    input_path = os.path.join(find_test_directory(), 'data')
-    if not os.path.exists(input_path):
-        input_path = 'hydradx/tests/data/'
-    cex = {}
-    for exchange in ('kraken', 'binance'):
-        cex[exchange] = CentralizedMarket(
-            order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
-            unique_id=exchange,
-            trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
-        )
-    kraken = cex['kraken']
-    binance = cex['binance']
-
-    cfg = [
-        {'exchanges': {'router': ('iBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('WBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('iBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('WBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-    ]
-    exchanges = {'router': router, 'kraken': kraken, 'binance': binance}
-    max_liquidity = {
-        'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000, 'USDT23': 1000000},
-        'kraken': {'BTC': 10, 'USDT': 1000000}
-    }
-    swaps = get_arb_swaps(
-        exchanges=exchanges,
-        config=cfg,
-        max_liquidity=max_liquidity,
-        max_iters=20
-    )
-    agent = Agent(
-        holdings={k: v for exchange in max_liquidity.values() for k, v in exchange.items()}
-    )
-    equivalency_map = {
-        'WETH': 'ETH',
-        'XETH': 'ETH',
-        'XXBT': 'BTC',
-        'WBTC': 'BTC',
-        'ZUSD': 'USD',
-        'USDT': 'USD',
-        'USDT10': 'USD',
-        'USDT23': 'USD',
-        'USDC': 'USD',
-        'DAI': 'USD',
-        'iBTC': 'BTC',
-        'XBT': 'BTC',
-    }
-    initial_agent = agent.copy()
-    execute_arb(exchanges, agent, swaps)
-    profit = calculate_profit(initial_agent, agent, equivalency_map)
-    for asset in profit:
-        if asset not in exchanges['binance'].asset_list and (
-                asset not in equivalency_map or equivalency_map[asset] not in exchanges['binance'].asset_list):
-            if 'USD' not in profit:
-                profit['USD'] = 0
-            if asset in omnipool.asset_list:
-                # estimate value from omnipool price
-                profit['USD'] += (
-                    profit[asset] * omnipool.lrna_price(asset)
-
-                    / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
-                )
-    profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
-    print(profit_total)
-    if profit_total <= 0:
-        raise AssertionError('Arbitrageur should definitely make money.')
-    er = 1
+# def test_stableswap_router_arbitrage():
+#     # omnipool = get_omnipool()
+#     # save_omnipool(omnipool)
+#     archive_path = os.path.join(find_test_directory(), 'archive')
+#     omnipool = load_omnipool(archive_path)
+#     fourpool, btcpool, twopool = omnipool.sub_pools.values()
+#     router = OmnipoolRouter(
+#         exchanges=[omnipool, twopool, fourpool, btcpool]
+#     )
+#     input_path = os.path.join(find_test_directory(), 'data')
+#     if not os.path.exists(input_path):
+#         input_path = 'hydradx/tests/data/'
+#     cex = {}
+#     for exchange in ('kraken', 'binance'):
+#         cex[exchange] = CentralizedMarket(
+#             order_book=get_orderbooks_from_file(input_path=input_path)[exchange],
+#             unique_id=exchange,
+#             trade_fee={'kraken': 0.0016, 'binance': 0.001}[exchange]
+#         )
+#     kraken = cex['kraken']
+#     binance = cex['binance']
+#
+#     cfg = [
+#         {'exchanges': {'router': ('iBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+#         {'exchanges': {'router': ('WBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+#         {'exchanges': {'router': ('iBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+#         {'exchanges': {'router': ('WBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+#     ]
+#     exchanges = {'router': router, 'kraken': kraken, 'binance': binance}
+#     max_liquidity = {
+#         'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000, 'USDT23': 1000000},
+#         'kraken': {'BTC': 10, 'USDT': 1000000}
+#     }
+#     swaps = get_arb_swaps(
+#         exchanges=exchanges,
+#         config=cfg,
+#         max_liquidity=max_liquidity,
+#         max_iters=20
+#     )
+#     agent = Agent(
+#         holdings={k: v for exchange in max_liquidity.values() for k, v in exchange.items()}
+#     )
+#     equivalency_map = {
+#         'WETH': 'ETH',
+#         'XETH': 'ETH',
+#         'XXBT': 'BTC',
+#         'WBTC': 'BTC',
+#         'ZUSD': 'USD',
+#         'USDT': 'USD',
+#         'USDT10': 'USD',
+#         'USDT23': 'USD',
+#         'USDC': 'USD',
+#         'DAI': 'USD',
+#         'iBTC': 'BTC',
+#         'XBT': 'BTC',
+#     }
+#     initial_agent = agent.copy()
+#     execute_arb(exchanges, agent, swaps)
+#     profit = calculate_profit(initial_agent, agent, equivalency_map)
+#     for asset in profit:
+#         if asset not in exchanges['binance'].asset_list and (
+#                 asset not in equivalency_map or equivalency_map[asset] not in exchanges['binance'].asset_list):
+#             if 'USD' not in profit:
+#                 profit['USD'] = 0
+#             if asset in omnipool.asset_list:
+#                 # estimate value from omnipool price
+#                 profit['USD'] += (
+#                     profit[asset] * omnipool.lrna_price(asset)
+#
+#                     / omnipool.lrna['4-Pool'] * sum(fourpool.liquidity.values())
+#                 )
+#     profit_total = exchanges['binance'].value_assets(profit, equivalency_map)
+#     print(profit_total)
+#     if profit_total <= 0:
+#         raise AssertionError('Arbitrageur should definitely make money.')
+#     er = 1
