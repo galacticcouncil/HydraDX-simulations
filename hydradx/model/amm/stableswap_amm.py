@@ -450,7 +450,7 @@ class StableSwapPoolState(Exchange):
             agent: Agent,
             quantity: float,
             tkn_remove: str,
-            fail_on_overdraw: bool = True
+            fail_on_overdraw: bool = True  # this is now ignored
     ):
         """
         Calculate a withdrawal based on the asset quantity rather than the share quantity
@@ -463,20 +463,13 @@ class StableSwapPoolState(Exchange):
         fee = self._update_peg()
         shares_removed = self.calculate_withdrawal_shares(tkn_remove, quantity, fee)
 
-        if shares_removed > agent.holdings[self.unique_id]:
-            if fail_on_overdraw:
-                return self.fail_transaction('Agent tried to remove more shares than it owns.')
-            else:
-                # just round down
-                shares_removed = agent.holdings[self.unique_id]
+        if not agent.validate_holdings(self.unique_id, shares_removed):
+            return self.fail_transaction('Agent tried to remove more shares than it owns.')
 
-        if tkn_remove not in agent.holdings:
-            agent.holdings[tkn_remove] = 0
-
-        agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= quantity
-        agent.holdings[tkn_remove] += quantity
+        agent.remove(self.unique_id, shares_removed)
+        agent.add(tkn_remove, quantity)
         return self
 
     def remove_liquidity(
@@ -720,6 +713,17 @@ def simulate_add_liquidity(
     return new_state.add_liquidity(new_agent, quantity, tkn_add), new_agent
 
 
+def simulate_withdraw_asset(
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,
+        tkn_remove: str
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+    return new_state.withdraw_asset(new_agent, quantity, tkn_remove), new_agent
+
+
 def simulate_remove_liquidity(
         old_state: StableSwapPoolState,
         old_agent: Agent,
@@ -754,3 +758,38 @@ def simulate_buy_shares(
         quantity=quantity,
         tkn_add=tkn_add
     ), new_agent
+
+
+def balance_ratio_at_price(
+        amplification: float,
+        price: float,
+        tkn_quantity: float = 1_000_000
+):
+    init_quantity = 1_000_000
+    # find quantity that is too high
+    for i in range(100):
+        tokens = {"A": init_quantity, "B": tkn_quantity}
+        pool = StableSwapPoolState(tokens, amplification)
+        spot = pool.price("A", "B")
+        if spot == price:
+            return init_quantity / (init_quantity + tkn_quantity)
+        elif spot < price:
+            break
+        init_quantity *= 10
+    if spot > price:
+        raise ValueError('Price is too low.')
+    # do binary search to identify quantity of asset 0.
+    max_quantity = init_quantity
+    min_quantity = 0
+    for i in range(100):
+        mid_quantity = (max_quantity + min_quantity) / 2
+        tokens = {"A": mid_quantity, "B": tkn_quantity}
+        pool = StableSwapPoolState(tokens, amplification)
+        spot = pool.price("A", "B")
+        if spot == price:
+            break
+        elif spot < price:
+            max_quantity = mid_quantity
+        else:
+            min_quantity = mid_quantity
+    return mid_quantity / (mid_quantity + tkn_quantity)

@@ -1143,9 +1143,9 @@ class OmnipoolState(Exchange):
         if nft_id is not None and nft_id in agent.nfts:
             raise AssertionError('Agent already has an NFT with this ID.')
 
-        if agent.holdings[tkn_add] < quantity:
+        if not agent.validate_holdings(tkn_add, quantity):
             return self.fail_transaction(
-                f'Agent has insufficient funds ({agent.holdings[tkn_add]} < {quantity}).', agent
+                f'Agent has insufficient funds.', agent
             )
 
         if (self.lrna[tkn_add] + delta_Q) / (self.lrna_total + delta_Q) > self.weight_cap[tkn_add]:
@@ -1161,9 +1161,7 @@ class OmnipoolState(Exchange):
         if tkn_add not in self.asset_list:
             for sub_pool in self.sub_pools.values():
                 if tkn_add in sub_pool.asset_list:
-                    old_agent_holdings = (
-                        agent.holdings[sub_pool.unique_id] if sub_pool.unique_id in agent.holdings else 0
-                    )
+                    old_agent_holdings = agent.get_holdings(sub_pool.unique_id)
                     sub_pool.add_liquidity(
                         agent=agent,
                         quantity=quantity,
@@ -1172,7 +1170,7 @@ class OmnipoolState(Exchange):
                     # deposit into the Omnipool
                     return self.add_liquidity(
                         agent=agent,
-                        quantity=agent.holdings[sub_pool.unique_id] - old_agent_holdings,
+                        quantity=agent.get_holdings(sub_pool.unique_id) - old_agent_holdings,
                         tkn_add=sub_pool.unique_id,
                         nft_id=nft_id
                     )
@@ -1198,12 +1196,11 @@ class OmnipoolState(Exchange):
         self.liquidity[tkn_add] += quantity
 
         # agent update
-        agent.holdings[tkn_add] -= quantity
+        agent.remove(tkn_add, quantity)
         if nft_id is None:
             k = (self.unique_id, tkn_add)
-            agent.holdings[k] = 0
             # shares go to provisioning agent
-            agent.holdings[k] += shares_added
+            agent.holdings[k] = shares_added
             # set price at which liquidity was added
             agent.share_prices[k] = self.lrna_price(tkn_add)
             agent.delta_r[k] = quantity
@@ -1334,13 +1331,13 @@ class OmnipoolState(Exchange):
         price of an asset i denominated in j, according to current market conditions in the omnipool
         """
         if tkn not in self.asset_list + ['LRNA']:
-            return 0
+            raise ValueError(f'{tkn} is not in the Omnipool')
         elif tkn == denominator:
             return 1
         elif not denominator or denominator == 'LRNA':
             return self.lrna_price(tkn)
         elif denominator not in self.asset_list:
-            return 0
+            raise ValueError(f'{denominator} is not in the Omnipool')
         elif tkn == 'LRNA':
             return 1 / self.lrna_price(denominator)
         elif self.liquidity[tkn] == 0:
