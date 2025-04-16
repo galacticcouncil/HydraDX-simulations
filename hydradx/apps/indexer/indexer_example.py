@@ -1,50 +1,44 @@
 from matplotlib import pyplot as plt
 import sys, os
 import streamlit as st
-import requests
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
+from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_data_by_asset, get_omnipool_liquidity
 
-url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
-url2 = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+asset_ids = [0, 12]
+min_block_id = 6000000
+max_block_id = 6000100
 
-query = """
-{
-  omnipoolAssetData(first: 10, orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC) {
-    nodes {
-      id
-      paraChainBlockHeight
-      poolAddress
-      balances
-      assetState
-      assetId
-    }
-  }
-}
-"""
+liquidity, hub_liquidity = get_omnipool_liquidity(min_block_id, max_block_id, asset_ids)
 
-asset_query = """
-{
-  assets {
-    nodes {
-      decimals
-      id
-    }
-  }
-}
-"""
+fig1, ax1 = plt.subplots()
+ax1.plot(liquidity[0], label='HDX balances')
+ax1.set_title("HDX balances")
+# Format y-axis in millions
+import matplotlib.ticker as ticker
+def millions_formatter(x, pos):
+    return f'{x/1000000:.2f}'  # Divide by 1 million and show 2 decimal places
 
-# Send POST request to the GraphQL API
-asset_response = requests.post(url1, json={'query': asset_query})
-if asset_response.status_code != 200:
-    raise ValueError(f"Query failed with status code {asset_response.status_code}")
-asset_data = asset_response.json()['data']
+ax1.yaxis.set_major_formatter(ticker.FuncFormatter(millions_formatter))
+ax1.set_ylabel("HDX balances, in millions")
+ax1.set_xlabel("blocks")
+st.pyplot(fig1)
 
-response = requests.post(url1, json={'query': query})
-if response.status_code != 200:
-    raise ValueError(f"Query failed with status code {response.status_code}")
+fig2, ax2 = plt.subplots()
+ax2.plot(hub_liquidity[0], label='LRNA balances')
+ax2.set_title("LRNA balances (HDX sub-pool)")
+ax2.set_xlabel("blocks")
+st.pyplot(fig2)
 
-data = response.json()['data']
-print(data)
+fig3, ax3 = plt.subplots()
+ax3.plot(liquidity[12], label='USDT balances')
+ax3.set_title("USDT balances")
+ax3.set_xlabel("blocks")
+st.pyplot(fig3)
 
+fig4, ax4 = plt.subplots()
+ax4.plot(hub_liquidity[12], label='LRNA balances')
+ax4.set_title("LRNA balances (USDT sub-pool)")
+ax4.set_xlabel("blocks")
+st.pyplot(fig4)
