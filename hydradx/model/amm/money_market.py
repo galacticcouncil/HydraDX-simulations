@@ -129,16 +129,16 @@ class MoneyMarket:
         self.fail = ''
 
     def __repr__(self):
+        total_collateral = {tkn: sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])
+            for tkn in self.asset_list
+        }
         return (
             f"money_market("
             f"    liquidity: {self.liquidity}\n"
             f"    liquidation threshold: {self.liquidation_threshold}\n"
             f"    liquidation bonus: {self.liquidation_bonus})\n"
             f"    total borrowed: {self.borrowed}\n"
-            f"    total collateral: {dict(
-                [(tkn, sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])) 
-                 for tkn in self.asset_list]
-            )}\n"
+            f"    total collateral: {total_collateral}\n"
         )
 
     def copy(self):
