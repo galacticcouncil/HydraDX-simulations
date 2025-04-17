@@ -40,3 +40,13 @@ def display_op_and_ss(omnipool_lrna, ss_liquidity, prices, title, x_size, y_size
     ax2.set_position([ax2.get_position().x0, ax2.get_position().y0, ax2.get_position().width * scaling_factor, ax2.get_position().height * scaling_factor])
 
     return fig
+
+
+def display_ss(ss_liquidity, prices, title):
+
+    stableswap_usd = {tkn: ss_liquidity[tkn] * prices[tkn] for tkn in ss_liquidity}
+
+    fig, ax1 = plt.subplots(1, 1)
+    fig.suptitle(title, fontsize=16, fontweight="bold")
+    display_liquidity_usd(ax1, stableswap_usd, "gigaDOT")
+    return fig

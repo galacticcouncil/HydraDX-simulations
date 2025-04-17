@@ -251,7 +251,6 @@ def get_latest_stableswap_data(
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
-        "pool_data": pool_data,
         "block": latest_block,
         'fee': pool_data['fee'] / 1000000,
         'finalAmplification': pool_data['finalAmplification'],
