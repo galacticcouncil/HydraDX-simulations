@@ -434,17 +434,18 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
             # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
-            subpool = StableSwapPoolState(
-                tokens={
-                    symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                    for asset in pool_data.assets
-                },
-                amplification=float(pool_data.final_amplification),
-                trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id],
-                shares=pool_data.shares / 10 ** op_state[pool_id].asset.decimals
-            )
-            omnipool.sub_pools[subpool.unique_id] = subpool
+            if pool_data.reserves:
+                subpool = StableSwapPoolState(
+                    tokens={
+                        symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                        for asset in pool_data.assets
+                    },
+                    amplification=float(pool_data.final_amplification),
+                    trade_fee=float(pool_data.fee) / 100,
+                    unique_id=symbol_map[pool_id],
+                    shares=pool_data.shares / 10 ** op_state[pool_id].asset.decimals
+                )
+                omnipool.sub_pools[subpool.unique_id] = subpool
 
         return omnipool
 
