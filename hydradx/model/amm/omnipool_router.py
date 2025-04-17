@@ -112,29 +112,39 @@ class OmnipoolRouter(Exchange):
 
         return self.price_route(tkn_sell, tkn_buy, sell_pool, buy_pool)
 
-    # def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float):
-    #     sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
-    #     if sell_pool == buy_pool:
-    #         return self.exchanges[sell_pool].calculate_buy_from_sell(tkn_sell, tkn_buy, sell_quantity)
-    #     else:
-    #         test_router = self.copy()
-    #         test_agent = Agent(holdings={tkn_sell: sell_quantity})
-    #         test_router.swap(
-    #             agent=test_agent,
-    #             tkn_buy=tkn_buy,
-    #             tkn_sell=tkn_sell,
-    #             sell_quantity=sell_quantity
-    #         )
-    #         return test_agent.holdings[tkn_buy]
-        # elif sell_pool == self.omnipool_id != buy_pool:
-        #     shares_sold = self.exchanges[sell_pool].calculate_buy_from_sell(tkn_sell, buy_pool, sell_quantity)
-        #     return self.exchanges[buy_pool].calculate_buy_from_sell(sell_pool, tkn_buy, shares_sold)
-        # elif buy_pool == self.omnipool_id != sell_pool:
-        #     shares_bought = self.exchanges[buy_pool].calculate_sell_from_buy(sell_pool, tkn_buy, sell_quantity)
-        #     return self.exchanges[sell_pool].calculate_sell_from_buy(tkn_sell, buy_pool, shares_bought)
-        # elif buy_pool != self.omnipool_id != sell_pool:
-        #     shares_bought = self.exchanges[buy_pool].calculate_sell_from_buy(sell_pool, tkn_buy, sell_quantity)
-        #     return self.exchanges[sell_pool].calculate_sell_from_buy(tkn_sell, buy_pool, shares_bought)
+    def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float):
+        sell_pool, buy_pool = self.find_best_route(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+        if sell_pool == buy_pool:
+            return self.exchanges[sell_pool].calculate_buy_from_sell(
+                tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity
+            )
+        elif sell_pool == self.omnipool_id != buy_pool:
+            shares_bought = self.exchanges[sell_pool].calculate_buy_from_sell(
+                tkn_buy=buy_pool, tkn_sell=tkn_sell, sell_quantity=sell_quantity
+            )
+            return self.exchanges[buy_pool].calculate_remove_liquidity(shares_bought, tkn_buy)
+        elif buy_pool == self.omnipool_id != sell_pool:
+            shares_bought = self.exchanges[sell_pool].calculate_add_liquidity(
+                tkn_add=tkn_sell, quantity=sell_quantity
+            )
+            return self.exchanges[buy_pool].calculate_buy_from_sell(
+                tkn_sell=sell_pool, tkn_buy=tkn_buy, sell_quantity=shares_bought
+            )
+        elif buy_pool != self.omnipool_id != sell_pool:
+            shares_bought = self.calculate_buy_from_sell(
+                tkn_buy=buy_pool, tkn_sell=tkn_sell, sell_quantity=sell_quantity
+            )
+            return self.exchanges[buy_pool].calculate_remove_liquidity(shares_bought, tkn_buy)
+        else:
+            test_router = self.copy()
+            test_agent = Agent(holdings={tkn_sell: sell_quantity})
+            test_router.swap(
+                agent=test_agent,
+                tkn_buy=tkn_buy,
+                tkn_sell=tkn_sell,
+                sell_quantity=sell_quantity
+            )
+            return test_agent.holdings[tkn_buy]
 
     def fail_transaction(self, fail_message: str):
         self.fail = fail_message
