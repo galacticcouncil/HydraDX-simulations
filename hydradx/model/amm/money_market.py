@@ -28,9 +28,9 @@ class CDP:
         return (
             f"CDP:\n"
             f"    debt:\n"
-            f"{newline.join([f"        {tkn}: {self.debt[tkn]}" for tkn in self.debt.keys()])}\n"
+            f"{newline.join([f'        {tkn}: {self.debt[tkn]}' for tkn in self.debt.keys()])}\n"
             f"    collateral:\n"
-            f"{newline.join([f"        {tkn}: {self.collateral[tkn]}" for tkn in self.collateral.keys()])}\n"
+            f"{newline.join([f'        {tkn}: {self.collateral[tkn]}' for tkn in self.collateral.keys()])}\n"
         )
 
     def copy(self):
