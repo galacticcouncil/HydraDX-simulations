@@ -396,6 +396,8 @@ class MoneyMarket:
         assert debt_asset in cdp.debt
         if repay_amount < 0:
             repay_amount = self.get_maximum_repayment(cdp, debt_asset)
+        else:
+            repay_amount = min(repay_amount, self.get_maximum_repayment(cdp, debt_asset))
         if repay_amount == 0:
             return 0, 0
         debt_value = repay_amount * self.price(debt_asset)
@@ -410,7 +412,7 @@ class MoneyMarket:
         payout = (
             cdp.collateral[collateral_asset] if repay_amount < debt_repaid
             else min(
-                repay_amount * self.price(debt_asset) / self.price(collateral_asset)
+                debt_repaid * self.price(debt_asset) / self.price(collateral_asset)
                 * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
                 cdp.collateral[collateral_asset]
             )
