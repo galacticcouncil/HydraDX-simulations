@@ -189,3 +189,83 @@ def get_omnipool_liquidity(
         liquidity[asset_id] = tkn_balances
         hub_liquidity[asset_id] = hub_balances
     return liquidity, hub_liquidity
+
+
+def get_stableswap_data_by_block(
+        pool_id: int,
+        block_no: int
+):
+    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+    stableswap_query = """
+    query MyQuery($pool_id: Int!, $block_no: Int!) {
+      stablepools(
+        filter: {poolId: {equalTo: $pool_id}, paraChainBlockHeight: {equalTo: $block_no}}
+      ) {
+        nodes {
+          id
+          poolId
+          stablepoolAssetDataByPoolId {
+            nodes {
+              assetId
+              balances
+              id
+            }
+          }
+          fee
+          finalAmplification
+          finalBlock
+          initialAmplification
+          initialBlock
+        }
+      }
+    }
+    """
+    variables = {"pool_id": pool_id, "block_no": block_no}
+    response = requests.post(url, json={"query": stableswap_query, "variables": variables})
+    if response.status_code != 200:
+        raise ValueError(f"Query failed with status code {response.status_code}")
+    pool_data = response.json()['data']['stablepools']['nodes'][0]
+    return pool_data
+
+
+def get_latest_stableswap_data(
+        pool_id: int
+):
+    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+
+    latest_block_query = """
+    query MaxHeightQuery {
+      maxHeightResult: stablepools(first: 1, orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC) {
+        nodes {
+          paraChainBlockHeight
+        }
+      }
+    }
+    """
+
+    response = requests.post(url, json={"query": latest_block_query})
+    if response.status_code != 200:
+        raise ValueError(f"Query failed with status code {response.status_code}")
+
+    latest_block = int(response.json()['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
+    pool_data = get_stableswap_data_by_block(pool_id, latest_block)
+    pool_data_formatted = {
+        "pool_id": pool_data['poolId'],
+        "pool_data": pool_data,
+        "block": latest_block,
+        'fee': pool_data['fee'] / 1000000,
+        'finalAmplification': pool_data['finalAmplification'],
+        'finalBlock': pool_data['finalBlock'],
+        'initialAmplification': pool_data['initialAmplification'],
+        'initialBlock': pool_data['initialBlock'],
+        'liquidity': {}
+    }
+
+    asset_id_list = [asset['assetId'] for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']]
+    asset_dict = get_asset_info_by_ids(asset_id_list)
+
+    for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']:
+        asset_id = asset['assetId']
+        balance = int(asset['balances']['free']) / (10 ** asset_dict[asset_id].decimals)
+        pool_data_formatted['liquidity'][asset_id] = balance
+    return pool_data_formatted
