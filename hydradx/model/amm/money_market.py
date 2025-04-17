@@ -95,7 +95,7 @@ class MoneyMarket:
         self.assets = assets
         self.ltv = {
             (asset1.name, asset2.name):
-            asset1.emode_ltv if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.emode_ltv
+            asset1.emode_ltv if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.ltv
             for asset1 in assets
             for asset2 in assets if asset2 != asset1
         }
@@ -346,7 +346,8 @@ class MoneyMarket:
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
         assert agent.validate_holdings(collateral_asset, collateral_amt)
         price = self.price(collateral_asset) / self.price(borrow_asset)
-        assert price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset) >= borrow_amt
+        if price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset) < borrow_amt:
+            return self.fail_transaction(f"Tried to borrow more than allowed by LTV ({borrow_asset, collateral_asset}")
         self.borrowed[borrow_asset] += borrow_amt
         # if borrow_asset not in agent.holdings:
         #     agent.holdings[borrow_asset] = 0
