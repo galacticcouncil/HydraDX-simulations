@@ -411,12 +411,9 @@ class MoneyMarket:
             else repay_amount * collateral_value / debt_value
         )
         payout = (
-            cdp.collateral[collateral_asset] if repay_amount < debt_repaid
-            else min(
-                debt_repaid * self.price(debt_asset) / self.price(collateral_asset)
-                * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset)),
-                cdp.collateral[collateral_asset]
-            )
+            cdp.collateral[collateral_asset] if collateral_value <= debt_value
+            else debt_repaid * self.price(debt_asset) / self.price(collateral_asset)
+                * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
         )
         return payout, debt_repaid
 
