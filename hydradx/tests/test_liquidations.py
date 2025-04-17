@@ -1,5 +1,5 @@
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mp, mpf
 import hydradx.model.run as run
 from hydradx.model.amm.agents import Agent
@@ -209,7 +209,6 @@ def test_liquidate_undercollateralized():
 
 
 @given(
-    st.floats(min_value=1.0, max_value=1.0),
     st.floats(min_value=0.1, max_value=1.0),
     st.floats(min_value=0.01, max_value=0.05),
     st.floats(min_value=0.6, max_value=0.75),
@@ -217,15 +216,9 @@ def test_liquidate_undercollateralized():
     st.floats(min_value=0.2, max_value=0.8),
 
 )
-def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, liq_threshold: float,
+def test_liquidate_fuzz_ltv(liq_pct: float, penalty: float, liq_threshold: float,
                             full_liq_threshold: float, partial_liq_pct: float):
-    # ltv_ratio = 1 / (1.01) + 0.000001
-    # liq_pct = 1.0
-
-    # penalty = mpf(0.01)
-    # liq_threshold = mpf(0.7)
-    # full_liq_threshold = mpf(0.8)
-    # partial_liq_pct = mpf(0.5)
+    ltv_ratio = 1
 
     collat_amt = mpf(100)
     collat_price = mpf(11)
@@ -237,7 +230,7 @@ def test_liquidate_fuzz_ltv(ltv_ratio: float, liq_pct: float, penalty: float, li
             MoneyMarketAsset("USDT", 1, mpf(1000000), penalty, liq_threshold, 0),
             MoneyMarketAsset("DOT", collat_price, mpf(1000000), penalty, liq_threshold, 0)
         ], cdps=[cdp],
-        full_liquidation_threshold=full_liq_threshold,
+        full_liquidation_threshold=liq_threshold / full_liq_threshold,
         close_factor=partial_liq_pct,
     )
     repay_amount = debt_amt * liq_pct
@@ -311,8 +304,9 @@ def test_borrow_fails():
         ]
     )
     borrow_amt = collat_amt * 10 * 0.65
-    with pytest.raises(Exception):  # should fail because LTV is too low
-        mm.borrow(agent, borrow_asset, collateral_asset, borrow_amt, collat_amt)
+    mm.borrow(agent, borrow_asset, collateral_asset, borrow_amt, collat_amt)
+    if not mm.fail:
+        raise AssertionError('Borrowing more than LTV limit should fail.')
     borrow_amt = collat_amt * 10 * 0.50
     with pytest.raises(Exception):  # should fail because debt asset == collateral asset
         mm.borrow(agent, collateral_asset, collateral_asset, borrow_amt, collat_amt)
@@ -418,7 +412,7 @@ def test_omnipool_liquidate_cdp_oracle_equals_spot_small_cdp(collateral_amt: flo
     )
     treasury_agent = init_agent.copy()
     mm.liquidate(cdp, treasury_agent, 'USDT', 'DOT', liquidation_amount)
-    omnipool.swap(treasury_agent, 'DOT', 'USDT', buy_quantity=-treasury_agent.get_holdings('DOT'))
+    omnipool.swap(treasury_agent, 'USDT', 'DOT', buy_quantity=-treasury_agent.get_holdings('USDT'))
 
     before_DOT = init_agent.get_holdings('DOT') + init_cdp.collateral['DOT'] + init_pool.liquidity['DOT']
     before_USDT = init_agent.get_holdings('USDT') - init_cdp.debt['USDT'] + init_pool.liquidity['USDT']
