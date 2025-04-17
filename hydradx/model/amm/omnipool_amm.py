@@ -1281,8 +1281,7 @@ class OmnipoolState(Exchange):
         )
         if abs(delta_s) > max_remove:
             return self.fail_transaction(
-                f"Transaction rejected because it would exceed the withdrawal limit: {abs(delta_s)} > {max_remove}",
-                agent
+                f"Transaction rejected because it would exceed the withdrawal limit: {abs(delta_s)} > {max_remove}"
             )
 
         if delta_r + self.liquidity[tkn_remove] < 0:
