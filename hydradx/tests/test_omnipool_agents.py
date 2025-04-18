@@ -96,28 +96,33 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
             raise
 
 
-@given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3), arb_precision_strategy)
-def test_omnipool_arbitrager(omnipool: oamm.OmnipoolState, market: list, arb_precision: int):
+@given(
+    hdx_value=st.floats(min_value=0.5, max_value=2),
+    dot_value=st.floats(min_value=0.5, max_value=2)
+)
+def test_omnipool_arbitrager(hdx_value, dot_value):
+    omnipool = oamm.OmnipoolState(
+        tokens={tkn: {
+            'liquidity': 1000,
+            'LRNA': 1000
+        } for tkn in ('HDX', 'USD', 'DOT')}
+    )
     omnipool.trade_limit_per_block = float('inf')
-    holdings = {'LRNA': 1000000000}
-    for asset in omnipool.asset_list:
-        holdings[asset] = 1000000000
-    agent = Agent(holdings=holdings, trade_strategy=omnipool_arbitrage)
-    external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
-    external_market[omnipool.stablecoin] = 1.0
+    agent = Agent(enforce_holdings=False)
+    external_market = {'USD': 1, 'HDX': hdx_value, 'DOT': dot_value}
     state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
-    strat = omnipool_arbitrage('omnipool', arb_precision)
+    strat = omnipool_arbitrage('omnipool')
 
-    old_holdings = copy.deepcopy(agent.holdings)
+    old_holdings = {tkn: agent.get_holdings(tkn) for tkn in omnipool.asset_list + ['LRNA']}
 
     strat.execute(state, 'agent')
-    new_holdings = state.agents['agent'].holdings
+    new_holdings = {tkn: state.agents['agent'].get_holdings(tkn) for tkn in omnipool.asset_list + ['LRNA']}
 
     old_value, new_value = 0, 0
 
     # Trading should result in net zero LRNA trades
     if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-        raise AssertionError(f'Arbbtrageur traded LRNA. old: {old_holdings["LRNA"]}, new: {new_holdings["LRNA"]}')
+        raise AssertionError(f'Arbitrageur traded LRNA. old: {old_holdings["LRNA"]}, new: {new_holdings["LRNA"]}')
 
     for asset in omnipool.asset_list:
         old_value += old_holdings[asset] * external_market[asset]

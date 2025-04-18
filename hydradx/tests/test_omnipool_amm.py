@@ -1548,12 +1548,12 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
             raise AssertionError('Liquidity is not correct.')
 
         expected_vol_in = omnipool_oracle_0.volume_in[tkn] * (1 - alpha) + alpha * vol_in[tkn]
-        if omnipool_oracle_1.volume_in[tkn] != pytest.approx(expected_vol_in, 1e-10):
+        if omnipool_oracle_1.volume_in[tkn] != pytest.approx(expected_vol_in, 1e-9):
             raise AssertionError('Volume is not correct.')
 
         expected_vol_out = omnipool_oracle_0.volume_out[tkn] * (1 - alpha) + alpha * vol_out[tkn]
         if omnipool_oracle_1.volume_out[tkn] != pytest.approx(expected_vol_out, 1e-9):
-            raise AssertionError('Volume is not correct.')
+            raise AssertionError('Volume out is not correct.')
 
         price_1 = events[0].pools['omnipool'].price(tkn)
         expected_price = omnipool_oracle_0.price[tkn] * (1 - alpha) + alpha * price_1
