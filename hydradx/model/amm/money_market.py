@@ -8,20 +8,14 @@ class CDP:
             debt: dict[str: float],
             collateral: dict[str: float],
             liquidation_threshold: float = None,
-            health_factor: float = None,
-            agent=None,
-            fix_liquidation_threshold: bool = False
+            health_factor: float = None
     ):
         self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
         self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
         self.asset_list = list(debt.keys() | collateral.keys())
         self.liquidation_threshold = liquidation_threshold
         self.health_factor = health_factor
-        self.fix_liquidation_threshold = fix_liquidation_threshold
-        if agent is not None:
-            self.agent = agent
-        else:
-            self.agent = Agent()
+        self.fix_liquidation_threshold = True if liquidation_threshold is not None else False
 
     def __repr__(self):
         newline = '\n'
@@ -37,7 +31,8 @@ class CDP:
         return CDP(
             self.debt,
             self.collateral,
-            self.liquidation_threshold
+            liquidation_threshold=self.liquidation_threshold if self.fix_liquidation_threshold else None,
+            health_factor=self.health_factor
         )
 
     def validate(self) -> bool:
