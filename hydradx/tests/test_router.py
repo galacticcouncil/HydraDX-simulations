@@ -10,6 +10,9 @@ from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.tests.strategies_omnipool import fee_strategy
 
+settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
+settings.load_profile("long")
+
 mp.dps = 50
 
 asset_quantity_strategy = st.floats(min_value=100000, max_value=10000000)
@@ -576,7 +579,6 @@ def test_spot_prices_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
 
 
-@settings(deadline=timedelta(milliseconds=500))
 @given(
     assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
     lrna_fee=fee_strategy,
@@ -921,3 +923,47 @@ def test_buy_spot_sell_stableswap_buy_omnipool(
         raise ValueError(f"actually bought {buy_quantity} != trade size {trade_size}")
     if buy_spot != pytest.approx(buy_ex, rel=1e-08):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
+
+
+def test_calculate_buy_from_sell():
+    stable1 = StableSwapPoolState(
+        tokens={
+            'BTC': mpf(1000),
+            'WBTC': mpf(1001)
+        }, amplification=100,
+        unique_id='btc pool'
+    )
+    stable2 = StableSwapPoolState(
+        tokens={
+            'ETH': mpf(1001),
+            'WETH': mpf(999)
+        }, amplification=222,
+        unique_id='eth pool'
+    )
+    omnipool = OmnipoolState(
+        tokens={
+            'eth pool': {'liquidity': 101, 'LRNA': 1999},
+            'btc pool': {'liquidity': 102, 'LRNA': 20202},
+            'HDX': {'liquidity': 1003333, 'LRNA': 1234},
+            'USD': {'liquidity': 100000, 'LRNA': 5000}
+        }
+    )
+    router = OmnipoolRouter(
+        [stable1, stable2, omnipool]
+    )
+    trades = [
+        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 10},
+        {'tkn_buy': 'BTC', 'tkn_sell': 'HDX', 'sell_quantity': 11},
+        {'tkn_buy': 'HDX', 'tkn_sell': 'ETH', 'sell_quantity': 12},
+        {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'sell_quantity': 13}
+    ]
+    for trade in trades:
+        tkn_buy, tkn_sell, sell_quantity = trade.values()
+        buy_prediction = router.calculate_buy_from_sell(
+            tkn_sell=tkn_sell, tkn_buy=tkn_buy, sell_quantity=sell_quantity
+        )
+        agent = Agent(enforce_holdings=False)
+        router.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+        buy_result = agent.get_holdings(tkn_buy)
+        if buy_prediction != pytest.approx(buy_result, rel=1e-15):
+            raise AssertionError('Trade did not come out as predicted.')

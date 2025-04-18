@@ -4,6 +4,7 @@ from .global_state import GlobalState
 from .agents import Agent
 from .exchange import Exchange
 from .basilisk_amm import ConstantProductPoolState
+from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
 from .arbitrage_agent_general import get_arb_swaps, execute_arb
@@ -15,11 +16,12 @@ import numpy as np
 
 
 class TradeStrategy:
-    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
+    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False, frequency: int = None):
         self.function = strategy_function
         self.run_once = run_once
         self.done = False
         self.name = name
+        self.frequency = frequency if frequency is not None else 1
 
     def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
         if self.done:
@@ -561,7 +563,7 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
 
         return state
 
-    return TradeStrategy(strategy, name='omnipool arbitrage')
+    return TradeStrategy(strategy, name='omnipool arbitrage', frequency=frequency)
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 1e-6):
@@ -1094,10 +1096,88 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
         swaps = get_arb_swaps(
             exchanges=state.pools,
             config=config,
-            max_liquidity={pool: copy.copy(agent.holdings) for pool in config_pools}
+            max_liquidity={
+                pool: copy.copy(agent.holdings) for pool in config_pools
+            } if agent.enforce_holdings else None
         )
         execute_arb(state.pools, agent, swaps)
         return state
 
     return TradeStrategy(strategy, name='general arbitrage')
 
+
+def liquidate_cdps(pool_id: str, iters: int = 16) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        agent = state.agents[agent_id]
+        pool: Exchange = state.pools[pool_id]
+        mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools.values()))
+        if state.money_market is not None:
+            mms += [state.money_market]
+        for mm in mms:
+            for cdp in mm.cdps:
+                best_liquidations = {}
+
+                for debt_tkn, collateral_tkn in [
+                    (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
+                    for collateral_tkn in cdp.collateral.keys()
+                ]:
+                    if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
+                        or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
+                            continue
+                    collateral_max, debt_max = mm.calculate_liquidation(
+                        cdp,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn
+                    )
+                    if collateral_max == 0:
+                        # not liquidatable
+                        break
+                    if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
+                        # no profitable liquidation possible
+                        continue
+                    debt_paid = debt_max
+                    profit = collateral_max - pool.calculate_sell_from_buy(
+                        tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_paid
+                    )
+                    for i in range(1, iters):
+                        debt_delta = debt_max * 1 / 2 ** i
+                        debt_up = debt_paid + debt_delta
+                        debt_down = debt_paid - debt_delta
+                        collat_up = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_up)[0]
+                        collat_down = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_down)[0]
+                        profit_up = collat_up - pool.calculate_sell_from_buy(
+                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_up
+                        ) if collat_up < collateral_max else -float('inf')
+                        profit_down = collat_down - pool.calculate_sell_from_buy(
+                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_down
+                        )
+                        if profit_up > profit:
+                            debt_paid = debt_up
+                            profit = profit_up
+                        elif profit_down > profit:
+                            debt_paid = debt_down
+                            profit = profit_down
+                        else:
+                            continue
+                    if profit > 0:
+                        best_liquidations[(collateral_tkn, debt_tkn)] = {'amount': debt_paid, 'profit': profit}
+
+                best_pair = max(best_liquidations.items(), key=lambda x: x[1]['profit'], default=None)
+                if best_pair is not None:
+                    collateral_tkn, debt_tkn = best_pair[0]
+                    debt_paid = best_pair[1]['amount']
+                    pool.swap(
+                        agent=agent,
+                        tkn_buy=debt_tkn,
+                        tkn_sell=collateral_tkn,
+                        buy_quantity=debt_paid
+                    )
+                    mm.liquidate(
+                        cdp, agent,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn,
+                        repay_amount=debt_paid
+                    )
+        return state
+
+    return TradeStrategy(strategy, name='liquidate against omnipool')

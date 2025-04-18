@@ -52,7 +52,7 @@ def get_arb_swaps(
     """
     return a list of swaps that can be executed to take advantage of the best arbitrage opportunities
     """
-    if not max_liquidity:
+    if max_liquidity is None:
         max_liquidity = {
             ex_name: {
                 tkn: 1000000000
@@ -78,8 +78,8 @@ def get_arb_swaps(
             precision=precision
         )
         for ex_name in arb_cfg['exchanges'].keys():
-            if exchanges[ex_name].fail:
-                raise AssertionError('max liquidity exceeded?')
+            if test_exchanges[ex_name].fail:
+                raise AssertionError(f'max liquidity exceeded? ({exchanges[ex_name].fail}, {arb_cfg["exchanges"][ex_name]})')
         if swap:
             all_swaps.append(swap)
         elif len(arb_opps) > arbs_index + 1:
