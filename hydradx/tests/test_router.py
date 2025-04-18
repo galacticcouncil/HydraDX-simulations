@@ -931,31 +931,44 @@ def test_calculate_buy_from_sell():
             'BTC': mpf(1000),
             'WBTC': mpf(1001)
         }, amplification=100,
-        unique_id='btc pool'
+        unique_id='btc pool',
+        trade_fee=0.000123
     )
     stable2 = StableSwapPoolState(
         tokens={
             'ETH': mpf(1001),
             'WETH': mpf(999)
         }, amplification=222,
-        unique_id='eth pool'
+        unique_id='eth pool',
+        trade_fee=0.00011
     )
     omnipool = OmnipoolState(
         tokens={
             'eth pool': {'liquidity': 101, 'LRNA': 1999},
             'btc pool': {'liquidity': 102, 'LRNA': 20202},
             'HDX': {'liquidity': 1003333, 'LRNA': 1234},
-            'USD': {'liquidity': 100000, 'LRNA': 5000}
-        }
+            'USD': {'liquidity': 100000, 'LRNA': 5000},
+            'ETH': {'liquidity': 100, 'LRNA': 2000}
+        },
+        asset_fee=0.0022, lrna_fee=0.0011
     )
     router = OmnipoolRouter(
         [stable1, stable2, omnipool]
     )
+    if router.find_best_route('ETH', 'BTC') != ('btc pool', 'eth pool'):
+        # this is to make sure we test the case where one of the assets exists in two different pools.
+        raise AssertionError('ETH -> BTC trade should go through both subpools.')
+    elif router.find_best_route('BTC', 'ETH') != ('omnipool', 'btc pool'):
+        # this is to test the case where buy route and sell route are different.
+        raise AssertionError('BTC -> ETH trade should go through omnipool -> btc pool.')
+
     trades = [
         {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 10},
         {'tkn_buy': 'BTC', 'tkn_sell': 'HDX', 'sell_quantity': 11},
         {'tkn_buy': 'HDX', 'tkn_sell': 'ETH', 'sell_quantity': 12},
-        {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'sell_quantity': 13}
+        {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'sell_quantity': 13},
+        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 14},
+        {'tkn_buy': 'ETH', 'tkn_sell': 'BTC', 'sell_quantity': 15},
     ]
     for trade in trades:
         tkn_buy, tkn_sell, sell_quantity = trade.values()
