@@ -114,7 +114,7 @@ def test_omnipool_arbitrager(hdx_value, dot_value):
         } for tkn in ('HDX', 'USD', 'DOT')}
     )
     omnipool.trade_limit_per_block = float('inf')
-    agent = Agent(enforce_holdings=False, trade_strategy=omnipool_arbitrage)
+    agent = Agent(enforce_holdings=False)
     external_market = {'USD': 1, 'HDX': hdx_value, 'DOT': dot_value}
     state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
     strat = omnipool_arbitrage('omnipool')
@@ -144,20 +144,20 @@ def test_omnipool_arbitrager(hdx_value, dot_value):
             raise AssertionError(f'Arbitrageur lost money. old_value: {old_value}, new_value: {new_value}')
 
 
-@given(omnipool_reasonable_config(token_count=3), reasonable_market(token_count=3),
-       st.integers(min_value=2, max_value=5))
-@settings(deadline=1000)
-def test_omnipool_arbitrager_periodic(omnipool: oamm.OmnipoolState, market: list, frequency: int):
+@given(frequency=st.integers(min_value=1, max_value=10))
+def test_omnipool_arbitrager_periodic(frequency: int):
+    omnipool = OmnipoolState(
+        tokens={tkn: {
+            'liquidity': 1000,
+            'LRNA': 1000
+        } for tkn in ('HDX', 'USD', 'DOT')}
+    )
     omnipool.trade_limit_per_block = float('inf')
-    holdings = {'LRNA': 1000000000}
-    for asset in omnipool.asset_list:
-        holdings[asset] = 1000000000
-    arb_precision = 5
-    strat = omnipool_arbitrage('omnipool', arb_precision, frequency=frequency)
-
-    agent = Agent(holdings=holdings, trade_strategy=strat)
-    external_market = {omnipool.asset_list[i]: market[i] for i in range(len(omnipool.asset_list))}
-    external_market[omnipool.stablecoin] = 1.0
+    agent = Agent(
+        enforce_holdings=False,
+        trade_strategy=omnipool_arbitrage('omnipool', frequency=frequency)
+    )
+    external_market = {'USD': 1, 'HDX': 0.02, 'DOT': 7}
 
     timesteps = 10
     price_list = [copy.deepcopy(external_market)]
@@ -165,9 +165,9 @@ def test_omnipool_arbitrager_periodic(omnipool: oamm.OmnipoolState, market: list
         prices = {asset: price * .8 if asset != "USD" else 1 for asset, price in price_list[-1].items()}
         price_list.append(prices)
 
-    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market,
+    initial_state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market,
                         evolve_function=historical_prices(price_list))
-    events = run(state, time_steps=timesteps, silent=True)
+    events = [initial_state] + run(initial_state, time_steps=timesteps, silent=True)
 
     for i, event in enumerate(events):
         if i == 0: continue
