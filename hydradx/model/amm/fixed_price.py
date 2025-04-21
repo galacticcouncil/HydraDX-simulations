@@ -1,7 +1,7 @@
 from .exchange import Exchange
 from .agents import Agent
 
-class CEXDummy(Exchange):
+class FixedPriceExchange(Exchange):
     def __init__(self, tokens: dict[str: float], unique_id='dummy exchange'):
         """
         Mock exchange with infinite liquidity and no fees
