@@ -38,9 +38,9 @@ class FixedPriceExchange(Exchange):
             sell_quantity: float = 0
     ):
         if buy_quantity:
-            sell_quantity = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+            sell_quantity = self.calculate_sell_from_buy(tkn_sell=tkn_sell, tkn_buy=tkn_buy, buy_quantity=buy_quantity)
         elif sell_quantity:
-            buy_quantity = self.calculate_buy_from_sell(tkn_buy, tkn_sell, sell_quantity)
+            buy_quantity = self.calculate_buy_from_sell(tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
 
         if tkn_buy not in agent.holdings:
             agent.holdings[tkn_buy] = 0
@@ -49,6 +49,7 @@ class FixedPriceExchange(Exchange):
         agent.holdings[tkn_buy] += buy_quantity
         self.liquidity[tkn_sell] += sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
+        return self
 
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
         return sell_quantity * self.price(tkn_sell) / self.price(tkn_buy)
