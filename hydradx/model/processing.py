@@ -917,16 +917,6 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
         return {data[1]: data[3] for data in tkn_data[left:end]}
 
 
-def distribute_value(num_positions, total_value, concentration = 0):
-    if num_positions == 1:
-        return [total_value]
-    top_20 = num_positions / 5
-    ratio = (1 / (1 - concentration)) ** (1 / top_20)
-    positions = [ratio ** (-i) for i in range(num_positions)]
-    total = sum(positions)
-    return [p * total_value / total for p in positions]
-
-
 def get_current_money_market():
     from substrateinterface import SubstrateInterface
     from .abi.pool_address_provider import POOL_ADDRESS_PROVIDER_ABI
