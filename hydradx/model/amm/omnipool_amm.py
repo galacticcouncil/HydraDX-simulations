@@ -525,9 +525,8 @@ class OmnipoolState(Exchange):
         old_buy_liquidity = self.liquidity[tkn_buy] if tkn_buy in self.liquidity else 0
         old_sell_liquidity = self.liquidity[tkn_sell] if tkn_sell in self.liquidity else 0
 
-        if tkn_buy not in self.asset_list + ['LRNA'] or tkn_sell not in self.asset_list + ['LRNA']:
+        if (tkn_buy not in self.asset_list and tkn_buy != 'LRNA') or (tkn_sell not in self.asset_list and tkn_sell != 'LRNA'):
             raise ValueError(f'Invalid token pair: {tkn_buy}, {tkn_sell}')
-
         elif tkn_sell == 'LRNA':
             return_val = self._lrna_swap(agent, buy_quantity, -sell_quantity, tkn_buy)
         elif tkn_buy == 'LRNA':
