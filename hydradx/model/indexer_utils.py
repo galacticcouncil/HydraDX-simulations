@@ -21,6 +21,17 @@ class AssetInfo:
         self.symbol = symbol
         self.xcm_rate_limit = xcm_rate_limit
 
+
+def query_indexer(url: str, query: str, variables: dict = None) -> dict:
+    response = requests.post(url, json={'query': query, 'variables': variables})
+    if response.status_code != 200:
+        raise ValueError(f"Query failed with status code {response.status_code}")
+    return_val = response.json()
+    if 'errors' in return_val:
+        raise ValueError(return_val['errors'][0]['message'])
+    return return_val
+
+
 def get_asset_info_by_ids(asset_ids: list) -> dict:
     url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
@@ -43,12 +54,7 @@ def get_asset_info_by_ids(asset_ids: list) -> dict:
 
     # Send POST request to the GraphQL API
     variables = {'assetIds': [f"{asset_id}" for asset_id in asset_ids]}
-    asset_response = requests.post(url1, json={'query': asset_query, 'variables': variables})
-    if asset_response.status_code != 200:
-        raise ValueError(f"Query failed with status code {asset_response.status_code}")
-    return_val = asset_response.json()
-    if 'errors' in return_val:
-        raise ValueError(return_val['errors'][0]['message'])
+    return_val = query_indexer(url1, asset_query, variables)
     asset_data = return_val['data']['assets']['nodes']
     dict_data = {}
     for asset in asset_data:
@@ -137,11 +143,7 @@ def get_omnipool_asset_data(
 
     while has_next_page:
         variables["after"] = after_cursor
-        response = requests.post(url, json={"query": query, "variables": variables})
-        if response.status_code != 200:
-            raise ValueError(f"Query failed with status code {response.status_code}")
-
-        data = response.json()
+        data = query_indexer(url, query, variables)
         page_data = data['data']['omnipoolAssetData']['nodes']
         data_all.extend(page_data)
         page_info = data['data']['omnipoolAssetData']['pageInfo']
@@ -191,15 +193,18 @@ def get_omnipool_liquidity(
     return liquidity, hub_liquidity
 
 
-def get_stableswap_data_by_block(
+def get_stableswap_asset_data(
         pool_id: int,
-        block_no: int
-):
+        min_block_id: int,
+        max_block_id: int
+) -> list:
     url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+
     stableswap_query = """
-    query MyQuery($pool_id: Int!, $block_no: Int!) {
+    query MyQuery($pool_id: Int!, $min_block: Int!, $max_block: Int!) {
       stablepools(
-        filter: {poolId: {equalTo: $pool_id}, paraChainBlockHeight: {equalTo: $block_no}}
+        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
+        filter: {poolId: {equalTo: $pool_id}, paraChainBlockHeight: {greaterThanOrEqualTo: $min_block, lessThanOrEqualTo: $max_block}}
       ) {
         nodes {
           id
@@ -220,12 +225,16 @@ def get_stableswap_data_by_block(
       }
     }
     """
-    variables = {"pool_id": pool_id, "block_no": block_no}
-    response = requests.post(url, json={"query": stableswap_query, "variables": variables})
-    if response.status_code != 200:
-        raise ValueError(f"Query failed with status code {response.status_code}")
-    pool_data = response.json()['data']['stablepools']['nodes'][0]
-    return pool_data
+    variables = {"pool_id": pool_id, "min_block": min_block_id, "max_block": max_block_id}
+    data = query_indexer(url, stableswap_query, variables)
+    return data['data']['stablepools']['nodes']
+
+
+def get_stableswap_data_by_block(
+        pool_id: int,
+        block_no: int
+):
+    return get_stableswap_asset_data(pool_id, block_no, block_no)[0]
 
 
 def get_latest_stableswap_data(
@@ -243,11 +252,9 @@ def get_latest_stableswap_data(
     }
     """
 
-    response = requests.post(url, json={"query": latest_block_query})
-    if response.status_code != 200:
-        raise ValueError(f"Query failed with status code {response.status_code}")
+    data = query_indexer(url, latest_block_query)
 
-    latest_block = int(response.json()['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
+    latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
@@ -268,3 +275,21 @@ def get_latest_stableswap_data(
         balance = int(asset['balances']['free']) / (10 ** asset_dict[asset_id].decimals)
         pool_data_formatted['liquidity'][asset_id] = balance
     return pool_data_formatted
+
+
+def get_stablepool_ids():
+    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+
+    stablepool_query = """
+    query MyQuery {
+      stablepools {
+        groupedAggregates(groupBy: POOL_ID) {
+          keys
+        }
+      }
+    }
+    """
+
+    data = query_indexer(url, stablepool_query)
+    pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
+    return pool_ids
