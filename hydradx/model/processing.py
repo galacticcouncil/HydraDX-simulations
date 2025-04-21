@@ -443,7 +443,7 @@ def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter
                 },
                 amplification=float(pool_data.final_amplification),
                 trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stabelswaps):02}",
+                unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stableswaps):02}",
                 shares=pool_data.shares / 10 ** (op_state[pool_id].asset.decimals if pool_id in op_state else 0)
             )
             stableswaps.append(pool)
