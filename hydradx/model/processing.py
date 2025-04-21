@@ -399,7 +399,8 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
+def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter:
+    stableswaps = []
     with HydraDX(rpc) as chain:
         # get omnipool and subpool data
         op_state = chain.api.omnipool.state()
@@ -431,30 +432,24 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 for tkn_id, tkn in [asset for asset in assets]
             },
             unique_id='omnipool'
-            # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
-            if pool_data.reserves:
-                subpool = StableSwapPoolState(
-                    tokens={
-                        symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                        for asset in pool_data.assets
-                    },
-                    amplification=float(pool_data.final_amplification),
-                    trade_fee=float(pool_data.fee) / 100,
-                    unique_id=symbol_map[pool_id],
-                    shares=pool_data.shares / 10 ** op_state[pool_id].asset.decimals
-                )
-                omnipool.sub_pools[subpool.unique_id] = subpool
+            pool = StableSwapPoolState(
+                tokens={
+                    symbol_map[asset.asset_id]: (
+                        int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                        if asset.asset_id in pool_data.reserves else 0
+                    ) for asset in pool_data.assets
+                },
+                amplification=float(pool_data.final_amplification),
+                trade_fee=float(pool_data.fee) / 100,
+                unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stabelswaps):02}",
+                shares=pool_data.shares / 10 ** (op_state[pool_id].asset.decimals if pool_id in op_state else 0)
+            )
+            stableswaps.append(pool)
 
-        return omnipool
-
-
-def get_omnipool_router(rpc='wss://rpc.hydradx.cloud'):
-    omnipool = get_omnipool(rpc)
-    stableswaps = omnipool.sub_pools
     omnipool.sub_pools = {}
-    router = OmnipoolRouter([omnipool, *stableswaps.values()])
+    router = OmnipoolRouter([omnipool, *stableswaps])
     return router
 
 
