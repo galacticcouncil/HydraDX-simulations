@@ -1041,7 +1041,7 @@ def get_current_money_market():
                             tkn[1] * reserves_data[asset_map[tkn[0]]]['liquidityIndex']
                             / 10 ** reserves_data[asset_map[tkn[0]]]['decimals']
                         ),
-                        # "usageAsCollateralEnabledOnUser": tkn[2],
+                        "usageAsCollateralEnabledOnUser": tkn[2],
                         # "stableBorrowRate": tkn[3],
                         "debt": (
                             tkn[4] * reserves_data[asset_map[tkn[0]]]['variableBorrowIndex']
@@ -1052,7 +1052,7 @@ def get_current_money_market():
                     }
                     for tkn in user_config[0]
                 },
-                'unknown number': user_config[1]
+                'e-mode': user_config[1]
             },
             "totalCollateralBase": borrower_info["totalCollateralBase"],
             "totalDebtBase": borrower_info["totalDebtBase"],
@@ -1088,10 +1088,11 @@ def get_current_money_market():
             collateral={
                 tkn: position['config']['assets'][tkn]['balance']
                 for tkn in position['config']['assets']
-                if position['config']['assets'][tkn]['balance'] > 0
+                if position['config']['assets'][tkn]['usageAsCollateralEnabledOnUser']
             },
             liquidation_threshold=position['currentLiquidationThreshold'],
             health_factor=position['healthFactor'],
+            e_mode=['None', 'Stablecoins', 'DOT'][position['config']['e-mode']]
         ) for position in borrowers]
     )
     return mm
