@@ -212,7 +212,7 @@ class MoneyMarket:
         collateral_values = {tkn: cdp.collateral[tkn] * self.price(tkn) for tkn in cdp.collateral}
         total_debt = sum(debt_values.values())
         total_collateral = sum(collateral_values.values())
-        if total_collateral == 0:
+        if total_collateral == 0 or total_debt == 0:
             return 0
         for tkn in threshold:
             threshold[tkn] = sum(
