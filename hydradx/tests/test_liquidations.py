@@ -727,7 +727,7 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     if cdp1.debt['USDT'] == 0:  # fully liquidated
         assert ratio1 >= full_liq_threshold
     elif cdp1.collateral['DOT'] == 0:  # fully liquidated, bad debt remaining
-        assert ratio1 > 1/(1 + mm.liquidation_bonus[('DOT', 'USDT')])
+        assert ratio1 > 1/(1 + mm.get_liquidation_bonus('DOT', 'USDT'))
     elif cdp1.debt['USDT'] == debt_amt1:  # not liquidated
         if ratio1 < liq_threshold:  # 1. overcollateralized
             pass
@@ -738,11 +738,11 @@ def test_liquidate_against_omnipool_fuzz(collateral_amt1: float, ratio1: float, 
     elif 0 < cdp1.debt['USDT'] < debt_amt1:  # partially liquidated
         assert ratio1 >= liq_threshold
         if (
-                ratio1 * mm.full_liquidation_threshold - mm.liquidation_threshold[('DOT', 'USDT')] <= 1e-20
+                ratio1 * mm.full_liquidation_threshold - mm.get_liquidation_threshold('DOT', 'USDT') <= 1e-20
                 and cdp1.debt['USDT'] / debt_amt1 == 1 - mm.partial_liquidation_pct
         ):
             pass  # partially liquidated due to partial_liquidation_pct
-        elif ratio1 > 1 - mm.liquidation_bonus[('DOT', 'USDT')]:  # 2. undercollateralized, partially but not fully liquidated
+        elif ratio1 > 1 - mm.get_liquidation_bonus('DOT', 'USDT'):  # 2. undercollateralized, partially but not fully liquidated
             pass
         # elif liq_agent.holdings["DOT"] / (collateral_amt1 - cdp1.collateral['DOT']) > 1e-25:
         #     raise ValueError("If liquidation agent is profitable, they should have liquidated more")
@@ -1038,12 +1038,12 @@ def test_multiple_collateral():
         raise ValueError("CDP2 DOT should be fully liquidated")
     if (final_mm.value_assets({'DOT': cdp1.collateral['DOT'] - final_cdp1.collateral['DOT']})
             / final_mm.value_assets({'HDX': final_cdp1.debt['HDX']}) - 1
-            != pytest.approx(final_mm.liquidation_bonus[('DOT', 'HDX')], rel=1e-12)
+            != pytest.approx(final_mm.get_liquidation_bonus('DOT', 'HDX'), rel=1e-12)
     ):
         raise ValueError("CDP1 DOT should be liquidated at half the value of HDX debt + liquidation bonus")
     if (final_mm.value_assets({'DOT': cdp3.collateral['DOT'] - final_cdp3.collateral['DOT']})
             / final_mm.value_assets({'HDX': final_cdp3.debt['HDX']}) - 1
-            != pytest.approx(final_mm.liquidation_bonus[('DOT', 'HDX')], rel=1e-12)
+            != pytest.approx(final_mm.get_liquidation_bonus('DOT', 'HDX'), rel=1e-12)
     ):
         raise ValueError("CDP3 should be half liquidated just like CDP1")
     if final_cdp4.debt != cdp4.debt or final_cdp4.collateral != cdp4.collateral:
