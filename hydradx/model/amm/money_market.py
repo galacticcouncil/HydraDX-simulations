@@ -8,7 +8,8 @@ class CDP:
             debt: dict[str: float],
             collateral: dict[str: float],
             liquidation_threshold: float = None,
-            health_factor: float = None
+            health_factor: float = None,
+            e_mode: int = None
     ):
         self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
         self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
@@ -16,6 +17,7 @@ class CDP:
         self.liquidation_threshold = liquidation_threshold
         self.health_factor = health_factor
         self.fix_liquidation_threshold = True if liquidation_threshold is not None else False
+        self.e_mode = e_mode
 
     def __repr__(self):
         newline = '\n'
@@ -52,9 +54,9 @@ class MoneyMarketAsset:
             liquidation_bonus: float,
             liquidation_threshold: float,
             ltv: float,
-            emode_liquidation_bonus: float = 0,
-            emode_liquidation_threshold: float = 0,
-            emode_ltv: float = 0,
+            emode_liquidation_bonus: float = None,
+            emode_liquidation_threshold: float = None,
+            emode_ltv: float = None,
             emode_label: str = '',
     ):
         self.name = name
@@ -63,9 +65,9 @@ class MoneyMarketAsset:
         self.liquidation_bonus = liquidation_bonus
         self.liquidation_threshold = liquidation_threshold
         self.ltv = ltv
-        self.emode_liquidation_bonus = emode_liquidation_bonus
-        self.emode_liquidation_threshold = emode_liquidation_threshold
-        self.emode_ltv = emode_ltv
+        self.emode_liquidation_bonus = emode_liquidation_bonus or liquidation_bonus
+        self.emode_liquidation_threshold = emode_liquidation_threshold or liquidation_threshold
+        self.emode_ltv = emode_ltv or ltv
         self.emode_label = emode_label
 
 
@@ -87,25 +89,7 @@ class MoneyMarket:
             asset.name: asset.price
             for asset in assets
         }
-        self.assets = assets
-        self.ltv = {
-            (asset1.name, asset2.name):
-            asset1.emode_ltv if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.ltv
-            for asset1 in assets
-            for asset2 in assets if asset2 != asset1
-        }
-        self.liquidation_bonus = {
-            (asset1.name, asset2.name):
-            asset1.emode_liquidation_bonus if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.liquidation_bonus
-            for asset1 in assets
-            for asset2 in assets if asset2 != asset1
-        }
-        self.liquidation_threshold = {
-            (asset1.name, asset2.name):
-            asset1.emode_liquidation_threshold if asset1.emode_label and asset1.emode_label == asset2.emode_label else asset1.liquidation_threshold
-            for asset1 in assets
-            for asset2 in assets if asset2 != asset1
-        }
+        self.assets = {asset.name: asset for asset in assets}
 
         self.cdps: list[CDP] = [] if cdps is None else cdps
         for cdp in self.cdps:
@@ -140,36 +124,11 @@ class MoneyMarket:
         return copy.deepcopy(self)
 
     def add_new_asset(self, new_asset: MoneyMarketAsset):
-        for existing_asset in self.assets:
-            self.liquidation_bonus[(existing_asset.name, new_asset.name)] = (
-                existing_asset.emode_liquidation_bonus if existing_asset.emode_label == new_asset.emode_label
-                else existing_asset.liquidation_bonus
-            )
-            self.liquidation_bonus[(new_asset.name, existing_asset.name)] = (
-                new_asset.emode_liquidation_bonus if existing_asset.emode_label == new_asset.emode_label
-                else new_asset.liquidation_bonus
-            )
-            self.ltv[(existing_asset.name, new_asset.name)] = (
-                existing_asset.emode_ltv if existing_asset.emode_label == new_asset.emode_label
-                else existing_asset.ltv
-            )
-            self.ltv[(new_asset.name, existing_asset.name)] = (
-                new_asset.emode_ltv if existing_asset.emode_label == new_asset.emode_label
-                else new_asset.ltv
-            )
-            self.liquidation_threshold[(existing_asset.name, new_asset.name)] = (
-                existing_asset.emode_liquidation_threshold if existing_asset.emode_label == new_asset.emode_label
-                else existing_asset.liquidation_threshold
-            )
-            self.liquidation_threshold[(new_asset.name, existing_asset.name)] = (
-                new_asset.emode_liquidation_threshold if existing_asset.emode_label == new_asset.emode_label
-                else new_asset.liquidation_threshold
-            )
         self.liquidity[new_asset.name] = new_asset.liquidity
         self.prices[new_asset.name] = new_asset.price
         self.borrowed[new_asset.name] = 0
         self.asset_list.append(new_asset.name)
-        self.assets.append(new_asset)
+        self.assets[new_asset.name] = new_asset
 
     def fail_transaction(self, fail: str):
         self.fail = fail
@@ -203,11 +162,24 @@ class MoneyMarket:
         )
         return health_factor
 
-    def get_ltv(self, collateral_tkn: str, debt_tkn: str) -> float:
-        return self.ltv[(collateral_tkn, debt_tkn)] if (collateral_tkn, debt_tkn) in self.ltv else 0
+    def get_ltv(self, collateral_tkn: str, debt_tkn: str, e_mode: str = 'None') -> float:
+        if self.assets[collateral_tkn].emode_label == self.assets[debt_tkn].emode_label == e_mode:
+            return self.assets[collateral_tkn].emode_ltv
+        else:
+            return self.assets[collateral_tkn].ltv
 
-    def get_liquidation_bonus(self, collateral_tkn: str, debt_tkn: str) -> float:
-        return self.liquidation_bonus[(collateral_tkn, debt_tkn)] if (collateral_tkn, debt_tkn) in self.liquidation_bonus else 0
+    def get_liquidation_bonus(self, collateral_tkn: str, debt_tkn: str, e_mode: str = 'None') -> float:
+        if self.assets[collateral_tkn].emode_label == self.assets[debt_tkn].emode_label == e_mode:
+            return self.assets[collateral_tkn].emode_liquidation_bonus
+        else:
+            return self.assets[collateral_tkn].liquidation_bonus
+
+    def get_liquidation_threshold(self, collateral_tkn, debt_tkn, e_mode: str = 'None') -> float:
+        """Get the liquidation threshold for a collateral-debt asset pair."""
+        if self.assets[collateral_tkn].emode_label == self.assets[debt_tkn].emode_label == e_mode:
+            return self.assets[collateral_tkn].emode_liquidation_threshold
+        else:
+            return self.assets[collateral_tkn].liquidation_threshold
 
     def is_liquidatable(self, cdp: CDP) -> bool:
         if sum(cdp.collateral.values()) == 0 or sum(cdp.debt.values()) == 0:
@@ -224,10 +196,6 @@ class MoneyMarket:
     def is_toxic(self, cdp: CDP) -> bool:
         return self.value_assets(cdp.collateral) < self.value_assets(cdp.debt)
 
-    def get_liquidation_threshold(self, collateral_asset, debt_asset) -> float:
-        """Get the liquidation threshold for a collateral-debt asset pair."""
-        return self.liquidation_threshold.get((collateral_asset, debt_asset), 0)
-
     def cdp_liquidation_threshold(self, cdp: CDP) -> float:
         """
         Calculate the liquidation threshold for a CDP with multiple assets.
@@ -238,101 +206,20 @@ class MoneyMarket:
         Returns:
             float: The calculated liquidation threshold as a decimal (0.0-1.0)
         """
-        # Calculate all asset values in market reference currency
-        collateral_values = {}
-        debt_values = {}
 
-        # Process collateral assets
-        for asset_name, balance in cdp.collateral.items():
-            if balance <= 0:
-                continue
-
-            price = self.prices[asset_name]
-            value = balance * price
-            collateral_values[asset_name] = {"amount": balance, "value": value}
-
-        # Process debt assets
-        for asset_name, debt in cdp.debt.items():
-            if debt <= 0:
-                continue
-
-            price = self.prices[asset_name]
-            value = debt * price
-            debt_values[asset_name] = {"amount": debt, "value": value}
-
-        # Check for self-borrowing (same asset used as both collateral and debt)
-        self_borrowing_assets = [
-            asset for asset in cdp.asset_list
-            if asset in cdp.collateral and asset in cdp.debt
-               and cdp.collateral.get(asset, 0) > 0 and cdp.debt.get(asset, 0) > 0
-        ]
-
-        if self_borrowing_assets:
-            # For self-borrowing, use any threshold involving this asset as collateral
-            asset = self_borrowing_assets[0]
-            for other_asset in self.asset_list:
-                if other_asset != asset:
-                    threshold = self.get_liquidation_threshold(asset, other_asset)
-                    if threshold > 0:
-                        return threshold
-            return 0.7  # Default if not found
-
-        # Match each debt asset with the best collateral asset (highest liquidation threshold)
-        matches = []
-        remaining_collateral = {k: {"amount": v["amount"], "value": v["value"]} for k, v in collateral_values.items()}
-
-        # Process each debt asset
-        for debt_asset, debt_info in debt_values.items():
-            debt_value = debt_info["value"]
-
-            # Find the best collateral assets for this debt based on liquidation threshold
-            collateral_options = []
-
-            for collateral_asset in remaining_collateral:
-                if remaining_collateral[collateral_asset]["value"] > 0:
-                    # Get the threshold between these specific assets
-                    threshold = self.get_liquidation_threshold(collateral_asset, debt_asset)
-
-                    collateral_options.append({
-                        "asset": collateral_asset,
-                        "threshold": threshold
-                    })
-
-            # Sort collateral options by threshold (highest first)
-            collateral_options.sort(key=lambda x: x["threshold"], reverse=True)
-
-            # Match debt with best collateral options
-            debt_remaining = debt_value
-
-            for option in collateral_options:
-                collateral_asset = option["asset"]
-                threshold = option["threshold"]
-
-                available_collateral = remaining_collateral[collateral_asset]["value"]
-                match_amount = min(available_collateral, debt_remaining)
-
-                if match_amount > 0:
-                    matches.append({
-                        "value": match_amount,
-                        "threshold": threshold
-                    })
-
-                    remaining_collateral[collateral_asset]["value"] -= match_amount
-                    debt_remaining -= match_amount
-
-                    if debt_remaining <= 0:
-                        break
-
-        # Calculate weighted average of thresholds
-        total_matched_value = sum(match["value"] for match in matches)
-
-        if total_matched_value == 0:
-            return 0  # Edge case: no collateral or no debt
-
-        weighted_sum = sum(match["value"] * match["threshold"] for match in matches)
-        weighted_threshold = weighted_sum / total_matched_value
-
-        return weighted_threshold
+        threshold = {tkn: 0 for tkn in cdp.collateral}
+        debt_values = {tkn: cdp.debt[tkn] * mm.price(tkn) for tkn in cdp.debt}
+        collateral_values = {tkn: cdp.collateral[tkn] * mm.price(tkn) for tkn in cdp.collateral}
+        total_debt = sum(debt_values.values())
+        total_collateral = sum(collateral_values.values())
+        if total_collateral == 0:
+            return 0
+        for tkn in threshold:
+            threshold[tkn] = sum(
+                [value * mm.get_liquidation_threshold(tkn, debt_tkn, cdp.e_mode) for debt_tkn, value in
+                 debt_values.items()]) / total_debt
+        threshold_weights = {tkn: value / total_collateral for tkn, value in collateral_values.items()}
+        return sum([value * threshold[tkn] for tkn, value in collateral_values.items()]) / total_collateral
 
     def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
                collateral_amt: float) -> CDP:
@@ -341,7 +228,7 @@ class MoneyMarket:
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
         assert agent.validate_holdings(collateral_asset, collateral_amt)
         price = self.price(collateral_asset) / self.price(borrow_asset)
-        if price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset) < borrow_amt:
+        if price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset, self.assets[collateral_asset].emode_label) < borrow_amt:
             return self.fail_transaction(f"Tried to borrow more than allowed by LTV ({borrow_asset, collateral_asset}")
         self.borrowed[borrow_asset] += borrow_amt
         # if borrow_asset not in agent.holdings:
@@ -399,7 +286,7 @@ class MoneyMarket:
         debt_value = repay_amount * self.price(debt_asset)
         collateral_value = (
             cdp.collateral[collateral_asset] * self.price(collateral_asset)
-            / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
+            / (1 + self.get_liquidation_bonus(collateral_asset, debt_asset, cdp.e_mode))
         )
         debt_repaid = (  # amount of debt repayment that can be covered by this collateral
             repay_amount if debt_value < collateral_value
@@ -408,7 +295,7 @@ class MoneyMarket:
         payout = (
             cdp.collateral[collateral_asset] if collateral_value <= debt_value
             else debt_repaid * self.price(debt_asset) / self.price(collateral_asset)
-                * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset))
+                * (1 + self.get_liquidation_bonus(collateral_asset, debt_asset, cdp.e_mode))
         )
         return payout, debt_repaid
 
@@ -468,20 +355,6 @@ class MoneyMarket:
                 return False
             if asset in cdp_borrowed and self.borrowed[asset] != cdp_borrowed[asset]:
                 return False
-            for asset2 in [asset2 for asset2 in self.liquidity if asset2 != asset]:
-                if (asset, asset2) not in self.ltv:
-                    return False
-                if (asset, asset2) not in self.liquidation_bonus:
-                    return False
-                if (asset, asset2) not in self.liquidation_threshold:
-                    return False
-        for k in self.liquidation_threshold:
-            # if k not in self.full_liquidation_threshold:
-            #     return False
-            if self.liquidation_threshold[k] > self.full_liquidation_threshold:
-                return False
         if not (len(self.liquidity) == len(self.borrowed) == len(cdp_borrowed) ):
-            return False
-        if not(len(self.liquidation_threshold) == len(self.liquidation_bonus) == len(self.ltv)):
             return False
         return True
