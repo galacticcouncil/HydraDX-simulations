@@ -304,7 +304,7 @@ def find_agent_delta_y(
     return b if i < max_iterations else 0
 
 
-def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = True) -> TradeStrategy:
+def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
@@ -316,10 +316,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         x = pool.asset_list[0]
         y = pool.asset_list[1]
 
-        if not direct_calc:
-            agent_delta_y = recursive_calculation(state, x, y)
-        else:
-            agent_delta_y = direct_calculation(state, x, y)
+        agent_delta_y = direct_calculation(state, x, y)
 
         agent_delta_x = -agent_delta_y * pool.liquidity[x] / (pool.liquidity[y] - agent_delta_y)
         if agent_delta_y > 0:
@@ -332,13 +329,8 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             + agent_delta_x * state.price(x)
         )
 
-        # in case we want to graph this later
-        # agent = state.agents[agent_id]
-        # agent.projected_profit = projected_profit
-
         if projected_profit <= minimum_profit:
             # don't do it
-            # agent.trade_rejected += 1
             return state
 
         # buy just enough of non-USD asset
@@ -392,39 +384,6 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
             return -dY
         else:
             return 0
-
-    def recursive_calculation(state: GlobalState, tkn_sell: str, tkn_buy: str):
-        # an alternate way to calculate optimal trade
-        # should be equivalent with a flat percentage fee, but also works with more complicated fee structures
-        pool = state.pools[pool_id]
-        x = pool.liquidity[tkn_sell]
-        y = pool.liquidity[tkn_buy]
-        # VVV this would be correct if there is no fee VVV
-        agent_delta_y = (y - math.sqrt(x * y * state.price(tkn_sell) / state.price(tkn_buy)))
-
-        def price_after_trade(buy_amount=0, sell_amount=0):
-            if buy_amount:
-                sell_amount = -(x - pool.invariant / (y - buy_amount)) \
-                              * (1 + pool.trade_fee(tkn_sell, buy_amount))
-                price = (y - buy_amount) / (x + sell_amount)
-
-            elif sell_amount:
-                buy_amount = (x - pool.invariant / (y + sell_amount)) \
-                             * (1 - pool.trade_fee(tkn_sell, sell_amount))
-                price = (y + sell_amount) / (x - buy_amount)
-
-            else:
-                raise ValueError('Must specify either buy_amount or sell_amount')
-
-            if agent_delta_y < 0:
-                price /= (1 - pool.trade_fee(y, sell_amount))
-            else:
-                price /= (1 + pool.trade_fee(y, sell_amount))
-
-            return price
-
-        target_price = state.price(tkn_sell) / state.price(tkn_buy)
-        return find_agent_delta_y(target_price, price_after_trade, agent_delta_y)
 
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
