@@ -10,6 +10,8 @@ from zipfile import ZipFile
 import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
+from hydradxapi.pallets.fees import Fees
+from hydradxapi.pallets.omnipool import AssetState
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
@@ -401,9 +403,31 @@ def get_omnipool_data_from_file(path: str):
 
 def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter:
     stableswaps = []
-    with HydraDX(rpc) as chain:
+    with (HydraDX(rpc) as chain):
         # get omnipool and subpool data
-        op_state = chain.api.omnipool.state()
+        pool_api = chain.api.omnipool
+        entries = pool_api.query_entries(pool_api.MODULE_NAME, pool_api.ASSET_STATE_STORAGE)
+        op_state = {}
+        for entry in entries:
+            asset_id = int(entry[0].value)
+            entry = entry[1].value.copy()
+            entry["reserve"] = pool_api._asset_reserve(asset_id)
+            asset = pool_api._registry.asset_metadata(asset_id)
+            # fees = pool_api._fees.asset_fees(asset_id)
+            fee_entry = pool_api._fees.query_entry(pool_api._fees.MODULE_NAME, "AssetFee", params=[asset_id])
+            try:
+                fees = Fees(
+                    fee_entry["asset_fee"].value / 10_000,
+                    fee_entry["protocol_fee"].value / 10_000,
+                    int(fee_entry["timestamp"].value),
+                )
+            except Exception as e:
+                fees = Fees(
+                    0.0025, 0.0005, 0
+                )
+            op_state[asset_id] = AssetState.from_entry(asset, entry, fees)
+
+        # op_state = chain.api.omnipool.state()
         sub_pools = chain.api.stableswap.pools()
         # collect assets
         assets = [(tkn.asset.asset_id, tkn.asset.symbol) for tkn in op_state.values()]
