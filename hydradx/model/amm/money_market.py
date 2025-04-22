@@ -208,15 +208,15 @@ class MoneyMarket:
         """
 
         threshold = {tkn: 0 for tkn in cdp.collateral}
-        debt_values = {tkn: cdp.debt[tkn] * mm.price(tkn) for tkn in cdp.debt}
-        collateral_values = {tkn: cdp.collateral[tkn] * mm.price(tkn) for tkn in cdp.collateral}
+        debt_values = {tkn: cdp.debt[tkn] * self.price(tkn) for tkn in cdp.debt}
+        collateral_values = {tkn: cdp.collateral[tkn] * self.price(tkn) for tkn in cdp.collateral}
         total_debt = sum(debt_values.values())
         total_collateral = sum(collateral_values.values())
         if total_collateral == 0:
             return 0
         for tkn in threshold:
             threshold[tkn] = sum(
-                [value * mm.get_liquidation_threshold(tkn, debt_tkn, cdp.e_mode) for debt_tkn, value in
+                [value * self.get_liquidation_threshold(tkn, debt_tkn, cdp.e_mode) for debt_tkn, value in
                  debt_values.items()]) / total_debt
         threshold_weights = {tkn: value / total_collateral for tkn, value in collateral_values.items()}
         return sum([value * threshold[tkn] for tkn, value in collateral_values.items()]) / total_collateral
