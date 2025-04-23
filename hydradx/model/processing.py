@@ -1044,7 +1044,18 @@ def get_current_money_market():
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error fetching borrowers from API: {e}")
 
-    for borrower_entry in borrowers_data:
+    # remove duplicated entries
+    seen = set()
+    borrowers_data_no_dupes = []
+    for borrower in borrowers_data:
+        k = borrower[0].lower()
+        if k in seen:
+            print("WARNING: Duplicate borrower detected:", k)
+        else:
+            seen.add(k)
+            borrowers_data_no_dupes.append(borrower)
+
+    for borrower_entry in borrowers_data_no_dupes:
         borrower_info = borrower_entry[1]
         borrower_address = borrower_entry[0]  # borrower_info["account"]
         asset_map = {reserves_data[tkn]['underlyingAsset']: tkn for tkn in reserves_data}
