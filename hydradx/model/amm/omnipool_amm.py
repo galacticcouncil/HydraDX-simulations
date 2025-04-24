@@ -536,9 +536,9 @@ class OmnipoolState(Exchange):
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
             if delta_Ri < 0:
-                return self.fail_transaction(f'insufficient LRNA in {tkn_sell}', agent)
+                return self.fail_transaction(f'insufficient LRNA in {tkn_sell}')
             if delta_Ri == float('inf'):
-                return self.fail_transaction('not enough liquidity in sell pool to buy that much', agent)
+                return self.fail_transaction('not enough liquidity in sell pool to buy that much')
             # including both buy_quantity and sell_quantity potentially introduces a 'hack'
             # where you could include both and *not* have them match, but we're not worried about that
             # because this is not a production environment. Just don't do it.
@@ -555,9 +555,9 @@ class OmnipoolState(Exchange):
             j = tkn_buy
             delta_Ri = sell_quantity
             if delta_Ri <= 0:
-                return self.fail_transaction('sell amount must be greater than zero', agent)
+                return self.fail_transaction('sell amount must be greater than zero')
             if not agent.validate_holdings(i, delta_Ri):
-                return self.fail_transaction(f"Agent doesn't have enough {i}", agent)
+                return self.fail_transaction(f"Agent doesn't have enough {i}")
 
             # get the fees we will be using
             asset_fee = self.asset_fee(tkn_buy)
@@ -586,14 +586,14 @@ class OmnipoolState(Exchange):
                     > self.trade_limit_per_block * self.current_block.liquidity[tkn_buy]
             ):
                 return self.fail_transaction(
-                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.', agent
+                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.'
                 )
             elif (
                     delta_Ri + self.current_block.volume_in[tkn_sell] - self.current_block.volume_out[tkn_sell]
                     > self.trade_limit_per_block * self.current_block.liquidity[tkn_sell]
             ):
                 return self.fail_transaction(
-                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_sell}.', agent
+                    f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_sell}.'
                 )
             self.lrna[i] += delta_Qi
             self.lrna[j] += delta_Qj
@@ -634,7 +634,7 @@ class OmnipoolState(Exchange):
         if delta_qa < 0:
             # selling LRNA
             if not agent.validate_holdings('LRNA', -delta_qa):
-                return self.fail_transaction('Agent has insufficient lrna', agent)
+                return self.fail_transaction('Agent has insufficient lrna')
             delta_ra = -self.liquidity[tkn] * delta_qa / (-delta_qa + self.lrna[tkn]) * (1 - asset_fee)
 
             delta_qm = asset_fee * (-delta_qa) / self.lrna[tkn] * (self.lrna[tkn] - delta_qa) * self.lrna_mint_pct
@@ -646,7 +646,7 @@ class OmnipoolState(Exchange):
         elif delta_ra > 0:
             # buying asset
             if -delta_ra + self.liquidity[tkn] <= 0:
-                return self.fail_transaction('insufficient assets in pool', agent)
+                return self.fail_transaction('insufficient assets in pool')
             denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
             delta_qa = -self.lrna[tkn] * delta_ra / denom
             delta_qm = -asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
@@ -663,10 +663,10 @@ class OmnipoolState(Exchange):
             lrna_fee_burn = self.lrna_fee_burn * lrna_fee_total
             fee_deposit = lrna_fee_total - lrna_fee_burn
             if delta_qi + self.lrna[tkn] <= 0:
-                return self.fail_transaction('insufficient lrna in pool', agent)
+                return self.fail_transaction('insufficient lrna in pool')
             delta_ra = -self.liquidity[tkn] * -delta_qi / (delta_qi + self.lrna[tkn])
             if not agent.validate_holdings(tkn, -delta_ra):
-                return self.fail_transaction('Agent has insufficient assets', agent)
+                return self.fail_transaction('Agent has insufficient assets')
             self.lrna[tkn] += delta_qi  # burn the LRNA fee
             self.liquidity[tkn] += -delta_ra
             if self.lrna_fee_destination:
@@ -675,7 +675,7 @@ class OmnipoolState(Exchange):
         elif delta_ra < 0:
             # selling asset
             if not agent.validate_holdings(tkn, delta_ra):
-                return self.fail_transaction('agent has insufficient assets', agent)
+                return self.fail_transaction('agent has insufficient assets')
             delta_qi = self.lrna[tkn] * delta_ra / (self.liquidity[tkn] - delta_ra)
             lrna_fee_total = -delta_qi * lrna_fee
             lrna_fee_burn = lrna_fee_total * self.lrna_fee_burn
@@ -687,7 +687,7 @@ class OmnipoolState(Exchange):
                 self.lrna_fee_destination.holdings['LRNA'] += fee_deposit
 
         else:
-            return self.fail_transaction('All deltas are zero.', agent)
+            return self.fail_transaction('All deltas are zero.')
 
         if delta_qa > 0:
             agent.add('LRNA', delta_qa)
@@ -762,7 +762,7 @@ class OmnipoolState(Exchange):
         calculated the pool and agent deltas for removing liquidity from a sub pool
         return as a tuple in this order:
         delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l
-    
+
         delta_qa (agent LRNA)
         delta_r (pool/agent liquidity)
         delta_q (pool LRNA)
@@ -821,13 +821,13 @@ class OmnipoolState(Exchange):
         """Compute new state after liquidity addition"""
 
         if quantity <= 0:
-            return self.fail_transaction('Quantity must be non-negative.', agent)
+            return self.fail_transaction('Quantity must be non-negative.')
 
         delta_Q = self.lrna_price(tkn_add) * quantity
 
         if nft_id is None and (self.unique_id, tkn_add) in agent.holdings:
             return self.fail_transaction(
-                'Agent already has liquidity in this pool. Try using nft_id input.', agent
+                'Agent already has liquidity in this pool. Try using nft_id input.'
             )
 
         if nft_id is not None and nft_id in agent.nfts:
@@ -835,22 +835,22 @@ class OmnipoolState(Exchange):
 
         if not agent.validate_holdings(tkn_add, quantity):
             return self.fail_transaction(
-                f'Agent has insufficient funds.', agent
+                f'Agent has insufficient funds ({agent.holdings[tkn_add]} < {quantity}).'
             )
 
         if (self.lrna[tkn_add] + delta_Q) / (self.lrna_total + delta_Q) > self.weight_cap[tkn_add]:
             return self.fail_transaction(
-                'Transaction rejected because it would exceed the weight cap in pool[{i}].', agent
+                'Transaction rejected because it would exceed the weight cap in pool[{i}].'
             )
 
         if self.tvl_cap < float('inf'):
             if (self.total_value_locked() + quantity * self.usd_price(tkn_add)) > self.tvl_cap:
-                return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.', agent)
+                return self.fail_transaction('Transaction rejected because it would exceed the TVL cap.')
 
         # assert quantity > 0, f"delta_R must be positive: {quantity}"
         if quantity > self.max_lp_per_block * self.liquidity[tkn_add] - self.current_block.lps[tkn_add]:
             return self.fail_transaction(
-                'Transaction rejected because it would exceed the max LP per block.', agent
+                'Transaction rejected because it would exceed the max LP per block.'
             )
 
         # Share update
@@ -900,7 +900,7 @@ class OmnipoolState(Exchange):
         k = (self.unique_id, tkn_remove)
         if nft_id is not None:
             if nft_id not in agent.nfts:
-                return self.fail_transaction('Agent does not have liquidity position with specified nft_id.', agent)
+                return self.fail_transaction('Agent does not have liquidity position with specified nft_id.')
             tkn_remove = agent.nfts[nft_id].tkn
 
         if tkn_remove not in self.asset_list:
@@ -909,19 +909,19 @@ class OmnipoolState(Exchange):
         if quantity == 0:
             return self
         # if nft_id is None and not agent.is_holding(k):
-        #     return self.fail_transaction('Agent does not have liquidity in this pool.', agent)
+        #     return self.fail_transaction('Agent does not have liquidity in this pool.')
         if nft_id is None:
             if quantity is not None and not agent.validate_holdings(k, quantity):
-                return self.fail_transaction('Agent does not have enough liquidity in this pool.', agent)
+                return self.fail_transaction('Agent does not have enough liquidity in this pool.')
         else:
             if nft_id not in agent.nfts:
-                return self.fail_transaction('Agent does not have liquidity position with specified nft_id.', agent)
+                return self.fail_transaction('Agent does not have liquidity position with specified nft_id.')
             elif agent.nfts[nft_id].pool_id != self.unique_id:
-                return self.fail_transaction('Specified position is wrong pool.', agent)
+                return self.fail_transaction('Specified position is wrong pool.')
             elif agent.nfts[nft_id].tkn != tkn_remove:
-                return self.fail_transaction('Specified position is wrong asset.', agent)
+                return self.fail_transaction('Specified position is wrong asset.')
             elif quantity is not None and agent.nfts[nft_id].shares < quantity:
-                return self.fail_transaction('Agent does not have enough shares in specified position.', agent)
+                return self.fail_transaction('Agent does not have enough shares in specified position.')
 
         if self.remove_liquidity_volatility_threshold and self.remove_liquidity_volatility_threshold < float('inf'):
             if self.oracles['price']:
@@ -931,7 +931,7 @@ class OmnipoolState(Exchange):
                 if volatility > self.remove_liquidity_volatility_threshold:
                     return self.fail_transaction(
                         f"Withdrawal rejected because the oracle volatility is too high: {volatility} > "
-                        f"{self.remove_liquidity_volatility_threshold}", agent
+                        f"{self.remove_liquidity_volatility_threshold}"
                     )
 
         val = self.calculate_remove_liquidity(agent, quantity, tkn_remove, nft_id)
@@ -942,12 +942,11 @@ class OmnipoolState(Exchange):
         )
         if abs(delta_s) > max_remove:
             return self.fail_transaction(
-                f"Transaction rejected because it would exceed the withdrawal limit: {abs(delta_s)} > {max_remove}",
-                agent
+                f"Transaction rejected because it would exceed the withdrawal limit: {abs(delta_s)} > {max_remove}"
             )
 
         if delta_r + self.liquidity[tkn_remove] < 0:
-            return self.fail_transaction('Cannot remove more liquidity than exists in the pool.', agent)
+            return self.fail_transaction('Cannot remove more liquidity than exists in the pool.')
 
         self.liquidity[tkn_remove] += delta_r
         self.shares[tkn_remove] += delta_s
