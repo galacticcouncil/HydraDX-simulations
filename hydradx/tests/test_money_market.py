@@ -56,8 +56,8 @@ def test_is_liquidatable():
     cdp = CDP(debt={"USDT": 2000 * 0.7 - 0.00001}, collateral={"DOT": 200})
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset('USDT', 1, 1000000, liquidation_bonus=0.001, liquidation_threshold=0.7, ltv=0.5),
-            MoneyMarketAsset('DOT', 10, 1000000, liquidation_bonus=0.001, liquidation_threshold=0.7, ltv=0.5)
+            MoneyMarketAsset('USDT', 1, liquidation_threshold=0.7),
+            MoneyMarketAsset('DOT', 10, liquidation_threshold=0.7)
         ], cdps=[cdp]
     )
     if mm.is_liquidatable(cdp):
@@ -73,8 +73,8 @@ def test_is_fully_liquidatable():
     cdp = CDP(debt={"USDT": 2000 * full_liquidation_threshold - 0.00001}, collateral={"DOT": 200})
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset('USDT', 1, 1000000, 0, liquidation_threshold=liquidation_threshold, ltv=0.5),
-            MoneyMarketAsset('DOT', 10, 1000000, 0, liquidation_threshold=liquidation_threshold, ltv=0.5)
+            MoneyMarketAsset('USDT', 1, liquidation_threshold=liquidation_threshold),
+            MoneyMarketAsset('DOT', 10, liquidation_threshold=liquidation_threshold)
         ], cdps=[cdp],
         full_liquidation_threshold=0.95
     )
@@ -94,8 +94,8 @@ def test_get_liquidate_collateral_amt():
     cdp = CDP(debt={"USDT": debt_amt}, collateral={"DOT": collateral_amt})
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset("USDT", 1, 1000000, liquidation_bonus=penalty, liquidation_threshold=0.1, ltv=0),
-            MoneyMarketAsset("DOT", spot_price, 1000000, liquidation_bonus=penalty, liquidation_threshold=0.1, ltv=0)
+            MoneyMarketAsset("USDT", 1, liquidation_bonus=penalty, liquidation_threshold=0.1),
+            MoneyMarketAsset("DOT", spot_price, liquidation_bonus=penalty, liquidation_threshold=0.1)
         ]
     )
 
@@ -114,8 +114,8 @@ def test_liquidate():
     collat_price = 11
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset("USDT", 1, 1000000, 0.01, 0.7, 0),
-            MoneyMarketAsset("DOT", collat_price, 1000000, 0.01, 0.7, 0)
+            MoneyMarketAsset("USDT", 1, liquidation_bonus=0.01, liquidation_threshold=0.7),
+            MoneyMarketAsset("DOT", collat_price, liquidation_bonus=0.01, liquidation_threshold=0.7)
         ], cdps=[cdp]
     )
     repay_amt = debt_amt / 2
@@ -190,8 +190,8 @@ def test_liquidate_undercollateralized():
     dot_price = 11
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset("USDT", 1, 1000000, penalty, 0.7, 0),
-            MoneyMarketAsset("DOT", dot_price, 1000000, penalty, 0.7, 0)
+            MoneyMarketAsset("USDT", 1, liquidation_bonus=penalty, liquidation_threshold=0.7),
+            MoneyMarketAsset("DOT", dot_price, liquidation_bonus=penalty, liquidation_threshold=0.7)
         ], cdps=[cdp.copy()]
     )
     agent = Agent(holdings={"USDT": 10000, "DOT": 0})
@@ -227,8 +227,8 @@ def test_liquidate_fuzz_ltv(liq_pct: float, penalty: float, liq_threshold: float
     cdp = CDP(debt={"USDT": debt_amt}, collateral={"DOT": collat_amt})
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset("USDT", 1, mpf(1000000), penalty, liq_threshold, 0),
-            MoneyMarketAsset("DOT", collat_price, mpf(1000000), penalty, liq_threshold, 0)
+            MoneyMarketAsset("USDT", 1, liquidation_bonus=penalty, liquidation_threshold=liq_threshold),
+            MoneyMarketAsset("DOT", collat_price, liquidation_bonus=penalty, liquidation_threshold=liq_threshold)
         ], cdps=[cdp],
         full_liquidation_threshold=liq_threshold / full_liq_threshold,
         close_factor=partial_liq_pct,
@@ -298,9 +298,9 @@ def test_borrow_fails():
     agent = Agent(holdings={collateral_asset: collat_amt})
     mm = MoneyMarket(
         assets=[
-            MoneyMarketAsset(borrow_asset, 1, 1000000, 0.01, 0.7, 0.6),
-            MoneyMarketAsset(collateral_asset, 10, 1000000, 0.01, 0.7, 0.6),
-            MoneyMarketAsset("BTC", 0, 1000000, 0.01, 0.7, 0.6),
+            MoneyMarketAsset(borrow_asset, 1, liquidation_bonus=0.01, liquidation_threshold=0.7),
+            MoneyMarketAsset(collateral_asset, 10, liquidation_bonus=0.01, liquidation_threshold=0.7),
+            MoneyMarketAsset("BTC", 0, liquidation_bonus=0.01, liquidation_threshold=0.7),
         ]
     )
     borrow_amt = collat_amt * 10 * 0.65
@@ -1049,3 +1049,42 @@ def test_multiple_collateral():
     if final_cdp4.debt != cdp4.debt or final_cdp4.collateral != cdp4.collateral:
         raise ValueError("CDP4 should not be liquidated")
     er = 1
+
+
+def test_calculate_health_factor():
+    assets = [
+        MoneyMarketAsset(
+            'USDC', 1, liquidation_threshold=0.9, emode_liquidation_threshold=0.93, emode_label="USD"
+        ),
+        MoneyMarketAsset(
+            'USD', 1, liquidation_threshold=0.9, emode_liquidation_threshold=0.92, emode_label="USD"
+        ),
+        MoneyMarketAsset(
+            'DAI', 0.9999, liquidation_threshold=0.9, emode_liquidation_threshold=0.92, emode_label="USD"
+        ),
+        MoneyMarketAsset(
+            'ETH', 3000, liquidation_threshold=0.8, emode_liquidation_threshold=0.85, emode_label="ETH"
+        ),
+        MoneyMarketAsset(
+            'WBTC', 80000, liquidation_threshold=0.7, emode_liquidation_threshold=0.8, emode_label="BTC"
+        ),
+        MoneyMarketAsset(
+            'BTC', 80000, liquidation_threshold=0.75, emode_liquidation_threshold=0.85, emode_label="BTC"
+        ),
+    ]
+    cdp1 = CDP(
+        collateral={"USDC": 1897, "ETH": 1.05},
+        debt={"DAI": 4000, "USD": 150},
+        e_mode="USD"
+    )
+    cdp2 = CDP(
+        collateral={"DAI": 80000, "WBTC": 0.5},
+        debt={"BTC": 0.56},
+        e_mode="BTC"
+    )
+    mm = MoneyMarket(
+        assets=assets,
+        cdps=[cdp1, cdp2]
+    )
+    print (f"CDP1: {cdp1.health_factor}")
+    print(f"CDP2: {cdp2.liquidation_threshold}")
