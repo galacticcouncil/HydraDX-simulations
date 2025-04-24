@@ -826,11 +826,9 @@ def test_stableswap_router_arbitrage():
     # router = get_current_omnipool_router()
     # save_omnipool(omnipool)
     archive_path = os.path.join(find_test_directory(), 'archive')
-    omnipool = load_omnipool(archive_path)
-    fourpool, btcpool, twopool = omnipool.sub_pools.values()
-    router = OmnipoolRouter(
-        exchanges=[omnipool, twopool, fourpool, btcpool]
-    )
+    router = load_omnipool(archive_path)
+    omnipool = router.omnipool
+    fourpool = router.exchanges['4-Pool']
     input_path = os.path.join(find_test_directory(), 'data')
     if not os.path.exists(input_path):
         input_path = 'hydradx/tests/data/'
