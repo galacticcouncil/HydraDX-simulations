@@ -307,7 +307,6 @@ class StableSwapPoolState(Exchange):
             [(
                     f'    {token}\n'
                     f'    quantity: {liquidity[token]}\n'
-                    f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
                     + (
                         f'    conversion metrics:\n'
                         f'        price: {self.conversion_metrics[token]["price"]}\n'
