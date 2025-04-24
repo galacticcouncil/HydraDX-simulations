@@ -458,16 +458,18 @@ class OmnipoolState(Exchange):
         return -delta_Rj
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
+        if tkn_buy == tkn_sell:
+            return 1
+        if tkn_buy not in self.asset_list and tkn_buy != 'LRNA':
+            raise ValueError(f'Invalid token: {tkn_buy}')
+        if tkn_sell not in self.asset_list and tkn_sell != 'LRNA':
+            raise ValueError(f'Invalid token: {tkn_sell}')
         if fee is None:
             fee = {}
             if tkn_buy == 'LRNA':
                 fee['asset'] = 0
             elif tkn_sell == 'LRNA':
                 fee['lrna'] = 0
-            elif tkn_sell not in self.asset_list:
-                return 0
-            if tkn_buy not in self.asset_list:
-                return 0
             if 'lrna' not in fee:
                 fee['lrna'] = self.lrna_fee(tkn_sell)
             if 'asset' not in fee:
@@ -477,24 +479,21 @@ class OmnipoolState(Exchange):
                 'lrna': fee,
                 'asset': fee
             }
-        if tkn_buy not in self.asset_list:
-            return 0
-        elif tkn_sell not in self.asset_list + ['LRNA']:
-            return 0
-        else:
-            return self.price(tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
+        return self.price(tkn_buy, tkn_sell) / (1 - fee['lrna']) / (1 - fee['asset'])
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
+        if tkn_buy == tkn_sell:
+            return 1
+        if tkn_buy not in self.asset_list and tkn_buy != 'LRNA':
+            raise ValueError(f'Invalid token: {tkn_buy}')
+        if tkn_sell not in self.asset_list and tkn_sell != 'LRNA':
+            raise ValueError(f'Invalid token: {tkn_sell}')
         if fee is None:
             fee = {}
             if tkn_buy == 'LRNA':
                 fee['asset'] = 0
             elif tkn_sell == 'LRNA':
                 fee['lrna'] = 0
-            elif tkn_sell not in self.asset_list:
-                return 0
-            if tkn_buy not in self.asset_list:
-                return 0
             if 'lrna' not in fee:
                 fee['lrna'] = self.lrna_fee(tkn_sell)
             if 'asset' not in fee:
@@ -504,12 +503,7 @@ class OmnipoolState(Exchange):
                 'lrna': fee,
                 'asset': fee
             }
-        if tkn_buy not in self.asset_list:
-            return 0
-        elif tkn_sell not in self.asset_list + ["LRNA"]:
-            return 0
-        else:
-            return self.price(tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
+        return self.price(tkn_sell, tkn_buy) * (1 - fee['lrna']) * (1 - fee['asset'])
 
     def swap(
             self,

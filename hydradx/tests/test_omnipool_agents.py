@@ -109,8 +109,8 @@ def test_omnipool_arbitrager_feeless(omnipool: oamm.OmnipoolState, market: list,
 def test_omnipool_arbitrager(hdx_value, dot_value):
     omnipool = OmnipoolState(
         tokens={tkn: {
-            'liquidity': 1000,
-            'LRNA': 1000
+            'liquidity': mpf(1000),
+            'LRNA': mpf(1000)
         } for tkn in ('HDX', 'USD', 'DOT')}
     )
     omnipool.trade_limit_per_block = float('inf')
