@@ -50,21 +50,21 @@ class MoneyMarketAsset:
             self,
             name: str,
             price: float,
-            liquidity: float,
-            liquidation_bonus: float,
             liquidation_threshold: float,
-            ltv: float,
+            liquidation_bonus: float = 0,
+            ltv: float = 0,
             emode_liquidation_bonus: float = None,
             emode_liquidation_threshold: float = None,
             emode_ltv: float = None,
             emode_label: str = '',
+            liquidity: float = float('inf'),
     ):
         self.name = name
         self.price = price
         self.liquidity = liquidity
         self.liquidation_bonus = liquidation_bonus
         self.liquidation_threshold = liquidation_threshold
-        self.ltv = ltv
+        self.ltv = ltv or liquidation_threshold
         self.emode_liquidation_bonus = emode_liquidation_bonus or liquidation_bonus
         self.emode_liquidation_threshold = emode_liquidation_threshold or liquidation_threshold
         self.emode_ltv = emode_ltv or ltv
@@ -111,14 +111,15 @@ class MoneyMarket:
         total_collateral = {tkn: sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])
             for tkn in self.asset_list
         }
+        cdps = ''.join([str(cdp) for cdp in self.cdps])
         return (
             f"money_market("
             f"    liquidity: {self.liquidity}\n"
-            f"    liquidation threshold: {self.liquidation_threshold}\n"
-            f"    liquidation bonus: {self.liquidation_bonus})\n"
             f"    total borrowed: {self.borrowed}\n"
             f"    total collateral: {total_collateral}\n"
-        )
+            f"    \n"
+            f"    CDPS:\n\n"
+        ) + cdps
 
     def copy(self):
         return copy.deepcopy(self)
