@@ -156,7 +156,7 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
 def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int, peg1: float, peg2:float,
                     peg3: float):
     initial_pool = StableSwapPoolState(
-        tokens={"A": token_a, "B": token_b, "C": token_c, "D": token_d},
+        tokens={"A": mpf(token_a), "B": mpf(token_b), "C": mpf(token_c), "D": mpf(token_d)},
         amplification=amp,
         trade_fee=0.0,
         unique_id='stableswap',
