@@ -1079,12 +1079,16 @@ def test_calculate_health_factor():
     )
     cdp2 = CDP(
         collateral={"DAI": 80000, "WBTC": 0.5},
-        debt={"BTC": 0.56},
+        debt={"BTC": 0.56, "USD": 10000},
         e_mode="BTC"
     )
     mm = MoneyMarket(
         assets=assets,
         cdps=[cdp1, cdp2]
     )
+    if cdp1.health_factor != pytest.approx(1.032439271, rel=1e-9):
+        raise AssertionError("CDP 1 wrong health factor")
+    elif cdp2.health_factor != pytest.approx(1.884358996, rel=1e-9):
+        raise AssertionError("CDP 2 wrong health factor")
     print (f"CDP1: {cdp1.health_factor}")
     print(f"CDP2: {cdp2.liquidation_threshold}")
