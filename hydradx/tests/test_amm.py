@@ -283,8 +283,7 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
 def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float, trade_fee: float):
     initial_state.trade_fee = trade_fee
     initial_state.external_market['Y'] = initial_state.price('X') * target_price
-    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
-    recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
+    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0)
 
     def sell_spot(state: GlobalState):
         return (
@@ -301,14 +300,8 @@ def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float, tra
         )
 
     algebraic_state = copy.deepcopy(algebraic_function.execute(initial_state.copy(), 'arbitrager'))
-    recursive_state = copy.deepcopy(recursive_function.execute(initial_state.copy(), 'arbitrager'))
     algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
                         / algebraic_state.pools['X/Y'].liquidity['Y'])
-    recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
-                        / recursive_state.pools['X/Y'].liquidity['Y'])
-
-    if algebraic_result != pytest.approx(recursive_result):
-        raise AssertionError("Arbitrage calculation methods don't match.")
 
     if target_price < sell_spot(initial_state):
         if sell_spot(algebraic_state) != pytest.approx(target_price):

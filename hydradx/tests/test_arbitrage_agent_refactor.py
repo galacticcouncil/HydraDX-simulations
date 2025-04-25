@@ -11,7 +11,8 @@ from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.processing import get_omnipool_data_from_file, get_orderbooks_from_file, get_stableswap_data
-from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, get_omnipool, save_omnipool, load_omnipool
+from hydradx.model.processing import get_omnipool_data, get_centralized_market, get_unique_name, \
+    get_current_omnipool_router, save_omnipool, load_omnipool
 from hydradx.model.amm.global_state import GlobalState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from mpmath import mp, mpf
@@ -822,7 +823,7 @@ def test_combine_step():
 
 
 def test_stableswap_router_arbitrage():
-    # omnipool = get_omnipool()
+    # router = get_current_omnipool_router()
     # save_omnipool(omnipool)
     archive_path = os.path.join(find_test_directory(), 'archive')
     omnipool = load_omnipool(archive_path)

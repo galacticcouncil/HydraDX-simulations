@@ -9,7 +9,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, DynamicFee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
-from hydradx.model.processing import get_omnipool, save_omnipool, load_omnipool
+from hydradx.model.processing import get_current_omnipool_router, save_omnipool, load_omnipool
 from hydradx.tests.utils import find_test_directory
 
 
@@ -296,7 +296,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 def test_save_load():
     path = find_test_directory()
-    omnipool = get_omnipool()
+    omnipool = get_current_omnipool_router().omnipool
     save_omnipool(omnipool, path=path)
     omnipool2 = load_omnipool(path=path)
     if repr(omnipool2) != repr(omnipool):

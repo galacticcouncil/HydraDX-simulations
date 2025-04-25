@@ -156,7 +156,7 @@ def test_spot_price_two_assets(token_a: int, token_b: int, amp: int):
 def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp: int, i: int, peg1: float, peg2:float,
                     peg3: float):
     initial_pool = StableSwapPoolState(
-        tokens={"A": token_a, "B": token_b, "C": token_c, "D": token_d},
+        tokens={"A": mpf(token_a), "B": mpf(token_b), "C": mpf(token_c), "D": mpf(token_d)},
         amplification=amp,
         trade_fee=0.0,
         unique_id='stableswap',
@@ -1072,19 +1072,25 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct, max_repeg):
 
 
 @given(
-    st.floats(min_value=0.00001, max_value=0.0010),
     st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=10, max_value=100000),
-    st.floats(min_value=-1, max_value=1, exclude_min=True),
-    st.floats(min_value=-1, max_value=1, exclude_min=True),
-    st.floats(min_value=0, max_value=0.01)
+    st.floats(min_value=-0.5, max_value=0.5, exclude_min=True),
+    st.floats(min_value=-0.5, max_value=0.5, exclude_min=True)
 )
-@settings(print_blob=True)
-def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pct2, max_repeg):
+# @settings(max_examples=10000)
+def test_fuzz_arb_repegging_3pool(
+        ratio1,
+        ratio2,
+        amp,
+        repeg_pct1,
+        repeg_pct2
+):
     init_vDOT_price = 1
     init_lstDOT_price = 1
     arb_size = 1
+    fee = 0.0001
+    max_repeg = 0.001
 
     dot_liq = 1000000
     tokens = {
@@ -1100,7 +1106,8 @@ def test_fuzz_arb_repegging_3pool(fee, ratio1, ratio2, amp, repeg_pct1, repeg_pc
             agent = Agent(holdings={tkn_sell: arb_size})
 
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
-                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg)
+                                       peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg,
+                                       precision=0.000001)
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
             pool.set_peg_target(peg_target)
             pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])

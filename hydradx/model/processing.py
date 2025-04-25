@@ -5,17 +5,20 @@ import json
 import os
 import time
 from csv import reader
-from pprint import pprint
 from zipfile import ZipFile
 
 import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
+from hydradxapi.pallets.fees import Fees
+from hydradxapi.pallets.omnipool import AssetState
 
 from .amm.centralized_market import OrderBook, CentralizedMarket
 from .amm.global_state import GlobalState, value_assets
+from .amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
 from .amm.omnipool_amm import OmnipoolState
 from .amm.stableswap_amm import StableSwapPoolState
+from .amm.omnipool_router import OmnipoolRouter
 
 cash_out = GlobalState.cash_out
 impermanent_loss = GlobalState.impermanent_loss
@@ -398,10 +401,33 @@ def get_omnipool_data_from_file(path: str):
     return asset_list, asset_map, tokens, fees
 
 
-def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
-    with HydraDX(rpc) as chain:
+def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter:
+    stableswaps = []
+    with (HydraDX(rpc) as chain):
         # get omnipool and subpool data
-        op_state = chain.api.omnipool.state()
+        pool_api = chain.api.omnipool
+        entries = pool_api.query_entries(pool_api.MODULE_NAME, pool_api.ASSET_STATE_STORAGE)
+        op_state = {}
+        for entry in entries:
+            asset_id = int(entry[0].value)
+            entry = entry[1].value.copy()
+            entry["reserve"] = pool_api._asset_reserve(asset_id)
+            asset = pool_api._registry.asset_metadata(asset_id)
+            # fees = pool_api._fees.asset_fees(asset_id)
+            fee_entry = pool_api._fees.query_entry(pool_api._fees.MODULE_NAME, "AssetFee", params=[asset_id])
+            try:
+                fees = Fees(
+                    fee_entry["asset_fee"].value / 10_000,
+                    fee_entry["protocol_fee"].value / 10_000,
+                    int(fee_entry["timestamp"].value),
+                )
+            except Exception as e:
+                fees = Fees(
+                    0.0025, 0.0005, 0
+                )
+            op_state[asset_id] = AssetState.from_entry(asset, entry, fees)
+
+        # op_state = chain.api.omnipool.state()
         sub_pools = chain.api.stableswap.pools()
         # collect assets
         assets = [(tkn.asset.asset_id, tkn.asset.symbol) for tkn in op_state.values()]
@@ -430,22 +456,25 @@ def get_omnipool(rpc='wss://rpc.hydradx.cloud') -> OmnipoolState:
                 for tkn_id, tkn in [asset for asset in assets]
             },
             unique_id='omnipool'
-            # preferred_stablecoin='USDT10'
         )
         for pool_id, pool_data in sub_pools.items():
-            subpool = StableSwapPoolState(
+            pool = StableSwapPoolState(
                 tokens={
-                    symbol_map[asset.asset_id]: int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                    for asset in pool_data.assets
+                    symbol_map[asset.asset_id]: (
+                        int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                        if asset.asset_id in pool_data.reserves else 0
+                    ) for asset in pool_data.assets
                 },
                 amplification=float(pool_data.final_amplification),
                 trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id],
-                shares=pool_data.shares / 10 ** op_state[pool_id].asset.decimals
+                unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stableswaps):02}",
+                shares=pool_data.shares / 10 ** (op_state[pool_id].asset.decimals if pool_id in op_state else 0)
             )
-            omnipool.sub_pools[subpool.unique_id] = subpool
+            stableswaps.append(pool)
 
-        return omnipool
+    omnipool.sub_pools = {}
+    router = OmnipoolRouter([omnipool, *stableswaps])
+    return router
 
 
 def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
@@ -574,7 +603,7 @@ def load_config(filename, path='archive'):
     return config
 
 
-def get_omnipool_balance_history():
+def get_omnipool_balance_history(download_new = False):
     chunk_size = 10000
     chunks_per_file = 10
 
@@ -723,6 +752,8 @@ def get_omnipool_balance_history():
             all_data += load_history_file(filename)
 
     all_data = fix_errors(all_data)
+    if not download_new:
+        return all_data
     print("Downloading recent transactions...")
 
     # continue downloading and check for errors
@@ -908,3 +939,293 @@ def get_historical_omnipool_balance(tkn, date=None, end_date=None) -> float or d
                     tkn_data += [line for line in json.load(f) if line[2] == tkn]
         print(f"Retrieved balance of {tkn} from {date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}.")
         return {data[1]: data[3] for data in tkn_data[left:end]}
+
+
+def get_current_money_market():
+    from substrateinterface import SubstrateInterface
+    from .abi.pool_address_provider import POOL_ADDRESS_PROVIDER_ABI
+    from .abi.ui_pool_data_provider import UI_POOL_DATA_PROVIDER_ABI, UI_POOL_DATA_PROVIDER_ADDRESS
+
+    # --- Configuration ---
+    RPC_URL = "wss://rpc.hydradx.cloud"
+    POOL_ADDRESS_PROVIDER_ADDRESS = "0xf3Ba4D1b50f78301BDD7EAEa9B67822A15FCA691"
+    BORROWERS_API_ENDPOINT = "https://omniwatch.play.hydration.cloud/api/borrowers/by-health"
+
+    class CustomPoaMiddleware:
+        def __init__(self, w3):
+            self.w3 = w3
+
+        def wrap_make_request(self, make_request):
+            def middleware(method, params):
+                response = make_request(method, params)
+                result = response.get('result')
+                if result and isinstance(result, dict) and 'extraData' in result:
+                    # Just ignore extraData validation issues
+                    pass
+                return response
+
+            return middleware
+
+    def substrate_to_checksum(substrate_address):
+        """Converts a Substrate address to an Ethereum checksum address, or returns input if already checksummed"""
+        if substrate_address[:2] == '0x':
+            try:
+                return Web3.to_checksum_address(substrate_address)  # handles hex and checksum
+            except:
+                return None  # Handles invalid hex.
+        try:
+            # Use substrateinterface to directly convert to an Ethereum address
+            substrate = SubstrateInterface(url="wss://rpc.hydradx.cloud")
+            # Use decode_ss58 to get the public key in hex format
+            public_key_hex = substrate.ss58_decode(substrate_address)
+
+            # Create Ethereum address from the public key
+            address = '0x' + public_key_hex[2:]  # Correctly skip the first byte (0x2a or similar)
+
+            return Web3.to_checksum_address(address)
+
+        except Exception as e:
+            print(f"Error converting address {substrate_address}: {e}")
+            return None
+
+    from web3 import Web3, LegacyWebSocketProvider
+
+    provider = LegacyWebSocketProvider(RPC_URL)
+    w3 = Web3(provider)
+    w3.middleware_onion.add(CustomPoaMiddleware)
+    if not w3.is_connected():
+        raise Exception("Failed to connect to RPC endpoint.")
+
+    address_provider_contract = w3.eth.contract(address=Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+                                                abi=POOL_ADDRESS_PROVIDER_ABI)
+    pool_address = address_provider_contract.functions.getPool().call()
+    pool_address = substrate_to_checksum(pool_address)  # Convert the pool address
+    print(f"Pool Address: {pool_address}")
+    data_provider_contract = w3.eth.contract(address=UI_POOL_DATA_PROVIDER_ADDRESS, abi=UI_POOL_DATA_PROVIDER_ABI)
+
+    fields = [entry['name'] for entry in UI_POOL_DATA_PROVIDER_ABI[4]['outputs'][0]['components']]
+
+    try:
+        raw_data = data_provider_contract.functions.getReservesData(
+            Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+            # reserves_list
+        ).call()
+        reserves_data = {
+            tkn[2]: {
+                fields[i]: tkn[i]
+                for i in range(len(fields))
+            }
+            for tkn in raw_data[0]
+        }
+        # correct decimals for python
+        for tkn in reserves_data:
+            reserves_data[tkn]['baseLTVasCollateral'] /= 10000
+            reserves_data[tkn]['reserveLiquidationThreshold'] /= 10000
+            reserves_data[tkn]['reserveLiquidationBonus'] /= 10000
+            reserves_data[tkn]['reserveFactor'] /= 10000
+            reserves_data[tkn]['eModeLtv'] /= 10000
+            reserves_data[tkn]['eModeLiquidationThreshold'] /= 10000
+            reserves_data[tkn]['eModeLiquidationBonus'] /= 10000
+            reserves_data[tkn]['liquidityIndex'] /= 1e27
+            reserves_data[tkn]['variableBorrowIndex'] /= 1e27
+            reserves_data[tkn]['priceInMarketReferenceCurrency'] /= 1e8
+
+    except Exception as e:
+        print(f"Error getting reserve list: {e}")
+        reserves_data = {}
+        return None
+
+    borrowers = []
+
+    try:
+        response = requests.get(BORROWERS_API_ENDPOINT)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        borrowers_data = response.json()["borrowers"]
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching borrowers from API: {e}")
+
+    # remove duplicated entries
+    seen = set()
+    borrowers_data_no_dupes = []
+    for borrower in borrowers_data:
+        k = borrower[0].lower()
+        if k in seen:
+            print("WARNING: Duplicate borrower detected:", k)
+        else:
+            seen.add(k)
+            borrowers_data_no_dupes.append(borrower)
+
+    for borrower_entry in borrowers_data_no_dupes:
+        borrower_info = borrower_entry[1]
+        borrower_address = borrower_entry[0]  # borrower_info["account"]
+        asset_map = {reserves_data[tkn]['underlyingAsset']: tkn for tkn in reserves_data}
+
+        # Convert to checksummed address *before* passing to Web3.py
+        checksummed_borrower_address = substrate_to_checksum(borrower_address)
+        user_config = data_provider_contract.functions.getUserReservesData(
+            Web3.to_checksum_address(POOL_ADDRESS_PROVIDER_ADDRESS),
+            checksummed_borrower_address
+        ).call()
+        borrowers.append({
+            "borrower": checksummed_borrower_address,  # Store the checksummed address
+            "config": {
+                'assets': {
+                    asset_map[tkn[0]]: {
+                        # "underlyingAsset": tkn[0],
+                        "balance": (
+                            tkn[1] * reserves_data[asset_map[tkn[0]]]['liquidityIndex']
+                            / 10 ** reserves_data[asset_map[tkn[0]]]['decimals']
+                        ),
+                        "usageAsCollateralEnabledOnUser": tkn[2],
+                        # "stableBorrowRate": tkn[3],
+                        "debt": (
+                            tkn[4] * reserves_data[asset_map[tkn[0]]]['variableBorrowIndex']
+                            / 10 ** reserves_data[asset_map[tkn[0]]]['decimals']
+                        ),
+                        # "principalStableDebt": tkn[5] / 10 ** reserves_data[asset_map[tkn[0]]]['decimals'],
+                        # "stableBorrowLastUpdateTimestamp": tkn[6],
+                    }
+                    for tkn in user_config[0]
+                },
+                'e-mode': user_config[1]
+            },
+            "totalCollateralBase": borrower_info["totalCollateralBase"],
+            "totalDebtBase": borrower_info["totalDebtBase"],
+            "healthFactor": borrower_info["healthFactor"],
+            "availableBorrowsBase": borrower_info["availableBorrowsBase"],
+            "currentLiquidationThreshold": borrower_info["currentLiquidationThreshold"],
+            "ltv": borrower_info["ltv"],
+            "updated": borrower_info["updated"],
+            "account": borrower_info["account"],
+            # "pool": borrower_info["pool"]
+        })
+
+
+    mm = MoneyMarket(
+        assets=[MoneyMarketAsset(
+            name=tkn,
+            price=reserves_data[tkn]['priceInMarketReferenceCurrency'],
+            liquidity=reserves_data[tkn]['availableLiquidity'],
+            liquidation_bonus=reserves_data[tkn]['reserveLiquidationBonus'] - 1,
+            liquidation_threshold=reserves_data[tkn]['reserveLiquidationThreshold'],
+            ltv=reserves_data[tkn]['baseLTVasCollateral'],
+            emode_liquidation_bonus=reserves_data[tkn]['eModeLiquidationBonus'] - 1,
+            emode_liquidation_threshold=reserves_data[tkn]['eModeLiquidationThreshold'],
+            emode_ltv=reserves_data[tkn]['eModeLtv'],
+            emode_label=reserves_data[tkn]['eModeLabel'],
+        ) for tkn in reserves_data],
+        cdps=[CDP(
+            debt={
+                tkn: position['config']['assets'][tkn]['debt']
+                for tkn in position['config']['assets']
+                if position['config']['assets'][tkn]['debt'] > 0
+            },
+            collateral={
+                tkn: position['config']['assets'][tkn]['balance']
+                for tkn in position['config']['assets']
+                if position['config']['assets'][tkn]['usageAsCollateralEnabledOnUser']
+            },
+            liquidation_threshold=position['currentLiquidationThreshold'],
+            health_factor=position['healthFactor'],
+            e_mode=['None', 'Stablecoins', 'DOT'][position['config']['e-mode']]
+        ) for position in borrowers]
+    )
+    return mm
+
+
+def get_omnipool_price_history(asset_name: str):
+    asset_dict = {
+        'HDX': 0,
+        'USDT': 10
+    }
+    if asset_name not in asset_dict:
+        raise ValueError("Asset not found")
+    else:
+        asset_id = asset_dict[asset_name]
+
+    while not os.path.exists('./model'):
+        os.chdir('..')
+    os.chdir('model')
+
+    endpoint = "https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql"
+    headers = {"Content-Type": "application/json"}
+
+    query = """
+    query GetOmnipoolAssetData($first: Int!, $blockID: Int!, $assetId: Int!) {
+      omnipoolAssetData(
+        first: $first,
+        filter: {
+          assetId: { equalTo: $assetId },
+          paraChainBlockHeight: { greaterThan: $blockID }
+        },
+        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC
+      ) {
+        edges {
+          node {
+            paraChainBlockHeight
+            balances
+            assetState
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+    """
+
+    # Check for existing files
+    files = sorted([f for f in os.listdir("./data/prices") if f.lower().startswith(f"{asset_name.lower()} asset state ")])
+
+    start_block_height = 0  # Default to start from the beginning
+
+    all_data = {}
+    if files:
+        print("Resuming from saved data...")
+        for file in files:
+            with open(f"./data/prices/{file}", "r") as f:
+                saved_data = json.load(f)
+            all_data.update(saved_data)
+
+        start_block_height = int(max(all_data.keys()))
+        print(f"Found {len(files)} files")
+        print(f"Resuming from block height: {start_block_height}")
+
+    variables = {"first": 10000, "blockID": start_block_height, "assetId": asset_id}
+
+    n = len(files) + 1 if files else 1
+
+    while True:
+        payload = {"query": query, "variables": variables}
+        response = requests.post(endpoint, headers=headers, json=payload)
+        response_json = response.json()
+
+        if "errors" in response_json:
+            print(f"GraphQL errors: {response_json['errors']}")
+            break
+
+        data = response_json["data"]["omnipoolAssetData"]
+
+        balances = {
+            d['node']['paraChainBlockHeight']: {
+                'liquidity': d['node']['balances']['free'],
+                'LRNA': d['node']['assetState']['hubReserve']
+            } for d in data['edges']
+        }
+
+        print(f"Page {n} fetched: {len(data['edges'])} records")
+        with open(f"./data/prices/{asset_name} asset state {n:03}.json", "w") as f:
+            f.write(json.dumps(balances))
+
+        all_data.update(balances)
+
+        if data["pageInfo"]["hasNextPage"]:
+            last_block_in_page = max(balances.keys())
+            variables["blockID"] = int(last_block_in_page)
+            n += 1
+        else:
+            break
+
+    print(f"Total records fetched: {len(all_data)}")
+
