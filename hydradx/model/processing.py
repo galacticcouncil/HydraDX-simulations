@@ -473,7 +473,6 @@ def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter
                 )
                 stableswaps.append(pool)
 
-    omnipool.sub_pools = {}
     router = OmnipoolRouter([omnipool, *stableswaps])
     return router
 
