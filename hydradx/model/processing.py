@@ -458,27 +458,32 @@ def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter
             unique_id='omnipool'
         )
         for pool_id, pool_data in sub_pools.items():
-            pool = StableSwapPoolState(
-                tokens={
-                    symbol_map[asset.asset_id]: (
-                        int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                        if asset.asset_id in pool_data.reserves else 0
-                    ) for asset in pool_data.assets
-                },
-                amplification=float(pool_data.final_amplification),
-                trade_fee=float(pool_data.fee) / 100,
-                unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stableswaps):02}",
-                shares=pool_data.shares / 10 ** (op_state[pool_id].asset.decimals if pool_id in op_state else 0)
-            )
-            stableswaps.append(pool)
+            if pool_data.reserves:
+                pool = StableSwapPoolState(
+                    tokens={
+                        symbol_map[asset.asset_id]: (
+                            int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
+                            if asset.asset_id in pool_data.reserves else 0
+                        ) for asset in pool_data.assets
+                    },
+                    amplification=float(pool_data.final_amplification),
+                    trade_fee=float(pool_data.fee) / 100,
+                    unique_id=symbol_map[pool_id] if pool_id in symbol_map else f"stableswap{len(stableswaps):02}",
+                    shares=pool_data.shares / 10 ** (op_state[pool_id].asset.decimals if pool_id in op_state else 0)
+                )
+                stableswaps.append(pool)
 
-    omnipool.sub_pools = {}
     router = OmnipoolRouter([omnipool, *stableswaps])
     return router
 
 
-def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
+def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
     ts = time.time()
+    omnipool = omnipool_router.omnipool
+    stableswap_pools = []
+    for exchange_id in omnipool_router.exchanges:
+        if isinstance(omnipool_router.exchanges[exchange_id], StableSwapPoolState):
+            stableswap_pools.append(omnipool_router.exchanges[exchange_id])
     with open(os.path.join(path, f'omnipool_savefile_{ts}.json'), 'w+') as output_file:
         json.dump(
             {
@@ -486,21 +491,21 @@ def save_omnipool(omnipool: OmnipoolState, path: str = './archive'):
                 'LRNA': omnipool.lrna,
                 'asset_fee': {tkn: omnipool.asset_fee(tkn) for tkn in omnipool.asset_list},
                 'lrna_fee': {tkn: omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list},
-                'sub_pools': [
+                'stableswap_pools': [
                     {
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
                         'unique_id': pool.unique_id,
                         'shares': pool.shares
-                    } for pool in omnipool.sub_pools.values()
+                    } for pool in stableswap_pools
                 ]
             },
             output_file
         )
 
 
-def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
+def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolRouter:
     if filename:
         file_ls = [filename]
     else:
@@ -520,15 +525,19 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolState:
             asset_fee={tkn: float(fee) for tkn, fee in json_state['asset_fee'].items()},
             lrna_fee={tkn: float(fee) for tkn, fee in json_state['lrna_fee'].items()}
         )
-        for pool in json_state['sub_pools']:
-            omnipool.sub_pools[pool['unique_id']] = StableSwapPoolState(
+        stableswaps = []
+        k = 'stableswap_pools' if 'stableswap_pools' in json_state else 'sub_pools'
+        for pool in json_state[k]:
+            ss = StableSwapPoolState(
                 tokens=pool['tokens'],
                 amplification=pool['amplification'],
                 trade_fee=float(pool['trade_fee']),
                 unique_id=pool['unique_id'],
                 shares=pool['shares']
             )
-        return omnipool
+            stableswaps.append(ss)
+        router = OmnipoolRouter([omnipool, *stableswaps])
+        return router
     raise FileNotFoundError(f'Omnipool file not found in {path}.')
 
 
