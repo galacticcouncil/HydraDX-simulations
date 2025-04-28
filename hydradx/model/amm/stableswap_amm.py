@@ -315,7 +315,6 @@ class StableSwapPoolState(Exchange):
             [(
                     f'    {token}\n'
                     f'    quantity: {liquidity[token]}\n'
-                    f'    weight: {liquidity[token] / sum(liquidity.values())}\n'
                     + (
                         f'    conversion metrics:\n'
                         f'        price: {self.conversion_metrics[token]["price"]}\n'
@@ -480,21 +479,14 @@ class StableSwapPoolState(Exchange):
         agent.add(tkn_remove, quantity)
         return self
 
-    def remove_liquidity(
+    def calculate_remove_liquidity(
             self,
-            agent: Agent,
             shares_removed: float,
             tkn_remove: str
     ):
-        # First, need to calculate
-        # * Get current D
-        # * Solve Eqn against y_i for D - _token_amount
-
-        if shares_removed > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Agent has insufficient funds.')
-        elif shares_removed <= 0:
-            return self.fail_transaction('Withdraw quantity must be > 0.')
-
+        """
+        return the quantity of tkn_remove the agent will receive when withdrawing shares_removed
+        """
         _fee = self._update_peg()
         _fee *= self.n_coins / 4 / (self.n_coins - 1)
 
@@ -518,6 +510,24 @@ class StableSwapPoolState(Exchange):
                 assert xp_reduced[tkn] > 0
 
         dy = asset_reserve - self.calculate_y(xp_reduced, reduced_d)
+        return dy
+
+    def remove_liquidity(
+            self,
+            agent: Agent,
+            shares_removed: float,
+            tkn_remove: str
+    ):
+        # First, need to calculate
+        # * Get current D
+        # * Solve Eqn against y_i for D - _token_amount
+
+        if shares_removed > agent.holdings[self.unique_id]:
+            return self.fail_transaction('Agent has insufficient funds.')
+        elif shares_removed <= 0:
+            return self.fail_transaction('Withdraw quantity must be > 0.')
+
+        dy = self.calculate_remove_liquidity(shares_removed, tkn_remove)
 
         agent.holdings[self.unique_id] -= shares_removed
         self.shares -= shares_removed
@@ -527,13 +537,15 @@ class StableSwapPoolState(Exchange):
         agent.holdings[tkn_remove] += dy
         return self
 
-    def add_liquidity(
+    def calculate_add_liquidity(
             self,
-            agent: Agent,
             quantity: float,
-            tkn_add: str
+            tkn_add: str,
+            fee: float = None
     ):
-        fee = self._update_peg()
+        if fee is None:
+            fee = self.trade_fee
+
         updated_reserves = {
             tkn: self.liquidity[tkn] + (quantity if tkn == tkn_add else 0) for tkn in self.asset_list
         }
@@ -541,8 +553,6 @@ class StableSwapPoolState(Exchange):
         updated_d = self.calculate_d(tuple(updated_reserves.values()))
         if updated_d < initial_d:
             return self.fail_transaction('invariant decreased for some reason')
-        if not agent.validate_holdings(tkn_add, quantity):
-            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
 
         fixed_fee = fee
         fee = fixed_fee * self.n_coins / (4 * (self.n_coins - 1))
@@ -564,7 +574,18 @@ class StableSwapPoolState(Exchange):
         else:
             d_diff = adjusted_d - initial_d
             shares_return = self.shares * d_diff / initial_d
+        return shares_return
 
+    def add_liquidity(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
+        if not agent.validate_holdings(tkn_add, quantity):
+            return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
+        fee = self._update_peg()
+        shares_return = self.calculate_add_liquidity(quantity, tkn_add, fee)
         self.shares += shares_return
         self.liquidity[tkn_add] += quantity
         agent.add(self.unique_id, shares_return)
