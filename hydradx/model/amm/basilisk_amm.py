@@ -89,7 +89,7 @@ class ConstantProductPoolState(Exchange):
     ):
     
         if not (tkn_buy in self.asset_list and tkn_sell in self.asset_list):
-            return self.fail_transaction('Invalid token name.', agent)
+            return self.fail_transaction('Invalid token name.')
     
         # turn a negative buy into a sell and vice versa
         if buy_quantity < 0:
@@ -116,7 +116,7 @@ class ConstantProductPoolState(Exchange):
     
         elif buy_quantity != 0:
             if buy_quantity >= self.liquidity[tkn_buy]:
-                return self.fail_transaction('Not enough liquidity in the pool.', agent)
+                return self.fail_transaction('Not enough liquidity in the pool.')
             # calculate input price from a given payout
             sell_quantity = buy_quantity * self.liquidity[tkn_sell] / (self.liquidity[tkn_buy] - buy_quantity)
             if math.isnan(sell_quantity):
@@ -125,13 +125,13 @@ class ConstantProductPoolState(Exchange):
             sell_quantity /= 1 - trade_fee
     
         else:
-            return self.fail_transaction('Must specify buy quantity or sell quantity.', agent)
+            return self.fail_transaction('Must specify buy quantity or sell quantity.')
     
         if self.liquidity[tkn_sell] + sell_quantity <= 0 or self.liquidity[tkn_buy] - buy_quantity <= 0:
-            return self.fail_transaction('Not enough liquidity in the pool.', agent)
+            return self.fail_transaction('Not enough liquidity in the pool.')
     
         if agent.holdings[tkn_sell] - sell_quantity < 0 or agent.holdings[tkn_buy] + buy_quantity < 0:
-            return self.fail_transaction('Agent has insufficient holdings.', agent)
+            return self.fail_transaction('Agent has insufficient holdings.')
     
         agent.holdings[tkn_buy] += buy_quantity
         agent.holdings[tkn_sell] -= sell_quantity
@@ -155,7 +155,7 @@ class ConstantProductPoolState(Exchange):
     
             if agent.holdings[tkn] - delta_r[tkn] < 0:
                 # fail
-                return self.fail_transaction(f'Agent has insufficient funds ({tkn}).', agent)
+                return self.fail_transaction(f'Agent has insufficient funds ({tkn}).')
     
         for tkn in self.asset_list:
             agent.holdings[tkn] -= delta_r[tkn]
@@ -179,9 +179,9 @@ class ConstantProductPoolState(Exchange):
     ):
 
         if quantity < 0:
-            return self.fail_transaction('Cannot remove negative liquidity.', agent)
+            return self.fail_transaction('Cannot remove negative liquidity.')
         if quantity > agent.holdings[self.unique_id]:
-            return self.fail_transaction('Tried to remove more shares than agent owns.', agent)
+            return self.fail_transaction('Tried to remove more shares than agent owns.')
         if tkn_remove not in self.asset_list:
             # withdraw some of each
             tkns = self.asset_list

@@ -1,4 +1,0 @@
-cadcad
-hypothesis
-matplotlib
-pandas
