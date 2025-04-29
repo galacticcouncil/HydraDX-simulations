@@ -5,7 +5,9 @@ import csv
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
-from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_data_by_asset, get_omnipool_liquidity
+from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_data_by_asset, get_omnipool_liquidity, \
+    get_stableswap_asset_data
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
 filename = 'DOTUSD_oracle_prices.csv'
 file_path = os.path.join(project_root, 'hydradx', 'apps', 'indexer', filename)
@@ -35,8 +37,26 @@ min_block_no = data[-1]['block_number']
 # USDT: 10
 # 2-Pool: 102
 
-# liquidity, lrna_liquidity = get_omnipool_liquidity(min_block_no, max_block_no, [0, 5, 10, 102])
-liquidity, lrna_liquidity = get_omnipool_liquidity(min_block_no, min_block_no+5, [0, 5, 102])
+liquidity, lrna = get_omnipool_liquidity(min_block_no, min_block_no+5, [0, 5, 102])
+stableswap_data = get_stableswap_asset_data(102, min_block_no, min_block_no+5)
 
-print(liquidity)
-print(lrna_liquidity)
+# price of DOT denominated in 2-pool
+omnipool_spots_dot = [liquidity[102][i] * lrna[5][i] / (lrna[102][i] * liquidity[5][i]) for i in range(len(liquidity[102]))]
+# price of 2-pool denominated in USDT
+stableswap_objs = []
+for i in range(len(stableswap_data)):
+    liquidity_data = stableswap_data[i]['stablepoolAssetDataByPoolId']['nodes']
+    tokens = {int(x['assetId']): int(x['balances']['free']) for x in liquidity_data}
+    pool = StableSwapPoolState(
+        tokens,
+        amplification=int(stableswap_data[i]['initialAmplification'])
+    )
+    stableswap_objs.append(
+        {
+            'id': stableswap_data[i]['pool_id'],
+            'price': stableswap_data[i]['price'],
+            'liquidity': stableswap_data[i]['liquidity']
+        }
+    )
+
+print(len(liquidity))
