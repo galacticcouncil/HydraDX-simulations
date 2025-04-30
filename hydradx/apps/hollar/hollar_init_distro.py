@@ -273,24 +273,43 @@ def model_hollar_dump_multiple(
     spot_prices_dict = {}
     hollar_sold_dict = {}
 
-    inputs = list(zip(sell_amts, hollar_dump_blocks))
-    with mp.Pool() as pool:
-        results = pool.map(
-            ft.partial(
-                wrapper,
-                init_stablepools=init_stablepools,
-                hsm_liquidity=hsm_liquidity,
-                buyback_speed=buyback_speed,
-                num_blocks=num_blocks,
-                tkn_chart=tkn_chart
-            ),
-            inputs
-        )
+    if __name__ == '__main__':
 
-    for i in range(len(inputs)):
-        spot_prices_dict[inputs[i]] = results[i][0]
-        hsm_vals_dict[inputs[i]] = results[i][1]
-        hollar_sold_dict[inputs[i]] = results[i][2]
+        inputs = list(zip(sell_amts, hollar_dump_blocks))
+        with mp.Pool() as pool:
+            results = pool.map(
+                ft.partial(
+                    wrapper,
+                    init_stablepools=init_stablepools,
+                    hsm_liquidity=hsm_liquidity,
+                    buyback_speed=buyback_speed,
+                    num_blocks=num_blocks,
+                    tkn_chart=tkn_chart
+                ),
+                inputs
+            )
+
+        for i in range(len(inputs)):
+            spot_prices_dict[inputs[i]] = results[i][0]
+            hsm_vals_dict[inputs[i]] = results[i][1]
+            hollar_sold_dict[inputs[i]] = results[i][2]
+
+    else:  # file just imported for testing
+        sell_amt = sell_amts[0]
+        num_blocks_dump = hollar_dump_blocks[0]
+        spot_prices, hsm_values, hollar_sold = model_hollar_dump(
+            sell_amt,
+            num_blocks_dump,
+            init_stablepools,
+            hsm_liquidity,
+            buyback_speed,
+            num_blocks,
+            tkn_chart
+        )
+        spot_prices_dict[(sell_amt, num_blocks_dump)] = spot_prices
+        hsm_vals_dict[(sell_amt, num_blocks_dump)] = hsm_values
+        hollar_sold_dict[(sell_amt, num_blocks_dump)] = hollar_sold
+
     return hsm_vals_dict, spot_prices_dict, hollar_sold_dict
 
 if not scenario_added:

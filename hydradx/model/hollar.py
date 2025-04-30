@@ -97,16 +97,16 @@ class StabilityModule:
         return pool.peg[i_tkn] / pool.peg[i_native_stable]
 
     def _get_max_buy_amount(self, tkn: str) -> float:  # note this ignores self.max_buy_price_coef
-        pool = self._pool_states[tkn]
-        peg = self.get_peg(tkn)
-        imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
+        imbalance = (self._pool_states[tkn].liquidity[self.native_stable]
+                     - self.get_peg(tkn) * self._pool_states[tkn].liquidity[tkn]) / 2
         return max([self.buyback_speed[tkn] * imbalance, 0])
 
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self._pool_states[tkn]
         peg = self.get_peg(tkn)
-        imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
-        max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
+        # imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
+        # max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
+        max_buy_amt = self._get_max_buy_amount(tkn)
         sell_amt = pool.calculate_sell_from_buy(tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
         exec_price = sell_amt / max_buy_amt if max_buy_amt > 0 else 0
         buy_price = exec_price / (1 - self.buy_fee[tkn])
