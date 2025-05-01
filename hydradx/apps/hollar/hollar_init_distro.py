@@ -25,6 +25,85 @@ DEFAULT_DUMP_BLOCKS = [100, 500, 1000, 3000, 5000]
 TKN_CHART = 'aUSDT'
 PRICE_PLOT_N = 100  # how frequently are we calculating spot price to graph it
 
+def collect_inputs() -> dict:
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {
+                min-width: 400px;
+                max-width: 800px;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    inputs = {}
+    inputs['init_hollar_liq'] = st.sidebar.number_input(
+        "Initial Hollar liquidity",
+        min_value=100_000, value=DEFAULT_HOLLAR_LIQ, step=1, key="init_hollar_liq"
+    )
+
+    inputs['amp'] = st.sidebar.number_input(
+        "Amplification for stableswap pools",
+        min_value=5, value=DEFAULT_AMP, step=1, key="amp"
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        inputs['buyback_speed'] = st.number_input(
+            "Buyback speed",
+            min_value=0.000001, value=DEFAULT_BUYBACK_SPEED, step=0.000001, key="buyback_speed", format="%.6f",
+            help=("This number will be multiplied by the imbalance in the associated stableswap pool to determine how"
+                  " much Hollar can be bought back in one block. If a pool has 1,000,000 Hollar and 100_000 aUSDT, the"
+                  " imbalance is 450_000. That number would be multiplied by the buyback speed to determine how much Hollar"
+                  " can be bought back in one block.")
+        )
+
+    with col2:
+        inputs['num_blocks'] = st.number_input(
+            "Number of blocks to simulate",
+            min_value=1000, value=DEFAULT_SIMULATE_BLOCKS, step=1, key="num_blocks",
+            help="Simulation will end early if HSM has brought Hollar price back to peg"
+        )
+
+    st.subheader("Scenarios")
+
+    if "num_pairs" not in st.session_state:
+        st.session_state.num_pairs = 5  # default starting value
+
+    col1, col2 = st.columns(2)
+    if st.session_state.num_pairs < 10:
+        with col1:
+            scenario_added = st.button("Add scenario")
+            if scenario_added:
+                st.session_state.num_pairs += 1
+    if st.session_state.num_pairs > 1:
+        with col2:
+            scenario_removed = st.button("Remove last scenario")
+            if scenario_removed:
+                st.session_state.num_pairs -= 1
+
+    n = st.session_state.num_pairs
+    hollar_amounts = DEFAULT_HOLLAR_AMOUNTS[:n] + [0] * max(0, n - len(DEFAULT_HOLLAR_AMOUNTS))
+    hollar_dump_blocks = DEFAULT_DUMP_BLOCKS[:n] + [0] * max(0, n - len(DEFAULT_DUMP_BLOCKS))
+    inputs['hollar_amounts_inputs'] = []
+    inputs['hollar_dump_blocks_inputs'] = []
+
+    with col1:
+        st.text("Hollar Dumped")
+    with col2:
+        st.text("Duration of Hollar dump (in blocks)")
+
+    for i in range(st.session_state.num_pairs):
+        with col1:
+            inputs['hollar_amounts_inputs'].append(st.number_input(
+                f"sell_amt_{i}", min_value=0, value=hollar_amounts[i], step=1, key=f"sell_amt_{i}",
+                label_visibility='collapsed'
+            ))
+        with col2:
+            inputs['hollar_dump_blocks_inputs'].append(st.number_input(
+                f"sell_blocks_{i}", min_value=0, value=hollar_dump_blocks[i], step=1, key=f"sell_blocks_{i}",
+                label_visibility='collapsed'
+            ))
+    return inputs
 
 # caching function for different scenarios
 @st.cache_data
@@ -108,88 +187,6 @@ def wrapper(args, init_hollar_liq, amp, buyback_speed, num_blocks):
         sell_amt,
         num_blocks_dump
     )
-
-
-
-def collect_inputs() -> dict:
-    st.markdown("""
-        <style>
-            [data-testid="stSidebar"] {
-                min-width: 400px;
-                max-width: 800px;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    inputs = {}
-    inputs['init_hollar_liq'] = st.sidebar.number_input(
-        "Initial Hollar liquidity",
-        min_value=100_000, value=DEFAULT_HOLLAR_LIQ, step=1, key="init_hollar_liq"
-    )
-
-    inputs['amp'] = st.sidebar.number_input(
-        "Amplification for stableswap pools",
-        min_value=5, value=DEFAULT_AMP, step=1, key="amp"
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        inputs['buyback_speed'] = st.number_input(
-            "Buyback speed",
-            min_value=0.000001, value=DEFAULT_BUYBACK_SPEED, step=0.000001, key="buyback_speed", format="%.6f",
-            help=("This number will be multiplied by the imbalance in the associated stableswap pool to determine how"
-                  " much Hollar can be bought back in one block. If a pool has 1,000,000 Hollar and 100_000 aUSDT, the"
-                  " imbalance is 450_000. That number would be multiplied by the buyback speed to determine how much Hollar"
-                  " can be bought back in one block.")
-        )
-
-    with col2:
-        inputs['num_blocks'] = st.number_input(
-            "Number of blocks to simulate",
-            min_value=1000, value=DEFAULT_SIMULATE_BLOCKS, step=1, key="num_blocks",
-            help="Simulation will end early if HSM has brought Hollar price back to peg"
-        )
-
-    st.subheader("Scenarios")
-
-    if "num_pairs" not in st.session_state:
-        st.session_state.num_pairs = 5  # default starting value
-
-    col1, col2 = st.columns(2)
-    if st.session_state.num_pairs < 10:
-        with col1:
-            scenario_added = st.button("Add scenario")
-            if scenario_added:
-                st.session_state.num_pairs += 1
-    if st.session_state.num_pairs > 1:
-        with col2:
-            scenario_removed = st.button("Remove last scenario")
-            if scenario_removed:
-                st.session_state.num_pairs -= 1
-
-    n = st.session_state.num_pairs
-    hollar_amounts = DEFAULT_HOLLAR_AMOUNTS[:n] + [0] * max(0, n - len(DEFAULT_HOLLAR_AMOUNTS))
-    hollar_dump_blocks = DEFAULT_DUMP_BLOCKS[:n] + [0] * max(0, n - len(DEFAULT_DUMP_BLOCKS))
-    inputs['hollar_amounts_inputs'] = []
-    inputs['hollar_dump_blocks_inputs'] = []
-
-    with col1:
-        st.text("Hollar Dumped")
-    with col2:
-        st.text("Duration of Hollar dump (in blocks)")
-
-    for i in range(st.session_state.num_pairs):
-        with col1:
-            inputs['hollar_amounts_inputs'].append(st.number_input(
-                f"sell_amt_{i}", min_value=0, value=hollar_amounts[i], step=1, key=f"sell_amt_{i}",
-                label_visibility='collapsed'
-            ))
-        with col2:
-            inputs['hollar_dump_blocks_inputs'].append(st.number_input(
-                f"sell_blocks_{i}", min_value=0, value=hollar_dump_blocks[i], step=1, key=f"sell_blocks_{i}",
-                label_visibility='collapsed'
-            ))
-    return inputs
 
 def get_results(inputs: dict) -> tuple:
     # prepare data for simulation function
