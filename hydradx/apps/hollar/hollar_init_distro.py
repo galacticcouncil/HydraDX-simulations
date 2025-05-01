@@ -32,6 +32,9 @@ def collect_inputs() -> dict:
                 min-width: 400px;
                 max-width: 800px;
             }
+            .stNumberInput button {
+                display: none;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -82,8 +85,8 @@ def collect_inputs() -> dict:
                 st.session_state.num_pairs -= 1
 
     n = st.session_state.num_pairs
-    hollar_amounts = DEFAULT_HOLLAR_AMOUNTS[:n] + [0] * max(0, n - len(DEFAULT_HOLLAR_AMOUNTS))
-    hollar_dump_blocks = DEFAULT_DUMP_BLOCKS[:n] + [0] * max(0, n - len(DEFAULT_DUMP_BLOCKS))
+    hollar_amounts = DEFAULT_HOLLAR_AMOUNTS[:n] + [DEFAULT_HOLLAR_AMOUNTS[-1]] * max(0, n - len(DEFAULT_HOLLAR_AMOUNTS))
+    hollar_dump_blocks = DEFAULT_DUMP_BLOCKS[:n] + [DEFAULT_DUMP_BLOCKS[-1]] * max(0, n - len(DEFAULT_DUMP_BLOCKS))
     inputs['hollar_amounts_inputs'] = []
     inputs['hollar_dump_blocks_inputs'] = []
 
