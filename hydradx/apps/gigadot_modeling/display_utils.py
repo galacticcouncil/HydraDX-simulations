@@ -71,3 +71,28 @@ def display_op_and_ss_multiple(omnipool_lrna, ss_liquidity, prices, title, x_siz
         axs[i].set_position([axs[i].get_position().x0, axs[i].get_position().y0, axs[i].get_position().width * scaling_factor, axs[i].get_position().height * scaling_factor])
 
     return fig
+
+
+def display_ss_multiple(ss_liquidity):
+
+    ss_liquidity_d = {}
+    if isinstance(ss_liquidity, list):
+        for ss in ss_liquidity:
+            tkn = next(key for key in ss if key != "HOLLAR")
+            ss_liquidity_d[tkn] = {ss_tkn: ss[ss_tkn] for ss_tkn in ss}
+            hollar_per_ss = ss['HOLLAR']
+    else:
+        tkn = next(key for key in ss_liquidity if key != "HOLLAR")
+        ss_liquidity_d[tkn] = {ss_tkn: ss_liquidity[ss_tkn] for ss_tkn in ss_liquidity}
+        hollar_per_ss = ss_liquidity['HOLLAR']
+
+    num_pools = len(ss_liquidity_d)
+    fig, axs = plt.subplots(num_pools, 1)
+    fig.subplots_adjust(hspace=-0.1)  # Adjust the spacing (lower values reduce the gap)
+    i = 0
+    for tkn, ss in ss_liquidity_d.items():
+        stableswap_usd = {tkn: hollar_per_ss, 'HOLLAR': hollar_per_ss}
+        display_liquidity_usd(axs[i], stableswap_usd)
+        i += 1
+
+    return fig

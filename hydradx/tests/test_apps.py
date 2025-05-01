@@ -145,4 +145,7 @@ def test_hsm():
 
 
 def test_hollar_init_distro():
-    from hydradx.apps.hollar import hollar_init_distro
+    # import multiprocessing as mp
+    # mp.set_start_method("fork", force=True)
+    from hydradx.apps.hollar.hollar_init_distro import run_script
+    run_script()
