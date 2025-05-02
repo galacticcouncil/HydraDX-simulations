@@ -10,7 +10,7 @@ sys.path.append(project_root)
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule
-from hydradx.apps.gigadot_modeling.display_utils import display_ss_multiple
+from hydradx.apps.display_utils import display_ss_multiple
 
 # hardcoded values
 PEGS = {'aUSDT': 1, 'aUSDC': 1, 'sUSDS': 1.05, 'sUSDE': 1.16}

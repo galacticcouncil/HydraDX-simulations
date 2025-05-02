@@ -1,6 +1,3 @@
-import copy
-import math
-
 from matplotlib import pyplot as plt
 import sys, os
 import streamlit as st
@@ -12,7 +9,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.apps.gigadot_modeling.utils import get_omnipool_minus_vDOT, set_up_gigaDOT_3pool, set_up_gigaDOT_2pool, \
     create_custom_scenario, simulate_route, get_slippage_dict
-from hydradx.apps.gigadot_modeling.display_utils import display_liquidity, display_op_and_ss
+from hydradx.apps.display_utils import display_liquidity, display_op_and_ss
 
 # current Omnipool numbers
 
