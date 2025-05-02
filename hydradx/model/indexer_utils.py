@@ -1,12 +1,15 @@
 import requests
 
+from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
+
+
 class AssetInfo:
     def __init__(
             self,
             asset_type: str = None,
             decimals: int = None,
             existential_deposit: int = None,
-            id: str = None,
+            id: int = None,
             is_sufficient: bool = None,
             name: str = None,
             symbol: str = None,
@@ -32,14 +35,14 @@ def query_indexer(url: str, query: str, variables: dict = None) -> dict:
     return return_val
 
 
-def get_asset_info_by_ids(asset_ids: list = None) -> dict:
+def get_asset_info(asset_ids: list[int] = None) -> dict:
     url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
     asset_query = f"""
-    query assetInfoByAssetIds({'$assetIds: [String!]!, ' if asset_ids else ''}$valid_types: [String!]!) {{
+    query assetInfoByAssetIds{'($assetIds: [Int!]!)' if asset_ids else ''} {{
       assets(filter: {{{
-        'id: {in: $assetIds}, ' if asset_ids else ''
-      }assetType: {{in: $valid_types}}}}) {{
+        'assetId: {in: $assetIds}, ' if asset_ids else ''
+      }symbol: {{notEqualTo: "none"}}}}) {{
         nodes {{
           assetType
           decimals
@@ -55,9 +58,9 @@ def get_asset_info_by_ids(asset_ids: list = None) -> dict:
     """
 
     # Send POST request to the GraphQL API
-    variables = {'valid_types': ['Token', 'StableSwap']}
+    variables = {}
     if asset_ids:
-        variables['assetIds'] = asset_ids
+        variables['assetIds'] = [str(i) for i in asset_ids]
     return_val = query_indexer(url1, asset_query, variables)
     asset_data = return_val['data']['assets']['nodes']
     dict_data = {}
@@ -66,7 +69,7 @@ def get_asset_info_by_ids(asset_ids: list = None) -> dict:
             asset_type=asset['assetType'],
             decimals=int(asset['decimals'] if asset['decimals'] else 0),
             existential_deposit=int(asset['existentialDeposit']),
-            id=asset['id'],
+            id=int(asset['id']),
             is_sufficient=asset['isSufficient'],
             name=asset['name'],
             symbol=asset['symbol']
@@ -78,7 +81,7 @@ def get_asset_info_by_ids(asset_ids: list = None) -> dict:
 def get_omnipool_asset_data(
         min_block_id: int,
         max_block_id: int,
-        asset_ids: list = None
+        asset_ids: list[int] = None
 ) -> list:
     url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
@@ -156,11 +159,11 @@ def get_omnipool_data_by_asset(
 def get_omnipool_liquidity(
         min_block_id: int,
         max_block_id: int,
-        asset_ids: list = None,
+        asset_ids: list[int] = None,
         asset_info: list[AssetInfo] = None
 ):
     if asset_info is None:
-        asset_dict = get_asset_info_by_ids(asset_ids + [1])
+        asset_dict = get_asset_info(asset_ids + [1])
     else:
         asset_dict = {int(asset.id): asset for asset in asset_info}
     if asset_ids is None:
@@ -257,7 +260,7 @@ def get_latest_stableswap_data(
     }
 
     asset_id_list = [asset['assetId'] for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']]
-    asset_dict = get_asset_info_by_ids(asset_id_list)
+    asset_dict = get_asset_info(asset_id_list)
 
     for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']:
         asset_id = asset['assetId']
@@ -285,73 +288,41 @@ def get_stablepool_ids():
 
 
 def get_current_omnipool():
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
+    asset_info = get_asset_info()
     current_block = get_current_block_height()
+    omnipool_data = get_omnipool_asset_data(min_block_id=current_block - 10000, max_block_id=current_block)
+    liquidity = {}
+    lrna = {}
+    for item in reversed(omnipool_data):
+        if asset_info[item['assetId']].symbol not in liquidity:
+            liquidity[asset_info[item['assetId']].symbol] = int(item['balances']['free']) / (10 ** asset_info[item['assetId']].decimals)
+            lrna[asset_info[item['assetId']].symbol] = int(item['assetState']['hubReserve']) / (10 ** asset_info[1].decimals)
+        if len(liquidity) == len(asset_info):
+            break
 
-    # Create a query that gets all assets with their current balances and fees
-    query = """
-    query CurrentOmnipoolState {
-      # Get all omnipool assets at the current block height
-      omnipoolAssets: assets(filter: {assetType: {in: ["Token", "StableSwap"]}}) {
-        nodes {
-          id
-          symbol
-          name
-          decimals
-          assetType
-
-          # Get the most recent omnipool data for this asset
-          omnipoolAssetDatasByAssetId(
-            orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC, 
-            first: 1
-          ) {
-            nodes {
-              paraChainBlockHeight
-              balances
-              assetState
-            }
-          }
-        }
-      }
-    }
-    """
-
-    # Execute the query
-    response = query_indexer(url, query)
-
-    # Process the response to get a clean result
-    result = {}
-    assets_data = response['data']['omnipoolAssets']['nodes']
-    fee_data = response['data']['omnipoolGlobalFee']['nodes'][0]['fee'] if response['data']['omnipoolGlobalFee'][
-        'nodes'] else None
-
-    for asset in assets_data:
-        asset_id = int(asset['id'])
-        asset_data = asset['omnipoolAssetData']['nodes'][0] if asset['omnipoolAsset'][
-            'nodes'] else None
-
-        if asset_data:
-            decimals = int(asset['decimals']) if asset['decimals'] else 0
-            balance_free = int(asset_data['balances']['free']) / (10 ** decimals) if 'free' in asset_data[
-                'balances'] else 0
-            hub_reserve = int(asset_data['assetState']['hubReserve']) / (10 ** 12) if asset_data[
-                                                                                          'assetState'] and 'hubReserve' in \
-                                                                                      asset_data['assetState'] else 0
-
-            result[asset_id] = {
-                'symbol': asset['symbol'],
-                'name': asset['name'],
-                'decimals': decimals,
-                'type': asset['assetType'],
-                'balance': balance_free,
-                'hub_reserve': hub_reserve,
-                'block_height': asset_data['paraChainBlockHeight']
-            }
-
-    # Add global fee information
-    result['global_fee'] = fee_data
-
-    return result
+    omnipool = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in liquidity
+        },
+        asset_fee=DynamicFee(
+            minimum=0.0025,
+            maximum=0.05,
+            amplification=2,
+            decay=0.001
+        ),
+        lrna_fee=DynamicFee(
+            minimum=0.0005,
+            maximum=0.01,
+            amplification=1,
+            decay=0.0005
+        )
+    )
+    return omnipool
 
 def get_omnipool_router():
+    # omnipool = get_current_omnipool()
+    stableswap_data = {
+        pool: get_latest_stableswap_data(pool)
+        for pool in get_stablepool_ids()
+    }
     pass
