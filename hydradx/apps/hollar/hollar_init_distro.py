@@ -9,7 +9,7 @@ sys.path.append(project_root)
 
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
-from hydradx.model.hollar import StabilityModule
+from hydradx.model.hollar import StabilityModule, fast_hollar_arb_and_dump
 from hydradx.apps.display_utils import display_ss_multiple
 
 # hardcoded values
@@ -147,25 +147,11 @@ def simulate_scenario(
             hollar_sell_amts.extend([0] * len_extend)
             break
         before_hsm_liq = hsm.liquidity[TKN_CHART]
-        for tkn, ss in hsm.pools.items():
-            max_buy_amt = hsm._get_max_buy_amount(tkn)  # note this ignores self.max_buy_price_coef
-            if tkn == TKN_CHART:
-                hollar_sold = max_buy_amt  # track max_buy_amt for aUSDT
-            if j < num_blocks_dump:  # add in Hollar dumping to net swap
-                hollar_buy_amt = max_buy_amt - sell_amt / num_blocks_dump / 4
-            else:
-                hollar_buy_amt = max_buy_amt
 
-            arb_agent.add(hsm.native_stable, max_buy_amt)  # flash mint Hollar for arb
-            hsm.swap(arb_agent, tkn_buy=tkn, tkn_sell=hsm.native_stable, sell_quantity=max_buy_amt)
-            if hollar_buy_amt > 0:
-                ss.swap(arb_agent, tkn_buy=hsm.native_stable, tkn_sell=tkn, buy_quantity=hollar_buy_amt)
-            elif hollar_buy_amt < 0:
-                ss.swap(arb_agent, tkn_buy=tkn, tkn_sell=hsm.native_stable, sell_quantity=-hollar_buy_amt)
-            arb_agent.remove(hsm.native_stable, max_buy_amt)  # burn Hollar that was minted
+        sell_amt_this_block = sell_amt / num_blocks_dump / 4 if j < num_blocks_dump else 0
+        data = fast_hollar_arb_and_dump(hsm, arb_agent, sell_amt_this_block, TKN_CHART, ["max_buy_amt"])
+        hollar_sold = data["max_buy_amt"]
 
-            ss.update()
-            hsm.update()
         after_hsm_liq = hsm.liquidity[TKN_CHART]
         hsm_delta = after_hsm_liq - before_hsm_liq
         hsm_loss_total = hsm_delta * len(init_stablepools)
@@ -173,6 +159,9 @@ def simulate_scenario(
             spot_prices.append(hsm.pools[TKN_CHART].price('HOLLAR', TKN_CHART))
         hsm_values.append(hsm_values[-1] + hsm_loss_total)
         hollar_sell_amts.append(hollar_sold)
+        for ss in hsm.pools.values():
+            ss.update()
+        hsm.update()
 
     results = {'ss_liquidity': ss_liquidity}
     results['spot_prices'] = spot_prices
