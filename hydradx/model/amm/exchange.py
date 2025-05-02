@@ -9,7 +9,6 @@ class Exchange:
     update_function: Callable = None
 
     def __init__(self):
-        self.oracles = None
         self.fail = ''
 
     def copy(self):
@@ -72,7 +71,14 @@ class Exchange:
         return self
 
     def value_assets(self, assets: dict[str: float], **kwargs) -> float:
-        return 0
+        """
+        Calculate the value of the assets in the exchange.
+        """
+        total_value = 0
+        for tkn, quantity in assets.items():
+            price = self.price(tkn)
+            total_value += price * quantity
+        return total_value
 
     def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
         pass
