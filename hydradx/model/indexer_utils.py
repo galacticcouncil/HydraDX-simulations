@@ -32,13 +32,15 @@ def query_indexer(url: str, query: str, variables: dict = None) -> dict:
     return return_val
 
 
-def get_asset_info_by_ids(asset_ids: list) -> dict:
+def get_asset_info_by_ids(asset_ids: list = None) -> dict:
     url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
-    asset_query = """
-    query assetInfoByAssetIds($assetIds: [String!]!) {
-      assets(filter: {id: {in: $assetIds}}) {
-        nodes {
+    asset_query = f"""
+    query assetInfoByAssetIds({'$assetIds: [String!]!, ' if asset_ids else ''}$valid_types: [String!]!) {{
+      assets(filter: {{{
+        'id: {in: $assetIds}, ' if asset_ids else ''
+      }assetType: {{in: $valid_types}}}}) {{
+        nodes {{
           assetType
           decimals
           existentialDeposit
@@ -47,20 +49,22 @@ def get_asset_info_by_ids(asset_ids: list) -> dict:
           name
           symbol
           xcmRateLimit
-        }
-      }
-    }
+        }}
+      }}
+    }}
     """
 
     # Send POST request to the GraphQL API
-    variables = {'assetIds': [f"{asset_id}" for asset_id in asset_ids]}
+    variables = {'valid_types': ['Token', 'StableSwap']}
+    if asset_ids:
+        variables['assetIds'] = asset_ids
     return_val = query_indexer(url1, asset_query, variables)
     asset_data = return_val['data']['assets']['nodes']
     dict_data = {}
     for asset in asset_data:
         asset_info = AssetInfo(
             asset_type=asset['assetType'],
-            decimals=int(asset['decimals']),
+            decimals=int(asset['decimals'] if asset['decimals'] else 0),
             existential_deposit=int(asset['existentialDeposit']),
             id=asset['id'],
             is_sufficient=asset['isSufficient'],
@@ -83,57 +87,35 @@ def get_omnipool_asset_data(
         "maxBlock": max_block_id
     }
 
-    if asset_ids is None:
-        query = """
-        query AssetBalancesByBlockHeight($first: Int!, $after: Cursor, $minBlock: Int!, $maxBlock: Int!) {
-          omnipoolAssetData(
-            first: $first,
-            after: $after,
-            orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
-            filter: {
-              paraChainBlockHeight: { greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }
-            }
-          ) {
-            nodes {
-              paraChainBlockHeight
-              assetId
-              balances
-              assetState
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
+    query = f"""
+    query AssetBalancesByBlockHeight($first: Int!, $after: Cursor, $minBlock: Int!, $maxBlock: Int!{
+    ', $assetIds: [Int!]!' if asset_ids else ''
+    }) {{
+      omnipoolAssetData(
+        first: $first,
+        after: $after,
+        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
+        filter: {{
+          paraChainBlockHeight: {{ greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }} {
+            'assetId: { in: $assetIds }' if asset_ids else ''
           }
-        }
-        """
+        }}
+      ) {{
+        nodes {{
+          paraChainBlockHeight
+          assetId
+          balances
+          assetState
+        }}
+        pageInfo {{
+          hasNextPage
+          endCursor
+        }}
+      }}
+    }}
+    """
 
-    else:
-        query = """
-        query AssetBalancesByBlockHeight($first: Int!, $after: Cursor, $minBlock: Int!, $maxBlock: Int!, $assetIds: [Int!]!) {
-          omnipoolAssetData(
-            first: $first,
-            after: $after,
-            orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
-            filter: {
-              paraChainBlockHeight: { greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock },
-              assetId: { in: $assetIds }
-            }
-          ) {
-            nodes {
-              paraChainBlockHeight
-              assetId
-              balances
-              assetState
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-        """
-        variables["assetIds"] = asset_ids
+    variables["assetIds"] = asset_ids
 
     data_all = []
     has_next_page = True
@@ -174,13 +156,15 @@ def get_omnipool_data_by_asset(
 def get_omnipool_liquidity(
         min_block_id: int,
         max_block_id: int,
-        asset_ids: list,
+        asset_ids: list = None,
         asset_info: list[AssetInfo] = None
 ):
     if asset_info is None:
         asset_dict = get_asset_info_by_ids(asset_ids + [1])
     else:
         asset_dict = {int(asset.id): asset for asset in asset_info}
+    if asset_ids is None:
+        asset_ids = list(asset_dict.keys())
 
     data = get_omnipool_data_by_asset(min_block_id, max_block_id, asset_ids)
     liquidity = {}
@@ -191,6 +175,24 @@ def get_omnipool_liquidity(
         liquidity[asset_id] = tkn_balances
         hub_liquidity[asset_id] = hub_balances
     return liquidity, hub_liquidity
+
+
+def get_current_block_height():
+    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+
+    latest_block_query = """
+        query BlockHeight {
+            blocks(last: 1) {
+                nodes {
+                    height
+                }
+            }
+        }
+    """
+
+    data = query_indexer(url, latest_block_query)
+    latest_block = data['data']['blocks']['nodes'][0]['height']
+    return latest_block
 
 
 def get_stableswap_asset_data(
@@ -240,21 +242,8 @@ def get_stableswap_data_by_block(
 def get_latest_stableswap_data(
         pool_id: int
 ):
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
 
-    latest_block_query = """
-    query MaxHeightQuery {
-      maxHeightResult: stablepools(first: 1, orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC) {
-        nodes {
-          paraChainBlockHeight
-        }
-      }
-    }
-    """
-
-    data = query_indexer(url, latest_block_query)
-
-    latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
+    latest_block = get_current_block_height()
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
@@ -293,3 +282,76 @@ def get_stablepool_ids():
     data = query_indexer(url, stablepool_query)
     pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
     return pool_ids
+
+
+def get_current_omnipool():
+    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
+    current_block = get_current_block_height()
+
+    # Create a query that gets all assets with their current balances and fees
+    query = """
+    query CurrentOmnipoolState {
+      # Get all omnipool assets at the current block height
+      omnipoolAssets: assets(filter: {assetType: {in: ["Token", "StableSwap"]}}) {
+        nodes {
+          id
+          symbol
+          name
+          decimals
+          assetType
+
+          # Get the most recent omnipool data for this asset
+          omnipoolAssetDatasByAssetId(
+            orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC, 
+            first: 1
+          ) {
+            nodes {
+              paraChainBlockHeight
+              balances
+              assetState
+            }
+          }
+        }
+      }
+    }
+    """
+
+    # Execute the query
+    response = query_indexer(url, query)
+
+    # Process the response to get a clean result
+    result = {}
+    assets_data = response['data']['omnipoolAssets']['nodes']
+    fee_data = response['data']['omnipoolGlobalFee']['nodes'][0]['fee'] if response['data']['omnipoolGlobalFee'][
+        'nodes'] else None
+
+    for asset in assets_data:
+        asset_id = int(asset['id'])
+        asset_data = asset['omnipoolAssetData']['nodes'][0] if asset['omnipoolAsset'][
+            'nodes'] else None
+
+        if asset_data:
+            decimals = int(asset['decimals']) if asset['decimals'] else 0
+            balance_free = int(asset_data['balances']['free']) / (10 ** decimals) if 'free' in asset_data[
+                'balances'] else 0
+            hub_reserve = int(asset_data['assetState']['hubReserve']) / (10 ** 12) if asset_data[
+                                                                                          'assetState'] and 'hubReserve' in \
+                                                                                      asset_data['assetState'] else 0
+
+            result[asset_id] = {
+                'symbol': asset['symbol'],
+                'name': asset['name'],
+                'decimals': decimals,
+                'type': asset['assetType'],
+                'balance': balance_free,
+                'hub_reserve': hub_reserve,
+                'block_height': asset_data['paraChainBlockHeight']
+            }
+
+    # Add global fee information
+    result['global_fee'] = fee_data
+
+    return result
+
+def get_omnipool_router():
+    pass
