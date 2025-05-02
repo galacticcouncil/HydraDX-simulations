@@ -111,6 +111,8 @@ class OmnipoolState(Exchange):
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
 
+        self.oracles = {}
+
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
             if 'LRNA' in pool:
@@ -127,8 +129,6 @@ class OmnipoolState(Exchange):
                 protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
-
-        self.oracles = {}
 
         if oracles is None or 'price' not in oracles:
             if last_oracle_values is None or 'price' not in last_oracle_values:
