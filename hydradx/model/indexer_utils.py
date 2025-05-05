@@ -1,6 +1,9 @@
 import requests
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
+from hydradx.model.processing import get_current_money_market
+from hydradx.model.amm.omnipool_router import OmnipoolRouter
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
 
 class AssetInfo:
@@ -39,9 +42,9 @@ def get_asset_info(asset_ids: list[int] = None) -> dict:
     url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
     asset_query = f"""
-    query assetInfoByAssetIds{'($assetIds: [Int!]!)' if asset_ids else ''} {{
+    query assetInfoByAssetIds{'($assetIds: [String!]!)' if asset_ids else ''} {{
       assets(filter: {{{
-        'assetId: {in: $assetIds}, ' if asset_ids else ''
+        'id: {in: $assetIds}, ' if asset_ids else ''
       }symbol: {{notEqualTo: "none"}}}}) {{
         nodes {{
           assetType
@@ -320,9 +323,26 @@ def get_current_omnipool():
     return omnipool
 
 def get_omnipool_router():
-    # omnipool = get_current_omnipool()
+    omnipool = get_current_omnipool()
     stableswap_data = {
         pool: get_latest_stableswap_data(pool)
         for pool in get_stablepool_ids()
     }
-    pass
+    asset_info = get_asset_info()
+    # money_market = get_current_money_market()
+    stableswap_pools = []
+    for pool in stableswap_data.values():
+        if min(pool['liquidity'].values()) > 0:
+            stableswap_pools.append(
+                StableSwapPoolState(
+                    tokens={asset_info[tkn_id].symbol: pool['liquidity'][tkn_id] for tkn_id in pool['liquidity']},
+                    amplification=pool['finalAmplification'],
+                    trade_fee=pool['fee'],
+                    unique_id=asset_info[pool['pool_id']].symbol,
+                )
+            )
+    return OmnipoolRouter(
+        exchanges=[
+            omnipool, *stableswap_pools
+        ]
+    )
