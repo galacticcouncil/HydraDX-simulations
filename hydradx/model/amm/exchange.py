@@ -70,7 +70,7 @@ class Exchange:
         self.fail = error
         return self
 
-    def value_assets(self, assets: dict[str: float], **kwargs) -> float:
+    def value_assets(self, assets: dict[str: float]) -> float:
         """
         Calculate the value of the assets in the exchange.
         """

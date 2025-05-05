@@ -1,6 +1,6 @@
 import copy
 from .agents import Agent
-from exchange import Exchange
+from .exchange import Exchange
 
 
 class CDP:
@@ -336,8 +336,8 @@ class MoneyMarket(Exchange):
             cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
 
-    def value_assets(self, assets: dict[str: float]) -> float:
-        return sum([assets[tkn] * self.price(tkn) for tkn in assets])
+    def value_assets(self, assets: dict[str: float], numeraire: str = None) -> float:
+        return sum([assets[tkn] * self.price(tkn, numeraire) for tkn in assets])
 
     def update(self):
         pass
