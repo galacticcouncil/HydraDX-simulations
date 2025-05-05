@@ -1,15 +1,5 @@
-import copy
-import math
-
 import pytest
-from hypothesis import given, strategies as st, reproduce_failure
-from mpmath import mp, mpf
-
-import os
-
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-
-os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
     get_omnipool_asset_data, get_current_block_height, get_asset_info, get_current_omnipool, get_omnipool_router
