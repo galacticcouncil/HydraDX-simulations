@@ -293,3 +293,66 @@ def get_stablepool_ids():
     data = query_indexer(url, stablepool_query)
     pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
     return pool_ids
+
+
+def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
+    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+
+    if max_block is None:
+        latest_block_query = """
+        query MaxHeightQuery {
+          maxHeightResult: swaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
+            nodes {
+              paraBlockHeight
+            }
+          }
+        }
+        """
+        data = query_indexer(url, latest_block_query)
+        max_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
+
+    hdx_fee_query = """
+    query fees_query($assetId: String!, $minBlock: Int!, $maxBlock: Int!) {
+      swaps(
+        filter: {
+          allInvolvedAssetIds: {contains: [$assetId, "1"]},
+          paraBlockHeight:{greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock}
+        }
+        orderBy: PARA_BLOCK_HEIGHT_ASC
+      ) {
+          nodes {
+            id
+            swapOutputs {
+              nodes {
+                amount
+                assetId
+              }
+            }
+            swapInputs {
+              nodes {
+                amount
+                assetId
+              }
+            }
+            swapFees {
+              nodes {
+                amount
+                assetId
+                recipientId
+              }
+            }
+            paraBlockHeight
+          }
+        }
+    }
+    """
+
+    variables = {"assetId": str(asset_id), "minBlock": min_block, "maxBlock": max_block}
+    data = query_indexer(url, hdx_fee_query, variables)
+    fee_pcts = [
+        [int(x['paraBlockHeight']),
+        (sum([int(y['amount']) for y in x['swapFees']['nodes'] if y['assetId'] == str(asset_id)])
+         / int(x['swapOutputs']['nodes'][0]['amount']))]
+        for x in data['data']['swaps']['nodes'] if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
+    ]
+    return fee_pcts

@@ -8,7 +8,7 @@ from mpmath import mp, mpf
 import os
 os.chdir('../..')
 
-from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids
+from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_fee_history
 
 
 def test_get_latest_stableswap_data():
@@ -29,3 +29,11 @@ def test_get_stablepool_ids():
     pool_ids = get_stablepool_ids()
     assert 102 in pool_ids
     assert 690 in pool_ids
+
+
+def test_get_fee_history():
+    asset_id = 0
+    min_block_id = 7400000
+    max_block_id = 7400100
+    data = get_fee_history(asset_id, min_block_id, max_block_id)
+    print("done")
