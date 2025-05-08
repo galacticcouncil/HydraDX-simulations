@@ -311,9 +311,11 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
         data = query_indexer(url, latest_block_query)
         max_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
 
-    hdx_fee_query = """
-    query fees_query($assetId: String!, $minBlock: Int!, $maxBlock: Int!) {
+    fee_query = """
+    query fees_query($first: Int!, $after: Cursor, $assetId: String!, $minBlock: Int!, $maxBlock: Int!) {
       swaps(
+        first: $first,
+        after: $after,
         filter: {
           allInvolvedAssetIds: {contains: [$assetId, "1"]},
           paraBlockHeight:{greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock}
@@ -343,16 +345,36 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
             }
             paraBlockHeight
           }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
         }
     }
     """
 
     variables = {"assetId": str(asset_id), "minBlock": min_block, "maxBlock": max_block}
-    data = query_indexer(url, hdx_fee_query, variables)
+    # data = query_indexer(url, hdx_fee_query, variables)
+
+    data_all = []
+    has_next_page = True
+    after_cursor = None
+    page_size = 10000
+    variables["first"] = page_size
+
+    while has_next_page:
+        variables["after"] = after_cursor
+        data = query_indexer(url, fee_query, variables)
+        page_data = data['data']['swaps']['nodes']
+        data_all.extend(page_data)
+        page_info = data['data']['swaps']['pageInfo']
+        has_next_page = page_info['hasNextPage']
+        after_cursor = page_info['endCursor']
+
     fee_pcts = [
         [int(x['paraBlockHeight']),
         (sum([int(y['amount']) for y in x['swapFees']['nodes'] if y['assetId'] == str(asset_id)])
          / int(x['swapOutputs']['nodes'][0]['amount']))]
-        for x in data['data']['swaps']['nodes'] if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
+        for x in data_all if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
     ]
     return fee_pcts
