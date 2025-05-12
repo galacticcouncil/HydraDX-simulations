@@ -4,7 +4,7 @@ import streamlit as st
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
-from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_data_by_asset, get_omnipool_liquidity
+from hydradx.model.indexer_utils import get_asset_info, get_omnipool_data_by_asset, get_omnipool_liquidity
 
 asset_ids = [0, 12]
 min_block_id = 6000000
