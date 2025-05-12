@@ -78,7 +78,8 @@ class MoneyMarket(Exchange):
             assets: list[MoneyMarketAsset],
             cdps: list = None,
             full_liquidation_threshold: float = 0.95,
-            close_factor: float = 0.5
+            close_factor: float = 0.5,
+            unique_id: str = 'money_market',
     ):
         super().__init__()
         self.liquidity = {
@@ -108,6 +109,7 @@ class MoneyMarket(Exchange):
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
+        self.unique_id = unique_id
 
     def __repr__(self):
         total_collateral = {tkn: sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])
@@ -137,11 +139,11 @@ class MoneyMarket(Exchange):
         self.fail = fail
         return self
 
-    def price(self, tkn: str, numeraire: str = None):
-        if numeraire is None:
+    def price(self, tkn: str, denominator: str = None):
+        if denominator is None:
             return self.prices[tkn]
         else:
-            return self.prices[tkn] / self.prices[numeraire]
+            return self.prices[tkn] / self.prices[denominator]
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
         return [cdp for cdp in self.cdps if (
@@ -409,3 +411,9 @@ class MoneyMarket(Exchange):
         agent.remove(tkn_sell, sell_quantity)
         self.liquidity[tkn_sell] += sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
+
+    def buy_spot(self, tkn_buy: str, tkn_sell: str):
+        return self.price(tkn_buy, tkn_sell)
+
+    def sell_spot(self, tkn_sell: str, tkn_buy: str):
+        return self.price(tkn_sell, tkn_buy)
