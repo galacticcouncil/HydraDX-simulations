@@ -19,16 +19,16 @@ class Exchange:
     def update(self):
         pass
 
-    def price(self, tkn: str, denomination: str = '') -> float:
+    def price(self, tkn: str, denominator: str = '') -> float:
         return 0
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
+    def buy_spot(self, tkn_buy: str, tkn_sell: str) -> float:
         """
         How much tkn_sell will 1 tkn_buy cost?
         """
         return 0
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None) -> float:
+    def sell_spot(self, tkn_sell: str, tkn_buy: str) -> float:
         """
         How much tkn_buy can be bought for 1 tkn_sell?
         """
