@@ -1065,10 +1065,10 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
     return TradeStrategy(strategy, name='general arbitrage')
 
 
-def liquidate_cdps(pool_id: str, iters: int = 16) -> TradeStrategy:
+def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
         agent = state.agents[agent_id]
-        pool: Exchange = state.pools[pool_id]
+        pools: list[Exchange] = [state.pools[pool_id]] if pool_id else list(state.pools.values())
         mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools.values()))
         if state.money_market is not None:
             mms += [state.money_market]
@@ -1080,51 +1080,59 @@ def liquidate_cdps(pool_id: str, iters: int = 16) -> TradeStrategy:
                     (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
                     for collateral_tkn in cdp.collateral.keys()
                 ]:
-                    if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
-                        or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
+                    for pool in pools:
+                        if collateral_tkn not in pool.asset_list or debt_tkn not in pool.asset_list:
                             continue
-                    collateral_max, debt_max = mm.calculate_liquidation(
-                        cdp,
-                        collateral_asset=collateral_tkn,
-                        debt_asset=debt_tkn
-                    )
-                    if collateral_max == 0:
-                        # not liquidatable
-                        break
-                    if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
-                        # no profitable liquidation possible
-                        continue
-                    debt_paid = debt_max
-                    profit = collateral_max - pool.calculate_sell_from_buy(
-                        tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_paid
-                    )
-                    for i in range(1, iters):
-                        debt_delta = debt_max * 1 / 2 ** i
-                        debt_up = debt_paid + debt_delta
-                        debt_down = debt_paid - debt_delta
-                        collat_up = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_up)[0]
-                        collat_down = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_down)[0]
-                        profit_up = collat_up - pool.calculate_sell_from_buy(
-                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_up
-                        ) if collat_up < collateral_max else -float('inf')
-                        profit_down = collat_down - pool.calculate_sell_from_buy(
-                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_down
+                        if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
+                            or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
+                                continue
+                        collateral_max, debt_max = mm.calculate_liquidation(
+                            cdp,
+                            collateral_asset=collateral_tkn,
+                            debt_asset=debt_tkn
                         )
-                        if profit_up > profit:
-                            debt_paid = debt_up
-                            profit = profit_up
-                        elif profit_down > profit:
-                            debt_paid = debt_down
-                            profit = profit_down
-                        else:
+                        if collateral_max == 0:
+                            # not liquidatable
+                            break
+                        if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
+                            # no profitable liquidation possible
                             continue
-                    if profit > 0:
-                        best_liquidations[(collateral_tkn, debt_tkn)] = {'amount': debt_paid, 'profit': profit}
+                        debt_paid = debt_max
+                        profit = collateral_max - pool.calculate_sell_from_buy(
+                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_paid
+                        )
+                        for i in range(1, iters):
+                            debt_delta = debt_max * 1 / 2 ** i
+                            debt_up = debt_paid + debt_delta
+                            debt_down = debt_paid - debt_delta
+                            collat_up = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_up)[0]
+                            collat_down = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_down)[0]
+                            profit_up = collat_up - pool.calculate_sell_from_buy(
+                                tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_up
+                            ) if collat_up < collateral_max else -float('inf')
+                            profit_down = collat_down - pool.calculate_sell_from_buy(
+                                tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_down
+                            )
+                            if profit_up > profit:
+                                debt_paid = debt_up
+                                profit = profit_up
+                            elif profit_down > profit:
+                                debt_paid = debt_down
+                                profit = profit_down
+                            else:
+                                continue
+                        if profit > 0:
+                            best_liquidations[(collateral_tkn, debt_tkn)] = {
+                                'amount': debt_paid,
+                                'profit': profit,
+                                'pool': pool
+                            }
 
                 best_pair = max(best_liquidations.items(), key=lambda x: x[1]['profit'], default=None)
                 if best_pair is not None:
                     collateral_tkn, debt_tkn = best_pair[0]
                     debt_paid = best_pair[1]['amount']
+                    pool = best_pair[1]['pool']
                     pool.swap(
                         agent=agent,
                         tkn_buy=debt_tkn,
