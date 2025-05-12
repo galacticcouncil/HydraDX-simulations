@@ -281,15 +281,15 @@ class OmnipoolState(Exchange):
             tkn: str,
             liquidity: float,
             lrna: float,
-            shares: float,
+            shares: float = 0,
             protocol_shares: float = 0,
             weight_cap: float = 1
     ):
         self.asset_list.append(tkn)
         self.liquidity[tkn] = liquidity
         self.lrna[tkn] = lrna
-        self.shares[tkn] = shares
-        self.protocol_shares[tkn] = protocol_shares or shares
+        self.shares[tkn] = shares or liquidity
+        self.protocol_shares[tkn] = protocol_shares or self.shares[tkn]
         self.weight_cap[tkn] = weight_cap
         if hasattr(self, '_lrna_fee'):
             if tkn not in self._lrna_fee.current: self._lrna_fee.current[tkn] = self._lrna_fee.minimum
