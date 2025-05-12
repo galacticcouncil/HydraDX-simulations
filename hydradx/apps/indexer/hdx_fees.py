@@ -4,7 +4,7 @@ import streamlit as st
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
-from hydradx.model.indexer_utils import get_fee_history
+from hydradx.model.indexer_utils import get_fee_pcts, get_fee_history
 
 c1, c2, c3 = st.columns(3)
 
@@ -27,7 +27,8 @@ with c3:
         help="set to 0 to get latest data available"
     )
 
-asset_fees_history = get_fee_history(asset_id, min_block, max_block if max_block > 0 else None)
+data = get_fee_history(asset_id, min_block, max_block if max_block > 0 else None)
+asset_fees_history = get_fee_pcts(data, asset_id)
 # list of pairs in [block_id, fee] format
 # need to convert to [unique_block_id, average_fee]
 fees = {}

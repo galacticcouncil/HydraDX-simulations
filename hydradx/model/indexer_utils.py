@@ -371,10 +371,13 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
         has_next_page = page_info['hasNextPage']
         after_cursor = page_info['endCursor']
 
+    return data_all
+
+def get_fee_pcts(data, asset_id):
     fee_pcts = [
         [int(x['paraBlockHeight']),
         (sum([int(y['amount']) for y in x['swapFees']['nodes'] if y['assetId'] == str(asset_id)])
          / int(x['swapOutputs']['nodes'][0]['amount']))]
-        for x in data_all if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
+        for x in data if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
     ]
     return fee_pcts
