@@ -367,22 +367,22 @@ class MoneyMarket(Exchange):
         return True
 
 
-    def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, amount: float) -> float:
+    def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float) -> float:
         """
         Calculate the amount of tkn_buy that can be bought with amount of tkn_sell.
         """
         assert tkn_sell in self.liquidity
         assert tkn_buy in self.liquidity
-        return amount * self.price(tkn_sell, tkn_buy)
+        return sell_quantity * self.price(tkn_sell, tkn_buy)
 
 
-    def calculate_sell_from_buy(self, tkn_buy: str, tkn_sell: str, amount: float) -> float:
+    def calculate_sell_from_buy(self, tkn_buy: str, tkn_sell: str, buy_quantity: float) -> float:
         """
         Calculate the amount of tkn_sell that can be bought with amount of tkn_buy.
         """
         assert tkn_buy in self.liquidity
         assert tkn_sell in self.liquidity
-        return amount / self.price(tkn_buy, tkn_sell)
+        return buy_quantity / self.price(tkn_buy, tkn_sell)
 
 
     def swap(self, agent: Agent, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0,
@@ -412,8 +412,8 @@ class MoneyMarket(Exchange):
         self.liquidity[tkn_sell] += sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str):
-        return self.price(tkn_buy, tkn_sell)
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = 0):
+        return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str):
-        return self.price(tkn_sell, tkn_buy)
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = 0):
+        return self.price(tkn_sell, tkn_buy) * (1 - fee)
