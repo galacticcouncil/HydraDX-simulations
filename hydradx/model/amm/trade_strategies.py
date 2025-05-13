@@ -442,10 +442,6 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
         lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
-        usd_fee = omnipool.asset_fee(tkn=omnipool.stablecoin)
-        # usd_fee = omnipool.last_fee[omnipool.stablecoin]
-        usd_LRNA_fee = omnipool.lrna_fee(tkn=omnipool.stablecoin)
-        # usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
             asset = omnipool.asset_list[i]
@@ -458,19 +454,8 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequenc
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee(tkn=asset)
-            # asset_fee = omnipool.last_fee[asset]
-            asset_LRNA_fee = omnipool.lrna_fee(tkn=asset)
-            # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            # if arb_precision < 2:
-            #     low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
-            #     high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
-            #
-            #     if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
-            #         skip_ct += 1
-            #         if i < usd_index:
-            #             usd_index -= 1
-            #         continue
+            asset_fee = omnipool.asset_fee(asset)
+            asset_LRNA_fee = omnipool.lrna_fee(asset)
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
@@ -1070,8 +1055,6 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
         agent = state.agents[agent_id]
         pools: list[Exchange] = [state.pools[pool_id]] if pool_id else list(state.pools.values())
         mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools.values()))
-        if state.money_market is not None:
-            mms += [state.money_market]
         for mm in mms:
             for cdp in mm.cdps:
                 best_liquidations = {}
