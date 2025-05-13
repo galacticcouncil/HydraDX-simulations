@@ -10,7 +10,7 @@ from hydradx.model.amm.global_state import GlobalState
 # from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 # from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
-from hydradx.model.amm.trade_strategies import liquidate_cdps, TradeStrategy
+from hydradx.model.amm.trade_strategies import liquidate_cdps, TradeStrategy, general_arbitrage
 from hydradx.model.processing import get_current_money_market, get_stableswap_data, Pool
 from hydradx.model.amm.agents import Agent
 from hydradx.model.run import run
@@ -173,17 +173,22 @@ trade_sequence = [
         } for tkn in mm.asset_list
     ] for i in range(1, time_steps + 1)
 ]
+omnipool_sim = omnipool.copy()
+mm_sim = mm.copy()
 initial_state = GlobalState(
-    pools={
-        'money_market': mm.copy(),
-        'omnipool': omnipool.copy()
-    },
+    pools=[mm_sim, omnipool_sim],
     agents={
         'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
         'panic seller': Agent(
             enforce_holdings=False,
             trade_strategy=schedule_swaps(trade_sequence)
         ),
+        'arbitrageur': Agent(
+            enforce_holdings=False,
+            trade_strategy=general_arbitrage(
+                exchanges=[mm_sim, omnipool_sim]
+            )
+        )
     },
     evolve_function=update_prices
 )
