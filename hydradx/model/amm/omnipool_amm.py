@@ -1,11 +1,14 @@
 import copy
-from typing import Callable
+from typing import Callable, Protocol, Literal
 import math
 
 from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
-from typing import Literal
+
+class AssetFeeCallable(Protocol):
+    def __call__(self, tkn: str) -> float: ...
+
 
 class DynamicFee:
 
@@ -214,7 +217,7 @@ class OmnipoolState(Exchange):
             )
 
     @property
-    def lrna_fee(self) -> Callable[[str], float]:
+    def lrna_fee(self) -> AssetFeeCallable:
         return self._get_lrna_fee
 
     @lrna_fee.setter
@@ -232,7 +235,7 @@ class OmnipoolState(Exchange):
         return self._lrna_fee.current
 
     @property
-    def asset_fee(self) -> Callable[[str], float]:
+    def asset_fee(self) -> AssetFeeCallable:
         return self._get_asset_fee
 
     @asset_fee.setter
