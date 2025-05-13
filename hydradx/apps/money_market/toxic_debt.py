@@ -85,8 +85,9 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
 
 def trade_to_price(pool, tkn_sell, target_price):
     # this is the target price in USD - convert to LRNA
-    target_price_lrna = target_price / pool.usd_price(tkn_sell, 'USDT') * pool.lrna_price(tkn_sell)
+    target_price_lrna = target_price * pool.lrna_price('USDT')
     k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
+    print(target_price_lrna)
     target_x = math.sqrt(k / target_price_lrna)
     dx = target_x - pool.liquidity[tkn_sell]
     return dx
@@ -99,7 +100,7 @@ def update_prices(state):
     }
     state.pools['money_market'].prices.update(prices)
 
-def schedule_swaps(tkn_sell: str, tkn_buy: str, quantity: list[float]):
+def schedule_swaps(swaps: list[list[dict]]):
     class Strategy:
         def __init__(self, pool_id: str):
             self.initial_time_step = -1
@@ -108,46 +109,70 @@ def schedule_swaps(tkn_sell: str, tkn_buy: str, quantity: list[float]):
             if self.initial_time_step == -1:
                 self.initial_time_step = state.time_step
             agent = state.agents[agent_id]
-            state.pools[self.pool_id].swap(
-                tkn_sell=tkn_sell,
-                tkn_buy=tkn_buy,
-                sell_quantity=quantity[state.time_step - self.initial_time_step],
-                agent=agent
-            )
+            for trade in swaps [state.time_step - self.initial_time_step]:
+                state.pools[self.pool_id].swap(
+                    tkn_sell=trade['tkn_sell'],
+                    tkn_buy=trade['tkn_buy'],
+                    sell_quantity=trade['sell_quantity'] if 'sell_quantity' in trade else 0,
+                    buy_quantity=trade['buy_quantity'] if 'buy_quantity' in trade else 0,
+                    agent=agent
+                )
+
             return state
 
     return TradeStrategy(Strategy('omnipool').execute, name="scheduled_swaps")
-
 
 router, cache_timestamp = load_omnipool_router()
 omnipool, mm = router.exchanges.values()
 st.sidebar.info(f"Data loaded at: {cache_timestamp}")
 
+price_change_defaults = {
+    tkn: 0 for tkn in mm.asset_list
+}
+price_change_defaults.update({
+    'DOT': -75,
+})
 with st.sidebar:
-    crash_asset = st.selectbox(
-        label="Crashing Asset",
-        options=mm.asset_list,
-        index=mm.asset_list.index('DOT') if 'DOT' in mm.asset_list else 0
-    )
-    crash_factor = st.number_input(
-        label="Crash Factor",
-        min_value=1,
-        max_value=99,
-        value=75
-    )
     time_steps = st.number_input(
         label="Time Steps",
         min_value=1,
         max_value=100,
         value=10
     )
-start_price = omnipool.price(crash_asset, 'USDT')
+    price_factor = {
+        tkn: st.number_input(
+            label=f"{tkn} price change: ",
+            min_value=-99,
+            max_value=1000,
+            value=price_change_defaults[tkn],
+            key=tkn
+        ) for tkn in mm.asset_list
+    }
+
+start_price = {tkn: omnipool.price(tkn, 'USDT') for tkn in mm.asset_list}
 
 # calculate price path from start price to crash price
-final_price = start_price * (1 - crash_factor / 100)
-prices = [start_price] + [start_price - (start_price - final_price) * ((i + 1) / time_steps) for i in range(time_steps)]
-full_trades = [trade_to_price(omnipool, crash_asset, price) for price in prices]
-trade_sequence = [full_trades[i] - full_trades[i-1] for i in range(1, time_steps + 1)]
+final_price = {tkn: start_price[tkn] * (1 + price_factor[tkn] / 100) for tkn in mm.asset_list}
+prices = {
+    tkn: [
+        start_price[tkn]] + [start_price[tkn] - (start_price[tkn] - final_price[tkn]) * ((i + 1) / time_steps)
+        for i in range(time_steps)
+    ] for tkn in mm.asset_list
+}
+full_trades = {tkn: [trade_to_price(omnipool, tkn, price) for price in prices[tkn]] for tkn in mm.asset_list}
+trade_sequence = [
+    [
+        {
+            'tkn_sell': tkn,
+            'tkn_buy': 'LRNA',
+            'sell_quantity': full_trades[tkn][i] - full_trades[tkn][i-1]
+        } if full_trades[tkn][i] != full_trades[tkn][i-1] else {
+            'tkn_sell': 'LRNA',
+            'tkn_buy': tkn,
+            'buy_quantity': full_trades[tkn][i] - full_trades[tkn][i - 1]
+        } for tkn in mm.asset_list
+    ] for i in range(1, time_steps + 1)
+]
 initial_state = GlobalState(
     pools={
         'money_market': mm.copy(),
@@ -157,7 +182,7 @@ initial_state = GlobalState(
         'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
         'panic seller': Agent(
             enforce_holdings=False,
-            trade_strategy=schedule_swaps(crash_asset, 'LRNA', trade_sequence)
+            trade_strategy=schedule_swaps(trade_sequence)
         ),
     },
     evolve_function=update_prices
@@ -185,10 +210,11 @@ ax1.plot([
 ax1.set_title("Toxic debt as a percentage of total debt")
 st.pyplot(fig1)
 
-fig2, ax2 = plt.subplots()
-ax2.set_xlabel("Time Steps")
-ax2.set_ylabel(f"{crash_asset} price (USD)")
-ax2.plot([
-    event.pools['omnipool'].price(crash_asset, 'USDT') for event in events
-])
-st.pyplot(fig2)
+for tkn in mm.asset_list:
+    fig, ax = plt.subplots()
+    ax.set_xlabel("Time Steps")
+    ax.set_ylabel(f"{tkn} price (USD)")
+    ax.plot([
+        event.pools['omnipool'].price(tkn, 'USDT') for event in events
+    ])
+    st.pyplot(fig)
