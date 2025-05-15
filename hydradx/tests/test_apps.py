@@ -142,3 +142,19 @@ def test_get_slippage_dict():
 
 def test_hsm():
     from hydradx.apps.stability_module.hsm import hollar_burned
+
+
+def test_changing_amp():
+    from hydradx.apps.gigadot_modeling import changing_amp
+
+
+def test_fees_volume_comp():
+    from hydradx.apps.fees import fees_volume_comp
+
+
+def test_hdx_buybacks():
+    from hydradx.apps.fees import hdx_buybacks
+
+
+def test_hdx_fees():
+    from hydradx.apps.fees import hdx_fees
