@@ -10,7 +10,7 @@ sys.path.append(project_root)
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule, fast_hollar_arb_and_dump
-from hydradx.apps.display_utils import display_ss_multiple
+from hydradx.apps.display_utils import display_liquidity_usd
 
 # hardcoded values
 PEGS = {'aUSDT': 1, 'aUSDC': 1, 'sUSDS': 1.05, 'sUSDE': 1.16}
@@ -218,6 +218,31 @@ def get_results(inputs: dict) -> tuple:
         hsm_vals_dict[scenario_data[i]] = results[i]['hsm_values']
         hollar_sold_dict[scenario_data[i]] = results[i]['hollar_sold']
     return ss_liquidity_dict, spot_prices_dict, hsm_vals_dict, hollar_sold_dict
+
+
+def display_ss_multiple(ss_liquidity):
+
+    ss_liquidity_d = {}
+    if isinstance(ss_liquidity, list):
+        for ss in ss_liquidity:
+            tkn = next(key for key in ss if key != "HOLLAR")
+            ss_liquidity_d[tkn] = {ss_tkn: ss[ss_tkn] for ss_tkn in ss}
+            hollar_per_ss = ss['HOLLAR']
+    else:
+        tkn = next(key for key in ss_liquidity if key != "HOLLAR")
+        ss_liquidity_d[tkn] = {ss_tkn: ss_liquidity[ss_tkn] for ss_tkn in ss_liquidity}
+        hollar_per_ss = ss_liquidity['HOLLAR']
+
+    num_pools = len(ss_liquidity_d)
+    fig, axs = plt.subplots(num_pools, 1)
+    fig.subplots_adjust(hspace=-0.1)  # Adjust the spacing (lower values reduce the gap)
+    i = 0
+    for tkn, ss in ss_liquidity_d.items():
+        stableswap_usd = {tkn: hollar_per_ss, 'HOLLAR': hollar_per_ss}
+        display_liquidity_usd(axs[i], stableswap_usd)
+        i += 1
+
+    return fig
 
 
 def graph_results(ss_liquidity_dict, spot_prices_dict, hsm_vals_dict, hollar_sold_dict):
