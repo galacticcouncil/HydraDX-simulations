@@ -381,3 +381,79 @@ def get_fee_pcts(data, asset_id):
         for x in data if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
     ]
     return fee_pcts
+
+def get_executed_trades(asset_ids, min_block: int, max_block: int):
+    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+
+    executed_trades_query = """
+    query executed_trade_query(
+        $first: Int!, $after: Cursor,
+        $assetIds: [String!]!, $minBlock: Int!, $maxBlock: Int!
+    ) {
+      routedTrades(
+        first: $first,
+        after: $after,
+        filter: {
+            allInvolvedAssetIds: {contains: $assetIds},
+            paraBlockHeight: { greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }
+        }
+        orderBy: PARA_BLOCK_HEIGHT_ASC
+      ) {
+        nodes {
+          routeTradeInputs {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          routeTradeOutputs {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          paraBlockHeight
+          allInvolvedAssetIds
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+    """
+
+    variables = {"assetIds": [str(id) for id in asset_ids], "minBlock": min_block, "maxBlock": max_block}
+    # data = query_indexer(url, hdx_fee_query, variables)
+
+    data_all = []
+    has_next_page = True
+    after_cursor = None
+    page_size = 10000
+    variables["first"] = page_size
+
+    while has_next_page:
+        variables["after"] = after_cursor
+        data = query_indexer(url, executed_trades_query, variables)
+        page_data = data['data']['routedTrades']['nodes']
+        data_all.extend(page_data)
+        page_info = data['data']['routedTrades']['pageInfo']
+        has_next_page = page_info['hasNextPage']
+        after_cursor = page_info['endCursor']
+
+    asset_info = get_asset_info_by_ids(asset_ids)
+
+    trade_data = [
+        {
+            'block_number': int(x['paraBlockHeight']),
+            'input_asset_id': int(x['routeTradeInputs']['nodes'][0]['assetId']),
+            'input_amount': int(x['routeTradeInputs']['nodes'][0]['amount']) / (10 ** asset_info[int(x['routeTradeInputs']['nodes'][0]['assetId'])].decimals),
+            'output_asset_id': int(x['routeTradeOutputs']['nodes'][0]['assetId']),
+            'output_amount': int(x['routeTradeOutputs']['nodes'][0]['amount']) / (10 ** asset_info[int(x['routeTradeOutputs']['nodes'][0]['assetId'])].decimals),
+            'all_involved_asset_ids': [y for y in x['allInvolvedAssetIds']]
+        }
+        for x in data_all if (x['routeTradeOutputs']['nodes'][0]['assetId'] in variables['assetIds']
+                              and x['routeTradeInputs']['nodes'][0]['assetId'] in variables['assetIds'])
+    ]
+
+    return trade_data
