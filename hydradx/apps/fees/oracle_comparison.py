@@ -5,12 +5,10 @@ import csv
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
-from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_data_by_asset, get_omnipool_liquidity, \
-    get_stableswap_asset_data, get_executed_trades
-from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.indexer_utils import get_executed_trades
 
 filename = 'DOTUSD_oracle_prices.csv'
-file_path = os.path.join(project_root, 'hydradx', 'apps', 'indexer', filename)
+file_path = os.path.join(project_root, 'hydradx', 'apps', 'fees', filename)
 data = []
 with open(file_path, 'r') as file:
     reader = csv.DictReader(file)

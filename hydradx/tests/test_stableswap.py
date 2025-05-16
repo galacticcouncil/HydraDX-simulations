@@ -1089,10 +1089,10 @@ def test_fuzz_arb_repegging_3pool(
     init_vDOT_price = 1
     init_lstDOT_price = 1
     arb_size = 1
-    fee = 0.0001
+    fee = 0.0002
     max_repeg = 0.001
 
-    dot_liq = 1000000
+    dot_liq = mpf(1000000)
     tokens = {
         'DOT': dot_liq,
         'vDOT': ratio1 * dot_liq / init_vDOT_price,
@@ -1107,7 +1107,7 @@ def test_fuzz_arb_repegging_3pool(
 
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
                                        peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg,
-                                       precision=0.000001)
+                                       precision=0.00000001)
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
             pool.set_peg_target(peg_target)
             pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])
