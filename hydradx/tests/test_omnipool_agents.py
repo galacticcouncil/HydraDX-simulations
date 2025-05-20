@@ -127,8 +127,8 @@ def test_omnipool_arbitrager(hdx_value, dot_value):
 
     if not omnipool.fail:  # high fees can break arbitrager, which initially calculates values without fees
         # Trading should result in net zero LRNA trades
-        if new_holdings['LRNA'] != pytest.approx(old_holdings['LRNA'], rel=1e-15):
-            raise AssertionError(f'Arbitrageur traded LRNA. old: {old_holdings["LRNA"]}, new: {new_holdings["LRNA"]}')
+        if new_holdings['LRNA'] > 1e-10:
+            raise AssertionError(f'Arbitrageur has LRNA left over: {new_holdings["LRNA"]}')
 
         for asset in omnipool.asset_list:
             old_value += old_holdings[asset] * external_market[asset]

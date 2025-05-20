@@ -10,12 +10,13 @@ def actual_value_labels(pct, all_values):
     else:  # If value is below 1,000
         return f"${absolute:.3g}"
 
-def display_liquidity_usd(ax, usd_dict, title):
+def display_liquidity_usd(ax, usd_dict, title = None):
     labels = list(usd_dict.keys())
     sizes = list(usd_dict.values())
 
     ax.pie(sizes, labels=labels, autopct=lambda pct: actual_value_labels(pct, sizes), startangle=140)
-    ax.set_title(title)
+    if title is not None:
+        ax.set_title(title)
 
 def display_liquidity(ax, lrna_dict, lrna_price, title):
     tvls = {tkn: lrna_dict[tkn] * lrna_price for tkn in lrna_dict}
