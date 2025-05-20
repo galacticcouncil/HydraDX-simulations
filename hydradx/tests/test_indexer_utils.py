@@ -8,7 +8,7 @@ from mpmath import mp, mpf
 import os
 os.chdir('../..')
 
-from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_fee_history, get_executed_trades
+from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
 
 
 def test_get_latest_stableswap_data():
@@ -44,4 +44,12 @@ def test_get_executed_trades():
     min_block_id = 7400000
     max_block_id = 7401000
     data = get_executed_trades(asset_ids, min_block_id, max_block_id)
+    print("done")
+
+
+def test_get_stableswap_liquidity_events():
+    pool_id = 102
+    min_block_id = 7400000
+    max_block_id = 7401000
+    data = get_stableswap_liquidity_events(pool_id, min_block_id, max_block_id)
     print("done")

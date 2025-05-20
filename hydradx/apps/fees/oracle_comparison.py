@@ -5,7 +5,7 @@ import csv
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
-from hydradx.model.indexer_utils import get_executed_trades
+from hydradx.model.indexer_utils import get_executed_trades, get_omnipool_asset_data
 
 filename = 'DOTUSD_oracle_prices.csv'
 file_path = os.path.join(project_root, 'hydradx', 'apps', 'fees', filename)
@@ -42,6 +42,11 @@ with c2:
     max_block = st.number_input(label='max block number', value=7040000, min_value=min_block_no, max_value=max_block_no)
     tkn_asset_id = st.number_input(label='Token asset id', value=5, min_value=0)
 assert denom_asset_id != tkn_asset_id, "Asset IDs must be different"
+
+test_data = get_omnipool_asset_data(min_block, max_block, [5, 102])
+
+
+
 all_trade_data = get_executed_trades([tkn_asset_id, denom_asset_id], min_block, max_block)
 trade_data = []
 for x in all_trade_data:

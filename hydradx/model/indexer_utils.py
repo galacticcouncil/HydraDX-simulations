@@ -1,5 +1,9 @@
 import requests
 
+URL_UNIFIED_PROD = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+URL_OMNIPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
+URL_STABLEPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+
 class AssetInfo:
     def __init__(
             self,
@@ -33,7 +37,6 @@ def query_indexer(url: str, query: str, variables: dict = None) -> dict:
 
 
 def get_asset_info_by_ids(asset_ids: list) -> dict:
-    url1 = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
     asset_query = """
     query assetInfoByAssetIds($assetIds: [String!]!) {
@@ -54,7 +57,7 @@ def get_asset_info_by_ids(asset_ids: list) -> dict:
 
     # Send POST request to the GraphQL API
     variables = {'assetIds': [f"{asset_id}" for asset_id in asset_ids]}
-    return_val = query_indexer(url1, asset_query, variables)
+    return_val = query_indexer(URL_OMNIPOOL_STORAGE, asset_query, variables)
     asset_data = return_val['data']['assets']['nodes']
     dict_data = {}
     for asset in asset_data:
@@ -76,7 +79,6 @@ def get_omnipool_asset_data(
         max_block_id: int,
         asset_ids: list = None
 ) -> list:
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
 
     variables = {
         "minBlock": min_block_id,
@@ -143,7 +145,7 @@ def get_omnipool_asset_data(
 
     while has_next_page:
         variables["after"] = after_cursor
-        data = query_indexer(url, query, variables)
+        data = query_indexer(URL_OMNIPOOL_STORAGE, query, variables)
         page_data = data['data']['omnipoolAssetData']['nodes']
         data_all.extend(page_data)
         page_info = data['data']['omnipoolAssetData']['pageInfo']
@@ -198,7 +200,6 @@ def get_stableswap_asset_data(
         min_block_id: int,
         max_block_id: int
 ) -> list:
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
 
     stableswap_query = """
     query MyQuery($pool_id: Int!, $min_block: Int!, $max_block: Int!) {
@@ -226,7 +227,7 @@ def get_stableswap_asset_data(
     }
     """
     variables = {"pool_id": pool_id, "min_block": min_block_id, "max_block": max_block_id}
-    data = query_indexer(url, stableswap_query, variables)
+    data = query_indexer(URL_STABLEPOOL_STORAGE, stableswap_query, variables)
     return data['data']['stablepools']['nodes']
 
 
@@ -240,7 +241,6 @@ def get_stableswap_data_by_block(
 def get_latest_stableswap_data(
         pool_id: int
 ):
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
 
     latest_block_query = """
     query MaxHeightQuery {
@@ -252,7 +252,7 @@ def get_latest_stableswap_data(
     }
     """
 
-    data = query_indexer(url, latest_block_query)
+    data = query_indexer(URL_STABLEPOOL_STORAGE, latest_block_query)
 
     latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
@@ -278,7 +278,6 @@ def get_latest_stableswap_data(
 
 
 def get_stablepool_ids():
-    url = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
 
     stablepool_query = """
     query MyQuery {
@@ -290,13 +289,12 @@ def get_stablepool_ids():
     }
     """
 
-    data = query_indexer(url, stablepool_query)
+    data = query_indexer(URL_STABLEPOOL_STORAGE, stablepool_query)
     pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
     return pool_ids
 
 
 def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
-    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
 
     if max_block is None:
         latest_block_query = """
@@ -308,7 +306,7 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
           }
         }
         """
-        data = query_indexer(url, latest_block_query)
+        data = query_indexer(URL_UNIFIED_PROD, latest_block_query)
         max_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
 
     fee_query = """
@@ -364,7 +362,7 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
 
     while has_next_page:
         variables["after"] = after_cursor
-        data = query_indexer(url, fee_query, variables)
+        data = query_indexer(URL_UNIFIED_PROD, fee_query, variables)
         page_data = data['data']['swaps']['nodes']
         data_all.extend(page_data)
         page_info = data['data']['swaps']['pageInfo']
@@ -372,6 +370,7 @@ def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
         after_cursor = page_info['endCursor']
 
     return data_all
+
 
 def get_fee_pcts(data, asset_id):
     fee_pcts = [
@@ -382,8 +381,8 @@ def get_fee_pcts(data, asset_id):
     ]
     return fee_pcts
 
+
 def get_executed_trades(asset_ids, min_block: int, max_block: int):
-    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
 
     executed_trades_query = """
     query executed_trade_query(
@@ -434,7 +433,7 @@ def get_executed_trades(asset_ids, min_block: int, max_block: int):
 
     while has_next_page:
         variables["after"] = after_cursor
-        data = query_indexer(url, executed_trades_query, variables)
+        data = query_indexer(URL_UNIFIED_PROD, executed_trades_query, variables)
         page_data = data['data']['routedTrades']['nodes']
         data_all.extend(page_data)
         page_info = data['data']['routedTrades']['pageInfo']
@@ -457,3 +456,55 @@ def get_executed_trades(asset_ids, min_block: int, max_block: int):
     ]
 
     return trade_data
+
+
+def get_stableswap_liquidity_events(pool_id: int, min_block: int, max_block: int):
+
+    events_query = """
+    query MyQuery(
+      $first: Int!, $after: Cursor,
+      $poolId: String!, $minBlock: Int!, $maxBlock: Int!
+    ) {
+      stableswapLiquidityEvents(
+        first: $first,
+        after: $after,
+        orderBy: PARA_BLOCK_HEIGHT_ASC
+        filter: {poolId: {equalTo: $poolId}, paraBlockHeight: {greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock}}
+      ) {
+        nodes {
+          sharesAmount
+          actionType
+          paraBlockHeight
+          stableswapAssetLiquidityAmountsByLiquidityActionId {
+            nodes {
+              amount
+              assetId
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+    """
+
+    variables = {"poolId": str(pool_id), "minBlock": min_block, "maxBlock": max_block}
+
+    data_all = []
+    has_next_page = True
+    after_cursor = None
+    page_size = 10000
+    variables["first"] = page_size
+
+    while has_next_page:
+        variables["after"] = after_cursor
+        data = query_indexer(URL_UNIFIED_PROD, events_query, variables)
+        page_data = data['data']['stableswapLiquidityEvents']['nodes']
+        data_all.extend(page_data)
+        page_info = data['data']['stableswapLiquidityEvents']['pageInfo']
+        has_next_page = page_info['hasNextPage']
+        after_cursor = page_info['endCursor']
+
+    return data_all
