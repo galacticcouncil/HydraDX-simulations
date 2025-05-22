@@ -1,3 +1,4 @@
+import json
 import requests
 
 URL_UNIFIED_PROD = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
@@ -28,6 +29,9 @@ class AssetInfo:
 
 def query_indexer(url: str, query: str, variables: dict = None) -> dict:
     response = requests.post(url, json={'query': query, 'variables': variables})
+    while response.status_code == 504:
+        print("504 error, retrying...")
+        response = requests.post(url, json={'query': query, 'variables': variables})
     if response.status_code != 200:
         raise ValueError(f"Query failed with status code {response.status_code}")
     return_val = response.json()
@@ -140,10 +144,12 @@ def get_omnipool_asset_data(
     data_all = []
     has_next_page = True
     after_cursor = None
-    page_size = 10000
+    page_size = 1000
     variables["first"] = page_size
 
+    i = 0
     while has_next_page:
+        print(f'Fetching page {i}...')
         variables["after"] = after_cursor
         data = query_indexer(URL_OMNIPOOL_STORAGE, query, variables)
         page_data = data['data']['omnipoolAssetData']['nodes']
@@ -151,6 +157,7 @@ def get_omnipool_asset_data(
         page_info = data['data']['omnipoolAssetData']['pageInfo']
         has_next_page = page_info['hasNextPage']
         after_cursor = page_info['endCursor']
+        i += 1
     return data_all
 
 
@@ -495,10 +502,12 @@ def get_stableswap_liquidity_events(pool_id: int, min_block: int, max_block: int
     data_all = []
     has_next_page = True
     after_cursor = None
-    page_size = 10000
+    page_size = 1000
     variables["first"] = page_size
 
+    i = 0
     while has_next_page:
+        print(f'Fetching page {i}...')
         variables["after"] = after_cursor
         data = query_indexer(URL_UNIFIED_PROD, events_query, variables)
         page_data = data['data']['stableswapLiquidityEvents']['nodes']
@@ -506,5 +515,23 @@ def get_stableswap_liquidity_events(pool_id: int, min_block: int, max_block: int
         page_info = data['data']['stableswapLiquidityEvents']['pageInfo']
         has_next_page = page_info['hasNextPage']
         after_cursor = page_info['endCursor']
+        i += 1
 
     return data_all
+
+
+def download_stableswap_exec_prices(pool_id: int, tkn_id: int, min_block: int, max_block: int, path: str):
+    data = get_stableswap_liquidity_events(pool_id, min_block, max_block)
+    prices_by_block = {}
+    for tx in data:
+        liq_data = tx['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes']
+        if len(liq_data) == 1 and int(liq_data[0]['assetId']) == tkn_id:
+            block_no = int(tx['paraBlockHeight'])
+            if block_no not in prices_by_block:
+                prices_by_block[block_no] = []
+            prices_by_block[block_no].append(int(liq_data[0]['amount']) / int(tx['sharesAmount']))
+    avg_price_by_block = {}
+    for block_no in prices_by_block:
+        avg_price_by_block[block_no] = sum(prices_by_block[block_no]) / len(prices_by_block[block_no])
+    with open(f"{path}stableswap_exec_prices_{pool_id}_{tkn_id}_{min_block}_{max_block}.json", "w") as f:
+        json.dump(avg_price_by_block, f)

@@ -53,3 +53,17 @@ def test_get_stableswap_liquidity_events():
     max_block_id = 7401000
     data = get_stableswap_liquidity_events(pool_id, min_block_id, max_block_id)
     print("done")
+
+
+def test_download_stableswap_exec_prices():
+    from hydradx.model.indexer_utils import download_stableswap_exec_prices
+    pool_id = 102
+    tkn_id = 10
+    min_block_id = 6439661
+    max_block_id = 7430169
+    print(os.getcwd())
+
+    path = "hydradx/apps/fees/"
+    download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
+
+    print("done")

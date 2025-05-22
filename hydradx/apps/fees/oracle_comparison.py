@@ -2,6 +2,7 @@ from matplotlib import pyplot as plt
 import sys, os
 import streamlit as st
 import csv
+import numpy as np
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
@@ -27,6 +28,7 @@ with open(file_path, 'r') as file:
 
 max_block_no = data[0]['block_number']
 min_block_no = data[-1]['block_number']
+st.text(f"Min block: {min_block_no}, Max block: {max_block_no}")
 
 # HDX: 0
 # H20: 1
@@ -51,6 +53,7 @@ usdt_execution_data = [
     x for x in stableswap_execution_data if (
             len(x['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes']) == 1
             and x['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['assetId'] == '10'
+            and int(x['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['amount']) > 0
     )
 ]
 
@@ -69,14 +72,14 @@ for block_no in usdt_exec_prices:
 # sort by block_number
 sorted_avg_exec_prices = sorted(avg_exec_prices.items(), key=lambda x: x[0])
 
-last_block_no, last_price = sorted_avg_exec_prices[0]
-ss_exec_prices = [last_price] * (last_block_no - min_block + 1)
-for (block_no, price) in sorted_avg_exec_prices[1:]:
-    ss_exec_prices.extend([price] * (block_no - last_block_no))
+ss_exec_prices = []
+last_block_no = min_block
+last_price = sorted_avg_exec_prices[0][1]
+for (block_no, price) in sorted_avg_exec_prices:
+    ss_exec_prices.extend([last_price] * (block_no - last_block_no))
     last_block_no = block_no
-if last_block_no < max_block:
-    price = sorted_avg_exec_prices[-1][1]
-    ss_exec_prices.extend([price] * (max_block - last_block_no))
+    last_price = price
+ss_exec_prices.extend([last_price] * (max_block - last_block_no + 1))
 assert len(ss_exec_prices) == (max_block - min_block + 1)
 
 omnipool_data = get_omnipool_asset_data(min_block, max_block, [tkn_asset_id, 102])
@@ -115,25 +118,43 @@ for block_no in oracle_prices:
     avg_oracle_prices[block_no] = sum(oracle_prices[block_no]) / len(oracle_prices[block_no])
 # sort by block_number
 sorted_avg_oracle_prices = sorted(avg_oracle_prices.items(), key=lambda x: x[0])
-last_block_no, last_price = sorted_avg_oracle_prices[0]
-interp_oracle_prices = [last_price] * (last_block_no - min_block + 1)
-for (block_no, price) in sorted_avg_oracle_prices[1:]:
-    interp_oracle_prices.extend([price] * (block_no - last_block_no))
+interp_oracle_prices = []
+last_block_no = min_block
+last_price = sorted_avg_oracle_prices[0][1]
+for (block_no, price) in sorted_avg_oracle_prices:
+    interp_oracle_prices.extend([last_price] * (block_no - last_block_no))
     last_block_no = block_no
-if last_block_no < max_block:
-    price = sorted_avg_oracle_prices[-1][1]
-    interp_oracle_prices.extend([price] * (max_block - last_block_no))
+    last_price = price
+interp_oracle_prices.extend([last_price] * (max_block - last_block_no + 1))
 assert len(interp_oracle_prices) == (max_block - min_block + 1)
 
 
 # plot
 fig, ax = plt.subplots()
-# ax.step([x[0] for x in sorted_avg_oracle_prices], [x[1] for x in sorted_avg_oracle_prices], label='oracle price')
-# ax.step([x[0] for x in price_of_tkn_in_usdt], [x[1] for x in price_of_tkn_in_usdt], label='execution price')
 ax.plot(range(min_block, max_block + 1), interp_oracle_prices, label='oracle price')
 ax.plot(range(min_block, max_block + 1), price_of_tkn_in_usdt, label='spot price')
 ax.set_title("Oracle price vs spot price")
 ax.set_xlabel("Block number")
 ax.set_ylabel("Price")
 ax.legend()
+st.pyplot(fig)
+
+spot_prices = np.array(price_of_tkn_in_usdt)
+oracle_prices = np.array(interp_oracle_prices)
+correlations = []
+max_tau = 100
+for tau in range(1, max_tau + 1):
+    n = len(spot_prices) - tau
+    D = np.log(oracle_prices[:n] / spot_prices[:n])
+    R = np.log(spot_prices[tau:] / spot_prices[:n])
+    corr = np.corrcoef(D, R)[0, 1]
+    correlations.append(corr)
+
+# plot
+fig, ax = plt.subplots()
+ax.plot(range(1, max_tau + 1), correlations)
+ax.set_title('Cross-Correlation: Oracle Returns → Future AMM Returns')
+ax.set_xlabel('Lag (time steps)')
+ax.set_ylabel('Correlation coefficient')
+ax.grid(True)
 st.pyplot(fig)
