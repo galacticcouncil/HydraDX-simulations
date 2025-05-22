@@ -142,3 +142,7 @@ def test_get_slippage_dict():
 
 def test_hsm():
     from hydradx.apps.stability_module.hsm import hollar_burned
+
+
+def test_toxic_debt():
+    from hydradx.apps.money_market import toxic_debt
