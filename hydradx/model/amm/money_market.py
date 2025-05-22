@@ -1,4 +1,6 @@
 import copy
+from typing import Callable
+
 from .agents import Agent
 from .exchange import Exchange
 
@@ -79,6 +81,7 @@ class MoneyMarket(Exchange):
             cdps: list = None,
             full_liquidation_threshold: float = 0.95,
             close_factor: float = 0.5,
+            oracle_source: Callable[[str], float] = None,
             unique_id: str = 'money_market',
     ):
         super().__init__()
@@ -109,6 +112,8 @@ class MoneyMarket(Exchange):
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
+        self.oracle_source = oracle_source
+        self.time_step = 0
         self.unique_id = unique_id
 
     def __repr__(self):
@@ -127,6 +132,12 @@ class MoneyMarket(Exchange):
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def update(self):
+        self.time_step += 1
+        if self.oracle_source:
+            for tkn in self.asset_list:
+                self.prices[tkn] = self.oracle_source(tkn)
 
     def add_new_asset(self, new_asset: MoneyMarketAsset):
         self.liquidity[new_asset.name] = new_asset.liquidity
@@ -341,9 +352,6 @@ class MoneyMarket(Exchange):
     def value_assets(self, assets: dict[str: float], numeraire: str = None) -> float:
         return sum([assets[tkn] * self.price(tkn, numeraire) for tkn in assets])
 
-    def update(self):
-        pass
-
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
         if self.partial_liquidation_pct < 0 or self.partial_liquidation_pct > 1:
@@ -417,3 +425,9 @@ class MoneyMarket(Exchange):
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = 0):
         return self.price(tkn_sell, tkn_buy) * (1 - fee)
+
+    def buy_limit(self, tkn_buy: str, tkn_sell: str):
+        return self.liquidity[tkn_buy] - self.borrowed[tkn_buy]
+
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_sell]
