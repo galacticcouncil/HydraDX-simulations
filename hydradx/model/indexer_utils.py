@@ -144,7 +144,7 @@ def get_omnipool_asset_data(
     data_all = []
     has_next_page = True
     after_cursor = None
-    page_size = 1000
+    page_size = 2000
     variables["first"] = page_size
 
     i = 0
@@ -152,6 +152,7 @@ def get_omnipool_asset_data(
         print(f'Fetching page {i}...')
         variables["after"] = after_cursor
         data = query_indexer(URL_OMNIPOOL_STORAGE, query, variables)
+        print(f'Processing page {i}...')
         page_data = data['data']['omnipoolAssetData']['nodes']
         data_all.extend(page_data)
         page_info = data['data']['omnipoolAssetData']['pageInfo']
@@ -535,3 +536,31 @@ def download_stableswap_exec_prices(pool_id: int, tkn_id: int, min_block: int, m
         avg_price_by_block[block_no] = sum(prices_by_block[block_no]) / len(prices_by_block[block_no])
     with open(f"{path}stableswap_exec_prices_{pool_id}_{tkn_id}_{min_block}_{max_block}.json", "w") as f:
         json.dump(avg_price_by_block, f)
+
+
+def download_omnipool_spot_prices(tkn_id: int, denom_id: int, min_block: int, max_block: int, path: str):
+    data = get_omnipool_asset_data(min_block, max_block, [denom_id, tkn_id])
+    assert len(data) == 2 * (max_block - min_block + 1)
+    asset_info = get_asset_info_by_ids([tkn_id, denom_id])
+    tkn_decimals = asset_info[tkn_id].decimals
+    denom_decimals = asset_info[denom_id].decimals
+    prices = {}
+    prev_block = None
+    for i in range(max_block - min_block + 1):
+        tkn_i = 2 * i + (0 if data[2 * i]['assetId'] == tkn_id else 1)
+        denom_i = 2 * i + (0 if data[2 * i]['assetId'] == denom_id else 1)
+        data_tkn = data[tkn_i]
+        data_denom = data[denom_i]
+        assert data_tkn['paraChainBlockHeight'] == data_denom['paraChainBlockHeight'], "Block number must match"
+        block_no = int(data_tkn['paraChainBlockHeight'])
+        assert block_no == min_block + i, "Block number must be sequential"
+        hub_price_of_tkn = int(data_tkn['assetState']['hubReserve']) / int(data_tkn['balances']['free'])
+        hub_price_of_denom = int(data_denom['assetState']['hubReserve']) / int(data_denom['balances']['free'])
+        price = hub_price_of_tkn / hub_price_of_denom * 10 ** (tkn_decimals - denom_decimals)
+        if prev_block is not None and prices[prev_block] == price:
+            continue
+        prices[block_no] = price
+        prev_block = block_no
+
+    with open(f"{path}omnipool_spot_prices_{denom_id}_{tkn_id}_{min_block}_{max_block}.json", "w") as f:
+        json.dump(prices, f)
