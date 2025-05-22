@@ -1,18 +1,22 @@
+import copy
+
 from matplotlib import pyplot as plt
 import sys, os, math
 import streamlit as st
 import time
 
+
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
 from hydradx.model.amm.global_state import GlobalState
-# from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
-# from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
+from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps, TradeStrategy, general_arbitrage
 from hydradx.model.processing import get_current_money_market, get_stableswap_data, Pool
 from hydradx.model.amm.agents import Agent
+from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.run import run
 from hydradx.model.amm.trade_strategies import constant_swaps
 from hydradx.model.indexer_utils import get_current_omnipool, get_asset_info
@@ -32,60 +36,69 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     cache_time = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"Cache miss! Loading omnipool at {cache_time}")
     omnipool = get_current_omnipool()
-    mm = get_current_money_market()
-    lrna_price = mm.price('DOT') / omnipool.lrna_price('DOT')
 
     asset_info = get_asset_info()
-    stable_swaps = get_stableswap_data()
-
-    for pool in stable_swaps.values():
-        pool_name = asset_info[pool.pool_id].name
-        pool_total = sum([
-            int(value) / 10 ** asset_info[tkn].decimals for tkn, value in pool.reserves.items()
-        ])
-        for tkn in pool.assets:
-            tkn_name = asset_info[tkn.asset_id].symbol
-            liquidity = (
-                int(pool.reserves[tkn.asset_id]) / 10 ** tkn.decimals if tkn.asset_id in pool.reserves
-                else pool.shares / 10 ** tkn.decimals / len(pool.assets)
-            )
-            if tkn_name in mm.asset_list:
-                lrna = liquidity * mm.price(tkn_name) / lrna_price
-            elif tkn_name in omnipool.asset_list:
-                lrna = liquidity / omnipool.lrna_price(tkn_name)
-            elif pool_name in omnipool.asset_list:
-                lrna = liquidity / pool_total * omnipool.lrna[pool_name]
-            else:
-                lrna = 0  # no data
-
-            if tkn_name not in omnipool.asset_list:
-                omnipool.add_token(
-                    tkn=tkn_name,
-                    liquidity=liquidity,
-                    lrna=lrna
-                )
-            else:
-                omnipool.liquidity[tkn_name] += liquidity
-                omnipool.lrna[tkn_name] += lrna
-                omnipool.shares[tkn_name] += liquidity
-                omnipool.protocol_shares[tkn_name] += liquidity
-
-    gigadot_info = stable_swaps[690]
-    gigadot_liquidity = gigadot_info.shares / 10 ** 18
-    pool_price = sum(mm.price(tkn) for tkn in ['DOT', 'vDOT']) / 2  # best guess
-    omnipool.add_token(
-        tkn='2-Pool-GDOT',
-        liquidity=gigadot_liquidity,
-        lrna=gigadot_liquidity * pool_price / lrna_price,
-        shares=gigadot_liquidity,
+    stable_swap_data = get_stableswap_data()
+    stableswap_pools = []
+    usd_price_lrna = (
+        1 / omnipool.lrna_price('2-Pool-Stbl') / stable_swap_data[102].shares * 10 ** 18
+        * sum([int(v) / 10 ** asset_info[k].decimals for k, v in stable_swap_data[102].reserves.items()])
     )
+    omnipool.add_token(
+        'USD', liquidity = usd_price_lrna, lrna=1
+    ).stablecoin = 'USD'
+    for pool in stable_swap_data.values():
+        pool_name = asset_info[pool.pool_id].name
+        if pool.pool_id == 690:
+            peg = omnipool.lrna_price('vDOT') / omnipool.lrna_price('DOT')
+            shares = pool.shares / 10 ** 18
+            tokens = {
+                'DOT': shares * peg / (1 + peg),
+                'vDOT': shares / (1 + peg),
+            }
+        else:
+            tokens={
+                asset_info[tkn_id].symbol:
+                    int(pool.reserves[tkn_id]) / 10 ** asset_info[tkn_id].decimals
+                for tkn_id in pool.reserves
+            }
+            peg = None
+        stableswap_pools.append(
+            StableSwapPoolState(
+                tokens=tokens,
+                peg=peg,
+                amplification=pool.final_amplification,
+                trade_fee=pool.fee,
+                unique_id=pool_name,
+            )
+        )
+
+    mm = get_current_money_market()
+    # mm = MoneyMarket(
+    #     assets=[
+    #         MoneyMarketAsset(
+    #             'DOT', omnipool.usd_price('DOT'), 0.7, 0.01, 0.01
+    #         ),
+    #         MoneyMarketAsset(
+    #             'vDOT', omnipool.usd_price('vDOT'), 0.7, 0.01, 0.01
+    #         ),
+    #         MoneyMarketAsset(
+    #             name='2-Pool-GDOT',
+    #             price=(omnipool.usd_price('DOT') + omnipool.usd_price('vDOT')) / 2,
+    #             liquidation_threshold=0.7,
+    #             liquidation_bonus=0.01
+    #         ),
+    #     ],
+    #     unique_id='money_market',
+    # )
+
     print("Finished downloading data.")
-    return OmnipoolRouter([omnipool, mm]), cache_time
+    return OmnipoolRouter(exchanges=[omnipool, mm, *stableswap_pools], unique_id='router'), cache_time
 
 
 def trade_to_price(pool, tkn_sell, target_price):
     # this is the target price in USD - convert to LRNA
-    target_price_lrna = target_price * pool.lrna_price('USDT')
+    target_price_lrna = target_price / pool.lrna_price('USD')
     k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
     print(target_price_lrna)
     target_x = math.sqrt(k / target_price_lrna)
@@ -95,10 +108,11 @@ def trade_to_price(pool, tkn_sell, target_price):
 
 def update_prices(state):
     prices = {
-        tkn: state.pools['omnipool'].usd_price(tkn, 'USDT')
+        tkn: state.pools['omnipool'].usd_price(tkn)
         for tkn in list(set(state.pools['money_market'].prices) & set(omnipool.asset_list))
     }
     state.pools['money_market'].prices.update(prices)
+
 
 def schedule_swaps(swaps: list[list[dict]]):
     class Strategy:
@@ -123,7 +137,9 @@ def schedule_swaps(swaps: list[list[dict]]):
     return TradeStrategy(Strategy('omnipool').execute, name="scheduled_swaps")
 
 router, cache_timestamp = load_omnipool_router()
-omnipool, mm = router.exchanges.values()
+omnipool = router.exchanges['omnipool']
+mm = router.exchanges['money_market']
+stableswaps = [exchange for exchange in router.exchanges.values() if isinstance(exchange, StableSwapPoolState)]
 st.sidebar.info(f"Data loaded at: {cache_timestamp}")
 
 price_change_defaults = {
@@ -132,6 +148,8 @@ price_change_defaults = {
 price_change_defaults.update({
     'DOT': -75,
 })
+start_price = {tkn: mm.price(tkn) for tkn in list(set(mm.asset_list) & set(omnipool.asset_list))}
+
 with st.sidebar:
     time_steps = st.number_input(
         label="Time Steps",
@@ -146,20 +164,18 @@ with st.sidebar:
             max_value=1000,
             value=price_change_defaults[tkn],
             key=tkn
-        ) for tkn in mm.asset_list
+        ) for tkn in start_price
     }
 
-start_price = {tkn: omnipool.price(tkn, 'USDT') for tkn in mm.asset_list}
-
 # calculate price path from start price to crash price
-final_price = {tkn: start_price[tkn] * (1 + price_factor[tkn] / 100) for tkn in mm.asset_list}
+final_price = {tkn: start_price[tkn] * (1 + price_factor[tkn] / 100) for tkn in start_price}
 prices = {
     tkn: [
         start_price[tkn]] + [start_price[tkn] - (start_price[tkn] - final_price[tkn]) * ((i + 1) / time_steps)
         for i in range(time_steps)
-    ] for tkn in mm.asset_list
+    ] for tkn in start_price
 }
-full_trades = {tkn: [trade_to_price(omnipool, tkn, price) for price in prices[tkn]] for tkn in mm.asset_list}
+full_trades = {tkn: [trade_to_price(omnipool, tkn, price) for price in prices[tkn]] for tkn in start_price}
 trade_sequence = [
     [
         {
@@ -170,13 +186,28 @@ trade_sequence = [
             'tkn_sell': 'LRNA',
             'tkn_buy': tkn,
             'buy_quantity': full_trades[tkn][i] - full_trades[tkn][i - 1]
-        } for tkn in mm.asset_list
+        } for tkn in start_price
     ] for i in range(1, time_steps + 1)
 ]
-omnipool_sim = omnipool.copy()
+trade_sequence.extend([trade_sequence[-1]] * 30)
+time_steps = len(trade_sequence)
+omnipool_sim = copy.deepcopy(omnipool)
 mm_sim = mm.copy()
+binance = FixedPriceExchange(
+    tokens={
+        tkn: omnipool.usd_price(tkn)
+        if tkn in omnipool.asset_list
+        else mm.price(tkn)
+        for tkn in list(set(omnipool.asset_list + mm.asset_list))
+    }, unique_id='binance'
+)
+
+config_list = [
+    {'exchanges': {'omnipool': ['DOT', 'vDOT'], '2-Pool-GDOT': ['aDOT', 'vDOT']}, 'buffer': 0.001},
+]
+
 initial_state = GlobalState(
-    pools=[mm_sim, omnipool_sim],
+    pools=[router, mm_sim, omnipool_sim, binance, *stableswaps],
     agents={
         'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
         'panic seller': Agent(
@@ -186,7 +217,8 @@ initial_state = GlobalState(
         'arbitrageur': Agent(
             enforce_holdings=False,
             trade_strategy=general_arbitrage(
-                exchanges=[mm_sim, omnipool_sim]
+                exchanges=[omnipool, stableswaps[-1]],
+                config=config_list
             )
         )
     },
@@ -215,11 +247,11 @@ ax1.plot([
 ax1.set_title("Toxic debt as a percentage of total debt")
 st.pyplot(fig1)
 
-for tkn in mm.asset_list:
+for tkn in start_price:
     fig, ax = plt.subplots()
     ax.set_xlabel("Time Steps")
     ax.set_ylabel(f"{tkn} price (USD)")
     ax.plot([
-        event.pools['omnipool'].price(tkn, 'USDT') for event in events
+        event.pools['router'].price(tkn, 'USDT') for event in events
     ])
     st.pyplot(fig)
