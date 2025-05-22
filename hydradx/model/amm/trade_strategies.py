@@ -7,7 +7,7 @@ from .basilisk_amm import ConstantProductPoolState
 from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
-from .arbitrage_agent_general import get_arb_swaps, execute_arb
+from .arbitrage_agent import get_arb_swaps, execute_arb
 from typing import Callable
 import random
 # from numbers import Number
@@ -1038,7 +1038,7 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
             return state
         agent: Agent = state.agents[agent_id]
         swaps = get_arb_swaps(
-            exchanges=state.pools,
+            exchanges={ex_name: state.pools[ex_name] for ex_name in config_pools},
             config=config,
             max_liquidity={
                 pool: copy.copy(agent.holdings) for pool in config_pools
