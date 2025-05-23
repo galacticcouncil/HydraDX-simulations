@@ -8,7 +8,7 @@ from mpmath import mp, mpf
 import os
 os.chdir('../..')
 
-from hydradx.model.hollar import StabilityModule
+from hydradx.model.hollar import StabilityModule, fast_hollar_arb_and_dump
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
@@ -515,3 +515,43 @@ def test_hsm_max_liquidity():
     hsm.swap(agent, 'HOLLAR', 'SUSDS', sell_quantity=2_000_000)
     if not hsm.fail:
         raise ValueError("Swap should have failed")
+
+
+@given(
+    liq_ratio = st.floats(min_value=0.0001, max_value=0.8),
+    sell_amt = st.floats(min_value=1, max_value = 10_000)
+)
+def test_fast_hollar_arb_and_dump(liq_ratio, sell_amt):
+    liquidity = {'USDT': mpf(1_000_000)}
+    buyback_speed = 0.0002
+    hollar_liq = mpf(1_000_000)
+    stable_tokens = {'USDT': liq_ratio * hollar_liq, 'HOLLAR': hollar_liq}
+    amp = 100
+    swap_fee = 0.0  # our netting of opposite trades only works with 0 fee
+    peg = 1
+    ss = StableSwapPoolState(stable_tokens, amp, trade_fee=swap_fee, peg=peg, precision=0.00000001)
+    pools_list = [ss]
+    hsm = StabilityModule(liquidity, buyback_speed, pools_list)
+    agent = Agent(enforce_holdings=False)
+
+    simulated_hsm = copy.deepcopy(hsm)
+    simulated_agent = agent.copy()
+    fast_hollar_arb_and_dump(simulated_hsm, simulated_agent, sell_amt, 'USDT')
+
+    full_hsm = copy.deepcopy(hsm)
+    full_agent = agent.copy()
+    full_hsm.arb(full_agent, 'USDT')
+    full_hsm.pools['USDT'].swap(full_agent, tkn_sell='HOLLAR', tkn_buy='USDT', sell_quantity=sell_amt)
+
+    if full_agent.get_holdings('HOLLAR') != simulated_agent.get_holdings('HOLLAR'):
+        raise ValueError("Agent should have same holdings as simulated agent")
+    if full_agent.get_holdings('USDT') != pytest.approx(simulated_agent.get_holdings('USDT'), rel=1e-15):
+        raise ValueError("Agent should have same holdings as simulated agent")
+    if full_hsm.liquidity['USDT'] != simulated_hsm.liquidity['USDT']:
+        raise ValueError("HSM should have same liquidity as simulated hsm")
+    if full_hsm.pools['USDT'].liquidity['USDT'] != pytest.approx(simulated_hsm.pools['USDT'].liquidity['USDT'], rel=1e-15):
+        raise ValueError("Pool should have same liquidity as simulated pool")
+    if full_hsm.pools['USDT'].liquidity['HOLLAR'] != simulated_hsm.pools['USDT'].liquidity['HOLLAR']:
+        raise ValueError("Pool should have same liquidity as simulated pool")
+    if full_hsm.pools['USDT'].peg[1] != simulated_hsm.pools['USDT'].peg[1]:
+        raise ValueError("Pool peg should have same value as simulated pool")

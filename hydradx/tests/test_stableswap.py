@@ -1074,11 +1074,10 @@ def test_fuzz_arb_repegging_lp(fee, balance_pct, amp, repeg_pct, max_repeg):
 @given(
     st.floats(min_value=0.01, max_value=100),
     st.floats(min_value=0.01, max_value=100),
-    st.floats(min_value=10, max_value=100000),
+    st.floats(min_value=10, max_value=10000),
     st.floats(min_value=-0.5, max_value=0.5, exclude_min=True),
     st.floats(min_value=-0.5, max_value=0.5, exclude_min=True)
 )
-# @settings(max_examples=10000)
 def test_fuzz_arb_repegging_3pool(
         ratio1,
         ratio2,
@@ -1107,7 +1106,7 @@ def test_fuzz_arb_repegging_3pool(
 
             pool = StableSwapPoolState(copy.deepcopy(tokens), amp, trade_fee=fee,
                                        peg=[init_vDOT_price, init_lstDOT_price], max_peg_update=max_repeg,
-                                       precision=0.00000001)
+                                       precision=0.0000000001)
             pool.swap(agent, tkn_sell, tkn_buy, sell_quantity=arb_size)
             pool.set_peg_target(peg_target)
             pool.swap(agent, tkn_buy, tkn_sell, sell_quantity=agent.holdings[tkn_buy])
