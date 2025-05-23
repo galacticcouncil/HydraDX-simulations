@@ -73,15 +73,15 @@ def test_download_omnipool_spot_prices():
     denom_id = 102
     tkn_id = 5
     min_block_id = 6439661
-    max_block_id = 7430169
+    # max_block_id = 7430169  # this is desirable but takes too long for integration tests
+    max_block_id = min_block_id + 1000
     step_size = 50000
     print(os.getcwd())
 
-    path = "hydradx/apps/fees/"
+    path = "hydradx/apps/fees/data/"
     temp_max_block_id = min_block_id + step_size
     while min_block_id <= max_block_id:
         download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
         min_block_id = temp_max_block_id + 1
         temp_max_block_id += step_size
-    # download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, max_block_id, path)
     print("done")
