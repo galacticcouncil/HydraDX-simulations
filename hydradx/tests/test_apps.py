@@ -147,3 +147,23 @@ def test_hsm():
 def test_hollar_init_distro():
     from hydradx.apps.hollar.hollar_init_distro import run_script
     run_script()
+
+
+def test_changing_amp():
+    from hydradx.apps.gigadot_modeling import changing_amp
+
+
+def test_fees_volume_comp():
+    from hydradx.apps.fees import fees_volume_comp
+
+
+def test_hdx_buybacks():
+    from hydradx.apps.fees import hdx_buybacks
+
+
+def test_hdx_fees():
+    from hydradx.apps.fees import hdx_fees
+
+
+def test_oracle_comparison():
+    from hydradx.apps.fees import oracle_comparison

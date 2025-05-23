@@ -118,20 +118,17 @@ def test_omnipool_arbitrager(hdx_value, dot_value):
     state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
     strat = omnipool_arbitrage('omnipool')
 
-    old_holdings = {tkn: agent.get_holdings(tkn) for tkn in omnipool.asset_list + ['LRNA']}
-
     strat.execute(state, 'agent')
     new_holdings = {tkn: state.agents['agent'].get_holdings(tkn) for tkn in omnipool.asset_list + ['LRNA']}
 
-    old_value, new_value = 0, 0
+    new_value = 0
 
     if not omnipool.fail:  # high fees can break arbitrager, which initially calculates values without fees
         # Trading should result in net zero LRNA trades
-        if new_holdings['LRNA'] > 1e-10:
-            raise AssertionError(f'Arbitrageur has LRNA left over: {new_holdings["LRNA"]}')
+        if abs(new_holdings['LRNA']) >= 1e-10:
+            raise AssertionError(f'Arbitrageur traded LRNA. new: {new_holdings["LRNA"]}')
 
         for asset in omnipool.asset_list:
-            old_value += old_holdings[asset] * external_market[asset]
             new_value += new_holdings[asset] * external_market[asset]
 
             # Trading should bring pool to market price
@@ -139,9 +136,8 @@ def test_omnipool_arbitrager(hdx_value, dot_value):
             #     raise
 
         # Trading should be profitable
-        if old_value > new_value:
-            if new_value != pytest.approx(old_value, rel=1e-15):
-                raise AssertionError(f'Arbitrageur lost money. old_value: {old_value}, new_value: {new_value}')
+        if 0 > new_value:
+            raise AssertionError(f'Arbitrageur lost money. new_value: {new_value}')
 
 
 @given(frequency=st.integers(min_value=1, max_value=10))
