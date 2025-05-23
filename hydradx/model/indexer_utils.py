@@ -523,14 +523,18 @@ def get_stableswap_liquidity_events(pool_id: int, min_block: int, max_block: int
 
 def download_stableswap_exec_prices(pool_id: int, tkn_id: int, min_block: int, max_block: int, path: str):
     data = get_stableswap_liquidity_events(pool_id, min_block, max_block)
+    asset_info = get_asset_info_by_ids([tkn_id, pool_id])
+    decimals_tkn_id = asset_info[tkn_id].decimals
+    decimals_pool_id = asset_info[pool_id].decimals
     prices_by_block = {}
     for tx in data:
         liq_data = tx['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes']
-        if len(liq_data) == 1 and int(liq_data[0]['assetId']) == tkn_id:
+        if len(liq_data) == 1 and int(liq_data[0]['assetId']) == tkn_id and int(liq_data[0]['amount']) > 0:
             block_no = int(tx['paraBlockHeight'])
             if block_no not in prices_by_block:
                 prices_by_block[block_no] = []
-            prices_by_block[block_no].append(int(liq_data[0]['amount']) / int(tx['sharesAmount']))
+            price = int(liq_data[0]['amount']) / int(tx['sharesAmount']) * (10 ** (decimals_pool_id - decimals_tkn_id))
+            prices_by_block[block_no].append(price)
     avg_price_by_block = {}
     for block_no in prices_by_block:
         avg_price_by_block[block_no] = sum(prices_by_block[block_no]) / len(prices_by_block[block_no])

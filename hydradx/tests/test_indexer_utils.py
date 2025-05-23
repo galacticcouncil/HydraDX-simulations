@@ -60,10 +60,11 @@ def test_download_stableswap_exec_prices():
     pool_id = 102
     tkn_id = 10
     min_block_id = 6439661
-    max_block_id = 7430169
+    # max_block_id = 7430169  # this is desirable but takes too long for integration tests
+    max_block_id = min_block_id + 1000
     print(os.getcwd())
 
-    path = "hydradx/apps/fees/"
+    path = "hydradx/apps/fees/data/"
     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
     print("done")
 
