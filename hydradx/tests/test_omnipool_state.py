@@ -9,7 +9,8 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState, value_assets, DynamicFee
 from hydradx.tests.strategies_omnipool import reasonable_market_dict, omnipool_reasonable_config, reasonable_holdings
 from hydradx.tests.strategies_omnipool import reasonable_pct, asset_number_strategy
-from hydradx.model.processing import get_current_omnipool_router, save_omnipool, load_omnipool
+from hydradx.model.processing import save_omnipool, load_omnipool
+from hydradx.model.indexer_utils import get_current_omnipool_router
 from hydradx.tests.utils import find_test_directory
 
 
