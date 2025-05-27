@@ -333,7 +333,8 @@ def save_stableswap_data(pools: list[StableSwapPoolState], path: str = './archiv
             'tokens': state.liquidity,
             'amplification': state.amplification,
             'precision': state.precision,
-            'trade_fee': state.trade_fee
+            'trade_fee': state.trade_fee,
+            'peg': state.peg,
         }
         with open(f'{path}stableswap_data_{state.unique_id}_{ts}.json', 'w') as output_file:
             json.dump(json_state, output_file)
@@ -481,7 +482,8 @@ def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
                         'unique_id': pool.unique_id,
-                        'shares': pool.shares
+                        'shares': pool.shares,
+                        'peg': pool.peg[1:]
                     } for pool in stableswap_pools
                 ]
             },
@@ -517,7 +519,8 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolRouter
                 amplification=pool['amplification'],
                 trade_fee=float(pool['trade_fee']),
                 unique_id=pool['unique_id'],
-                shares=pool['shares']
+                shares=pool['shares'],
+                peg=pool.get('peg', None)
             )
             stableswaps.append(ss)
         router = OmnipoolRouter([omnipool, *stableswaps])
