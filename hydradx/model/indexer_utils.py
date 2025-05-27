@@ -3,6 +3,7 @@ import requests
 from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.processing import get_stableswap_data
 
 
 class AssetInfo:
@@ -327,10 +328,10 @@ def get_current_omnipool():
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
         if tkn not in asset_fee.current:
-            asset_fee.current[tkn] = 0
+            asset_fee.current[tkn] = 0.0
             asset_fee.last_updated[tkn] = current_block
         if tkn not in lrna_fee.current:
-            lrna_fee.current[tkn] = 0
+            lrna_fee.current[tkn] = 0.0
             lrna_fee.last_updated[tkn] = current_block
     omnipool = OmnipoolState(
         tokens={
@@ -395,9 +396,37 @@ def get_current_omnipool_fees(
             asset_fee.last_updated[tkn_buy] = block
     return asset_fee, lrna_fee
 
-def get_omnipool_router():
+
+def get_current_omnipool_router():
     omnipool = get_current_omnipool()
-    stableswap_pools = get_current_stableswap_pools()
+    asset_info = get_asset_info()
+    stable_swap_data = get_stableswap_data()
+    stableswap_pools = []
+    for pool in stable_swap_data.values():
+        pool_name = asset_info[pool.pool_id].name
+        if pool.pool_id == 690:
+            peg = omnipool.lrna_price('vDOT') / omnipool.lrna_price('DOT')
+            shares = pool.shares / 10 ** 18
+            tokens = {
+                'DOT': shares * peg / (1 + peg),
+                'vDOT': shares / (1 + peg),
+            }
+        else:
+            tokens={
+                asset_info[tkn_id].symbol:
+                    int(pool.reserves[tkn_id]) / 10 ** asset_info[tkn_id].decimals
+                for tkn_id in pool.reserves
+            }
+            peg = None
+        stableswap_pools.append(
+            StableSwapPoolState(
+                tokens=tokens,
+                peg=peg,
+                amplification=pool.final_amplification,
+                trade_fee=pool.fee,
+                unique_id=pool_name,
+            )
+        )
     # money_market = get_current_money_market()
 
     return OmnipoolRouter(
