@@ -19,7 +19,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.run import run
 from hydradx.model.amm.trade_strategies import constant_swaps
-from hydradx.model.indexer_utils import get_current_omnipool_router, get_asset_info
+from hydradx.model.indexer_utils import get_current_omnipool_router, get_asset_info_by_ids
 
 st.markdown("""
     <style>
@@ -38,7 +38,7 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     load_router = get_current_omnipool_router()
     load_omnipool = load_router.exchanges['omnipool']
 
-    asset_info = get_asset_info()
+    asset_info = get_asset_info_by_ids()
     stable_swap_data = get_stableswap_data()
     stableswap_pools = []
     usd_price_lrna = (

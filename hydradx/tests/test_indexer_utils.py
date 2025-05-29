@@ -10,7 +10,7 @@ import os
 os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
-    get_omnipool_asset_data, get_current_block_height, get_asset_info, get_current_omnipool, \
+    get_omnipool_asset_data, get_current_block_height, get_asset_info_by_ids, get_current_omnipool, \
     get_current_omnipool_router, get_fee_history, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
 
 def test_get_latest_stableswap_data():
@@ -34,9 +34,9 @@ def test_get_stablepool_ids():
 
 
 def test_get_omnipool_data():
-    info = get_asset_info()
+    info = get_asset_info_by_ids()
     current_block = get_current_block_height()
-    omnipool_assets = get_omnipool_asset_data(max_block_id=current_block, min_block_id=current_block - 10000)
+    omnipool_assets = get_omnipool_asset_data(max_block_id=current_block, min_block_id=current_block - 1000)
     ids = list(set([tkn['assetId'] for tkn in omnipool_assets]))
     # asset_data = get_asset_info_by_ids(ids)
     omnipool_liquidity = get_omnipool_liquidity(

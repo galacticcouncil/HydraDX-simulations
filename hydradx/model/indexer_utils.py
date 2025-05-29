@@ -46,7 +46,7 @@ def query_indexer(url: str, query: str, variables: dict = None) -> dict:
     return return_val
 
 
-def get_asset_info_by_ids(asset_ids: list) -> dict:
+def get_asset_info_by_ids(asset_ids: list = None) -> dict:
 
     asset_query = f"""
     query assetInfoByAssetIds{'($assetIds: [String!]!)' if asset_ids else ''} {{
@@ -68,7 +68,7 @@ def get_asset_info_by_ids(asset_ids: list) -> dict:
     """
 
     # Send POST request to the GraphQL API
-    variables = {'assetIds': [f"{asset_id}" for asset_id in asset_ids]}
+    variables = {'assetIds': [f"{asset_id}" for asset_id in asset_ids]} if asset_ids else None
     return_val = query_indexer(URL_OMNIPOOL_STORAGE, asset_query, variables)
     asset_data = return_val['data']['assets']['nodes']
     dict_data = {}
@@ -77,7 +77,7 @@ def get_asset_info_by_ids(asset_ids: list) -> dict:
             asset_type=asset['assetType'],
             decimals=int(asset['decimals'] if asset['decimals'] else 0),
             existential_deposit=int(asset['existentialDeposit']),
-            id=int(asset['id']),
+            id=asset['id'],
             is_sufficient=asset['isSufficient'],
             name=asset['name'],
             symbol=asset['symbol']
@@ -92,7 +92,7 @@ def get_omnipool_asset_data(
         asset_ids: list[int] = None
 ) -> list:
 
-    variables = {
+    variables: dict[str, object] = {
         "minBlock": min_block_id,
         "maxBlock": max_block_id
     }
@@ -125,7 +125,8 @@ def get_omnipool_asset_data(
     }}
     """
 
-    variables["assetIds"] = asset_ids
+    if asset_ids is not None:
+        variables["assetIds"] = asset_ids
 
     data_all = []
     has_next_page = True
@@ -174,7 +175,7 @@ def get_omnipool_liquidity(
         asset_info: list[AssetInfo] = None
 ):
     if asset_info is None:
-        asset_dict = get_asset_info(asset_ids + [1])
+        asset_dict = get_asset_info_by_ids(asset_ids + [1])
     else:
         asset_dict = {int(asset.id): asset for asset in asset_info}
     if asset_ids is None:
@@ -256,7 +257,19 @@ def get_latest_stableswap_data(
         pool_id: int
 ):
 
-    latest_block = get_current_block_height()
+    latest_block_query = """
+    query MaxHeightQuery {
+      maxHeightResult: stablepools(first: 1, orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC) {
+        nodes {
+          paraChainBlockHeight
+        }
+      }
+    }
+    """
+
+    data = query_indexer(URL_STABLEPOOL_STORAGE, latest_block_query)
+
+    latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
@@ -270,7 +283,7 @@ def get_latest_stableswap_data(
     }
 
     asset_id_list = [asset['assetId'] for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']]
-    asset_dict = get_asset_info(asset_id_list)
+    asset_dict = get_asset_info_by_ids(asset_id_list)
 
     for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']:
         asset_id = asset['assetId']
@@ -390,7 +403,7 @@ def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
         for pool in get_stablepool_ids()
     }
     if asset_info is None:
-        asset_info = get_asset_info()
+        asset_info = get_asset_info_by_ids()
     stableswap_pools = []
     for pool in stableswap_data.values():
         if min(pool['liquidity'].values()) > 0:
@@ -405,7 +418,7 @@ def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
     return stableswap_pools
 
 def get_current_omnipool():
-    asset_info = get_asset_info()
+    asset_info = get_asset_info_by_ids()
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
@@ -440,10 +453,10 @@ def get_current_omnipool():
 
 def get_current_omnipool_fees(
         asset_info: dict[int: AssetInfo] = None
-) -> tuple[dict[str, DynamicFee], dict[str: DynamicFee]]:
+) -> tuple[DynamicFee, DynamicFee]:
 
     if asset_info is None:
-        asset_info = get_asset_info()
+        asset_info = get_asset_info_by_ids()
     url = "https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql"
     query = """
         query MyQuery {
@@ -493,7 +506,7 @@ def get_current_omnipool_fees(
 
 def get_current_omnipool_router():
     omnipool = get_current_omnipool()
-    asset_info = get_asset_info()
+    asset_info = get_asset_info_by_ids()
     stable_swap_data = get_stableswap_data()
     stableswap_pools = []
     for pool in stable_swap_data.values():
