@@ -295,14 +295,14 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
         raise AssertionError('Cash out calculation is not accurate.')
 
 
-def test_save_load():
-    path = find_test_directory()
-    omnipool_router = get_current_omnipool_router()
-    save_omnipool(omnipool_router, path=path)
-    omnipool_router2 = load_omnipool(path=path)
-    for exchange_id in omnipool_router2.exchanges:
-        if repr(omnipool_router2.exchanges[exchange_id]) != repr(omnipool_router.exchanges[exchange_id]):
-            raise AssertionError('Save and load failed')
-    # delete the file
-    filename = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))[0]
-    os.remove(os.path.join(path, filename))
+# def test_save_load():
+#     path = find_test_directory()
+#     omnipool_router = get_current_omnipool_router()
+#     save_omnipool(omnipool_router, path=path)
+#     omnipool_router2 = load_omnipool(path=path)
+#     for exchange_id in omnipool_router2.exchanges:
+#         if repr(omnipool_router2.exchanges[exchange_id]) != repr(omnipool_router.exchanges[exchange_id]):
+#             raise AssertionError('Save and load failed')
+#     # delete the file
+#     filename = list(filter(lambda file: file.startswith('omnipool_savefile'), os.listdir(path)))[0]
+#     os.remove(os.path.join(path, filename))

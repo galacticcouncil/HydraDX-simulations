@@ -96,11 +96,17 @@ class StabilityModule:
         i_native_stable = pool.asset_list.index(self.native_stable)
         return pool.peg[i_tkn] / pool.peg[i_native_stable]
 
+    def _get_max_buy_amount(self, tkn: str) -> float:  # note this ignores self.max_buy_price_coef
+        imbalance = (self._pool_states[tkn].liquidity[self.native_stable]
+                     - self.get_peg(tkn) * self._pool_states[tkn].liquidity[tkn]) / 2
+        return max([self.buyback_speed[tkn] * imbalance, 0])
+
     def get_buy_params(self, tkn: str) -> tuple:
         pool = self._pool_states[tkn]
         peg = self.get_peg(tkn)
-        imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
-        max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
+        # imbalance = (pool.liquidity[self.native_stable] - peg * pool.liquidity[tkn]) / 2
+        # max_buy_amt = max([self.buyback_speed[tkn] * imbalance, 0])
+        max_buy_amt = self._get_max_buy_amount(tkn)
         sell_amt = pool.calculate_sell_from_buy(tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
         exec_price = sell_amt / max_buy_amt if max_buy_amt > 0 else 0
         buy_price = exec_price / (1 - self.buy_fee[tkn])
@@ -177,3 +183,34 @@ class StabilityModule:
         self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
         self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
         agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+
+
+def fast_hollar_arb_and_dump(
+        hsm: StabilityModule,
+        agent: Agent,
+        sell_amt: float,  # sell amount for this particular block
+        tkn_buy: str,
+        record: list = None  # allows user to request intermediate data to be recorded and returned
+) -> dict:
+    """
+    This function simulates an agent arbitraging the HSM against its stableswap pool, and then dumping Hollar
+    into the indicated pool. This simulation can be done more efficiently using this function than by calling
+    the arb and swap functions of the StabilityModule and StableSwapPoolState classes separately.
+    """
+    if record is None:
+        record = []
+    data = {k: None for k in record}
+    ss = hsm.pools[tkn_buy]
+    max_buy_amt = hsm._get_max_buy_amount(tkn_buy)  # note this ignores self.max_buy_price_coef
+    if 'max_buy_amt' in data:
+        data['max_buy_amt'] = max_buy_amt
+    hollar_buy_amt = max_buy_amt - sell_amt
+
+    agent.add(hsm.native_stable, max_buy_amt)  # flash mint Hollar for arb
+    hsm.swap(agent, tkn_buy=tkn_buy, tkn_sell=hsm.native_stable, sell_quantity=max_buy_amt)
+    if hollar_buy_amt > 0:
+        ss.swap(agent, tkn_buy=hsm.native_stable, tkn_sell=tkn_buy, buy_quantity=hollar_buy_amt)
+    elif hollar_buy_amt < 0:
+        ss.swap(agent, tkn_buy=tkn_buy, tkn_sell=hsm.native_stable, sell_quantity=-hollar_buy_amt)
+    agent.remove(hsm.native_stable, max_buy_amt)  # burn Hollar that was minted
+    return data
