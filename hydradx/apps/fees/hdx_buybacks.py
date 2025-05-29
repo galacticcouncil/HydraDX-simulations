@@ -18,7 +18,7 @@ with c1:
 with c2:
     total_blocks = st.number_input(
         "total block count",
-        min_value=0, max_value=99999999, value=400000, step=1, key="total_blocks", format="%d",
+        min_value=0, max_value=99999999, value=4000, step=1, key="total_blocks", format="%d",
         help="set to 0 to get latest data available"
     )
 

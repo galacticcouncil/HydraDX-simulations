@@ -1088,7 +1088,7 @@ def test_fuzz_arb_repegging_3pool(
     init_vDOT_price = 1
     init_lstDOT_price = 1
     arb_size = 1
-    fee = 0.0001
+    fee = 0.0002
     max_repeg = 0.001
 
     dot_liq = mpf(1000000)

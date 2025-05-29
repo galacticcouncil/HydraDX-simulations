@@ -12,7 +12,7 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState, simulate_swap
 from hydradx.model.amm.agents import Agent
 from hydradx.apps.gigadot_modeling.utils import get_omnipool_minus_vDOT, set_up_gigaDOT_3pool, set_up_gigaDOT_2pool, \
     create_custom_scenario, simulate_route, get_slippage_dict
-from hydradx.apps.gigadot_modeling.display_utils import display_liquidity, display_op_and_ss
+from hydradx.apps.display_utils import display_liquidity, display_op_and_ss
 from hydradx.model.indexer_utils import get_latest_stableswap_data
 
 trade_fee_input = st.number_input(

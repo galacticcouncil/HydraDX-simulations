@@ -23,7 +23,7 @@ with c2:
 with c3:
     max_block = st.number_input(
         "Maximum block ID",
-        min_value=0, max_value=99999999, value=0, step=1, key="max_block", format="%d",
+        min_value=0, max_value=99999999, value=7481000, step=1, key="max_block", format="%d",
         help="set to 0 to get latest data available"
     )
 
