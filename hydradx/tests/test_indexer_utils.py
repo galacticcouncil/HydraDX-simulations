@@ -5,7 +5,8 @@ import os
 os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
-    get_omnipool_asset_data, get_current_block_height, get_asset_info, get_current_omnipool, get_current_omnipool_router
+    get_omnipool_asset_data, get_current_block_height, get_asset_info, get_current_omnipool, \
+    get_current_omnipool_router, get_fee_history
 
 def test_get_latest_stableswap_data():
     """
