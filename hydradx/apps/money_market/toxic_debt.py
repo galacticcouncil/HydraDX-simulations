@@ -107,6 +107,8 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
 
 
 def trade_to_price(pool, tkn_sell, target_price):
+    if tkn_sell not in pool.liquidity:
+        return 0
     # this is the target price in USD - convert to LRNA
     target_price_lrna = target_price * pool.lrna_price('USD')
     k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
@@ -117,12 +119,13 @@ def trade_to_price(pool, tkn_sell, target_price):
 
 
 def update_prices(state):
-    prices = {
-        tkn: state.pools['omnipool'].usd_price(tkn)
-        for tkn in list(set(state.pools['money_market'].prices) & set(omnipool.asset_list))
-    }
-    state.pools['money_market'].prices.update(prices)
-    state.pools['binance'].prices.update(prices)
+    # prices = {
+    #     tkn: state.pools['omnipool'].usd_price(tkn)
+    #     for tkn in list(set(state.pools['money_market'].prices) & set(omnipool.asset_list))
+    # }
+    for tkn in prices:
+        state.pools['money_market'].prices[tkn] = prices[tkn][state.time_step - 1]
+        state.pools['binance'].prices[tkn] = prices[tkn][state.time_step - 1]
 
 
 def schedule_swaps(swaps: list[list[dict]]):
@@ -162,7 +165,7 @@ price_change_defaults.update({
 })
 start_price = {
     tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list else mm.price(tkn)
-    for tkn in list(set(mm.asset_list) & set(omnipool.asset_list))
+    for tkn in mm.asset_list
 }
 
 with st.sidebar:
@@ -201,10 +204,13 @@ trade_sequence = [
             'tkn_sell': 'LRNA',
             'tkn_buy': tkn,
             'buy_quantity': full_trades[tkn][i - 1] - full_trades[tkn][i]
-        } for tkn in start_price
+        } for tkn in list(set(omnipool.asset_list) & set(mm.asset_list))
     ] for i in range(1, time_steps + 1)
 ]
-trade_sequence.extend([[{'tkn_sell': tkn, 'tkn_buy': 'LRNA', 'sell_quantity': 0} for tkn in start_price]])
+trade_sequence.extend([[
+    {'tkn_sell': tkn, 'tkn_buy': 'LRNA', 'sell_quantity': 0}
+    for tkn in list(set(omnipool.asset_list) & set(mm.asset_list))
+]])
 time_steps = len(trade_sequence)
 omnipool_sim = copy.deepcopy(omnipool)
 mm_sim = mm.copy()
@@ -267,6 +273,9 @@ for tkn in start_price:
     ax.set_xlabel("Time Steps")
     ax.set_ylabel(f"{tkn} price (USD)")
     ax.plot([
-        event.pools['omnipool'].usd_price(tkn) for event in events
+        event.pools['omnipool'].usd_price(tkn)
+        if tkn in event.pools['omnipool'].asset_list
+        else event.pools['money_market'].price(tkn)
+        for event in events
     ])
     st.pyplot(fig)
