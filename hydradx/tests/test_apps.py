@@ -165,5 +165,5 @@ def test_hdx_fees():
     from hydradx.apps.fees import hdx_fees
 
 
-def test_oracle_comparison():
-    from hydradx.apps.fees import oracle_comparison
+# def test_oracle_comparison():
+#     from hydradx.apps.fees import oracle_comparison

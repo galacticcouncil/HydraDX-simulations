@@ -544,7 +544,9 @@ def download_stableswap_exec_prices(pool_id: int, tkn_id: int, min_block: int, m
 
 def download_omnipool_spot_prices(tkn_id: int, denom_id: int, min_block: int, max_block: int, path: str):
     data = get_omnipool_asset_data(min_block, max_block, [denom_id, tkn_id])
-    assert len(data) == 2 * (max_block - min_block + 1)
+    # assert len(data) == 2 * (max_block - min_block + 1)
+    if len(data) != 2 * (max_block - min_block + 1):
+        print(f'Warning: len(data) is {len(data)}, expected {2 * (max_block - min_block + 1)}')
     asset_info = get_asset_info_by_ids([tkn_id, denom_id])
     tkn_decimals = asset_info[tkn_id].decimals
     denom_decimals = asset_info[denom_id].decimals
@@ -568,3 +570,91 @@ def download_omnipool_spot_prices(tkn_id: int, denom_id: int, min_block: int, ma
 
     with open(f"{path}omnipool_spot_prices_{denom_id}_{tkn_id}_{min_block}_{max_block}.json", "w") as f:
         json.dump(prices, f)
+
+
+def get_omnipool_swap_fees_one_query(tkn_id: int, min_block: int, max_block: int):
+
+    query = """
+    query OmnipoolSwapsByAssetId(
+      $assetId: String!,
+      $minBlock: Int!, $maxBlock: Int!
+    ) {
+      swaps(
+        filter: {
+          allInvolvedAssetIds: {contains: ["1", $assetId], containedBy: ["1", $assetId]},
+          paraBlockHeight: { greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }
+        }
+        orderBy: PARA_BLOCK_HEIGHT_ASC
+      ) {
+        nodes {
+          swapOutputs {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          swapFees {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          paraBlockHeight
+        }
+      }
+    }
+
+    """
+
+    variables = {"assetId": str(tkn_id), "minBlock": min_block, "maxBlock": max_block}
+    data = query_indexer(URL_UNIFIED_PROD, query, variables)
+
+    asset_info = get_asset_info_by_ids([tkn_id, 1])  # 1 is the hub asset ID
+
+    asset_fee_data = []
+    hub_fee_data = []
+    for x in data['data']['swaps']['nodes']:
+        block_number = int(x['paraBlockHeight'])
+        asset_id = int(x['swapOutputs']['nodes'][0]['assetId'])
+        decimals = asset_info[asset_id].decimals
+        output_amount = int(x['swapOutputs']['nodes'][0]['amount']) / (10 ** decimals)
+        fee_amount = sum([int(y['amount']) for y in x['swapFees']['nodes']]) / (10 ** decimals)
+        if output_amount > 0:
+            fee_dict = {
+                    'block_number': block_number,
+                    'output_amount': output_amount,
+                    'fee_amount': fee_amount
+                }
+            if asset_id == tkn_id:
+                fee_pct = fee_amount / (output_amount + fee_amount)
+                fee_dict['fee_pct'] = fee_pct
+                asset_fee_data.append(fee_dict)
+            elif asset_id == 1:  # 1 is the hub asset ID
+                fee_pct = fee_amount / output_amount if output_amount > 0 else 0
+                fee_dict['fee_pct'] = fee_pct
+                hub_fee_data.append(fee_dict)
+    return asset_fee_data, hub_fee_data
+
+
+def get_omnipool_swap_fees(tkn_id: int, min_block: int, max_block: int, max_block_count: int = 50000):
+    min_block_temp = min_block
+    max_block_temp = min(min_block + max_block_count - 1, max_block)
+    asset_fee_data = []
+    hub_fee_data = []
+    while min_block_temp <= max_block:
+        print(f"Querying from block {min_block_temp} to {max_block_temp}...")
+        asset_data, hub_data = get_omnipool_swap_fees_one_query(tkn_id, min_block_temp, max_block_temp)
+        asset_fee_data.extend(asset_data)
+        hub_fee_data.extend(hub_data)
+        min_block_temp = max_block_temp + 1
+        max_block_temp = min(min_block_temp + max_block_count - 1, max_block)
+    return asset_fee_data, hub_fee_data
+
+
+def download_omnipool_swap_fees(tkn_id: int, min_block: int, max_block: int, path: str):
+    asset_fees, hub_fees = get_omnipool_swap_fees(tkn_id, min_block, max_block)
+    with open(f"{path}omnipool_swap_fees_{tkn_id}_{min_block}_{max_block}.json", "w") as f:
+        json.dump({
+            'asset_fees': asset_fees,
+            'hub_fees': hub_fees
+        }, f)

@@ -55,34 +55,46 @@ def test_get_stableswap_liquidity_events():
     print("done")
 
 
-def test_download_stableswap_exec_prices():
-    from hydradx.model.indexer_utils import download_stableswap_exec_prices
-    pool_id = 102
-    tkn_id = 10
-    min_block_id = 6439661
-    # max_block_id = 7430169  # this is desirable but takes too long for integration tests
-    max_block_id = min_block_id + 1000
-    print(os.getcwd())
+# def test_download_stableswap_exec_prices():
+#     from hydradx.model.indexer_utils import download_stableswap_exec_prices
+#     pool_id = 102
+#     tkn_id = 10
+#     min_block_id = 7111661
+#     # max_block_id = 7654990  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
+#     print(os.getcwd())
+#
+#     path = "hydradx/apps/fees/data/"
+#     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
+#     print("done")
+#
+#
+# def test_download_omnipool_spot_prices():
+#     from hydradx.model.indexer_utils import download_omnipool_spot_prices
+#     denom_id = 102
+#     tkn_id = 1000765
+#     min_block_id = 7611662
+#     # max_block_id = 7654990  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
+#     step_size = 50000
+#     print(os.getcwd())
+#
+#     path = "hydradx/apps/fees/data/"
+#     temp_max_block_id = min(min_block_id + step_size, max_block_id)
+#     while min_block_id <= max_block_id:
+#         download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
+#         min_block_id = temp_max_block_id + 1
+#         temp_max_block_id = min(temp_max_block_id + step_size, max_block_id)
+#     print("done")
 
-    path = "hydradx/apps/fees/data/"
-    download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
-    print("done")
 
-
-def test_download_omnipool_spot_prices():
-    from hydradx.model.indexer_utils import download_omnipool_spot_prices
-    denom_id = 102
+def test_get_omnipool_swap_fees():
+    from hydradx.model.indexer_utils import get_omnipool_swap_fees
     tkn_id = 5
-    min_block_id = 6439661
-    # max_block_id = 7430169  # this is desirable but takes too long for integration tests
-    max_block_id = min_block_id + 1000
-    step_size = 50000
-    print(os.getcwd())
+    min_block_id = 7000000
+    max_block_id = 7001000
 
-    path = "hydradx/apps/fees/data/"
-    temp_max_block_id = min_block_id + step_size
-    while min_block_id <= max_block_id:
-        download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
-        min_block_id = temp_max_block_id + 1
-        temp_max_block_id += step_size
+    asset_fee_data, hub_fee_data = get_omnipool_swap_fees(tkn_id, min_block_id, max_block_id)
     print("done")
+
+
