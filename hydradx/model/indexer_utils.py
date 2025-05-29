@@ -290,6 +290,94 @@ def get_stablepool_ids():
     return pool_ids
 
 
+def get_fee_history(asset_id: int, min_block: int, max_block: int = None):
+    url = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
+
+    if max_block is None:
+        latest_block_query = """
+        query MaxHeightQuery {
+          maxHeightResult: swaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
+            nodes {
+              paraBlockHeight
+            }
+          }
+        }
+        """
+        data = query_indexer(url, latest_block_query)
+        max_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
+
+    fee_query = """
+    query fees_query($first: Int!, $after: Cursor, $assetId: String!, $minBlock: Int!, $maxBlock: Int!) {
+      swaps(
+        first: $first,
+        after: $after,
+        filter: {
+          allInvolvedAssetIds: {contains: [$assetId, "1"]},
+          paraBlockHeight:{greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock}
+        }
+        orderBy: PARA_BLOCK_HEIGHT_ASC
+      ) {
+          nodes {
+            id
+            swapOutputs {
+              nodes {
+                amount
+                assetId
+              }
+            }
+            swapInputs {
+              nodes {
+                amount
+                assetId
+              }
+            }
+            swapFees {
+              nodes {
+                amount
+                assetId
+                recipientId
+              }
+            }
+            paraBlockHeight
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+    }
+    """
+
+    variables = {"assetId": str(asset_id), "minBlock": min_block, "maxBlock": max_block}
+    # data = query_indexer(url, hdx_fee_query, variables)
+
+    data_all = []
+    has_next_page = True
+    after_cursor = None
+    page_size = 10000
+    variables["first"] = page_size
+
+    while has_next_page:
+        variables["after"] = after_cursor
+        data = query_indexer(url, fee_query, variables)
+        page_data = data['data']['swaps']['nodes']
+        data_all.extend(page_data)
+        page_info = data['data']['swaps']['pageInfo']
+        has_next_page = page_info['hasNextPage']
+        after_cursor = page_info['endCursor']
+
+    return data_all
+
+def get_fee_pcts(data, asset_id):
+    fee_pcts = [
+        [int(x['paraBlockHeight']),
+        (sum([int(y['amount']) for y in x['swapFees']['nodes'] if y['assetId'] == str(asset_id)])
+         / int(x['swapOutputs']['nodes'][0]['amount']))]
+        for x in data if x['swapOutputs']['nodes'][0]['assetId'] == str(asset_id)
+    ]
+    return fee_pcts
+
+
 def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
     stableswap_data = {
         pool: get_latest_stableswap_data(pool)

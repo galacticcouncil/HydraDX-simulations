@@ -1,9 +1,11 @@
 import pytest
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 
+import os
+os.chdir('../..')
+
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
     get_omnipool_asset_data, get_current_block_height, get_asset_info, get_current_omnipool, get_current_omnipool_router
-
 
 def test_get_latest_stableswap_data():
     """
@@ -45,3 +47,11 @@ def test_get_omnipool_state():
 def test_get_omnipool_router():
     router = get_current_omnipool_router()
     assert router is not None
+
+
+def test_get_fee_history():
+    asset_id = 0
+    min_block_id = 7400000
+    max_block_id = 7400100
+    data = get_fee_history(asset_id, min_block_id, max_block_id)
+    print("done")
