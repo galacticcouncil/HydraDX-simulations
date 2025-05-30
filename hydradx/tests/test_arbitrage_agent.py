@@ -5,7 +5,7 @@ import pytest
 from hypothesis import given, strategies as st, settings, Phase
 
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.arbitrage_agent_general import calculate_profit, calculate_arb_amount, \
+from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount, \
     process_next_swap, execute_arb, get_arb_swaps, combine_swaps
 from hydradx.model.amm.centralized_market import OrderBook, CentralizedMarket
 from hydradx.model.amm.omnipool_amm import OmnipoolState

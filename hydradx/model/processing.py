@@ -10,6 +10,7 @@ from zipfile import ZipFile
 import requests
 from dotenv import load_dotenv
 from hydradxapi import HydraDX
+from hydradxapi.pallets.stableswap import Pool
 from hydradxapi.pallets.fees import Fees
 from hydradxapi.pallets.omnipool import AssetState
 
@@ -319,27 +320,10 @@ def get_omnipool_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = Fals
     return asset_list, asset_map, tokens, fees
 
 
-def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False) -> list[StableSwapPoolState]:
+def get_stableswap_data(rpc: str = 'wss://rpc.hydradx.cloud', archive: bool = False) -> dict[int, Pool]:
     with HydraDX(rpc) as chain:
-        pools = []
         data = chain.api.stableswap.pools()
-        for pool_name, pool_data in {'4-Pool': data[100], '2-Pool': data[101]}.items():
-            symbols = [asset.symbol for asset in pool_data.assets]
-            repeats = [symbol for symbol in symbols if symbols.count(symbol) > 1]
-            pools.append(StableSwapPoolState(
-                tokens={
-                    f"{asset.symbol}{asset.asset_id}" if asset.symbol in repeats else asset.symbol:
-                        int(pool_data.reserves[asset.asset_id]) / 10 ** asset.decimals
-                    for asset in pool_data.assets
-                },
-                amplification=float(pool_data.final_amplification),
-                trade_fee=float(pool_data.fee) / 100,
-                unique_id=pool_name
-            ))
-    if archive:
-        for state in pools:
-            save_stableswap_data(state)
-    return pools
+    return data
 
 
 def save_stableswap_data(pools: list[StableSwapPoolState], path: str = './archive/'):
@@ -349,7 +333,8 @@ def save_stableswap_data(pools: list[StableSwapPoolState], path: str = './archiv
             'tokens': state.liquidity,
             'amplification': state.amplification,
             'precision': state.precision,
-            'trade_fee': state.trade_fee
+            'trade_fee': state.trade_fee,
+            'peg': state.peg,
         }
         with open(f'{path}stableswap_data_{state.unique_id}_{ts}.json', 'w') as output_file:
             json.dump(json_state, output_file)
@@ -497,7 +482,8 @@ def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
                         'amplification': pool.amplification,
                         'trade_fee': pool.trade_fee,
                         'unique_id': pool.unique_id,
-                        'shares': pool.shares
+                        'shares': pool.shares,
+                        'peg': pool.peg[1:]
                     } for pool in stableswap_pools
                 ]
             },
@@ -533,7 +519,8 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolRouter
                 amplification=pool['amplification'],
                 trade_fee=float(pool['trade_fee']),
                 unique_id=pool['unique_id'],
-                shares=pool['shares']
+                shares=pool['shares'],
+                peg=pool.get('peg', None)
             )
             stableswaps.append(ss)
         router = OmnipoolRouter([omnipool, *stableswaps])

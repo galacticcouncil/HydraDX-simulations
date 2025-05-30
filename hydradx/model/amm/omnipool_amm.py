@@ -1,11 +1,14 @@
 import copy
-from typing import Callable
+from typing import Callable, Protocol, Literal
 import math
 
 from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
-from typing import Literal
+
+class AssetFeeCallable(Protocol):
+    def __call__(self, tkn: str) -> float: ...
+
 
 class DynamicFee:
 
@@ -111,6 +114,8 @@ class OmnipoolState(Exchange):
         if withdrawal_fee:
             self.min_withdrawal_fee = min_withdrawal_fee
 
+        self.oracles = {}
+
         for token, pool in tokens.items():
             assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
             if 'LRNA' in pool:
@@ -127,8 +132,6 @@ class OmnipoolState(Exchange):
                 protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
-
-        self.oracles = {}
 
         if oracles is None or 'price' not in oracles:
             if last_oracle_values is None or 'price' not in last_oracle_values:
@@ -214,7 +217,7 @@ class OmnipoolState(Exchange):
             )
 
     @property
-    def lrna_fee(self) -> Callable[[str], float]:
+    def lrna_fee(self) -> AssetFeeCallable:
         return self._get_lrna_fee
 
     @lrna_fee.setter
@@ -232,7 +235,7 @@ class OmnipoolState(Exchange):
         return self._lrna_fee.current
 
     @property
-    def asset_fee(self) -> Callable[[str], float]:
+    def asset_fee(self) -> AssetFeeCallable:
         return self._get_asset_fee
 
     @asset_fee.setter
@@ -281,15 +284,15 @@ class OmnipoolState(Exchange):
             tkn: str,
             liquidity: float,
             lrna: float,
-            shares: float,
+            shares: float = 0,
             protocol_shares: float = 0,
             weight_cap: float = 1
     ):
         self.asset_list.append(tkn)
         self.liquidity[tkn] = liquidity
         self.lrna[tkn] = lrna
-        self.shares[tkn] = shares
-        self.protocol_shares[tkn] = protocol_shares or shares
+        self.shares[tkn] = shares or liquidity
+        self.protocol_shares[tkn] = protocol_shares or self.shares[tkn]
         self.weight_cap[tkn] = weight_cap
         if hasattr(self, '_lrna_fee'):
             if tkn not in self._lrna_fee.current: self._lrna_fee.current[tkn] = self._lrna_fee.minimum
