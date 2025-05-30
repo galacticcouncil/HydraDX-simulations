@@ -55,37 +55,38 @@ def test_get_stableswap_liquidity_events():
     print("done")
 
 
-# def test_download_stableswap_exec_prices():
-#     from hydradx.model.indexer_utils import download_stableswap_exec_prices
-#     pool_id = 102
-#     tkn_id = 10
-#     min_block_id = 7111661
-#     # max_block_id = 7654990  # this is desirable but takes too long for integration tests
-#     max_block_id = min_block_id + 1000
-#     print(os.getcwd())
-#
-#     path = "hydradx/apps/fees/data/"
-#     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
-#     print("done")
-#
-#
-# def test_download_omnipool_spot_prices():
-#     from hydradx.model.indexer_utils import download_omnipool_spot_prices
-#     denom_id = 102
-#     tkn_id = 1000765
-#     min_block_id = 7611662
-#     # max_block_id = 7654990  # this is desirable but takes too long for integration tests
-#     max_block_id = min_block_id + 1000
-#     step_size = 50000
-#     print(os.getcwd())
-#
-#     path = "hydradx/apps/fees/data/"
-#     temp_max_block_id = min(min_block_id + step_size, max_block_id)
-#     while min_block_id <= max_block_id:
-#         download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
-#         min_block_id = temp_max_block_id + 1
-#         temp_max_block_id = min(temp_max_block_id + step_size, max_block_id)
-#     print("done")
+def test_download_stableswap_exec_prices():
+    from hydradx.model.indexer_utils import download_stableswap_exec_prices
+    pool_id = 102
+    tkn_id = 10
+    min_block_id = 6800000
+    max_block_id = 7697173  # this is desirable but takes too long for integration tests
+    # max_block_id = min_block_id + 1000
+    print(os.getcwd())
+
+    path = "hydradx/apps/fees/data/"
+    download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
+    print("done")
+
+
+def test_download_omnipool_spot_prices():
+    from hydradx.model.indexer_utils import download_omnipool_spot_prices
+    denom_id = 102
+    # tkn_id = 1000765  # tBTC
+    tkn_id = 1000624  # AAVE
+    min_block_id = 7111661
+    max_block_id = 7697173  # this is desirable but takes too long for integration tests
+    # max_block_id = min_block_id + 1000
+    step_size = 50000
+    print(os.getcwd())
+
+    path = "hydradx/apps/fees/data/"
+    temp_max_block_id = min(min_block_id + step_size, max_block_id)
+    while min_block_id <= max_block_id:
+        download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
+        min_block_id = temp_max_block_id + 1
+        temp_max_block_id = min(temp_max_block_id + step_size, max_block_id)
+    print("done")
 
 
 def test_get_omnipool_swap_fees():
@@ -98,3 +99,11 @@ def test_get_omnipool_swap_fees():
     print("done")
 
 
+# def test_download_acct_trades():
+#     from hydradx.model.indexer_utils import download_acct_trades
+#
+#     tkn_id = 5
+#     path = "hydradx/apps/fees/data/"
+#     acct = "0x7279fcf9694718e1234d102825dccaf332f0ea36edf1ca7c0358c4b68260d24b"
+#     download_acct_trades(tkn_id, acct, path)
+#     print("done")
