@@ -10,6 +10,7 @@ class Block:
         self.withdrawals = {tkn: 0 for tkn in input_state.asset_list}
         self.lps = {tkn: 0 for tkn in input_state.asset_list}
         self.asset_list = input_state.asset_list.copy()
+        self.time_step = input_state.time_step
 
 
 class Oracle:
@@ -45,19 +46,23 @@ class Oracle:
         self.asset_list.append(tkn)
 
     def update(self, block: Block):
-        self.age += 1
+        if self.age == block.time_step:
+            return self
+        update_steps = block.time_step - self.age
+        update_factor = (1 - self.decay_factor) ** update_steps
+        self.age = block.time_step
         for tkn in block.liquidity:
             self.liquidity[tkn] = (
-                (1 - self.decay_factor) * self.liquidity[tkn] + self.decay_factor * block.liquidity[tkn]
+                update_factor * self.liquidity[tkn] + (1 - update_factor) * block.liquidity[tkn]
             ) if tkn in self.liquidity else block.liquidity[tkn]
             self.price[tkn] = (
-                (1 - self.decay_factor) * self.price[tkn] + self.decay_factor * block.price[tkn]
+                update_factor * self.price[tkn] + (1 - update_factor) * block.price[tkn]
             ) if tkn in self.price else block.price[tkn]
             self.volume_in[tkn] = (
-                (1 - self.decay_factor) * self.volume_in[tkn] + self.decay_factor * block.volume_in[tkn]
+                update_factor * self.volume_in[tkn] + (1 - update_factor) * block.volume_in[tkn]
             ) if tkn in self.volume_in else block.volume_in[tkn]
             self.volume_out[tkn] = (
-                (1 - self.decay_factor) * self.volume_out[tkn] + self.decay_factor * block.volume_out[tkn]
+                update_factor * self.volume_out[tkn] + (1 - update_factor) * block.volume_out[tkn]
             ) if tkn in self.volume_out else block.volume_out[tkn]
         return self
 
