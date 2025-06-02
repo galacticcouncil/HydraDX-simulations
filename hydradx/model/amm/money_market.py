@@ -150,11 +150,11 @@ class MoneyMarket(Exchange):
         self.fail = fail
         return self
 
-    def price(self, tkn: str, denominator: str = None):
-        if denominator is None:
+    def price(self, tkn: str, numeraire: str = None):
+        if numeraire is None:
             return self.prices[tkn]
         else:
-            return self.prices[tkn] / self.prices[denominator]
+            return self.prices[tkn] / self.prices[numeraire]
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
         return [cdp for cdp in self.cdps if (

@@ -31,19 +31,19 @@ class OmnipoolRouter(Exchange):
         copy_self = copy.deepcopy(self)
         return copy_self
 
-    def price_route(self, tkn: str, denominator: str, tkn_pool_id: str, denom_pool_id: str) -> float:
+    def price_route(self, tkn: str, numeraire: str, tkn_pool_id: str, denom_pool_id: str) -> float:
         if tkn_pool_id == denom_pool_id:
-            return self.exchanges[tkn_pool_id].price(tkn, denominator)
+            return self.exchanges[tkn_pool_id].price(tkn, numeraire)
 
         tkn_subpool_share_price = 1
         denom_subpool_share_price = 1
         tkn_adj = tkn
-        denom_adj = denominator
+        denom_adj = numeraire
         if tkn_pool_id != self.omnipool_id:
             tkn_subpool_share_price = self.exchanges[tkn_pool_id].share_price(tkn)
             tkn_adj = tkn_pool_id
         if denom_pool_id != self.omnipool_id:
-            denom_subpool_share_price = self.exchanges[denom_pool_id].share_price(denominator)
+            denom_subpool_share_price = self.exchanges[denom_pool_id].share_price(numeraire)
             denom_adj = denom_pool_id
 
         return denom_subpool_share_price * self.omnipool.price(tkn_adj, denom_adj) / tkn_subpool_share_price
@@ -66,7 +66,7 @@ class OmnipoolRouter(Exchange):
         if fee == 0:
             # this handles custom fees only in the case that fee is explicitly set to 0
             # otherwise, each pool's native fees will be used. Values other than 0 are ignored.
-            return self.price_route(tkn=tkn_buy, denominator=tkn_sell, tkn_pool_id=buy_pool, denom_pool_id=sell_pool)
+            return self.price_route(tkn=tkn_buy, numeraire=tkn_sell, tkn_pool_id=buy_pool, denom_pool_id=sell_pool)
         if buy_pool == sell_pool:
             return self.exchanges[buy_pool].buy_spot(tkn_buy, tkn_sell)
         elif sell_pool == self.omnipool_id != buy_pool and isinstance(self.exchanges[buy_pool], StableSwapPoolState):
@@ -93,7 +93,7 @@ class OmnipoolRouter(Exchange):
         if fee == 0:
             # this handles custom fees only in the case that fee is explicitly set to 0
             # otherwise, each pool's native fees will be used. Values other than 0 are ignored.
-            return self.price_route(tkn=tkn_sell, denominator=tkn_buy, tkn_pool_id=sell_pool, denom_pool_id=buy_pool)
+            return self.price_route(tkn=tkn_sell, numeraire=tkn_buy, tkn_pool_id=sell_pool, denom_pool_id=buy_pool)
         if sell_pool == buy_pool:
             return self.exchanges[sell_pool].sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
         elif sell_pool == self.omnipool_id != buy_pool:

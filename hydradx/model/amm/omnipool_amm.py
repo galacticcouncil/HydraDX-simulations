@@ -983,23 +983,23 @@ class OmnipoolState(Exchange):
         self.lrna_fee(tkn_remove)
         return self
 
-    def price(self, tkn: str, denominator: str = '') -> float:
+    def price(self, tkn: str, numeraire: str = '') -> float:
         """
         price of an asset i denominated in j, according to current market conditions in the omnipool
         """
         if tkn not in self.asset_list + ['LRNA']:
             raise ValueError(f'{tkn} is not in the Omnipool')
-        elif tkn == denominator:
+        elif tkn == numeraire:
             return 1
-        elif not denominator or denominator == 'LRNA':
+        elif not numeraire or numeraire == 'LRNA':
             return self.lrna_price(tkn)
-        elif denominator not in self.asset_list:
-            raise ValueError(f'{denominator} is not in the Omnipool')
+        elif numeraire not in self.asset_list:
+            raise ValueError(f'{numeraire} is not in the Omnipool')
         elif tkn == 'LRNA':
-            return 1 / self.lrna_price(denominator)
+            return 1 / self.lrna_price(numeraire)
         elif self.liquidity[tkn] == 0:
             return 0
-        return self.lrna[tkn] / self.liquidity[tkn] / self.lrna[denominator] * self.liquidity[denominator]
+        return self.lrna[tkn] / self.liquidity[tkn] / self.lrna[numeraire] * self.liquidity[numeraire]
 
     def usd_price(self, tkn, usd_asset=None):
         if usd_asset is None:

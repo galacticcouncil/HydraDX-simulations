@@ -19,7 +19,7 @@ class Exchange:
     def update(self):
         pass
 
-    def price(self, tkn: str, denominator: str = '') -> float:
+    def price(self, tkn: str, numeraire: str = '') -> float:
         return 0
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str) -> float:
