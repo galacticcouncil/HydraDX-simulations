@@ -126,7 +126,7 @@ def get_omnipool_asset_data(
     """
 
     if asset_ids is not None:
-        variables["assetIds"] = asset_ids
+        variables["assetIds"] = [int(asset_id) for asset_id in asset_ids]
 
     data_all = []
     has_next_page = True
@@ -292,6 +292,20 @@ def get_latest_stableswap_data(
     return pool_data_formatted
 
 
+def get_current_omnipool_assets():
+    query = """
+    query assetInfoByAssetIds {
+      omnipoolAssets(filter: {isRemoved: {equalTo: false}}) {
+        nodes {
+          assetId
+        }
+      }
+    }
+    """
+    data = query_indexer(URL_UNIFIED_PROD, query)
+    return [node['assetId'] for node in data['data']['omnipoolAssets']['nodes']]
+
+
 def get_stablepool_ids():
 
     stablepool_query = """
@@ -418,20 +432,32 @@ def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
     return stableswap_pools
 
 def get_current_omnipool():
-    asset_info = get_asset_info_by_ids()
+    asset_ids = get_current_omnipool_assets()
+    asset_info = get_asset_info_by_ids(asset_ids)
+    asset_ids.remove('1')  # Remove hub asset ID
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
     current_block = get_current_block_height()
-    omnipool_data = get_omnipool_asset_data(min_block_id=current_block - 10000, max_block_id=current_block)
+    asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
-    for item in reversed(omnipool_data):
-        if asset_info[item['assetId']].symbol not in liquidity:
-            liquidity[asset_info[item['assetId']].symbol] = int(item['balances']['free']) / (10 ** asset_info[item['assetId']].decimals)
-            lrna[asset_info[item['assetId']].symbol] = int(item['assetState']['hubReserve']) / (10 ** asset_info[1].decimals)
-        if len(liquidity) == len(asset_info):
-            break
+    while asset_ids_remaining:
+        omnipool_data = get_omnipool_asset_data(
+            min_block_id=current_block - 100,
+            max_block_id=current_block,
+            asset_ids=asset_ids_remaining
+        )
+        for item in reversed(omnipool_data):
+            asset = asset_info[item['assetId']]
+            if asset.symbol not in liquidity:
+                liquidity[asset.symbol] = int(item['balances']['free']) / (
+                            10 ** asset.decimals)
+                lrna[asset.symbol] = int(item['assetState']['hubReserve']) / (
+                            10 ** asset_info[1].decimals)
+                asset_ids_remaining.remove(asset.id)
+        current_block -= 100
+
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
         if tkn not in asset_fee.current:
