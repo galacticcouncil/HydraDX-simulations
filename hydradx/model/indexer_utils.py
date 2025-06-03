@@ -837,3 +837,125 @@ def download_omnipool_swap_fees(tkn_id: int, min_block: int, max_block: int, pat
             'asset_fees': asset_fees,
             'hub_fees': hub_fees
         }, f)
+
+
+def bucket_values(bucket_ct: int, data, min_block: int = None, max_block: int = None):
+    # data is a a list of tuples (block_number, value)
+    if min_block == None or max_block == None:
+        min_block = float('inf')
+        max_block = -1
+        for x in data:
+            if x[0] < min_block:
+                min_block = x[0]
+            if x[0] > max_block:
+                max_block = x[0]
+    bucket_size = (max_block - min_block) // bucket_ct + 1
+    bucketed_data = [
+        {'start_block': min_block + i * bucket_size, 'end_block': min_block + (i + 1) * bucket_size - 1, 'value': 0}
+        for i in range(bucket_ct)
+    ]
+    if bucketed_data[-1]['end_block'] < max_block:
+        raise ValueError("Last bucket does not cover the max_block, increase bucket_ct or decrease bucket_size")
+    bucketed_data[-1]['end_block'] = max_block  # ensure last bucket ends at max_block
+    for x in data:
+        bucket_index = (x[0] - min_block) // bucket_size
+        bucketed_data[bucket_index]['value'] += x[1]
+    return bucketed_data
+
+
+def bucket_values_per_block(bucket_ct: int, data, min_block: int = None, max_block: int = None):
+    values = bucket_values(bucket_ct, data, min_block, max_block)
+    return [
+        {
+            'start_block': x['start_block'], 'end_block': x['end_block'],
+            'value': x['value'] / (x['end_block'] - x['start_block'] + 1)
+        }
+        for x in values
+    ]
+
+
+def download_acct_trades(asset_id: int, acct: str, path: str):
+
+    query = """
+    query assetInfoByAssetIds($acct: String!, $assetId: String!) {
+      routedTrades(
+        filter: {
+          participantSwappers: {anyEqualTo: $acct},
+          allInvolvedAssetIds: {
+            contains: [$assetId, "1", "102", "10"], containedBy: [$assetId, "1", "102", "10"]
+          }
+        }
+      ) {
+        nodes {
+          routeTradeInputs {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          routeTradeOutputs {
+            nodes {
+              amount
+              assetId
+            }
+          }
+          paraBlockHeight
+          swaps {
+            nodes {
+              swapFees {
+                nodes {
+                  amount
+                  assetId
+                }
+              }
+              swapInputs {
+                nodes {
+                  amount
+                  assetId
+                }
+              }
+              swapOutputs {
+                nodes {
+                  amount
+                  assetId
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    variables = {'acct': acct, 'assetId': str(asset_id)}
+    data = query_indexer(URL_UNIFIED_PROD, query, variables)
+    asset_info = get_asset_info_by_ids([asset_id, 10, 1])
+    trades = []
+    for x in data['data']['routedTrades']['nodes']:
+        if (len(x['routeTradeInputs']['nodes']) == 1 and len(x['routeTradeOutputs']['nodes']) == 1
+            and x['routeTradeInputs']['nodes'][0]['assetId'] in [str(asset_id), '10']
+            and x['routeTradeOutputs']['nodes'][0]['assetId'] in [str(asset_id), '10']):
+            input_asset_id = int(x['routeTradeInputs']['nodes'][0]['assetId'])
+            output_asset_id = int(x['routeTradeOutputs']['nodes'][0]['assetId'])
+            found_hub = False
+            for y in x['swaps']['nodes']:
+                outputs = y['swapOutputs']['nodes']
+                if len(outputs) == 1 and outputs[0]['assetId'] == '1':
+                    if found_hub == True:
+                        raise ValueError("Multiple hub outputs found in a single trade")
+                    found_hub = True
+                    hub_fees = sum([int(z['amount']) for z in y['swapFees']['nodes'] if z['assetId'] == '1'])
+                    hub_amt = int(outputs[0]['amount'])
+            trade = {
+                'block_number': int(x['paraBlockHeight']),
+                'input_asset_id': input_asset_id,
+                'input_amount': int(x['routeTradeInputs']['nodes'][0]['amount']) / (10 ** asset_info[input_asset_id].decimals),
+                'output_asset_id': output_asset_id,
+                'output_amount': int(x['routeTradeOutputs']['nodes'][0]['amount']) / (10 ** asset_info[output_asset_id].decimals),
+                'hub_fee': hub_fees / (10 ** asset_info[1].decimals),
+                'hub_amount': hub_amt / (10 ** asset_info[1].decimals),
+            }
+            trades.append(trade)
+
+    with open(f"{path}acct_swaps_{asset_id}_{acct}.json", "w") as f:
+        json.dump(trades, f)
