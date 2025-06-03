@@ -75,8 +75,8 @@ def test_download_omnipool_spot_prices():
     # tkn_id = 1000765  # tBTC
     tkn_id = 1000624  # AAVE
     min_block_id = 7111661
-    max_block_id = 7697173  # this is desirable but takes too long for integration tests
-    # max_block_id = min_block_id + 1000
+    # max_block_id = 7697173  # this is desirable but takes too long for integration tests
+    max_block_id = min_block_id + 1000
     step_size = 50000
     print(os.getcwd())
 
