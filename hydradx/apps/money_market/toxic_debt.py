@@ -9,7 +9,7 @@ import time
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
-from hydradx.model.amm.global_state import GlobalState
+from hydradx.model.amm.global_state import GlobalState, value_assets
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
@@ -18,7 +18,7 @@ from hydradx.model.processing import get_current_money_market, get_stableswap_da
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.run import run
-from hydradx.model.amm.trade_strategies import constant_swaps
+from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model.indexer_utils import get_current_omnipool_router, get_asset_info_by_ids
 
 st.markdown("""
@@ -118,37 +118,11 @@ def trade_to_price(pool, tkn_sell, target_price):
     return dx
 
 
-def update_prices(state):
-    # prices = {
-    #     tkn: state.pools['omnipool'].usd_price(tkn)
-    #     for tkn in list(set(state.pools['money_market'].prices) & set(omnipool.asset_list))
-    # }
+def update_prices(state: GlobalState):
     for tkn in prices:
         state.pools['money_market'].prices[tkn] = prices[tkn][state.time_step - 1]
-        state.pools['binance'].prices[tkn] = prices[tkn][state.time_step - 1]
-
-
-def schedule_swaps(swaps: list[list[dict]]):
-    class Strategy:
-        def __init__(self, pool_id: str):
-            self.initial_time_step = -1
-            self.pool_id = pool_id
-        def execute(self, state: GlobalState, agent_id: str):
-            if self.initial_time_step == -1:
-                self.initial_time_step = state.time_step
-            agent = state.agents[agent_id]
-            for trade in swaps [state.time_step - self.initial_time_step]:
-                state.pools[self.pool_id].swap(
-                    tkn_sell=trade['tkn_sell'],
-                    tkn_buy=trade['tkn_buy'],
-                    sell_quantity=trade['sell_quantity'] if 'sell_quantity' in trade else 0,
-                    buy_quantity=trade['buy_quantity'] if 'buy_quantity' in trade else 0,
-                    agent=agent
-                )
-
-            return state
-
-    return TradeStrategy(Strategy('omnipool').execute, name="scheduled_swaps")
+        state.external_market[tkn] = prices[tkn][state.time_step - 1]
+        # state.pools['binance'].prices[tkn] = prices[tkn][state.time_step - 1]
 
 router, cache_timestamp = load_omnipool_router()
 omnipool = router.exchanges['omnipool']
@@ -214,26 +188,18 @@ trade_sequence.extend([[
 time_steps = len(trade_sequence)
 omnipool_sim = copy.deepcopy(omnipool)
 mm_sim = mm.copy()
-binance = FixedPriceExchange(
-    tokens={
-        tkn: omnipool.usd_price(tkn)
-        if tkn in omnipool.asset_list
-        else mm.price(tkn)
-        for tkn in list(set(omnipool.asset_list + mm.asset_list))
-    }, unique_id='binance'
-)
 
 config_list = [
     {'exchanges': {'omnipool': ['DOT', 'vDOT'], '2-Pool-GDOT': ['aDOT', 'vDOT']}, 'buffer': 0.001},
 ]
 
 initial_state = GlobalState(
-    pools=[router, mm_sim, omnipool_sim, binance, *stableswaps],
+    pools=[router, mm_sim, omnipool_sim, *stableswaps],
     agents={
         'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
         'panic seller': Agent(
             enforce_holdings=False,
-            trade_strategy=schedule_swaps(trade_sequence)
+            trade_strategy=schedule_swaps('omnipool', trade_sequence)
         ),
         'arbitrageur': Agent(
             enforce_holdings=False,
@@ -243,7 +209,8 @@ initial_state = GlobalState(
             )
         )
     },
-    evolve_function=update_prices
+    evolve_function=update_prices,
+    external_market=start_price
 )
 
 with st.spinner(f"Running {time_steps} simulation steps..."):
