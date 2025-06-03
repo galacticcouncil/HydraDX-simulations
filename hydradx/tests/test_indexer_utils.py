@@ -2,14 +2,16 @@ import copy
 import math
 
 import pytest
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hypothesis import given, strategies as st, reproduce_failure
 from mpmath import mp, mpf
 
 import os
 os.chdir('../..')
 
-from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
-
+from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
+    get_omnipool_asset_data, get_current_block_height, get_asset_info_by_ids, get_current_omnipool, \
+    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
 
 def test_get_latest_stableswap_data():
     """
@@ -29,6 +31,28 @@ def test_get_stablepool_ids():
     pool_ids = get_stablepool_ids()
     assert 102 in pool_ids
     assert 690 in pool_ids
+
+
+def test_get_omnipool_data():
+    info = get_asset_info_by_ids()
+    current_block = get_current_block_height()
+    omnipool_assets = get_omnipool_asset_data(max_block_id=current_block, min_block_id=current_block - 1000)
+    ids = list(set([tkn['assetId'] for tkn in omnipool_assets]))
+    # asset_data = get_asset_info_by_ids(ids)
+    omnipool_liquidity = get_omnipool_liquidity(
+        max_block_id=current_block, min_block_id=current_block - 100, asset_ids=ids
+    )
+    assert omnipool_liquidity is not None
+
+
+def test_get_omnipool_state():
+    omnipool = get_current_omnipool()
+    assert isinstance(omnipool, OmnipoolState)
+
+
+def test_get_omnipool_router():
+    router = get_current_omnipool_router()
+    assert router is not None
 
 
 def test_get_fee_history():
@@ -55,38 +79,38 @@ def test_get_stableswap_liquidity_events():
     print("done")
 
 
-def test_download_stableswap_exec_prices():
-    from hydradx.model.indexer_utils import download_stableswap_exec_prices
-    pool_id = 102
-    tkn_id = 10
-    min_block_id = 6800000
-    max_block_id = 7697173  # this is desirable but takes too long for integration tests
-    # max_block_id = min_block_id + 1000
-    print(os.getcwd())
+# def test_download_stableswap_exec_prices():
+#     from hydradx.model.indexer_utils import download_stableswap_exec_prices
+#     pool_id = 102
+#     tkn_id = 10
+#     min_block_id = 6800000
+#     # max_block_id = 7697173  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
+#     print(os.getcwd())
+#
+#     path = "hydradx/apps/fees/data/"
+#     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
+#     print("done")
 
-    path = "hydradx/apps/fees/data/"
-    download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
-    print("done")
 
-
-def test_download_omnipool_spot_prices():
-    from hydradx.model.indexer_utils import download_omnipool_spot_prices
-    denom_id = 102
-    # tkn_id = 1000765  # tBTC
-    tkn_id = 1000624  # AAVE
-    min_block_id = 7111661
-    # max_block_id = 7697173  # this is desirable but takes too long for integration tests
-    max_block_id = min_block_id + 1000
-    step_size = 50000
-    print(os.getcwd())
-
-    path = "hydradx/apps/fees/data/"
-    temp_max_block_id = min(min_block_id + step_size, max_block_id)
-    while min_block_id <= max_block_id:
-        download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
-        min_block_id = temp_max_block_id + 1
-        temp_max_block_id = min(temp_max_block_id + step_size, max_block_id)
-    print("done")
+# def test_download_omnipool_spot_prices():
+#     from hydradx.model.indexer_utils import download_omnipool_spot_prices
+#     denom_id = 102
+#     # tkn_id = 1000765  # tBTC
+#     tkn_id = 1000624  # AAVE
+#     min_block_id = 7111661
+#     # max_block_id = 7697173  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
+#     step_size = 50000
+#     print(os.getcwd())
+#
+#     path = "hydradx/apps/fees/data/"
+#     temp_max_block_id = min(min_block_id + step_size, max_block_id)
+#     while min_block_id <= max_block_id:
+#         download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
+#         min_block_id = temp_max_block_id + 1
+#         temp_max_block_id = min(temp_max_block_id + step_size, max_block_id)
+#     print("done")
 
 
 def test_get_omnipool_swap_fees():
@@ -97,6 +121,12 @@ def test_get_omnipool_swap_fees():
 
     asset_fee_data, hub_fee_data = get_omnipool_swap_fees(tkn_id, min_block_id, max_block_id)
     print("done")
+
+
+def test_get_asset_info_by_ids():
+    from hydradx.model.indexer_utils import get_asset_info_by_ids
+    ids = get_asset_info_by_ids()
+    assert isinstance(ids, dict)
 
 
 # def test_download_acct_trades():
