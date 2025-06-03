@@ -1131,3 +1131,35 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
         return state
 
     return TradeStrategy(strategy, name='liquidate against omnipool')
+
+
+def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
+    """
+    swaps should be in this format:
+    [
+        [
+            {'tkn_sell': str, 'tkn_buy': str, <'sell_quantity' OR 'buy_quantity'>: float},
+            ... for each trade at this time step
+        ],
+        for each time step
+    ]
+    """
+    class Strategy:
+        def __init__(self):
+            self.initial_time_step = -1
+        def execute(self, state: GlobalState, agent_id: str):
+            if self.initial_time_step == -1:
+                self.initial_time_step = state.time_step
+            agent = state.agents[agent_id]
+            for trade in swaps [state.time_step - self.initial_time_step]:
+                state.pools[pool_id].swap(
+                    tkn_sell=trade['tkn_sell'],
+                    tkn_buy=trade['tkn_buy'],
+                    sell_quantity=trade['sell_quantity'] if 'sell_quantity' in trade else 0,
+                    buy_quantity=trade['buy_quantity'] if 'buy_quantity' in trade else 0,
+                    agent=agent
+                )
+
+            return state
+
+    return TradeStrategy(Strategy().execute, name="scheduled_swaps")
