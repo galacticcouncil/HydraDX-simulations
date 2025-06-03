@@ -11,7 +11,7 @@ os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
     get_omnipool_asset_data, get_current_block_height, get_asset_info_by_ids, get_current_omnipool, \
-    get_current_omnipool_router, get_fee_history, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
+    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events
 
 def test_get_latest_stableswap_data():
     """
