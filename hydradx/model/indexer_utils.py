@@ -461,10 +461,10 @@ def get_current_omnipool():
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
         if tkn not in asset_fee.current:
-            asset_fee.current[tkn] = 0.0
+            asset_fee.current[tkn] = asset_fee.minimum
             asset_fee.last_updated[tkn] = current_block
         if tkn not in lrna_fee.current:
-            lrna_fee.current[tkn] = 0.0
+            lrna_fee.current[tkn] = asset_fee.minimum
             lrna_fee.last_updated[tkn] = current_block
     omnipool = OmnipoolState(
         tokens={
