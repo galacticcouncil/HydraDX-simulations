@@ -84,8 +84,8 @@ def test_get_stableswap_liquidity_events():
 #     pool_id = 102
 #     tkn_id = 10
 #     min_block_id = 6800000
-#     max_block_id = 7697173  # this is desirable but takes too long for integration tests
-#     # max_block_id = min_block_id + 1000
+#     # max_block_id = 7697173  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
 #     print(os.getcwd())
 #
 #     path = "hydradx/apps/fees/data/"
@@ -99,8 +99,8 @@ def test_get_stableswap_liquidity_events():
 #     # tkn_id = 1000765  # tBTC
 #     tkn_id = 1000624  # AAVE
 #     min_block_id = 7111661
-#     max_block_id = 7697173  # this is desirable but takes too long for integration tests
-#     # max_block_id = min_block_id + 1000
+#     # max_block_id = 7697173  # this is desirable but takes too long for integration tests
+#     max_block_id = min_block_id + 1000
 #     step_size = 50000
 #     print(os.getcwd())
 #
@@ -128,7 +128,7 @@ def test_get_asset_info_by_ids():
     ids = get_asset_info_by_ids()
     assert isinstance(ids, dict)
 
-    
+
 # def test_download_acct_trades():
 #     from hydradx.model.indexer_utils import download_acct_trades
 #
