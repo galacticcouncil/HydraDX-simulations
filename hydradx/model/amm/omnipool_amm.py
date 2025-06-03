@@ -1242,3 +1242,16 @@ def value_assets(prices: dict, assets: dict) -> float:
         assets[i] * prices[i] if i in prices else 0
         for i in assets.keys()
     ])
+
+
+def trade_to_price(pool: OmnipoolState, tkn_sell: str, target_price: float):
+    """
+    target_price should be the price in LRNA
+    """
+    if tkn_sell not in pool.liquidity:
+        return 0
+    k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
+    print(target_price)
+    target_x = math.sqrt(k / target_price)
+    dx = target_x - pool.liquidity[tkn_sell]
+    return dx
