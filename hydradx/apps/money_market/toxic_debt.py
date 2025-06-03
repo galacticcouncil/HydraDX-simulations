@@ -44,7 +44,7 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     usd_price_lrna = (
         1 / load_omnipool.lrna_price('2-Pool-Stbl') / stable_swap_data[102].shares * 10 ** 18
         * sum([int(v) / 10 ** asset_info[k].decimals for k, v in stable_swap_data[102].reserves.items()])
-    )
+    )  # this approximation assumes that the price of both assets in the 2-Pool-Stbl is 1 USD
     load_omnipool.add_token(
         'USD', liquidity = usd_price_lrna, lrna=1
     ).stablecoin = 'USD'
@@ -56,7 +56,7 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
             tokens = {
                 'DOT': shares * peg / (1 + peg),
                 'vDOT': shares / (1 + peg),
-            }
+            }  # using omnipool DOT/vDOT as a proxy for the actual balances, because the actual balances are not available
         else:
             tokens={
                 asset_info[tkn_id].symbol:
