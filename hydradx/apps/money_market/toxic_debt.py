@@ -239,10 +239,13 @@ for tkn in start_price:
     fig, ax = plt.subplots()
     ax.set_xlabel("Time Steps")
     ax.set_ylabel(f"{tkn} price (USD)")
-    ax.plot([
+    tkn_price_path = [
         event.pools['omnipool'].usd_price(tkn)
         if tkn in event.pools['omnipool'].asset_list
         else event.pools['money_market'].price(tkn)
         for event in events
-    ])
+    ]
+    if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
+        st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
+    ax.plot(tkn_price_path, label=f"{tkn} price")
     st.pyplot(fig)
