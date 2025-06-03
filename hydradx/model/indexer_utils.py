@@ -483,7 +483,7 @@ def get_current_omnipool_fees(
 
     if asset_info is None:
         asset_info = get_asset_info_by_ids()
-    url = "https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql"
+    url = URL_UNIFIED_PROD
     query = """
         query MyQuery {
             events(
