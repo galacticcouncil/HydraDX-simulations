@@ -122,3 +122,7 @@ def test_get_omnipool_swap_fees():
     print("done")
 
 
+def test_get_asset_info_by_ids():
+    from hydradx.model.indexer_utils import get_asset_info_by_ids
+    ids = get_asset_info_by_ids()
+    assert isinstance(ids, dict)
