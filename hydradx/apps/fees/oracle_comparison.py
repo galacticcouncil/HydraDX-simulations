@@ -21,7 +21,7 @@ elif tkn == 'tBTC':
 elif tkn == 'AAVE':
     oracle_data_filename = 'AAVEUSD_oracle_prices.csv'
     tkn_id = 1000624
-file_path = os.path.join(project_root, 'hydradx', 'apps', 'fees', oracle_data_filename)
+file_path = os.path.join(project_root, 'hydradx', 'apps', 'fees', 'data', oracle_data_filename)
 data = []
 with open(file_path, 'r') as file:
     reader = csv.DictReader(file)

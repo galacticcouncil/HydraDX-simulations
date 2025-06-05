@@ -59,9 +59,9 @@ def test_download_stableswap_exec_prices():
     from hydradx.model.indexer_utils import download_stableswap_exec_prices
     pool_id = 102
     tkn_id = 10
-    min_block_id = 6800000
-    max_block_id = 7697173  # this is desirable but takes too long for integration tests
-    # max_block_id = min_block_id + 1000
+    min_block_id = 6400000
+    # max_block_id = 7700000  # this is desirable but takes too long for integration tests
+    max_block_id = min_block_id + 1000
     print(os.getcwd())
 
     path = "hydradx/apps/fees/data/"
