@@ -1,5 +1,3 @@
-import random
-
 from hypothesis import strategies as st
 
 import hydradx.model.amm.omnipool_amm as oamm
@@ -17,6 +15,10 @@ percentage_of_liquidity_strategy = st.floats(min_value=0.0000001, max_value=0.10
 reasonable_percentage_of_liquidity_strategy = st.floats(min_value=0.01, max_value=0.10)
 fee_strategy = st.floats(min_value=0.0001, max_value=0.1, allow_nan=False, allow_infinity=False)
 amplification_strategy = st.floats(min_value=1, max_value=10000)
+
+
+def get_tkn_name(i):
+    return f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}"
 
 
 @st.composite
@@ -42,8 +44,7 @@ def reasonable_market_dict(draw, token_count: int = 0):
     price_list = draw(reasonable_market(token_count))
     price_dict = {'HDX': price_list[1], 'USD': 1.0}
     price_dict.update({
-        ''.join(
-            random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): price_list[i + 2] for i in
+        get_tkn_name(i): price_list[i + 2] for i in
         range(token_count - 2)
     })
     return price_dict
@@ -64,10 +65,10 @@ def assets_reasonable_config(draw, token_count: int = 0):
         }
     }
     return_dict.update({
-        ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
+        get_tkn_name(i): {
             'liquidity': draw(asset_quantity_bounded_strategy),
             'LRNA': draw(asset_quantity_bounded_strategy)
-        } for _ in range(token_count - 2)
+        } for i in range(token_count - 2)
     })
     return return_dict
 
@@ -115,10 +116,10 @@ def assets_config(draw, token_count: int = 0):
         }
     }
     return_dict.update({
-        ''.join(random.choice('abcdefghijklmnopqrstuvwxyz') for _ in range(3)): {
+        get_tkn_name(i): {
             'liquidity': mpf(draw(asset_quantity_strategy)),
             'LRNA': mpf(draw(asset_quantity_strategy))
-        } for _ in range(token_count - 2)
+        } for i in range(token_count - 2)
     })
     return return_dict
 
