@@ -10,6 +10,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState, historical_prices
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.trade_strategies import omnipool_arbitrage, back_and_forth, invest_all, dca_with_lping
+from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, reasonable_market
 from hydradx.model.run import run
 from hydradx.tests.utils import randomize_object
@@ -293,3 +294,32 @@ def test_dca_with_lping(
         raise AssertionError('Agent sell token changed.')
     if agent.holdings[buy_tkn] != pytest.approx(init_buy_tkn, rel=1e-20):
         raise AssertionError('Agent buy token changed.')
+
+def test_schedule_swaps():
+    """
+    Test the schedule_swaps function.
+    """
+    omnipool = OmnipoolState(
+        tokens={tkn: {'liquidity': 1000, 'LRNA': 1000} for tkn in ('HDX', 'USD', 'DOT')}
+    )
+    omnipool.trade_limit_per_block = float('inf')
+    agent = Agent(enforce_holdings=False)
+    external_market = {'USD': 1, 'HDX': 0.02, 'DOT': 7}
+    state = GlobalState(pools={'omnipool': omnipool}, agents={'agent': agent}, external_market=external_market)
+
+    trades = [
+        [{'tkn_sell': 'HDX', 'tkn_buy': 'USD', 'sell_quantity': 100}],
+        [{'tkn_sell': 'DOT', 'tkn_buy': 'HDX', 'buy_quantity': 150}]
+    ]
+    strat = schedule_swaps('omnipool', trades)
+    expected_usd = omnipool.calculate_buy_from_sell(tkn_buy='USD', tkn_sell='HDX', sell_quantity=100)
+    strat.execute(state, 'agent')
+    state.evolve()
+    expected_dot = -omnipool.calculate_sell_from_buy(tkn_buy='HDX', tkn_sell='DOT', buy_quantity=150)
+    strat.execute(state, 'agent')
+    expected_hdx = 50
+
+    assert not omnipool.fail
+    assert agent.get_holdings('HDX') == pytest.approx(expected_hdx)
+    assert agent.get_holdings('USD') == pytest.approx(expected_usd, rel=1e-15)
+    assert agent.get_holdings('DOT') == pytest.approx(expected_dot, rel=1e-15)

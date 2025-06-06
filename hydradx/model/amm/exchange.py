@@ -9,7 +9,6 @@ class Exchange:
     update_function: Callable = None
 
     def __init__(self):
-        self.oracles = None
         self.fail = ''
 
     def copy(self):
@@ -20,16 +19,16 @@ class Exchange:
     def update(self):
         pass
 
-    def price(self, tkn: str, denomination: str = '') -> float:
+    def price(self, tkn: str, numeraire: str = '') -> float:
         return 0
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None) -> float:
+    def buy_spot(self, tkn_buy: str, tkn_sell: str) -> float:
         """
         How much tkn_sell will 1 tkn_buy cost?
         """
         return 0
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None) -> float:
+    def sell_spot(self, tkn_sell: str, tkn_buy: str) -> float:
         """
         How much tkn_buy can be bought for 1 tkn_sell?
         """
@@ -71,8 +70,15 @@ class Exchange:
         self.fail = error
         return self
 
-    def value_assets(self, assets: dict[str: float], **kwargs) -> float:
-        return 0
+    def value_assets(self, assets: dict[str: float]) -> float:
+        """
+        Calculate the value of the assets in the exchange.
+        """
+        total_value = 0
+        for tkn, quantity in assets.items():
+            price = self.price(tkn)
+            total_value += price * quantity
+        return total_value
 
     def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
         pass
