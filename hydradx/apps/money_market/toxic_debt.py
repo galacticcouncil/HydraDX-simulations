@@ -39,7 +39,9 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     load_omnipool = load_router.exchanges['omnipool']
 
     asset_info = get_asset_info_by_ids()
+    print("Loading stableswap data...")
     stable_swap_data = get_stableswap_data()
+    print("Done loading stableswap data")
     stableswap_pools = []
     usd_price_lrna = (
         1 / load_omnipool.lrna_price('2-Pool-Stbl') / stable_swap_data[102].shares * 10 ** 18
@@ -74,7 +76,9 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
             )
         )
 
+    print("Loading money market data...")
     mm = get_current_money_market()
+
     # mm = MoneyMarket(
     #     assets=[
     #         MoneyMarketAsset(
