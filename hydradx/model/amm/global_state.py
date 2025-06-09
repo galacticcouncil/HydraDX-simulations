@@ -13,8 +13,7 @@ from .otc import OTC
 class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
-                 pools: dict[str: Exchange],
-                 money_market: MoneyMarket = None,
+                 pools: dict[str: Exchange] or list[Exchange],
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
@@ -26,17 +25,20 @@ class GlobalState:
             self.external_market = {'USD': 1, **self.external_market}
 
         # get a list of all assets contained in any member of the state
+        if isinstance(pools, list):
+            self.pools = {pool.unique_id: pool for pool in pools}
+        else:
+            self.pools = pools
+            for pool_name in self.pools:
+                self.pools[pool_name].unique_id = pool_name
         self.asset_list = list(set(
-            [asset for pool in pools.values() for asset in pool.asset_list]
+            [asset for pool in self.pools.values() for asset in pool.asset_list]
             + [asset for agent in agents.values() for asset in agent.asset_list]
             + list(self.external_market.keys())
         ))
         self.agents = agents
         for agent_name in self.agents:
             self.agents[agent_name].unique_id = agent_name
-        self.pools = pools
-        for pool_name in self.pools:
-            self.pools[pool_name].unique_id = pool_name
         for agent in self.agents.values():
             for asset in self.asset_list:
                 if asset not in agent.holdings:
@@ -49,7 +51,6 @@ class GlobalState:
         } if save_data else {}
         self.time_step = 0
         self.archive_all = archive_all
-        self.money_market = money_market
         self.otcs = otcs
 
     def price(self, tkn: str, numeraire: str = 'USD') -> float:
@@ -84,7 +85,6 @@ class GlobalState:
         copy_state = GlobalState(
             agents={agent_id: self.agents[agent_id].copy() for agent_id in self.agents},
             pools={pool_id: self.pools[pool_id].copy() for pool_id in self.pools},
-            money_market=self.money_market.copy() if self.money_market else None,
             otcs=[otc.copy() for otc in self.otcs],
             external_market=self.external_market.copy(),
             evolve_function=copy.copy(self.evolve_function),
@@ -368,16 +368,6 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
         for tkn in price_list[state.time_step]:
             state.external_market[tkn] = price_list[state.time_step][tkn]
-        return state
-
-    return transform
-
-
-def money_market_update(price_list: list[dict[str: float]]) -> Callable:
-    def transform(state: GlobalState) -> GlobalState:
-        for tkn in price_list[state.time_step]:
-            state.external_market[tkn] = price_list[state.time_step][tkn]
-            state.money_market.prices[tkn] = price_list[state.time_step][tkn]
         return state
 
     return transform

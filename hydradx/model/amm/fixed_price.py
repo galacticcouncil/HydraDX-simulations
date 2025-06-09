@@ -12,10 +12,10 @@ class FixedPriceExchange(Exchange):
         self.asset_list = list(tokens.keys())
         self.unique_id = unique_id
 
-    def price(self, tkn: str, denomination: str = ''):
-        if denomination and denomination not in self.prices:
-            raise ValueError(f'Denomination {denomination} not in exchange')
-        return self.prices[tkn] / (self.prices[denomination] if denomination in self.prices else 1)
+    def price(self, tkn: str, numeraire: str = ''):
+        if numeraire and numeraire not in self.prices:
+            raise ValueError(f'Denomination {numeraire} not in exchange')
+        return self.prices[tkn] / (self.prices[numeraire] if numeraire in self.prices else 1)
 
     def buy_spot(self, tkn_buy, tkn_sell, fee=0):
         return self.price(tkn_buy) / self.price(tkn_sell)
