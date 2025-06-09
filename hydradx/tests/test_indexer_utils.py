@@ -130,11 +130,11 @@ def test_get_asset_info_by_ids():
     assert isinstance(ids, dict)
 
 
-# def test_download_acct_trades():
-#     from hydradx.model.indexer_utils import download_acct_trades
-#
-#     tkn_id = 5
-#     path = "hydradx/apps/fees/data/"
-#     acct = "0x7279fcf9694718e1234d102825dccaf332f0ea36edf1ca7c0358c4b68260d24b"
-#     download_acct_trades(tkn_id, acct, path)
-#     print("done")
+def test_download_acct_trades():
+    from hydradx.model.indexer_utils import download_acct_trades
+    tkn_id = 5
+    base_dir = Path(__file__).resolve().parents[1]
+    path = str(base_dir / "apps" / "fees") + "/"
+    acct = "0x7279fcf9694718e1234d102825dccaf332f0ea36edf1ca7c0358c4b68260d24b"
+    download_acct_trades(tkn_id, acct, path, 7000000, 7001000)
+    print("done")
