@@ -175,6 +175,10 @@ def test_oracle_comparison():
     run_app(7_200_000, 7_201_000, 'AAVE')
 
 
+def test_arb_oracle_comp():
+    from hydradx.apps.fees import arb_oracle_comp
+
+
 def test_bucket_values():
     from hydradx.model.indexer_utils import bucket_values
 
