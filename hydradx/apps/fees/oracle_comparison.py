@@ -152,23 +152,23 @@ st.pyplot(fig)
 
 spot_prices = np.array(price_of_tkn_in_usdt)
 oracle_prices = np.array(interp_oracle_prices)
-# correlations = []
-# max_tau = 100
-# for tau in range(1, max_tau + 1):
-#     n = len(spot_prices) - tau
-#     D = np.log(oracle_prices[:n] / spot_prices[:n])
-#     R = np.log(spot_prices[tau:] / spot_prices[:n])
-#     corr = np.corrcoef(D, R)[0, 1]
-#     correlations.append(corr)
-#
-# # plot
-# fig, ax = plt.subplots()
-# ax.plot(range(1, max_tau + 1), correlations)
-# ax.set_title('Cross-Correlation: Oracle Returns → Future AMM Returns')
-# ax.set_xlabel('Lag (time steps)')
-# ax.set_ylabel('Correlation coefficient')
-# ax.grid(True)
-# st.pyplot(fig)
+correlations = []
+max_tau = 100
+for tau in range(1, max_tau + 1):
+    n = len(spot_prices) - tau
+    D = np.log(oracle_prices[:n] / spot_prices[:n])
+    R = np.log(spot_prices[tau:] / spot_prices[:n])
+    corr = np.corrcoef(D, R)[0, 1]
+    correlations.append(corr)
+
+# plot
+fig, ax = plt.subplots()
+ax.plot(range(1, max_tau + 1), correlations)
+ax.set_title('Cross-Correlation: Oracle Returns → Future AMM Returns')
+ax.set_xlabel('Lag (time steps)')
+ax.set_ylabel('Correlation coefficient')
+ax.grid(True)
+st.pyplot(fig)
 
 b = 0.0001  # buffer
 m = 0.5  # pct of arb to take
