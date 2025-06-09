@@ -9,9 +9,9 @@ sys.path.append(project_root)
 from hydradx.model.indexer_utils import get_asset_info_by_ids, get_omnipool_swap_fees
 from hydradx.model.indexer_utils import bucket_values_per_block, bucket_values
 
-tkn = 'tBTC'
-tkn = 'DOT'
-tkn = 'AAVE'
+options = ['AAVE', 'DOT', 'tBTC']
+tkn = st.selectbox("Token: ", options)
+
 if tkn == 'DOT':
     oracle_data_filename = 'DOTUSD_oracle_prices.csv'
     tkn_id = 5
