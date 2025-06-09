@@ -1,5 +1,6 @@
 import copy
 import math
+import random
 from pathlib import Path
 
 import pytest
@@ -138,3 +139,33 @@ def test_download_acct_trades():
     acct = "0x7279fcf9694718e1234d102825dccaf332f0ea36edf1ca7c0358c4b68260d24b"
     download_acct_trades(tkn_id, acct, path, 7000000, 7001000)
     print("done")
+
+
+def test_bucket_values():
+    from hydradx.model.indexer_utils import bucket_values
+
+    min_block = 0
+    max_block = 99
+    values = []
+    blocks = []
+    for i in range(min_block, max_block + 1):
+        values.append(random.randint(0, 1000))
+        blocks.append(random.randint(min_block, max_block))
+    blocks[0] = min_block
+    blocks[1] = max_block
+    data = list(zip(blocks, values))
+
+    results1 = bucket_values(10, data)
+    results2 = bucket_values(15, data)
+    results3 = bucket_values(20, data)
+
+    # different bucket counts should not affect sum of values
+    s1 = sum([x['value'] for x in results1])
+    s2 = sum([x['value'] for x in results2])
+    s3 = sum([x['value'] for x in results3])
+    assert s1 == s2 == s3, f"Sum of values should be equal, got {s1}, {s2}, {s3}"
+
+    for i in range(len(results1)):
+        s1 = results3[2*i]['value'] + results3[2*i + 1]['value']
+        s2 = results1[i]['value']
+        assert s1 == s2, f"Sum of values in bucket {i} should be equal, got {s1} and {s2}"
