@@ -1,5 +1,6 @@
 import copy
 import math
+from pathlib import Path
 
 import pytest
 from hydradx.model.amm.omnipool_amm import OmnipoolState
@@ -85,9 +86,10 @@ def test_download_stableswap_exec_prices():
     tkn_id = 10
     min_block_id = 6400000
     max_block_id = min_block_id + 1000
-    print(os.getcwd())
 
-    path = "hydradx/apps/fees/data/"
+    base_dir = Path(__file__).resolve().parents[1]
+    path = str(base_dir / "apps" / "fees" / "data")
+
     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
     print("done")
 
@@ -100,9 +102,10 @@ def test_download_omnipool_spot_prices():
     min_block_id = 7111661
     max_block_id = min_block_id + 1000
     step_size = 50000
-    print(os.getcwd())
 
-    path = "hydradx/apps/fees/data/"
+    base_dir = Path(__file__).resolve().parents[1]
+    path = str(base_dir / "apps" / "fees" / "data")
+
     temp_max_block_id = min(min_block_id + step_size, max_block_id)
     while min_block_id <= max_block_id:
         download_omnipool_spot_prices(tkn_id, denom_id, min_block_id, temp_max_block_id, path)
