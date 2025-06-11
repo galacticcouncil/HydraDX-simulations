@@ -529,7 +529,7 @@ class OmnipoolState(Exchange):
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-            if delta_Ri < 0:
+            if delta_Ri <= 0:
                 return self.fail_transaction(f'insufficient LRNA in {tkn_sell}')
             if delta_Ri == float('inf'):
                 return self.fail_transaction('not enough liquidity in sell pool to buy that much')
@@ -643,6 +643,8 @@ class OmnipoolState(Exchange):
                 return self.fail_transaction('insufficient assets in pool')
             denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
             delta_qa = -self.lrna[tkn] * delta_ra / denom
+            if "LRNA" not in agent.holdings or delta_qa + agent.holdings["LRNA"] < 0:
+                return self.fail_transaction('Agent has insufficient LRNA', agent)
             delta_qm = -asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
             delta_q = -delta_qa + delta_qm
 
