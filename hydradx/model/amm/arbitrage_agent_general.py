@@ -1,12 +1,11 @@
-from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.amm import AMM
-from hydradx.model.amm.centralized_market import CentralizedMarket
-from hydradx.model.amm.omnipool_amm import OmnipoolState
+from .agents import Agent
+from .exchange import Exchange
+from .centralized_market import CentralizedMarket
 
 
 # note that this function mutates exchanges, agents, and max_liquidity
 def get_arb_opps(
-        exchanges: dict[str: AMM],
+        exchanges: dict[str: Exchange],
         config: list[dict],
         max_liquidity: dict[str: dict[str: float]]
 ) -> list[tuple[float, int]]:
@@ -17,8 +16,8 @@ def get_arb_opps(
 
     for i, arb_cfg in enumerate(config):
         exchange_names = list(arb_cfg['exchanges'].keys())
-        ex_1: AMM = exchanges[exchange_names[0]]
-        ex_2: AMM = exchanges[exchange_names[1]]
+        ex_1: Exchange = exchanges[exchange_names[0]]
+        ex_2: Exchange = exchanges[exchange_names[1]]
 
         tkn_pair_1 = arb_cfg['exchanges'][exchange_names[0]]
         tkn_pair_2 = arb_cfg['exchanges'][exchange_names[1]]
@@ -44,7 +43,7 @@ def get_arb_opps(
 
 
 def get_arb_swaps(
-        exchanges: dict[str: AMM],
+        exchanges: dict[str: Exchange],
         config: list[dict],
         max_liquidity: dict[str: dict[str: float]] = None,
         max_iters: int = 10,
@@ -53,7 +52,7 @@ def get_arb_swaps(
     """
     return a list of swaps that can be executed to take advantage of the best arbitrage opportunities
     """
-    if not max_liquidity:
+    if max_liquidity is None:
         max_liquidity = {
             ex_name: {
                 tkn: 1000000000
@@ -61,6 +60,10 @@ def get_arb_swaps(
             }
             for ex_name, ex in exchanges.items()
         }
+    else:
+        # copy this so we don't mutate it
+        max_liquidity = {k: {k: v for (k, v) in v.items()} for (k, v) in max_liquidity.items()}
+
     arb_opps = get_arb_opps(exchanges, config, max_liquidity)
     all_swaps = []
     test_exchanges = {ex_name: ex.copy() for ex_name, ex in exchanges.items()}
@@ -75,8 +78,8 @@ def get_arb_swaps(
             precision=precision
         )
         for ex_name in arb_cfg['exchanges'].keys():
-            if exchanges[ex_name].fail:
-                raise AssertionError('max liquidity exceeded?')
+            if test_exchanges[ex_name].fail:
+                raise AssertionError(f'max liquidity exceeded? ({exchanges[ex_name].fail}, {arb_cfg["exchanges"][ex_name]})')
         if swap:
             all_swaps.append(swap)
         elif len(arb_opps) > arbs_index + 1:
@@ -92,7 +95,7 @@ def get_arb_swaps(
 
 
 def process_next_swap(
-        exchanges: dict[str: AMM],
+        exchanges: dict[str: Exchange],
         swap_config: dict,
         max_liquidity: dict[str: [dict[str: float]]],
         precision: float = 1e-10,
@@ -208,8 +211,8 @@ def process_next_swap(
 
 
 def calculate_arb_amount(
-        buy_ex: AMM,
-        sell_ex: AMM,
+        buy_ex: Exchange,
+        sell_ex: Exchange,
         sell_ex_tkn_pair: tuple[str, str],
         buy_ex_tkn_pair: tuple[str, str],
         buffer: float = 0.0,
@@ -293,7 +296,7 @@ def flatten_swaps(swaps):
     return [{'exchange': exchange, **trade[exchange]} for trade in swaps for exchange in trade]
 
 
-def execute_arb(exchanges: dict[str: AMM], agent: Agent, swaps: list[dict]):
+def execute_arb(exchanges: dict[str: Exchange], agent: Agent, swaps: list[dict]):
     if len(swaps) == 0:
         return
     for i, swap in enumerate((flatten_swaps(swaps) if len(swaps[0].keys()) == 2 else swaps)):
@@ -329,7 +332,7 @@ def calculate_profit(init_agent, agent, asset_map=None):
 
 
 def combine_swaps(
-        exchanges: dict[str, AMM],
+        exchanges: dict[str, Exchange],
         agent: Agent,
         swaps: list[dict],
         equivalency_map: dict[str, str],

@@ -4,8 +4,8 @@ from typing import Callable
 
 from .agents import Agent
 from .agents import AgentArchiveState
-from .amm import AMM
-from .liquidations import money_market
+from .exchange import Exchange
+from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState, simulate_swap
 from .otc import OTC
 
@@ -13,8 +13,8 @@ from .otc import OTC
 class GlobalState:
     def __init__(self,
                  agents: dict[str: Agent],
-                 pools: dict[str: AMM],
-                 money_market: money_market = None,
+                 pools: dict[str: Exchange],
+                 money_market: MoneyMarket = None,
                  otcs: list[OTC] = [],
                  external_market: dict[str: float] = None,
                  evolve_function: Callable = None,
@@ -41,8 +41,7 @@ class GlobalState:
             for asset in self.asset_list:
                 if asset not in agent.holdings:
                     agent.holdings[asset] = 0
-        self._evolve_function = evolve_function
-        self.evolve_function = evolve_function.__name__ if evolve_function else 'None'
+        self.evolve_function = evolve_function
         self.datastreams = save_data
         self.save_data = {
             tag: save_data[tag].assemble(self)
@@ -88,7 +87,7 @@ class GlobalState:
             money_market=self.money_market.copy() if self.money_market else None,
             otcs=[otc.copy() for otc in self.otcs],
             external_market=self.external_market.copy(),
-            evolve_function=copy.copy(self._evolve_function),
+            evolve_function=copy.copy(self.evolve_function),
             save_data=self.datastreams,
             archive_all=self.archive_all
         )
@@ -110,8 +109,15 @@ class GlobalState:
         self.time_step += 1
         for pool in self.pools.values():
             pool.update()
-        if self._evolve_function:
-            return self._evolve_function(self)
+        if self.evolve_function:
+            self.evolve_function(self)
+        # agent actions
+        agent_ids = list(self.agents.keys())
+        for agent_id in agent_ids:
+            agent = self.agents[agent_id]
+            if agent.trade_strategy and self.time_step % agent.trade_strategy.frequency == 0:
+                agent.trade_strategy.execute(self, agent_id)
+        return self
 
     def execute_swap(
             self,
@@ -149,13 +155,15 @@ class GlobalState:
 
         return prices
 
-    def cash_out(self, agent: Agent) -> float:
+    def cash_out(self, agent_id: str) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        agent = self.agents[agent_id]
         if 'LRNA' not in agent.holdings:
             agent.holdings['LRNA'] = 0
+
         withdraw_holdings = {tkn: agent.holdings[tkn] for tkn in list(agent.holdings.keys())}
 
         for key in agent.holdings.keys():
@@ -181,7 +189,7 @@ class GlobalState:
                 else:
                     # much less efficient, but works for any pool
                     new_state = self.copy()
-                    new_pool: AMM = new_state.pools[pool_id]
+                    new_pool: Exchange = new_state.pools[pool_id]
                     new_agent = new_state.agents[agent.unique_id]
                     new_pool.remove_liquidity(agent=new_agent, quantity=agent.holdings[key], tkn_remove=tkn)
                     withdraw_holdings = {
@@ -192,7 +200,7 @@ class GlobalState:
         prices = self.market_prices(withdraw_holdings)
         return value_assets(prices, withdraw_holdings)
 
-    def pool_val(self, pool: AMM):
+    def pool_val(self, pool: Exchange):
         """ get the total value of all liquidity in the pool. """
         total = 0
         for asset in pool.asset_list:
@@ -200,7 +208,7 @@ class GlobalState:
         return total
 
     def impermanent_loss(self, agent: Agent) -> float:
-        return self.cash_out(agent) / self.deposit_val(agent) - 1
+        return self.cash_out(agent.unique_id) / self.deposit_val(agent) - 1
 
     def deposit_val(self, agent: Agent) -> float:
         return value_assets(
@@ -209,7 +217,7 @@ class GlobalState:
         )
 
     def withdraw_val(self, agent: Agent) -> float:
-        return self.cash_out(agent)
+        return self.cash_out(agent.unique_id)
 
     def external_market_trade(
             self,
@@ -266,7 +274,7 @@ class GlobalState:
                     f'{indent}{tkn}: ${price}' for tkn, price in self.external_market.items()
                 ])) +
                 f'{newline}{newline}'
-                f'evolution function: {self.evolve_function}'
+                f'evolution function: {self.evolve_function.__name__ if self.evolve_function else "None"}'
                 f'{newline}'
         )
 
@@ -287,10 +295,6 @@ def value_assets(prices: dict, assets: dict) -> float:
         assets[i] * prices[i] if i in prices else 0
         for i in assets.keys()
     ])
-
-
-GlobalState.value_assets = staticmethod(value_assets)
-
 
 def fluctuate_prices(volatility: dict[str: float], trend: dict[str: float] = None):
     """
@@ -369,122 +373,14 @@ def historical_prices(price_list: list[dict[str: float]]) -> Callable:
     return transform
 
 
-def liquidate_against_omnipool(pool_id: str, agent_id: str, iters: int = 20) -> Callable:
+def money_market_update(price_list: list[dict[str: float]]) -> Callable:
     def transform(state: GlobalState) -> GlobalState:
-        omnipool = state.pools[pool_id]
-        agent = state.agents[agent_id]
-        mm = state.money_market
-        for i in range(len(mm.cdps)):
-            if mm.is_liquidatable(mm.cdps[i][1]):
-                delta_debt = find_partial_liquidation_amount(omnipool, mm, i, iters)
-                if delta_debt > 0:
-                    omnipool_liquidate_cdp(state.pools['omnipool'], mm, i, agent, delta_debt)
+        for tkn in price_list[state.time_step]:
+            state.external_market[tkn] = price_list[state.time_step][tkn]
+            state.money_market.prices[tkn] = price_list[state.time_step][tkn]
         return state
 
     return transform
-
-
-def find_partial_liquidation_amount(omnipool: OmnipoolState, mm: money_market, cdp_i: int, iters: int = 20,
-                                    min_amt: float = 0) -> float:
-    """Find largest amount of debt from a CDP that can be liquidated profitably against Omnipool.
-
-    Args:
-        omnipool: Omnipool state
-        mm: money market
-        cdp_i: int index of CDP in mm.cdps list
-        iters: max iterations for the binomial search (default 20)
-        min_amt: minimum debt amount to liquidate (default 0)
-    """
-    cdp = mm.cdps[cdp_i][1]
-    debt_asset = cdp.debt_asset
-    collateral_asset = cdp.collateral_asset
-
-    max_debt_amt = 0
-    if mm.is_fully_liquidatable(cdp):
-        max_debt_amt = cdp.debt_amt
-    elif mm.is_liquidatable(cdp):
-        max_debt_amt = cdp.debt_amt * mm.partial_liquidation_pct
-
-    delta_debt_up = min(max_debt_amt, omnipool.liquidity[debt_asset] * 0.999)
-    delta_debt = delta_debt_up
-    delta_debt_down = min_amt
-
-    if min_amt > 0:
-        # if minimum liquidation cannot be done, we cannot even partially liquidate
-        amt_sold = omnipool.calculate_sell_from_buy(tkn_buy=debt_asset, tkn_sell=collateral_asset, buy_quantity=min_amt)
-        collat_from_cdp = mm.get_liquidate_collateral_amt(cdp, min_amt)
-        if amt_sold > collat_from_cdp:
-            # trade amount too high
-            return 0
-
-    # binary search
-    for i in range(iters):
-        amt_sold = omnipool.calculate_sell_from_buy(tkn_buy=debt_asset, tkn_sell=collateral_asset,
-                                                    buy_quantity=delta_debt)
-        collat_from_cdp = mm.get_liquidate_collateral_amt(cdp, delta_debt)
-
-        if amt_sold > collat_from_cdp:
-            # trade amount too high
-            delta_debt_up = delta_debt
-
-        else:  # trade amt can be executed
-            delta_debt_down = delta_debt
-            if delta_debt == delta_debt_up:
-                break
-        delta_debt = (delta_debt_up + delta_debt_down) / 2
-    return delta_debt_down
-
-
-def omnipool_liquidate_cdp(omnipool: OmnipoolState, mm: money_market, cdp_i: int, treasury_agent: Agent,
-                           delta_debt: float) -> None:
-    cdp = mm.cdps[cdp_i][1]
-    penalty = mm.liquidation_penalty[cdp.collateral_asset]
-    # treasury_agent buys borrowed asset to cover the debt, but only if debt can be covered by existing collateral
-    # check if debt can be covered by existing collateral
-    if delta_debt > cdp.debt_amt:
-        raise ValueError("Debt amount exceeds CDP debt.")
-    if delta_debt <= 0:
-        raise ValueError("delta_debt must be positive.")
-    if cdp.debt_asset not in treasury_agent.holdings:
-        treasury_agent.holdings[cdp.debt_asset] = 0
-
-    # need to simulate Omnipool swap to see if we can profitably liquidate
-    # simulate buying debt_amt with collateral
-    collateral_sold = omnipool.calculate_sell_from_buy(tkn_buy=cdp.debt_asset, tkn_sell=cdp.collateral_asset,
-                                                       buy_quantity=delta_debt)
-    collateral_liquidatable = mm.get_liquidate_collateral_amt(cdp, delta_debt)
-    if collateral_liquidatable < collateral_sold:
-        raise ValueError("Cannot liquidate profitably against Omnipool.")
-
-    # proceed with liquidating against Omnipool
-
-    flash_mint_amt = cdp.debt_amt
-    treasury_agent.holdings[cdp.debt_asset] += flash_mint_amt  # flash mint collateral_amt to treasury_agent
-    init_collat_amt = treasury_agent.holdings[cdp.collateral_asset]
-
-    init_debt_amt = cdp.debt_amt
-    mm.liquidate(cdp, treasury_agent, delta_debt)
-    delta_debt_real = init_debt_amt - cdp.debt_amt  # in case delta_debt_real < delta_debt
-
-    omnipool.swap(
-        agent=treasury_agent,
-        tkn_buy=cdp.debt_asset,
-        tkn_sell=cdp.collateral_asset,
-        buy_quantity=delta_debt_real
-    )
-
-    # need to calculate penalty_amt
-    debt_paid_converted_to_collateral_asset = delta_debt_real * mm.get_oracle_price(cdp.debt_asset,
-                                                                                    cdp.collateral_asset)
-    penalty_amt = penalty * debt_paid_converted_to_collateral_asset
-
-    # any excess treasury agent has above penalty_amt is returned to cdp
-    collat_profit = treasury_agent.holdings[cdp.collateral_asset] - init_collat_amt
-    return_amt = max(collat_profit - penalty_amt, 0)
-    treasury_agent.holdings[cdp.collateral_asset] -= return_amt
-    mm.cdps[cdp_i][1].collateral_amt += return_amt
-
-    treasury_agent.holdings[cdp.debt_asset] -= flash_mint_amt  # flash burn
 
 
 def settle_otc_against_omnipool(pool_id: str, agent_id: str):
@@ -512,7 +408,7 @@ def find_partial_otc_sell_amount(omnipool, otc):
     sell_asset = otc.sell_asset
 
     # if no arbitrage can happen at spot price, we cannot even partially satisfy the OTC order
-    if omnipool.price(omnipool, buy_asset, sell_asset) > otc.price:
+    if omnipool.price(buy_asset, sell_asset) > otc.price:
         return 0
 
     sell_amt = otc.sell_amount
@@ -550,44 +446,3 @@ def omnipool_settle_otc(omnipool: OmnipoolState, otc: OTC, treasury_agent: Agent
     otc.buy(treasury_agent, buy_from_otc_amt)
     # burn assets that were flash minted
     treasury_agent.holdings[otc.sell_asset] -= buy_from_otc_amt
-
-
-def liquidate_against_omnipool_and_settle_otc(pool_id: str, agent_id: str) -> Callable:
-    transform_liquidate = liquidate_against_omnipool(pool_id, agent_id)
-    transform_otc = settle_otc_against_omnipool(pool_id, agent_id)
-
-    def transform(state: GlobalState) -> GlobalState:
-        transform_liquidate(state)
-        transform_otc(state)
-        return state
-
-    return transform
-
-
-def _set_mm_oracles_to_external_market(state: GlobalState, stablecoin: str, trigger: float = 0) -> None:
-    mm_oracles = state.money_market.oracles
-    market = state.external_market
-    for tkn_pair in mm_oracles:
-        if tkn_pair[1] == stablecoin:
-            market_price = market[tkn_pair[0]]
-        elif tkn_pair[0] == stablecoin:
-            market_price = 1 / market[tkn_pair[1]]
-        else:
-            market_price = market[tkn_pair[0]] / market[tkn_pair[1]]
-        if abs(state.money_market.oracles[tkn_pair] - market_price) / state.money_market.oracles[tkn_pair] > trigger:
-            state.money_market.oracles[tkn_pair] = market_price
-
-
-def update_prices_and_process(pool_id: str, liquidating_agent_id: str, price_list: list[dict[str: float]],
-                              stablecoin: str, trigger_pct: float = 0) -> Callable:
-    transform_price = historical_prices(price_list)
-    transform_liquidate = liquidate_against_omnipool(pool_id, liquidating_agent_id)
-    trigger = trigger_pct
-
-    def transform(state: GlobalState) -> GlobalState:
-        transform_price(state)
-        _set_mm_oracles_to_external_market(state, stablecoin, trigger)
-        transform_liquidate(state)
-        return state
-
-    return transform

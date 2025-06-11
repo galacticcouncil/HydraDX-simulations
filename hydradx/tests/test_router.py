@@ -1,6 +1,6 @@
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from mpmath import mpf, mp
 from datetime import timedelta
 
@@ -9,6 +9,9 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.tests.strategies_omnipool import fee_strategy
+
+settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
+settings.load_profile("long")
 
 mp.dps = 50
 
@@ -46,8 +49,8 @@ def test_price_route(assets: list[float]):
     }
     router = OmnipoolRouter(exchanges)
 
-    op_price_hdx = omnipool.price(omnipool, "HDX", "USDT")
-    op_price_lp = omnipool.price(omnipool, "stablepool", "USDT")
+    op_price_hdx = omnipool.price("HDX", "USDT")
+    op_price_lp = omnipool.price("stablepool", "USDT")
     sp_price = stablepool.price("stable1", "stable3")
     share_price = stablepool.share_price("stable1")
 
@@ -179,11 +182,11 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     router = OmnipoolRouter(exchanges)
     omnipool2 = omnipool.copy()
     stablepool2_copy = stablepool2.copy()
-    agent1 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
-    agent2 = Agent(holdings={"DOT": 10000000, "USDT": 10000000})
+    agent1 = Agent(enforce_holdings=False)
+    agent2 = Agent(enforce_holdings=False)
     trade_size = trade_size_mult * min(assets[4], assets[2])
 
-    buy_quantity = 1000
+    buy_quantity = 100
 
     # test buy
     router.swap_route(agent1, tkn_sell="DOT", tkn_buy="USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2",
@@ -250,44 +253,54 @@ def test_swap_stableswap2(assets: list[float]):
     stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
     exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
     router = OmnipoolRouter(exchanges)
-    init_holdings = {"DOT": 1000000, "USDT": 1000000, "stable1": 1000000}
-    agent1 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
-    trade_size = 1000
+    trade_size = 100
 
-    # test buy
+    agent1 = Agent(enforce_holdings=False)
+
+    # try buy
     router.swap_route(agent1, buy_tkn, sell_tkn, buy_quantity=trade_size, buy_pool_id="stablepool2",
                       sell_pool_id="stablepool")
-    for tkn in list(agent1.holdings.keys()) + list(init_holdings.keys()):
-        if tkn == buy_tkn:
-            if agent1.holdings[tkn] != pytest.approx(init_holdings[tkn] + trade_size, rel=1e-12):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn] + trade_size}")
-        elif tkn == sell_tkn:
-            if agent1.holdings[tkn] >= init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} >= {init_holdings[tkn]}")
-        else:
-            if tkn not in init_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
-            elif tkn in agent1.holdings and tkn in init_holdings and agent1.holdings[tkn] != init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {init_holdings[tkn]}")
+    if router.fail:
+        raise ValueError(f"trade failed")
 
-    sell_init_holdings = copy.deepcopy(agent1.holdings)
+    assets = agent1.holdings.keys()
+    if buy_tkn not in assets:
+        assets.append(buy_tkn)
+    if sell_tkn not in assets:
+        assets.append(sell_tkn)
+
+    for tkn in assets:
+        holdings = agent1.get_holdings(tkn)
+        if tkn == buy_tkn:
+            if holdings != pytest.approx(trade_size, rel=1e-12):
+                raise ValueError(f"agent1 holdings {holdings} != {trade_size}")
+        elif tkn == sell_tkn:
+            if holdings >= 0:
+                raise ValueError(f"agent1 holdings {holdings} >= 0")
+        elif holdings != 0:
+                raise ValueError(f"agent1 holdings {holdings} != 0")
 
     # test sell
+    agent1 = Agent(enforce_holdings=False)
     router.swap_route(agent1, tkn_sell="stable1", tkn_buy="USDT", sell_quantity=trade_size, buy_pool_id="stablepool2",
                       sell_pool_id="stablepool")
-    for tkn in list(agent1.holdings.keys()) + list(sell_init_holdings.keys()):
+    if router.fail:
+        raise ValueError(f"trade failed")
+    assets = agent1.holdings.keys()
+    if buy_tkn not in assets:
+        assets.append(buy_tkn)
+    if sell_tkn not in assets:
+        assets.append(sell_tkn)
+    for tkn in assets:
+        holdings = agent1.get_holdings(tkn)
         if tkn == buy_tkn:
-            if agent1.holdings[tkn] <= sell_init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} <= {sell_init_holdings[tkn]}")
+            if holdings <= 0:
+                raise ValueError(f"agent1 holdings {holdings} <= 0")
         elif tkn == sell_tkn:
-            if agent1.holdings[tkn] + trade_size != sell_init_holdings[tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn] + trade_size} != {init_holdings[tkn]}")
-        else:
-            if tkn not in sell_init_holdings and (tkn in agent1.holdings and agent1.holdings[tkn] != 0):
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != 0")
-            elif tkn in agent1.holdings and tkn in sell_init_holdings and agent1.holdings[tkn] != sell_init_holdings[
-                tkn]:
-                raise ValueError(f"agent1 holdings {agent1.holdings[tkn]} != {sell_init_holdings[tkn]}")
+            if holdings + trade_size != 0:
+                raise ValueError(f"agent1 holdings {holdings + trade_size} != 0")
+        elif holdings != 0:
+            raise ValueError(f"agent1 holdings {holdings} != 0")
 
 
 def test_swap():
@@ -566,7 +579,6 @@ def test_spot_prices_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
 
 
-@settings(deadline=timedelta(milliseconds=500))
 @given(
     assets=st.lists(asset_quantity_strategy, min_size=6, max_size=6),
     lrna_fee=fee_strategy,
@@ -868,6 +880,7 @@ def test_sell_spot_sell_stableswap_buy_omnipool(
     asset_fee=fee_strategy,
     trade_fee=fee_strategy
 )
+@settings(deadline=timedelta(milliseconds=500))
 def test_buy_spot_sell_stableswap_buy_omnipool(
         assets: list[float], lrna_fee: float, asset_fee: float, trade_fee: float
 ):
@@ -910,3 +923,60 @@ def test_buy_spot_sell_stableswap_buy_omnipool(
         raise ValueError(f"actually bought {buy_quantity} != trade size {trade_size}")
     if buy_spot != pytest.approx(buy_ex, rel=1e-08):
         raise ValueError(f"spot price {buy_spot} != execution price {buy_ex}")
+
+
+def test_calculate_buy_from_sell():
+    stable1 = StableSwapPoolState(
+        tokens={
+            'BTC': mpf(1000),
+            'WBTC': mpf(1001)
+        }, amplification=100,
+        unique_id='btc pool',
+        trade_fee=0.000123
+    )
+    stable2 = StableSwapPoolState(
+        tokens={
+            'ETH': mpf(1001),
+            'WETH': mpf(999)
+        }, amplification=222,
+        unique_id='eth pool',
+        trade_fee=0.00011
+    )
+    omnipool = OmnipoolState(
+        tokens={
+            'eth pool': {'liquidity': 101, 'LRNA': 1999},
+            'btc pool': {'liquidity': 102, 'LRNA': 20202},
+            'HDX': {'liquidity': 1003333, 'LRNA': 1234},
+            'USD': {'liquidity': 100000, 'LRNA': 5000},
+            'ETH': {'liquidity': 100, 'LRNA': 2000}
+        },
+        asset_fee=0.0022, lrna_fee=0.0011
+    )
+    router = OmnipoolRouter(
+        [stable1, stable2, omnipool]
+    )
+    if router.find_best_route('ETH', 'BTC') != ('btc pool', 'eth pool'):
+        # this is to make sure we test the case where one of the assets exists in two different pools.
+        raise AssertionError('ETH -> BTC trade should go through both subpools.')
+    elif router.find_best_route('BTC', 'ETH') != ('omnipool', 'btc pool'):
+        # this is to test the case where buy route and sell route are different.
+        raise AssertionError('BTC -> ETH trade should go through omnipool -> btc pool.')
+
+    trades = [
+        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 10},
+        {'tkn_buy': 'BTC', 'tkn_sell': 'HDX', 'sell_quantity': 11},
+        {'tkn_buy': 'HDX', 'tkn_sell': 'ETH', 'sell_quantity': 12},
+        {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'sell_quantity': 13},
+        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 14},
+        {'tkn_buy': 'ETH', 'tkn_sell': 'BTC', 'sell_quantity': 15},
+    ]
+    for trade in trades:
+        tkn_buy, tkn_sell, sell_quantity = trade.values()
+        buy_prediction = router.calculate_buy_from_sell(
+            tkn_sell=tkn_sell, tkn_buy=tkn_buy, sell_quantity=sell_quantity
+        )
+        agent = Agent(enforce_holdings=False)
+        router.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+        buy_result = agent.get_holdings(tkn_buy)
+        if buy_prediction != pytest.approx(buy_result, rel=1e-15):
+            raise AssertionError('Trade did not come out as predicted.')

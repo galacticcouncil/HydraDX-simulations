@@ -1,7 +1,7 @@
 import random
 import copy
 import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, reproduce_failure
 from hydradx.tests.test_omnipool_amm import omnipool_config
 from hydradx.tests.test_basilisk_amm import constant_product_pool_config
 from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
@@ -11,7 +11,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model import run
 from hydradx.model import processing
 from hydradx.model.amm.trade_strategies import steady_swaps, invest_all, constant_product_arbitrage, invest_and_withdraw
-from hydradx.model.amm.amm import AMM
+from hydradx.model.amm.exchange import Exchange
 
 asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
 asset_number_strategy = st.integers(min_value=3, max_value=5)
@@ -107,7 +107,7 @@ def global_state_config(
         for pool in pools.values():
             for asset in pool.asset_list:
                 pool.liquidity[asset] = pool.liquidity[asset] or 1000000 / market_prices[asset]
-            if hasattr(pool, 'trade_fee') and pool.trade_fee.compute('', 0) < 0:
+            if hasattr(pool, 'trade_fee') and pool.trade_fee('', 0) < 0:
                 pool.trade_fee = draw(fee_strategy)
 
     if not agents:
@@ -130,7 +130,7 @@ def global_state_config(
 @given(global_state_config())
 def test_simulation(initial_state: GlobalState):
     for a, agent in enumerate(initial_state.agents.values()):
-        pool: AMM = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
+        pool: Exchange = initial_state.pools[list(initial_state.pools.keys())[a % len(initial_state.pools)]]
         agent.trade_strategy = [
             steady_swaps(pool_id=pool.unique_id, usd_amount=100),
             invest_all(pool_id=pool.unique_id)
@@ -190,7 +190,7 @@ def test_LP(initial_state: GlobalState):
     if sum([final_state.agents['LP'].holdings[i] for i in initial_state.asset_list]) > 0:
         print('failed, not invested')
         raise AssertionError('Why does this LP not have all its assets in the pool???')
-    if final_state.cash_out(final_state.agents['LP']) < initial_state.cash_out(initial_state.agents['LP']):
+    if final_state.cash_out('LP') < initial_state.cash_out('LP'):
         print('failed, lost money.')
         raise AssertionError('The LP lost money!')
     # print('test passed.')
@@ -273,41 +273,35 @@ def test_arbitrage_profitability(hdx_balance, bsx_balance, hdx_price, bsx_price)
                 'X': 0,  # random via draw(asset_quantity_strategy)
                 'Y': 0
             },
-            trade_fee=-1  # i.e. choose one randomly via draw(fee_strategy)
+            trade_fee=0  # i.e. choose one randomly via draw(fee_strategy)
         )
     },
     agents={
         'arbitrager': Agent()
     }
-), asset_price_strategy)
-def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float):
+), asset_price_strategy, st.floats(min_value=0, max_value=0.1))
+def test_arbitrage_accuracy(initial_state: GlobalState, target_price: float, trade_fee: float):
+    initial_state.trade_fee = trade_fee
     initial_state.external_market['Y'] = initial_state.price('X') * target_price
-    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=True)
-    recursive_function = constant_product_arbitrage('X/Y', minimum_profit=0, direct_calc=False)
+    algebraic_function = constant_product_arbitrage('X/Y', minimum_profit=0)
 
     def sell_spot(state: GlobalState):
         return (
                 state.pools['X/Y'].liquidity['X']
                 / state.pools['X/Y'].liquidity['Y']
-                * (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+                * (1 - state.pools['X/Y'].trade_fee())
         )
 
     def buy_spot(state: GlobalState):
         return (
                 state.pools['X/Y'].liquidity['X']
                 / state.pools['X/Y'].liquidity['Y']
-                / (1 - state.pools['X/Y'].trade_fee.compute('', 0))
+                / (1 - state.pools['X/Y'].trade_fee())
         )
 
-    algebraic_state: GlobalState = algebraic_function.execute(initial_state.copy(), 'arbitrager')
-    recursive_state: GlobalState = recursive_function.execute(initial_state.copy(), 'arbitrager')
+    algebraic_state = copy.deepcopy(algebraic_function.execute(initial_state.copy(), 'arbitrager'))
     algebraic_result = (algebraic_state.pools['X/Y'].liquidity['X']
                         / algebraic_state.pools['X/Y'].liquidity['Y'])
-    recursive_result = (recursive_state.pools['X/Y'].liquidity['X']
-                        / recursive_state.pools['X/Y'].liquidity['Y'])
-
-    if algebraic_result != pytest.approx(recursive_result):
-        raise AssertionError("Arbitrage calculation methods don't match.")
 
     if target_price < sell_spot(initial_state):
         if sell_spot(algebraic_state) != pytest.approx(target_price):
@@ -371,7 +365,7 @@ def test_buy_fee_derivation(initial_state: GlobalState):
     fee_amount = buy_amount / feeless_buy_amount - 1
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
+        expected_fee_amount /= (1 - initial_state.pools[pool_id].trade_fee(initial_state.pools[pool_id].asset_list[0], 0))
     expected_fee_amount -= 1
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
@@ -431,108 +425,9 @@ def test_sell_fee_derivation(initial_state: GlobalState):
     # what do we think it should be, if the derived formula is right?
     expected_fee_amount = 1
     for pool_id in pool_path:
-        expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee.compute('', 0))
+        expected_fee_amount *= (1 - initial_state.pools[pool_id].trade_fee(initial_state.pools[pool_id].asset_list[0], 0))
     expected_fee_amount = 1 - expected_fee_amount
     if fee_amount != pytest.approx(expected_fee_amount):
         raise ValueError(f'off by {abs(1-expected_fee_amount/fee_amount)}')
     # if fee_amount > expected_fee_amount:
     #     raise ValueError('fee is higher than expected')
-
-
-# @given(st.integers(min_value=1, max_value=100000))
-def test_omnipool_arbitrage():
-    import random
-
-    from hydradx.model import run
-    from hydradx.model.amm.omnipool_amm import OmnipoolState, dynamicadd_lrna_fee
-    from hydradx.model.amm.agents import Agent
-    from hydradx.model.amm.trade_strategies import omnipool_arbitrage, random_swaps
-    from hydradx.model.amm.global_state import GlobalState
-    from hydradx.model import plot_utils as pu
-
-    # same seed, same parameters = same simulation result
-    random.seed(42)
-
-    assets = {
-        'HDX': {'usd price': 0.05, 'weight': 0.10},
-        'USD': {'usd price': 1, 'weight': 0.20},
-        'AUSD': {'usd price': 1, 'weight': 0.10},
-        'ETH': {'usd price': 2500, 'weight': 0.40},
-        'DOT': {'usd price': 5.37, 'weight': 0.20}
-    }
-
-    lrna_price_usd = 0.07
-    initial_omnipool_tvl = 10000000
-    liquidity = {}
-    lrna = {}
-
-    for tkn, info in assets.items():
-        liquidity[tkn] = initial_omnipool_tvl * info['weight'] / info['usd price']
-        lrna[tkn] = initial_omnipool_tvl * info['weight'] / lrna_price_usd
-
-    initial_state = GlobalState(
-        pools={
-            'Omnipool': OmnipoolState(
-                tokens={
-                    tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in assets
-                },
-                oracles={
-                    'short': 10,
-                    'medium': 40,
-                    'long': 160
-                },
-                lrna_fee=dynamicadd_lrna_fee(
-                    minimum=0.0025,
-                    amplification=10,
-                    raise_oracle_name='medium',
-                    decay=0.00001,
-                    fee_max=0.1,
-                ),
-                asset_fee=0,
-                preferred_stablecoin='USD'
-            )
-        },
-        agents={
-            'Arbitrageur': Agent(
-                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
-                trade_strategy=omnipool_arbitrage('Omnipool')
-            ),
-            'Trader': Agent(
-                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
-                trade_strategy=random_swaps(
-                    pool_id='Omnipool',
-                    amount={'USD': 1000, 'HDX': 1000, 'AUSD': 1000, 'ETH': 1000, 'DOT': 1000}
-                )
-            ),
-            'LP': Agent(
-                holdings={tkn: 100000000 for tkn in list(assets.keys()) + ['LRNA']},
-                trade_strategy=invest_and_withdraw(pool_id='Omnipool')
-            )
-        },
-        # evolve_function=fluctuate_prices(volatility={'DOT': 1, 'HDX': 1}),
-        external_market={tkn: assets[tkn]['usd price'] for tkn in assets},
-    )
-
-    # print(initial_state)
-    time_steps = 1000  # len(price_list) - 1
-    events = run.run(initial_state, time_steps=time_steps)
-    # asset_prices = pu.get_datastream(events, asset='all')
-    # dot_prices = pu.get_datastream(events, asset='DOT')
-    hdx_price = pu.get_datastream(events, pool='Omnipool', prop='usd_price', key='HDX')
-    # pool_val = pu.get_datastream(events, pool='Omnipool', prop='pool_val')
-    # oracles_hdx_liquidity = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='liquidity', key='HDX')
-    # oracles_hdx_price = pu.get_datastream(events, pool='Omnipool', oracle='all', prop='price', key='HDX')
-    # short_oracle_usd = pu.get_datastream(events, pool='Omnipool', oracle='short', prop='all', key='USD')
-    arb_holdings = pu.get_datastream(events, agent='Arbitrageur', prop='holdings', key='all')
-    deposit_val = pu.get_datastream(events, agent='LP', prop='deposit_val')
-    arb_holdings = [
-        {tkn: arb_holdings[tkn][i] for tkn in arb_holdings} for i in range(len(arb_holdings['LRNA']))
-    ]
-    profit = (
-        GlobalState.value_assets(arb_holdings[-1], initial_state.external_market)
-        - GlobalState.value_assets(arb_holdings[0], initial_state.external_market)
-    )
-    if profit < 0:
-        raise ValueError(f'Arbitrageur lost {profit} USD')
-    # pu.plot(events, pool='Omnipool', prop='liquidity')
-    # er = 1

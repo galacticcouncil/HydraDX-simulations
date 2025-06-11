@@ -2,11 +2,12 @@ import math
 import copy
 from .global_state import GlobalState
 from .agents import Agent
-from .amm import AMM
+from .exchange import Exchange
 from .basilisk_amm import ConstantProductPoolState
+from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState
-from . import omnipool_amm as oamm
 from .stableswap_amm import StableSwapPoolState
+from .arbitrage_agent_general import get_arb_swaps, execute_arb
 from typing import Callable
 import random
 # from numbers import Number
@@ -15,11 +16,12 @@ import numpy as np
 
 
 class TradeStrategy:
-    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False):
+    def __init__(self, strategy_function: Callable[[GlobalState, str], GlobalState], name: str, run_once: bool = False, frequency: int = None):
         self.function = strategy_function
         self.run_once = run_once
         self.done = False
         self.name = name
+        self.frequency = frequency if frequency is not None else 1
 
     def execute(self, state: GlobalState, agent_id: str) -> GlobalState:
         if self.done:
@@ -140,9 +142,9 @@ def back_and_forth(
             # asset = agent.asset_list[i]
             dr = percentage / 2 * omnipool.liquidity[asset]
             lrna_init = state.agents[agent_id].holdings['LRNA']
-            omnipool.swap(agent=agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr, modify_imbalance=False)
+            omnipool.swap(agent=agent, tkn_sell=asset, tkn_buy='LRNA', sell_quantity=dr)
             dq = state.agents[agent_id].holdings['LRNA'] - lrna_init
-            omnipool.swap(agent=agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq, modify_imbalance=False)
+            omnipool.swap(agent=agent, tkn_sell='LRNA', tkn_buy=asset, sell_quantity=dq)
 
         return state
 
@@ -195,7 +197,7 @@ def withdraw_all(when: int) -> TradeStrategy:
                     pool_id = key
                     tkn = key
                 if pool_id in state.pools:
-                    pool: AMM = state.pools[pool_id]
+                    pool: Exchange = state.pools[pool_id]
                     pool.remove_liquidity(
                         agent=agent,
                         quantity=agent.holdings[key],
@@ -302,7 +304,7 @@ def find_agent_delta_y(
     return b if i < max_iterations else 0
 
 
-def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_calc: bool = True) -> TradeStrategy:
+def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0) -> TradeStrategy:
 
     def strategy(state: GlobalState, agent_id: str):
 
@@ -314,29 +316,21 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         x = pool.asset_list[0]
         y = pool.asset_list[1]
 
-        if not direct_calc:
-            agent_delta_y = recursive_calculation(state, x, y)
-        else:
-            agent_delta_y = direct_calculation(state, x, y)
+        agent_delta_y = direct_calculation(state, x, y)
 
         agent_delta_x = -agent_delta_y * pool.liquidity[x] / (pool.liquidity[y] - agent_delta_y)
         if agent_delta_y > 0:
-            agent_delta_x /= 1 - pool.trade_fee.compute(y, abs(agent_delta_y))
+            agent_delta_x /= 1 - pool.trade_fee(y, abs(agent_delta_y))
         else:
-            agent_delta_x *= 1 - pool.trade_fee.compute(y, abs(agent_delta_y))
+            agent_delta_x *= 1 - pool.trade_fee(y, abs(agent_delta_y))
 
         projected_profit = (
             agent_delta_y * state.price(y)
             + agent_delta_x * state.price(x)
         )
 
-        # in case we want to graph this later
-        # agent = state.agents[agent_id]
-        # agent.projected_profit = projected_profit
-
         if projected_profit <= minimum_profit:
             # don't do it
-            # agent.trade_rejected += 1
             return state
 
         # buy just enough of non-USD asset
@@ -367,7 +361,7 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         p = state.price(tkn_buy) / state.price(tkn_sell)
         x = pool.liquidity[tkn_sell]
         y = pool.liquidity[tkn_buy]
-        f = pool.trade_fee.compute('', 0)
+        f = pool.trade_fee('', 0)
         if p < x/y * (1 - f):
             # agent can profit by selling y to AMM
             b = 2 * y - (f / p) * x * (1 - f)
@@ -391,43 +385,10 @@ def constant_product_arbitrage(pool_id: str, minimum_profit: float = 0, direct_c
         else:
             return 0
 
-    def recursive_calculation(state: GlobalState, tkn_sell: str, tkn_buy: str):
-        # an alternate way to calculate optimal trade
-        # should be equivalent with a flat percentage fee, but also works with more complicated fee structures
-        pool = state.pools[pool_id]
-        x = pool.liquidity[tkn_sell]
-        y = pool.liquidity[tkn_buy]
-        # VVV this would be correct if there is no fee VVV
-        agent_delta_y = (y - math.sqrt(x * y * state.price(tkn_sell) / state.price(tkn_buy)))
-
-        def price_after_trade(buy_amount=0, sell_amount=0):
-            if buy_amount:
-                sell_amount = -(x - pool.invariant / (y - buy_amount)) \
-                              * (1 + pool.trade_fee.compute(tkn_sell, buy_amount))
-                price = (y - buy_amount) / (x + sell_amount)
-
-            elif sell_amount:
-                buy_amount = (x - pool.invariant / (y + sell_amount)) \
-                             * (1 - pool.trade_fee.compute(tkn_sell, sell_amount))
-                price = (y + sell_amount) / (x - buy_amount)
-
-            else:
-                raise ValueError('Must specify either buy_amount or sell_amount')
-
-            if agent_delta_y < 0:
-                price /= (1 - pool.trade_fee.compute(y, sell_amount))
-            else:
-                price /= (1 + pool.trade_fee.compute(y, sell_amount))
-
-            return price
-
-        target_price = state.price(tkn_sell) / state.price(tkn_buy)
-        return find_agent_delta_y(target_price, price_after_trade, agent_delta_y)
-
     return TradeStrategy(strategy, name=f'constant product pool arbitrage ({pool_id})')
 
 
-def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
+def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None, frequency=1) -> TradeStrategy:
     if skip_assets is None:
         skip_assets = []
 
@@ -465,6 +426,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         return dq
 
     def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if state.time_step % frequency != 0:
+            return state
+
         omnipool: OmnipoolState = state.pools[pool_id]
         agent: Agent = state.agents[agent_id]
         if not isinstance(omnipool, OmnipoolState):
@@ -478,9 +442,9 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
         lrna_fees = []
         skip_ct = 0
         usd_index = omnipool.asset_list.index(omnipool.stablecoin)
-        usd_fee = omnipool.asset_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_fee = omnipool.asset_fee(tkn=omnipool.stablecoin)
         # usd_fee = omnipool.last_fee[omnipool.stablecoin]
-        usd_LRNA_fee = omnipool.lrna_fee[omnipool.stablecoin].compute(tkn=omnipool.stablecoin)
+        usd_LRNA_fee = omnipool.lrna_fee(tkn=omnipool.stablecoin)
         # usd_LRNA_fee = omnipool.last_lrna_fee[omnipool.stablecoin]
 
         for i in range(len(omnipool.asset_list)):
@@ -494,19 +458,19 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
             if asset == omnipool.stablecoin:
                 usd_index = i - skip_ct
 
-            asset_fee = omnipool.asset_fee[asset].compute(tkn=asset)
+            asset_fee = omnipool.asset_fee(tkn=asset)
             # asset_fee = omnipool.last_fee[asset]
-            asset_LRNA_fee = omnipool.lrna_fee[asset].compute(tkn=asset)
+            asset_LRNA_fee = omnipool.lrna_fee(tkn=asset)
             # asset_LRNA_fee = omnipool.last_lrna_fee[asset]
-            if arb_precision < 2:
-                low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-                high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * oamm.usd_price(omnipool, tkn=asset)
-
-                if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
-                    skip_ct += 1
-                    if i < usd_index:
-                        usd_index -= 1
-                    continue
+            # if arb_precision < 2:
+            #     low_price = (1 - usd_fee) * (1 - asset_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            #     high_price = 1 / (1 - asset_fee) / (1 - usd_LRNA_fee) * omnipool.usd_price(tkn=asset)
+            #
+            #     if asset != omnipool.stablecoin and low_price <= state.price(asset) <= high_price:
+            #         skip_ct += 1
+            #         if i < usd_index:
+            #             usd_index -= 1
+            #         continue
 
             reserves.append(omnipool.liquidity[asset])
             lrna.append(omnipool.lrna[asset])
@@ -538,27 +502,27 @@ def omnipool_arbitrage(pool_id: str, arb_precision=1, skip_assets=None):
                         if dq[i] > 0:
                             omnipool.swap(
                                 agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
-                                sell_quantity=dq[i] * j/arb_precision, modify_imbalance=False)
+                                sell_quantity=dq[i] * j/arb_precision)
                         else:
                             omnipool.swap(
                                 agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
-                                buy_quantity=-dq[i] * j/arb_precision, modify_imbalance=False)
+                                buy_quantity=-dq[i] * j/arb_precision)
                 break
             elif j == arb_precision - 1:
                 for i in range(len(asset_list)):
                     if dq[i] > 0:
                         omnipool.swap(
                             agent=agent, tkn_sell="LRNA", tkn_buy=asset_list[i],
-                            sell_quantity=dq[i], modify_imbalance=False)
-                    else:
+                            sell_quantity=dq[i])
+                    elif dq[i] < 0:
                         omnipool.swap(
                             agent=agent, tkn_sell=asset_list[i], tkn_buy="LRNA",
-                            buy_quantity=-dq[i], modify_imbalance=False)
+                            buy_quantity=-dq[i])
                 break  # technically unnecessary
 
         return state
 
-    return TradeStrategy(strategy, name='omnipool arbitrage')
+    return TradeStrategy(strategy, name='omnipool arbitrage', frequency=frequency)
 
 
 def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: float = 1e-6):
@@ -588,7 +552,7 @@ def stableswap_arbitrage(pool_id: str, minimum_profit: float = 1, precision: flo
             balances[list(stable_pool.liquidity.keys()).index(tkn_sell)] = balance_in
             return stable_pool.price_at_balance(
                 balances,
-                d=stable_pool.d,
+                stable_pool.d,
                 i=list(stable_pool.liquidity.keys()).index(tkn_buy),
                 j=list(stable_pool.liquidity.keys()).index(tkn_sell)
             )
@@ -653,10 +617,10 @@ def toxic_asset_attack(pool_id: str, asset_name: str, trade_size: float, start_t
 
         pool = state.pools[pool_id]
         agent = state.agents[agent_id]
-        current_price = oamm.lrna_price(pool, asset_name)
+        current_price = pool.lrna_price(asset_name)
         if current_price <= 0:
             return state
-        usd_price = oamm.lrna_price(pool, pool.stablecoin) / current_price
+        usd_price = pool.lrna_price(pool.stablecoin) / current_price
         if usd_price <= 0:
             return state
         quantity = (
@@ -822,7 +786,7 @@ def price_manipulation_multiple_blocks(
                         (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
                          - omnipool.lrna[self.attack_asset])
                         / (1 - omnipool.weight_cap[self.attack_asset])
-                        / oamm.lrna_price(omnipool, self.trade_asset)
+                        / omnipool.lrna_price(self.trade_asset)
                 ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
 
                 # choose the largest trade size that will be allowed by the per block trade limit
@@ -859,7 +823,7 @@ def price_manipulation_multiple_blocks(
                             (omnipool.weight_cap[self.attack_asset] * omnipool.lrna_total
                              - omnipool.lrna[self.attack_asset])
                             / (1 - omnipool.weight_cap[self.attack_asset])
-                            / oamm.lrna_price(omnipool, self.attack_asset)
+                            / omnipool.lrna_price(self.attack_asset)
                     ) if omnipool.weight_cap[self.attack_asset] < 1 else float('inf')
                     self.add_liquidity_target = min(
                         agent.holdings[self.attack_asset] / 2,
@@ -923,7 +887,7 @@ def price_manipulation_multiple_blocks(
                 if state.time_step > 85:
                     er = 1
                 if (
-                        oamm.usd_price(omnipool, self.attack_asset) / oamm.usd_price(omnipool, self.trade_asset)
+                        omnipool.usd_price(self.attack_asset) / omnipool.usd_price(self.trade_asset)
                         <= state.external_market[self.attack_asset] / state.external_market[self.trade_asset] * 1.00001
                         or agent.holdings[self.attack_asset] == 0
                 ):
@@ -1043,3 +1007,136 @@ def dca_with_lping(
         return state
 
     return TradeStrategy(strategy, name='DCA with LPing')
+
+
+def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, config: list[dict] = None, trade_frequency: float = 1) -> TradeStrategy:
+    # Create reverse equivalency map
+    reverse_map = {}
+    if equivalency_map is None:
+        equivalency_map = {}
+    for k, v in equivalency_map.items():
+        reverse_map.setdefault(v, set()).add(k)
+
+    def generate_config():
+        config_list = []
+
+        for i, exchange1 in enumerate(exchanges):
+            for exchange2 in exchanges[i + 1:]:
+                all_asset_pairs_1 = [(asset1, asset2) for asset1 in exchange1.asset_list for asset2 in
+                                     exchange1.asset_list if asset1 < asset2]
+                for pair1 in all_asset_pairs_1:
+                    base_pair1 = tuple(
+                        sorted((equivalency_map.get(pair1[0], pair1[0]), equivalency_map.get(pair1[1], pair1[1]))))
+                    all_asset_pairs_2 = [(asset2_a, asset2_b) for asset2_a in exchange2.asset_list for asset2_b in
+                                         exchange2.asset_list if asset2_a < asset2_b]
+                    for pair2 in all_asset_pairs_2:
+                        base_pair2 = tuple(
+                            sorted((equivalency_map.get(pair2[0], pair2[0]), equivalency_map.get(pair2[1], pair2[1]))))
+                        if base_pair1 == base_pair2:
+                            config_list.append({
+                                'exchanges': {
+                                    exchange1.unique_id: pair1,
+                                    exchange2.unique_id: pair2,
+                                },
+                                'buffer': 0.001
+                            })
+        return config_list
+
+    if config is None:
+        config = generate_config()
+        print('Generated default config', config)
+
+    config_pools = set([pool_id for config_item in config for pool_id in config_item['exchanges']])
+
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        if (state.time_step % trade_frequency) != 0:
+            return state
+        agent: Agent = state.agents[agent_id]
+        swaps = get_arb_swaps(
+            exchanges=state.pools,
+            config=config,
+            max_liquidity={
+                pool: copy.copy(agent.holdings) for pool in config_pools
+            } if agent.enforce_holdings else None
+        )
+        execute_arb(state.pools, agent, swaps)
+        return state
+
+    return TradeStrategy(strategy, name='general arbitrage')
+
+
+def liquidate_cdps(pool_id: str, iters: int = 16) -> TradeStrategy:
+    def strategy(state: GlobalState, agent_id: str) -> GlobalState:
+        agent = state.agents[agent_id]
+        pool: Exchange = state.pools[pool_id]
+        mms = list(filter(lambda p: isinstance(p, MoneyMarket), state.pools.values()))
+        if state.money_market is not None:
+            mms += [state.money_market]
+        for mm in mms:
+            for cdp in mm.cdps:
+                best_liquidations = {}
+
+                for debt_tkn, collateral_tkn in [
+                    (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
+                    for collateral_tkn in cdp.collateral.keys()
+                ]:
+                    if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
+                        or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
+                            continue
+                    collateral_max, debt_max = mm.calculate_liquidation(
+                        cdp,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn
+                    )
+                    if collateral_max == 0:
+                        # not liquidatable
+                        break
+                    if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
+                        # no profitable liquidation possible
+                        continue
+                    debt_paid = debt_max
+                    profit = collateral_max - pool.calculate_sell_from_buy(
+                        tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_paid
+                    )
+                    for i in range(1, iters):
+                        debt_delta = debt_max * 1 / 2 ** i
+                        debt_up = debt_paid + debt_delta
+                        debt_down = debt_paid - debt_delta
+                        collat_up = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_up)[0]
+                        collat_down = mm.calculate_liquidation(cdp, collateral_tkn, debt_tkn, debt_down)[0]
+                        profit_up = collat_up - pool.calculate_sell_from_buy(
+                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_up
+                        ) if collat_up < collateral_max else -float('inf')
+                        profit_down = collat_down - pool.calculate_sell_from_buy(
+                            tkn_buy=debt_tkn, tkn_sell=collateral_tkn, buy_quantity=debt_down
+                        )
+                        if profit_up > profit:
+                            debt_paid = debt_up
+                            profit = profit_up
+                        elif profit_down > profit:
+                            debt_paid = debt_down
+                            profit = profit_down
+                        else:
+                            continue
+                    if profit > 0:
+                        best_liquidations[(collateral_tkn, debt_tkn)] = {'amount': debt_paid, 'profit': profit}
+
+                best_pair = max(best_liquidations.items(), key=lambda x: x[1]['profit'], default=None)
+                if best_pair is not None:
+                    collateral_tkn, debt_tkn = best_pair[0]
+                    debt_paid = best_pair[1]['amount']
+                    pool.swap(
+                        agent=agent,
+                        tkn_buy=debt_tkn,
+                        tkn_sell=collateral_tkn,
+                        buy_quantity=debt_paid
+                    )
+                    mm.liquidate(
+                        cdp, agent,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn,
+                        repay_amount=debt_paid
+                    )
+        return state
+
+    return TradeStrategy(strategy, name='liquidate against omnipool')
