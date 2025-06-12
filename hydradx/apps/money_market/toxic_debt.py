@@ -12,14 +12,16 @@ sys.path.append(project_root)
 from hydradx.model.amm.global_state import GlobalState, value_assets
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
+from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps, TradeStrategy, general_arbitrage
-from hydradx.model.processing import get_current_money_market, get_stableswap_data, Pool
+from hydradx.model.processing import get_current_money_market, get_stableswap_data, load_money_market, load_omnipool
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.run import run
 from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model.indexer_utils import get_current_omnipool_router, get_asset_info_by_ids
+from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.amm.exchange import Exchange
 
 st.markdown("""
     <style>
@@ -30,29 +32,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600, show_spinner="Loading Omnipool data (cached for 1 hour)...")
-def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
+def load_exchanges() -> tuple[dict[str: Exchange], str]:
     # Add timestamp to verify caching
     import datetime
     cache_time = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"Cache miss! Loading omnipool at {cache_time}")
-    load_router = get_current_omnipool_router()
-    load_omnipool = load_router.exchanges['omnipool']
+    # temp_router = get_current_omnipool_router()
+    temp_router = load_omnipool()
+    temp_omnipool: OmnipoolState = temp_router.exchanges['omnipool']
+    mm = load_money_market(filename='test_mm.json')
 
     asset_info = get_asset_info_by_ids()
     stable_swap_data = get_stableswap_data()
     stableswap_pools = []
     usd_price_lrna = (
-        1 / load_omnipool.lrna_price('2-Pool-Stbl') / stable_swap_data[102].shares * 10 ** 18
+        1 / temp_omnipool.lrna_price('2-Pool-Stbl') / stable_swap_data[102].shares * 10 ** 18
         * sum([int(v) / 10 ** asset_info[k].decimals for k, v in stable_swap_data[102].reserves.items()])
     )  # this approximation assumes that the price of both assets in the 2-Pool-Stbl is 1 USD
-    load_omnipool.add_token(
+    temp_omnipool.add_token(
         'USD', liquidity = usd_price_lrna, lrna=1
     ).stablecoin = 'USD'
     for pool in stable_swap_data.values():
+        shares = pool.shares / 10 ** 18
         pool_name = asset_info[pool.pool_id].name
         if pool.pool_id == 690:
-            peg = load_omnipool.lrna_price('vDOT') / load_omnipool.lrna_price('DOT')
-            shares = pool.shares / 10 ** 18
+            peg = temp_omnipool.lrna_price('vDOT') / temp_omnipool.lrna_price('DOT')
             tokens = {
                 'DOT': shares * peg / (1 + peg),
                 'vDOT': shares / (1 + peg),
@@ -73,8 +77,18 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
                 unique_id=pool_name,
             )
         )
+        priced_tokens = {
+            tkn: temp_omnipool.usd_price(tkn)
+            if tkn in temp_omnipool.asset_list else mm.price(tkn)
+            for tkn in tokens if tkn in temp_omnipool.asset_list or tkn in mm.asset_list
+        }
+        temp_omnipool.add_token(
+            tkn=pool_name,
+            liquidity=shares,
+            lrna=shares * sum(priced_tokens.values()) / len(priced_tokens) / usd_price_lrna
+        )
 
-    mm = get_current_money_market()
+    # mm = get_current_money_market()
     # mm = MoneyMarket(
     #     assets=[
     #         MoneyMarketAsset(
@@ -103,7 +117,11 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     # )
 
     print("Finished downloading data.")
-    return OmnipoolRouter(exchanges=[load_omnipool, mm, *stableswap_pools], unique_id='router'), cache_time
+    return ({
+            'router': OmnipoolRouter(exchanges=[temp_omnipool, *stableswap_pools], unique_id='router'),
+            'omnipool': temp_omnipool, 'money_market': mm,
+            **{pool.unique_id: pool for pool in stableswap_pools}
+        }, cache_time)
 
 
 def trade_to_price(pool, tkn_sell, target_price):
@@ -124,10 +142,11 @@ def update_prices(state: GlobalState):
         state.external_market[tkn] = prices[tkn][state.time_step - 1]
         # state.pools['binance'].prices[tkn] = prices[tkn][state.time_step - 1]
 
-router, cache_timestamp = load_omnipool_router()
-omnipool = router.exchanges['omnipool']
-mm = router.exchanges['money_market']
-stableswaps = [exchange for exchange in router.exchanges.values() if isinstance(exchange, StableSwapPoolState)]
+exchanges, cache_timestamp = load_exchanges()
+router = exchanges['router']
+omnipool = exchanges['omnipool']
+mm = exchanges['money_market']
+stableswaps = [exchange for exchange in exchanges.values() if isinstance(exchange, StableSwapPoolState)]
 st.sidebar.info(f"Data loaded at: {cache_timestamp}")
 
 price_change_defaults = {
@@ -196,7 +215,7 @@ config_list = [
 initial_state = GlobalState(
     pools=[router, mm_sim, omnipool_sim, *stableswaps],
     agents={
-        'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
+        'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps()),
         'panic seller': Agent(
             enforce_holdings=False,
             trade_strategy=schedule_swaps('omnipool', trade_sequence)
@@ -248,4 +267,14 @@ for tkn in start_price:
     if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
         st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
     ax.plot(tkn_price_path, label=f"{tkn} price")
+    st.pyplot(fig)
+
+for tkn in [t for t, amt in events[-1].agents['liquidator'].holdings.items() if amt > 0]:
+    fig, ax = plt.subplots()
+    ax.set_xlabel("Time Steps")
+    ax.set_ylabel(f'liquidator holdings ({tkn})')
+    ax.plot(
+        [event.agents['liquidator'].get_holdings(tkn) for event in events],
+        label=f"{tkn} price"
+    )
     st.pyplot(fig)
