@@ -272,6 +272,9 @@ class StableSwapPoolState(Exchange):
         return balances
 
     def calculate_withdrawal_shares(self, tkn_remove, quantity, fee = None):
+        """
+        Calculate the number of shares that must be removed from the pool to withdraw a specific quantity of an asset.
+        """
         if fee is None:
             fee = self.calculate_fee()
         balances_list = list(self.modified_balances(delta={tkn_remove: -quantity}).values())
@@ -543,6 +546,9 @@ class StableSwapPoolState(Exchange):
             tkn_add: str,
             fee: float = None
     ):
+        """
+        calculate how many shares an agent will receive for a given quantity of tkn_add.
+        """
         if fee is None:
             fee = self.trade_fee
 
@@ -625,21 +631,21 @@ class StableSwapPoolState(Exchange):
         delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size)
         return trade_size / delta_shares
 
-    def buy_shares(
+    def calculate_buy_shares(
             self,
-            agent: Agent,
             quantity: float,
-            tkn_add: str
+            tkn_add: str,
+            fee: float = None
     ):
-
-        trade_fee = self._update_peg()
+        if fee is None:
+            fee = self.calculate_fee()
         initial_d = self.d
         d1 = initial_d + initial_d * quantity / self.shares
 
         xp = self.modified_balances(omit=[tkn_add])
         y = self.calculate_y(xp, d1)
 
-        fee = trade_fee * self.n_coins / (4 * (self.n_coins - 1))
+        trade_fee = fee * self.n_coins / (4 * (self.n_coins - 1))
         reserves_reduced = {}
         asset_reserve = 0
         for tkn, balance in self.liquidity.items():
@@ -648,7 +654,7 @@ class StableSwapPoolState(Exchange):
             ) if tkn != tkn_add else (
                     y - balance * d1 / initial_d
             )
-            reduced_balance = balance - fee * dx_expected
+            reduced_balance = balance - trade_fee * dx_expected
             if tkn == tkn_add:
                 asset_reserve = reduced_balance
             else:
@@ -656,9 +662,19 @@ class StableSwapPoolState(Exchange):
 
         y1 = self.calculate_y(reserves_reduced, d1)
         dy = y1 - asset_reserve
-        dy_0 = y - self.liquidity[tkn_add]
-        fee_amount = dy - dy_0
+        # dy_0 = y - self.liquidity[tkn_add]
+        # fee_amount = dy - dy_0
         delta_tkn = dy
+        return delta_tkn
+
+    def buy_shares(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
+        fee = self._update_peg()
+        delta_tkn = self.calculate_buy_shares(quantity, tkn_add, fee)
 
         if not agent.validate_holdings(tkn_add, delta_tkn):
             return self.fail_transaction(f"Agent doesn't have enough {tkn_add}.")
