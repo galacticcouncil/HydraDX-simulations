@@ -78,6 +78,9 @@ class Agent:
         else:
             return self.get_holdings(tkn) >= amt
 
+    def clear_holdings(self) -> None:
+        self.holdings = {tkn: 0 for tkn in self.holdings}
+
     def add(self, tkn: str, amt: float) -> None:
         if tkn not in self.holdings:
             self.holdings[tkn] = 0
