@@ -532,12 +532,10 @@ class StableSwapPoolState(Exchange):
 
         dy = self.calculate_remove_liquidity(shares_removed, tkn_remove)
 
-        agent.holdings[self.unique_id] -= shares_removed
+        agent.add(tkn_remove,  dy)
+        agent.remove(self.unique_id, shares_removed)
         self.shares -= shares_removed
         self.liquidity[tkn_remove] -= dy
-        if tkn_remove not in agent.holdings:
-            agent.holdings[tkn_remove] = 0
-        agent.holdings[tkn_remove] += dy
         return self
 
     def calculate_add_liquidity(
@@ -602,7 +600,7 @@ class StableSwapPoolState(Exchange):
         """Calculates spot price of adding liquidity as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_add] * precision
-        return self.calculate_add_liquidity(trade_size, tkn_add) / trade_size
+        return trade_size / self.calculate_add_liquidity(trade_size, tkn_add)
 
     def buy_shares_spot(self, tkn_add: str, precision: float = None):
         """Calculates spot price of buying shares as shares denominated in liquidity"""
@@ -614,14 +612,13 @@ class StableSwapPoolState(Exchange):
         """Calculates spot price of removing liquidity as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_remove] * precision
-        return trade_size / self.calculate_remove_liquidity(trade_size, tkn_remove)
+        return self.calculate_remove_liquidity(trade_size, tkn_remove) / trade_size
 
     def withdraw_asset_spot(self, tkn_remove: str, precision: float = None):
         """Calculates spot price of withdrawing asset as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_remove] * precision
-        delta_shares = self.calculate_withdrawal_shares(tkn_remove, trade_size)
-        return trade_size / delta_shares
+        return trade_size / self.calculate_withdrawal_shares(tkn_remove, trade_size)
 
     def calculate_buy_shares(
             self,
@@ -629,6 +626,9 @@ class StableSwapPoolState(Exchange):
             tkn_add: str,
             fee: float = None
     ):
+        """
+        determine how much tkn_add is required to buy a given quantity of shares.
+        """
         if fee is None:
             fee = self.calculate_fee()
         initial_d = self.d
@@ -697,15 +697,12 @@ class StableSwapPoolState(Exchange):
             if delta_tkns[tkn] >= self.liquidity[tkn]:
                 return self.fail_transaction(f'Not enough liquidity in {tkn}.')
 
-            if tkn not in agent.holdings:
-                agent.holdings[tkn] = 0
-
         self.shares -= shares_removed
-        agent.holdings[self.unique_id] -= shares_removed
+        agent.remove(self.unique_id, shares_removed)
 
         for tkn in self.asset_list:
             self.liquidity[tkn] -= delta_tkns[tkn]
-            agent.holdings[tkn] += delta_tkns[tkn]  # agent is receiving funds, because delta_tkn is a negative number
+            agent.add(tkn, delta_tkns[tkn])  # agent is receiving funds, because delta_tkn is a negative number
         return self
 
     def cash_out(self, agent: Agent, prices: dict[str: float]) -> float:
