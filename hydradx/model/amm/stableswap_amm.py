@@ -602,27 +602,19 @@ class StableSwapPoolState(Exchange):
         """Calculates spot price of adding liquidity as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_add] * precision
-        agent = Agent({tkn_add: trade_size})
-        new_state, new_agent = simulate_add_liquidity(self, agent, trade_size, tkn_add)
-        return trade_size / new_agent.holdings[self.unique_id]
+        return self.calculate_add_liquidity(trade_size, tkn_add) / trade_size
 
     def buy_shares_spot(self, tkn_add: str, precision: float = None):
         """Calculates spot price of buying shares as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_add] * precision
-        share_price = self.share_price(tkn_add)
-        init_tkn_add = share_price * trade_size * 2
-        agent = Agent({tkn_add: init_tkn_add})
-        new_state, new_agent = simulate_buy_shares(self, agent, trade_size, tkn_add)
-        return (init_tkn_add - new_agent.holdings[tkn_add]) / trade_size
+        return self.calculate_buy_shares(trade_size, tkn_add) / trade_size
 
     def remove_liquidity_spot(self, tkn_remove: str, precision: float = None):
         """Calculates spot price of removing liquidity as shares denominated in liquidity"""
         if precision is None: precision = self.spot_price_precision
         trade_size = self.liquidity[tkn_remove] * precision
-        agent = Agent({self.unique_id: trade_size})
-        new_state, new_agent = simulate_remove_liquidity(self, agent, trade_size, tkn_remove)
-        return new_agent.holdings[tkn_remove] / trade_size
+        return trade_size / self.calculate_remove_liquidity(trade_size, tkn_remove)
 
     def withdraw_asset_spot(self, tkn_remove: str, precision: float = None):
         """Calculates spot price of withdrawing asset as shares denominated in liquidity"""
