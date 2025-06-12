@@ -80,8 +80,8 @@ class OmnipoolState(Exchange):
           )
 
           optional:
-          'weight_cap': float  # maximum fraction of TVL that may be held in this pool
-          'oracle': dict  {name: period}  # name of the oracle its period, i.e. how slowly it decays
+          'weight_cap': float # maximum fraction of TVL that may be held in this pool
+          'oracle': dict {name: period} # name of the oracle its period, i.e. how slowly it decays
         }
         """
 
@@ -431,7 +431,7 @@ class OmnipoolState(Exchange):
         Given a buy quantity, calculate the effective price, so we can execute it as a sell
         """
         asset_fee = self.asset_fee(tkn_buy)
-        if buy_quantity >= self.liquidity[tkn_buy] * (1 - asset_fee):
+        if buy_quantity >= self.liquidity[tkn_buy]:
             return float('inf')
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
