@@ -525,7 +525,7 @@ class StableSwapPoolState(Exchange):
         # * Get current D
         # * Solve Eqn against y_i for D - _token_amount
 
-        if shares_removed > agent.holdings[self.unique_id]:
+        if not agent.validate_holdings(self.unique_id, shares_removed):
             return self.fail_transaction('Agent has insufficient funds.')
         elif shares_removed <= 0:
             return self.fail_transaction('Withdraw quantity must be > 0.')
