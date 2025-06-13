@@ -151,7 +151,8 @@ def test_hollar_init_distro():
 
 
 def test_toxic_debt():
-    from hydradx.apps.money_market import toxic_debt
+    from hydradx.apps.money_market.toxic_debt import run_script
+    run_script(live_data=False)
 
 
 def test_changing_amp():
