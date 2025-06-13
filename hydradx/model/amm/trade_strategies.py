@@ -1116,12 +1116,15 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
                     collateral_tkn, debt_tkn = best_pair[0]
                     debt_paid = best_pair[1]['amount']
                     pool = best_pair[1]['pool']
-                    pool.swap(
-                        agent=agent,
-                        tkn_buy=debt_tkn,
-                        tkn_sell=collateral_tkn,
-                        buy_quantity=debt_paid
-                    )
+                    if collateral_tkn != debt_tkn:
+                        pool.swap(
+                            agent=agent,
+                            tkn_buy=debt_tkn,
+                            tkn_sell=collateral_tkn,
+                            buy_quantity=debt_paid
+                        )
+                    else:
+                        pass
                     mm.liquidate(
                         cdp, agent,
                         collateral_asset=collateral_tkn,
