@@ -47,8 +47,6 @@ def get_markets_minimal():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     ss_fee = 0.0005
 
@@ -96,8 +94,6 @@ def test_no_intent_arbitrage():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     ss_fee = 0.0005
 
@@ -141,8 +137,6 @@ def test_no_intent_arbitrage():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     sp_tokens = {"USDT": 7600000 * 10, "USDC": 9200000}
     stablepool = StableSwapPoolState(
@@ -183,8 +177,6 @@ def test_single_trade_settles():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     buy_pct = 1e-4
     price_premium = 0.1
@@ -222,8 +214,6 @@ def test_single_trade_settles():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     ss_fee = 0.0005
 
@@ -453,8 +443,6 @@ def test_matching_trades_execute_more_full_execution():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     # do the DOT sale alone
     state_sale = initial_state.copy()
@@ -513,7 +501,6 @@ def test_matching_trades_execute_more_full_execution():
 # Other tests #
 ###############
 
-# @reproduce_failure('6.39.6', b'AAEZHfyXOrk=')
 @given(st.floats(min_value=1e-7, max_value=0.01))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_fuzz_single_trade_settles(size_factor: float):
@@ -543,8 +530,8 @@ def test_fuzz_single_trade_settles(size_factor: float):
         asset_fee=0.0025,
         lrna_fee=0.0005
     )
-    initial_state.last_fee = {tkn: 0.00 for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: 0.00 for tkn in lrna}
+    # initial_state.last_fee = {tkn: 0.00 for tkn in lrna}
+    # initial_state.last_lrna_fee = {tkn: 0.00 for tkn in lrna}
 
     ss_fee = 0.0005
 
@@ -625,7 +612,8 @@ def test_fuzz_single_trade_settles(size_factor: float):
 
     intents = [intent]
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
-    intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
+    # intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
+    intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x['deltas'], x['profit'], x['omnipool_deltas'], x['amm_deltas']
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
 
     assert valid
@@ -656,13 +644,13 @@ def test_convex():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-
-    assert validate_and_execute_solution(initial_state, intents, intent_deltas)
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    assert validate_and_execute_solution(initial_state, [], intents, intent_deltas, omnipool_deltas,
+                                         amm_deltas, "HDX")
 
     pprint(intent_deltas)
 
@@ -695,13 +683,13 @@ def test_with_lrna_intent():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
-
-    assert validate_and_execute_solution(initial_state, intents, intent_deltas)
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    assert validate_and_execute_solution(initial_state, [], intents, intent_deltas, omnipool_deltas,
+                                         amm_deltas, "HDX")
 
     pprint(intent_deltas)
 
@@ -737,13 +725,14 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
 
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents), intent_deltas,
+                                         omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -intents[0]['sell_quantity']
     assert intent_deltas[0][1] == intents[0]['buy_quantity']
     assert intent_deltas[1][0] == 0
@@ -772,14 +761,12 @@ def test_inclusion_problem_small_trade_fuzz(trade_size_pct: float):
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     buy_tkn = 'DOT'
     selL_tkn = '2-Pool'
     buy_amt = trade_size_pct * liquidity[buy_tkn]
     # buy_amt = mpf(.01)
-    price = initial_state.price(initial_state, buy_tkn, selL_tkn)
+    price = initial_state.price(buy_tkn, selL_tkn)
     sell_amt = buy_amt * price * 1.01
     # sell_amt = mpf(.05)
     agents = [Agent(holdings={selL_tkn: sell_amt})]
@@ -842,24 +829,25 @@ def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that roundi
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     buy_tkn = 'DOT'
-    selL_tkn = '2-Pool'
+    sell_tkn = '2-Pool'
     buy_amt = trade_size_pct * liquidity[buy_tkn]
-    price = initial_state.price(initial_state, buy_tkn, selL_tkn)
+    price = initial_state.price(buy_tkn, sell_tkn)
     sell_amt = buy_amt * price * 1.01
-    agents = [Agent(holdings={selL_tkn: sell_amt})]
+    agents = [Agent(holdings={sell_tkn: sell_amt})]
 
     intents = [
-        {'sell_quantity': sell_amt, 'buy_quantity': buy_amt, 'tkn_sell': selL_tkn, 'tkn_buy': buy_tkn, 'agent': agents[0], 'partial': True},
+        {'sell_quantity': sell_amt, 'buy_quantity': buy_amt, 'tkn_sell': sell_tkn, 'tkn_buy': buy_tkn, 'agent': agents[0], 'partial': True},
     ]
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
 
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents), intent_deltas,
+                                         omnipool_deltas, amm_deltas, "HDX")
     assert intent_deltas[0][0] == -intents[0]['sell_quantity']
     assert intent_deltas[0][1] == pytest.approx(intents[0]['buy_quantity'], rel=1e-10)
 
@@ -897,15 +885,16 @@ def test_solver_with_real_omnipool_one_full():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     full_intent_indicators = [1]
 
     p = ICEProblem(initial_state, intents, min_partial = 0)
     p.set_up_problem(I = full_intent_indicators)
 
-    amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded(p)
+    # amm_deltas, sell_deltas, _, _, _, _ = _find_solution_unrounded(p)
+    x = _find_solution_unrounded(p)
+    amm_deltas = x[-1]
+    sell_deltas = x[1]
     for i in p.full_intents:
         if full_intent_indicators.pop(0) == 1:
             sell_deltas.append(-i['sell_quantity'])
@@ -959,13 +948,14 @@ def test_full_solver():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas = x[0]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
 
-    assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas)
+    assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents), intent_deltas,
+                                         omnipool_deltas, amm_deltas, "HDX")
 
     pprint(intent_deltas)
 
@@ -998,8 +988,6 @@ def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, parti
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     good_indices = [i for i in range(len(sell_is)) if sell_is[i]-1 != buy_is[i]]
     intents = []
@@ -1010,7 +998,7 @@ def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, parti
             sell_quantity = sell_ratios[i] * liquidity[sell_tkn]
         else:
             sell_quantity = sell_ratios[i] * lrna[buy_tkn]
-        buy_quantity = sell_quantity * initial_state.price(initial_state, sell_tkn, buy_tkn) * price_ratios[i]
+        buy_quantity = sell_quantity * initial_state.price(sell_tkn, buy_tkn) * price_ratios[i]
         agent = Agent(holdings={sell_tkn: sell_quantity})
         intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
                         'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
@@ -1059,12 +1047,17 @@ def test_case_Martin():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     x = find_solution_outer_approx(initial_state, intents)
-    intent_deltas, predicted_profit, Z_Ls, Z_Us = x[0], x[1], x[2], x[3]
-    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
+    # intent_deltas, predicted_profit, Z_Ls, Z_Us = x[0], x[1], x[2], x[3]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    predicted_profit = x['profit']
+    Z_Ls = x['Z_L']
+    Z_Us = x['Z_U']
+    valid, profit = validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents), intent_deltas,
+                                                    omnipool_deltas, amm_deltas, "HDX")
     assert valid
     assert profit == 0
 
@@ -1104,8 +1097,6 @@ def test_more_random_intents():
         asset_fee=0.0025,
         lrna_fee=0.0005
     )
-    initial_state.last_fee = {tkn: 0.0025 for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: 0.0005 for tkn in lrna}
 
     # Generate n pairs of elements without replacement
     asset_pairs = [random.sample(initial_state.asset_list + ['LRNA'], 2) for _ in range(intent_ct)]
@@ -1122,7 +1113,7 @@ def test_more_random_intents():
             sell_quantity = sell_ratios[i] * liquidity[sell_tkn]
         else:
             sell_quantity = sell_ratios[i] * lrna[buy_tkn]
-        buy_quantity = sell_quantity * initial_state.price(initial_state, sell_tkn, buy_tkn) * price_ratios[i]
+        buy_quantity = sell_quantity * initial_state.price(sell_tkn, buy_tkn) * price_ratios[i]
         agent = Agent(holdings={sell_tkn: sell_quantity})
         intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
                         'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
@@ -1184,8 +1175,6 @@ def test_more_random_intents_with_small():
         asset_fee=0.0025,
         lrna_fee=0.0005
     )
-    initial_state.last_fee = {tkn: 0.0025 for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: 0.0005 for tkn in lrna}
 
     # Generate n pairs of elements without replacement
     asset_pairs = [random.sample(initial_state.asset_list + ['LRNA'], 2) for _ in range(intent_ct)]
@@ -1202,7 +1191,7 @@ def test_more_random_intents_with_small():
             sell_quantity = sell_ratios[i] * liquidity[sell_tkn]
         else:
             sell_quantity = sell_ratios[i] * lrna[buy_tkn]
-        buy_quantity = sell_quantity * initial_state.price(initial_state, sell_tkn, buy_tkn) * price_ratios[i]
+        buy_quantity = sell_quantity * initial_state.price(sell_tkn, buy_tkn) * price_ratios[i]
         agent = Agent(holdings={sell_tkn: sell_quantity})
         intents.append({'sell_quantity': sell_quantity, 'buy_quantity': buy_quantity, 'tkn_sell': sell_tkn,
                         'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
@@ -1255,8 +1244,6 @@ def test_get_leftover_bounds():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     # sp_tokens = {
     #     "USDT": 7600000,
@@ -1372,8 +1359,6 @@ def test_full_solver_stableswap():
         asset_fee=mpf(0.0025),
         lrna_fee=mpf(0.0005)
     )
-    initial_state.last_fee = {tkn: mpf(0.0025) for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: mpf(0.0005) for tkn in lrna}
 
     sp_tokens = {
         "USDT": 7600000 - 81080,
@@ -1419,11 +1404,14 @@ def test_full_solver_stableswap():
     # amm_list = [stablepool]
 
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
-    intent_deltas, omnipool_deltas, amm_deltas = x[0], x[4], x[5]
+    # intent_deltas, omnipool_deltas, amm_deltas = x[0], x[4], x[5]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
 
     # valid, profit =  validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
-                                                  intent_deltas, omnipool_deltas, amm_deltas)
+                                                  intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert valid
 
     pprint(intent_deltas)
@@ -1466,8 +1454,6 @@ def test_more_random_intents_with_stableswap():
         asset_fee=0.0025,
         lrna_fee=0.0005
     )
-    initial_state.last_fee = {tkn: 0.0025 for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: 0.0005 for tkn in lrna}
 
     sp_tokens = {
         "USDT": 7600000,
@@ -1519,13 +1505,13 @@ def test_more_random_intents_with_stableswap():
         if tkn == 'LRNA':
             lrna_prices[tkn] = 1
         elif tkn in initial_state.asset_list:
-            lrna_prices[tkn] = initial_state.price(initial_state, tkn, 'LRNA')
+            lrna_prices[tkn] = initial_state.price(tkn, 'LRNA')
         else:  # tkn is in a stableswap pool which has shares in Omnipool
             prices = []  # we will take average of several prices if token is in multiple stableswap pools
             for amm in amm_list:
                 if tkn in amm.asset_list:
                     spot = amm.withdraw_asset_spot(tkn)  # spot is tkn / shares
-                    prices.append(spot * initial_state.price(initial_state, amm.unique_id, 'LRNA'))
+                    prices.append(spot * initial_state.price(amm.unique_id, 'LRNA'))
             lrna_prices[tkn] = np.mean(prices)
 
     # Generate n pairs of elements without replacement
@@ -1618,8 +1604,6 @@ def test_temp_milp():
         asset_fee=0.00,
         lrna_fee=0.00
     )
-    initial_state.last_fee = {tkn: 0.00 for tkn in lrna}
-    initial_state.last_lrna_fee = {tkn: 0.00 for tkn in lrna}
 
     sp_tokens = {
         "USDT": 7600000,
@@ -1659,10 +1643,17 @@ def test_temp_milp():
     amm_list = [stablepool, stablepool4, stablepool_btc]
 
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
-    intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
-    z_l_archive = x[2]
-    z_u_archive = x[3]
-    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
+    # intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
+    # z_l_archive = x[2]
+    # z_u_archive = x[3]
+    intent_deltas = x['deltas']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    predicted_profit = x['profit']
+    z_l_archive = x['Z_L']
+    z_u_archive = x['Z_U']
+    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
+                                                  intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     # valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas)
 
     assert valid

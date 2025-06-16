@@ -94,7 +94,7 @@ def validate_intents(intents: list, intent_deltas: list):
 
 def validate_transfer_amounts(transfers: list):
     for transfer in transfers:
-        if not transfer['agent'].is_holding(transfer['tkn_sell'], transfer['sell_quantity']):
+        if transfer['agent'].get_holdings(transfer['tkn_sell']) < transfer['sell_quantity']:
             raise Exception(f"agent does not have enough holdings in token {transfer['tkn_sell']}")
 
     return True

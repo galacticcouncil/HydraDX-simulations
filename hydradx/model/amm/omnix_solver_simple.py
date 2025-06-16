@@ -38,8 +38,8 @@ class ICEProblem:
             new_intent['agent'] = intent['agent'].copy()
             temp_intents.append(new_intent)
             if intent['tkn_buy'] in omnipool.asset_list and intent['tkn_sell'] in omnipool.asset_list:
-                buy_amt_lrna_value = intent['buy_quantity'] * self.omnipool.price(self.omnipool, intent['tkn_buy'])
-                selL_amt_lrna_value = intent['sell_quantity'] * self.omnipool.price(self.omnipool, intent['tkn_sell'])
+                buy_amt_lrna_value = intent['buy_quantity'] * self.omnipool.price(intent['tkn_buy'])
+                selL_amt_lrna_value = intent['sell_quantity'] * self.omnipool.price(intent['tkn_sell'])
                 if buy_amt_lrna_value < self.min_partial and selL_amt_lrna_value < self.min_partial and apply_min_partial:
                     temp_intents[-1]['partial'] = False
 
@@ -204,7 +204,7 @@ class ICEProblem:
                 scalar = self._scaling[tkn] * self.omnipool.lrna[tkn] / self.omnipool.liquidity[tkn]
                 self._scaling["LRNA"] = max(self._scaling["LRNA"], scalar)
                 # raise scaling for tkn_profit to scaling for asset, adjusted by spot price, if needed
-                scalar_profit = self._scaling[tkn] * self.omnipool.price(self.omnipool, tkn, self.tkn_profit)
+                scalar_profit = self._scaling[tkn] * self.omnipool.price(tkn, self.tkn_profit)
                 self._scaling[self.tkn_profit] = max(self._scaling[self.tkn_profit], scalar_profit / 10000)
         for amm in self.amm_list:  # raise scaling for all assets in each AMM to match max
             max_scale = self._scaling[amm.unique_id]
@@ -602,7 +602,7 @@ def scale_down_partial_intents(p, trade_pcts: list, scale: float):
         new_sell_max = m / scale
         if old_sell_quantity < new_sell_max:
             tkn = p.partial_intents[i]['tkn_sell']
-            sell_amt_lrna_value = new_sell_max * p.omnipool.price(p.omnipool, tkn)
+            sell_amt_lrna_value = new_sell_max * p.omnipool.price(tkn)
             # if we are scaling lower than min_partial, we eliminate the intent from execution
             if sell_amt_lrna_value < p.min_partial:
                 new_sell_max = 0
@@ -1757,7 +1757,7 @@ def get_trading_tokens(intents, omnipool, amm_list):
 
 
 
-def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_list: list = None, min_partial: float = 1) -> list:
+def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_list: list = None, min_partial: float = 1) -> dict:
     if amm_list is None:
         amm_list = []
 
