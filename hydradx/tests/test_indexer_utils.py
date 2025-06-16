@@ -30,7 +30,7 @@ def test_get_current_stableswap_pools():
 
 
 def test_get_omnipool_data():
-    current_block = get_current_block_height()
+    current_block = 6000000
     ids = get_current_omnipool_assets()
     ids_int = [int(x) for x in ids if x != "1"]
     omnipool_liquidity = get_omnipool_liquidity(
