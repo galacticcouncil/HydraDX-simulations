@@ -48,3 +48,7 @@ def test_download_history_files():
     os.chdir("..")
     shutil.rmtree('Omnipool Balance History')
     os.rename('history_backup', 'Omnipool Balance History')
+
+def test_get_stableswap_data():
+    data = processing.get_stableswap_data()
+    assert len(data) > 0

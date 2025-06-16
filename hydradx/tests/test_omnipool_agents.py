@@ -295,6 +295,7 @@ def test_dca_with_lping(
     if agent.holdings[buy_tkn] != pytest.approx(init_buy_tkn, rel=1e-20):
         raise AssertionError('Agent buy token changed.')
 
+
 def test_schedule_swaps():
     """
     Test the schedule_swaps function.
