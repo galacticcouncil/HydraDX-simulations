@@ -767,7 +767,6 @@ def test_set_mm_oracles_to_external_market():
         ], oracle_source=omnipool.usd_price
     )
     prices = {tkn: omnipool.price(tkn, "USDT") for tkn in omnipool.asset_list}
-    mm.oracle_source = omnipool.usd_price
     mm.update()
     for tkn in mm.liquidity:
         if mm.price(tkn) != pytest.approx(prices[tkn], rel=1e-40):

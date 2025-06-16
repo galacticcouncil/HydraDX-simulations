@@ -3,7 +3,6 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
-import random
 
 
 def test_liquidity():

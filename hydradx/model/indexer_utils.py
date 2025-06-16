@@ -839,8 +839,16 @@ def download_omnipool_swap_fees(tkn_id: int, min_block: int, max_block: int, pat
         }, f)
 
 
-def bucket_values(bucket_ct: int, data, min_block: int = None, max_block: int = None):
-    # data is a a list of tuples (block_number, value)
+def bucket_values(bucket_ct: int, data: list, min_block: int = None, max_block: int = None):
+    """Aggregates values in data into buckets based on block numbers.
+
+    Args:
+        bucket_ct (int): Number of buckets to create.
+        data (list): List of tuples where each tuple contains (block_number, value).
+        min_block (int, optional): Minimum block number to consider.
+        max_block (int, optional): Maximum block number to consider.
+    """
+
     if min_block == None or max_block == None:
         min_block = float('inf')
         max_block = -1
