@@ -874,16 +874,22 @@ def bucket_values_per_block(bucket_ct: int, data, min_block: int = None, max_blo
     ]
 
 
-def download_acct_trades(asset_id: int, acct: str, path: str):
+def download_acct_trades(asset_id: int, acct: str, path: str, min_block: int = None, max_block: int = None):
+
+    if min_block is None:
+        min_block = 0
+    if max_block is None:
+        max_block = get_current_block_height()
 
     query = """
-    query assetInfoByAssetIds($acct: String!, $assetId: String!) {
+    query assetInfoByAssetIds($acct: String!, $assetId: String!, $minBlock: Int!, $maxBlock: Int!) {
       routedTrades(
         filter: {
           participantSwappers: {anyEqualTo: $acct},
           allInvolvedAssetIds: {
             contains: [$assetId, "1", "102", "10"], containedBy: [$assetId, "1", "102", "10"]
-          }
+          },
+          paraBlockHeight: { greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }
         }
       ) {
         nodes {
@@ -927,7 +933,7 @@ def download_acct_trades(asset_id: int, acct: str, path: str):
     }
     """
 
-    variables = {'acct': acct, 'assetId': str(asset_id)}
+    variables = {'acct': acct, 'assetId': str(asset_id), 'minBlock': min_block, 'maxBlock': max_block}
     data = query_indexer(URL_UNIFIED_PROD, query, variables)
     asset_info = get_asset_info_by_ids([asset_id, 10, 1])
     trades = []
