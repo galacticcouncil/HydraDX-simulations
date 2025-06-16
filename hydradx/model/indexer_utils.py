@@ -438,10 +438,11 @@ def get_current_omnipool():
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
-    current_block = get_current_block_height()
+    max_block = get_current_block_height()
     asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
+    current_block = max_block
     while asset_ids_remaining:
         omnipool_data = get_omnipool_asset_data(
             min_block_id=current_block - 100,
@@ -473,7 +474,7 @@ def get_current_omnipool():
         asset_fee=asset_fee,
         lrna_fee=lrna_fee
     )
-    omnipool.time_step = current_block
+    omnipool.time_step = max_block
     return omnipool
 
 
