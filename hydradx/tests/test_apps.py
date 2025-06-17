@@ -147,3 +147,32 @@ def test_hsm():
 def test_hollar_init_distro():
     from hydradx.apps.hollar.hollar_init_distro import run_script
     run_script()
+
+
+def test_toxic_debt():
+    from hydradx.apps.money_market import toxic_debt
+
+
+def test_changing_amp():
+    from hydradx.apps.gigadot_modeling import changing_amp
+
+
+def test_fees_volume_comp():
+    from hydradx.apps.fees import fees_volume_comp
+
+
+def test_hdx_buybacks():
+    from hydradx.apps.fees import hdx_buybacks
+
+
+def test_hdx_fees():
+    from hydradx.apps.fees import hdx_fees
+
+
+def test_oracle_comparison():
+    from hydradx.apps.fees.oracle_comparison import run_app
+    run_app(7_200_000, 7_201_000, 'AAVE')
+
+
+def test_arb_oracle_comp():
+    from hydradx.apps.fees import arb_oracle_comp
