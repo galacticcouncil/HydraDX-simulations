@@ -200,12 +200,14 @@ class ICEProblem:
             # set scaling for LRNA equal to scaling for asset, adjusted by spot price
             if tkn in self.omnipool.asset_list:
                 if self._last_omnipool_deltas is not None:
-                    self._scaling[tkn] = max(self._scaling[tkn], abs(self._last_omnipool_deltas[tkn]))
+                    # we need to avoid absurd omnipool deltas due to linear approximation in early solve attempts
+                    max_scaling = min(abs(self._last_omnipool_deltas[tkn]), self.omnipool.liquidity[tkn])
+                    self._scaling[tkn] = max(self._scaling[tkn], max_scaling)
                 scalar = self._scaling[tkn] * self.omnipool.lrna[tkn] / self.omnipool.liquidity[tkn]
                 self._scaling["LRNA"] = max(self._scaling["LRNA"], scalar)
                 # raise scaling for tkn_profit to scaling for asset, adjusted by spot price, if needed
                 scalar_profit = self._scaling[tkn] * self.omnipool.price(tkn, self.tkn_profit)
-                self._scaling[self.tkn_profit] = max(self._scaling[self.tkn_profit], scalar_profit / 10000)
+                self._scaling[self.tkn_profit] = max(self._scaling[self.tkn_profit], scalar_profit / 100000)
         for amm in self.amm_list:  # raise scaling for all assets in each AMM to match max
             max_scale = self._scaling[amm.unique_id]
             for tkn in amm.asset_list:
@@ -221,9 +223,11 @@ class ICEProblem:
             assert len(self._last_amm_deltas) == len(self.amm_list)
             for i, amm in enumerate(self.amm_list):
                 assert len(amm.asset_list) + 1 == len(self._last_amm_deltas[i])
-                self._scaling[amm.unique_id] = max(self._scaling[amm.unique_id], abs(self._last_amm_deltas[i][0]))
+                max_scaling = min(abs(self._last_amm_deltas[i][0]), amm.shares)
+                self._scaling[amm.unique_id] = max(self._scaling[amm.unique_id], max_scaling)
                 for j, tkn in enumerate(amm.asset_list):
-                    self._scaling[tkn] = max(self._scaling[tkn], abs(self._last_amm_deltas[i][j+1]))
+                    max_scaling = min(abs(self._last_amm_deltas[i][j+1]), amm.liquidity[tkn])
+                    self._scaling[tkn] = max(self._scaling[tkn], max_scaling)
 
     def _set_directions(self):
         # known_intent_directions = {self.tkn_profit: 'both'}  # solver collects profits in tkn_profit
@@ -602,11 +606,12 @@ def scale_down_partial_intents(p, trade_pcts: list, scale: float):
         new_sell_max = m / scale
         if old_sell_quantity < new_sell_max:
             tkn = p.partial_intents[i]['tkn_sell']
-            sell_amt_lrna_value = new_sell_max * p.omnipool.price(tkn)
-            # if we are scaling lower than min_partial, we eliminate the intent from execution
-            if sell_amt_lrna_value < p.min_partial:
-                new_sell_max = 0
-                zero_ct += 1  # we count the number of intents that are eliminated
+            if tkn in p.omnipool.asset_list:  # can only apply to min_partial if tkn is in Omnipool
+                sell_amt_lrna_value = new_sell_max * p.omnipool.price(tkn)
+                # if we are scaling lower than min_partial, we eliminate the intent from execution
+                if sell_amt_lrna_value < p.min_partial:
+                    new_sell_max = 0
+                    zero_ct += 1  # we count the number of intents that are eliminated
             intent_sell_maxs[i] = new_sell_max
     return intent_sell_maxs, zero_ct
 
@@ -773,6 +778,7 @@ def _find_solution_unrounded(
 
     A1 = np.zeros((0, k))
     cones1 = []
+    cone_sizes1 = []
     profit_i = p.asset_list.index(p.tkn_profit)
     op_tradeable_indices = [i for i in range(n) if p.omnipool.asset_list[i] in p.trading_tkns]
     if profit_i not in op_tradeable_indices:
@@ -788,6 +794,7 @@ def _find_solution_unrounded(
             A1i[0, 3 * n + i] = -1  # lambda_i
             A1i[1, 2 * n + i] = -1  # lrna_lambda_i
             cone1i = cb.NonnegativeConeT(2)
+            cone_size1i = 2
             if p.omnipool.asset_list[i] in omnipool_directions:
                 if omnipool_directions[p.omnipool.asset_list[i]] == "buy":  # we need y_i <= 0, x_i >= 0
                     A1i_dir = np.zeros((2, k))
@@ -795,12 +802,14 @@ def _find_solution_unrounded(
                     A1i_dir[1, n + i] = -1
                     A1i = np.vstack([A1i, A1i_dir])
                     cone1i = cb.NonnegativeConeT(4)
+                    cone_size1i = 4
                 elif omnipool_directions[p.omnipool.asset_list[i]] == "sell":  # we need y_i >= 0, x_i <= 0
                     A1i_dir = np.zeros((2, k))
                     A1i_dir[0, i] = -1
                     A1i_dir[1, n + i] = 1
                     A1i = np.vstack([A1i, A1i_dir])
                     cone1i = cb.NonnegativeConeT(4)
+                    cone_size1i = 4
 
         else:  # we need y_i = 0, x_i = 0, lambda_i = 0, lrna_lambda_i = 0
             A1i = np.zeros((4, k))
@@ -809,8 +818,10 @@ def _find_solution_unrounded(
             A1i[2, 2 * n + i] = 1  # lrna_lambda_i
             A1i[3, 3 * n + i] = 1  # lambda_i
             cone1i = cb.ZeroConeT(4)
+            cone_size1i = 4
         A1 = np.vstack([A1, A1i])
         cones1.append(cone1i)
+        cone_sizes1.append(cone_size1i)
 
     offset = 0
     for i, amm in enumerate(amm_list):
@@ -822,22 +833,26 @@ def _find_solution_unrounded(
             A1i = np.zeros((1, k))
             A1i[0, 4 * n + sigma + offset] = -1
             cones1.append(cb.NonnegativeConeT(1))
+            cone_sizes1.append(1)
             if len(amm_directions) > 0:
                 if amm_directions[i][0] == "buy":  # X0 >= 0
                     A1i_dir = np.zeros((1, k))
                     A1i_dir[0, 4 * n + offset] = -1
                     A1i = np.vstack([A1i, A1i_dir])
                     cones1.append(cb.NonnegativeConeT(1))
+                    cone_sizes1.append(1)
                 elif amm_directions[i][0] == "sell":  # X0 <= 0
                     A1i_dir = np.zeros((1, k))
                     A1i_dir[0, 4 * n + offset] = 1
                     A1i = np.vstack([A1i, A1i_dir])
                     cones1.append(cb.NonnegativeConeT(1))
+                    cone_sizes1.append(1)
         else:
             A1i = np.zeros((2, k))
             A1i[0, 4 * n + offset] = 1
             A1i[1, 4 * n + sigma + offset] = 1
             cones1.append(cb.ZeroConeT(2))
+            cone_sizes1.append(2)
         for j, tkn in enumerate(amm.asset_list):
             if len(amm_directions) > 0 and len(p._last_amm_deltas) > 0:
                 delta_pct = p._last_amm_deltas[i][j+1] / amm.liquidity[tkn]  # possibly round to zero
@@ -847,22 +862,26 @@ def _find_solution_unrounded(
                 A1ij = np.zeros((1, k))
                 A1ij[0, 4 * n + sigma + offset + j + 1] = -1
                 cones1.append(cb.NonnegativeConeT(1))
+                cone_sizes1.append(1)
                 if len(amm_directions) > 0:
                     if amm_directions[i][j+1] == "buy":  #Xj >= 0
                         A1ij_dir = np.zeros((1, k))
                         A1ij_dir[0, 4 * n + offset + j + 1] = -1
                         A1ij = np.vstack([A1ij, A1ij_dir])
                         cones1.append(cb.NonnegativeConeT(1))
+                        cone_sizes1.append(1)
                     elif amm_directions[i][j+1] == "sell":  #Xj <= 0
                         A1ij_dir = np.zeros((1, k))
                         A1ij_dir[0, 4 * n + offset + j + 1] = 1
                         A1ij = np.vstack([A1ij, A1ij_dir])
                         cones1.append(cb.NonnegativeConeT(1))
+                        cone_sizes1.append(1)
             else:
                 A1ij = np.zeros((2, k))
                 A1ij[0, 4 * n + offset + j + 1] = 1
                 A1ij[1, 4 * n + sigma + offset + j + 1] = 1
                 cones1.append(cb.ZeroConeT(2))
+                cone_sizes1.append(2)
             A1i = np.vstack([A1i, A1ij])
         A1 = np.vstack([A1, A1i])
         offset += len(amm.asset_list) + 1
@@ -877,9 +896,11 @@ def _find_solution_unrounded(
     b2 = np.concatenate([np.array(p.get_partial_sell_maxs_scaled()), np.zeros(m)])
     A2_trimmed = A2[:, indices_to_keep]
     cone2 = cb.NonnegativeConeT(A2_trimmed.shape[0])
+    cone_sizes2 = [A2_trimmed.shape[0]]
 
     A3_trimmed, b3 = _get_leftover_bounds(p, allow_loss, indices_to_keep)
     cone3 = cb.NonnegativeConeT(A3_trimmed.shape[0])
+    cone_sizes3 = [A3_trimmed.shape[0]]
 
     # Omnipool invariants must not go down
     omnipool_lrna_coefs = p.get_omnipool_lrna_coefs()
@@ -887,6 +908,7 @@ def _find_solution_unrounded(
     A4 = np.zeros((0, k))
     b4 = np.array([])
     cones4 = []
+    cone_sizes4 = []
     epsilon_tkn = p.get_epsilon_tkn()
     for i in range(n):
         tkn = p.omnipool.asset_list[i]
@@ -908,6 +930,7 @@ def _find_solution_unrounded(
                 A4i[1, i] = -omnipool_lrna_coefs[tkn]
                 A4i[1, n + i] = -omnipool_asset_coefs[tkn] * c2
                 cones4.append(cb.NonnegativeConeT(2))
+                cone_sizes4.append(2)
             else:
                 if omnipool_directions[tkn] == "sell":
                     c = 1 / (1 - epsilon_tkn[tkn])
@@ -918,6 +941,7 @@ def _find_solution_unrounded(
                 A4i[0, i] = -omnipool_lrna_coefs[tkn]
                 A4i[0, n+i] = -omnipool_asset_coefs[tkn] * c
                 cones4.append(cb.ZeroConeT(1))
+                cone_sizes4.append(1)
             # # if approx is linear, we need to apply some constraints to x_i, y_i
             # A4i_bounds = np.zeros((4, k))
             # b4i_bounds = np.zeros(4)
@@ -943,18 +967,21 @@ def _find_solution_unrounded(
             A4i[2,n+i] = -omnipool_asset_coefs[tkn]
             b4i = np.array([1, 0, 0])
             cones4.append(cb.PowerConeT(0.5))
+            cone_sizes4.append(3)
         else:  # full AMM constraint
             A4i = np.zeros((3, k))
             b4i = np.ones(3)
             A4i[0, i] = -omnipool_lrna_coefs[tkn]
             A4i[1, n + i] = -omnipool_asset_coefs[tkn]
             cones4.append(cb.PowerConeT(0.5))
+            cone_sizes4.append(3)
         A4 = np.vstack([A4, A4i])
         b4 = np.append(b4, b4i)
     A4_trimmed = A4[:, indices_to_keep]
 
     # CFMM invariants must be respected
     A5_trimmed, b5, cones5 = _get_stableswap_bounds(p, indices_to_keep)
+    cone_sizes5 = []  # TODO
 
     # inequality constraints on comparison of lrna_lambda to yi, lambda to xi
     A6 = np.zeros((0, k))
@@ -970,6 +997,7 @@ def _find_solution_unrounded(
 
     b6 = np.zeros(A6.shape[0])
     cone6 = cb.NonnegativeConeT(A6.shape[0])
+    cone_sizes6 = [A6.shape[0]]
 
     # inequality constraints: X_j + L_j >= 0
     A7 = np.zeros((0, k))
@@ -981,6 +1009,7 @@ def _find_solution_unrounded(
     A7_trimmed = A7[:, indices_to_keep]
     b7 = np.zeros(A7.shape[0])
     cone7 = cb.NonnegativeConeT(A7.shape[0])
+    cone_sizes7 = [A7.shape[0]]
 
     # # we will temporarily require that L_j == 0
     # A7 = np.zeros((0, k))
@@ -996,6 +1025,7 @@ def _find_solution_unrounded(
     A_sparse = sparse.csc_matrix(A)
     b = np.concatenate([b1, b2, b3, b4, b5, b6, b7])
     cones = cones1 + [cone2, cone3] + cones4 + cones5 + [cone6, cone7]
+    cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes5 + cone_sizes6 + cone_sizes7
 
     # solve
     settings = clarabel.DefaultSettings()
@@ -1034,6 +1064,37 @@ def _find_solution_unrounded(
     dual_score = p.scale_obj_amt(solution.obj_val_dual + obj_offset)
 
     return (new_omnipool_deltas, exec_intent_deltas, x_expanded, score, dual_score, str(solution.status), amm_deltas)
+
+
+def check_cone_feasibility(s, cones, cone_sizes):
+    i = 0
+    results = []
+    for cone, n in zip(cones, cone_sizes):
+        si = s[i:i + n]
+        cone_type = type(cone).__name__
+        if isinstance(cone, cb.NonnegativeConeT):
+            ok = True
+            for val in si:
+                if val < -2e-5:
+                    ok = False
+                    break
+        elif isinstance(cone, cb.ZeroConeT):
+            ok = True
+            for val in si:
+                if abs(val) > 2e-5:
+                    ok = False
+                    break
+        elif isinstance(cone, cb.PowerConeT):
+            x, y, z = si
+            ok = True
+            if not (x >= 0 and y >= 0 and math.sqrt(x * y) >= z):
+                ok = False
+
+        else:
+            ok = False  # unknown cone type
+        results.append((i, cone_type, ok))
+        i += n
+    return results
 
 
 def _find_good_solution(

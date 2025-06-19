@@ -31,7 +31,7 @@ def get_token_list(omnipool: OmnipoolState, amm_list: list[StableSwapPoolState])
     return token_list
 
 
-def get_markets_minimal():
+def get_markets_minimal(asset_fee = 0.0025, lrna_fee = 0.0005, ss_fee = 0.0005):
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
               'USDT2': 1, 'DAI': 1}
     weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
@@ -44,11 +44,9 @@ def get_markets_minimal():
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
         },
-        asset_fee=mpf(0.0025),
-        lrna_fee=mpf(0.0005)
+        asset_fee=mpf(asset_fee),
+        lrna_fee=mpf(lrna_fee)
     )
-
-    ss_fee = 0.0005
 
     sp_tokens = {
         "USDT": 7600000,
@@ -75,6 +73,62 @@ def get_markets_minimal():
     )
 
     amm_list = [stablepool, stablepool4]
+    return initial_state, amm_list
+
+
+def get_markets_even(
+        asset_fee: float = 0.0025,
+        lrna_fee: float = 0.0005,
+        ss_fee: float = 0.0005,
+        include_2_pool: bool = True,
+        include_4_pool: bool = True
+) -> tuple[OmnipoolState, list[StableSwapPoolState]]:
+    """Get markets with similar orders of magnitude across tokens, to avoid rounding errors."""
+    prices = {'HDX': 0.1, 'DOT': 5, 'vDOT': 6, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
+              'USDT2': 1, 'DAI': 1}
+    weights = {'HDX': 0.15, 'DOT': 0.25, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.2}
+    total_lrna = 65000000
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(asset_fee),
+        lrna_fee=mpf(lrna_fee)
+    )
+
+    amm_list = []
+    if include_2_pool:
+        sp_tokens = {
+            "USDT": 7800000,
+            "USDC": 5200000
+        }
+        stablepool = StableSwapPoolState(
+            tokens=sp_tokens,
+            amplification=1000,
+            trade_fee=ss_fee,
+            unique_id="2-Pool"
+        )
+        amm_list.append(stablepool)
+
+    if include_4_pool:
+        sp4_tokens = {
+            "USDC": 52000000,
+            "USDT": 2600000,
+            "DAI": 2600000,
+            "USDT2": 2600000
+        }
+        stablepool4 = StableSwapPoolState(
+            tokens=sp4_tokens,
+            amplification=1000,
+            trade_fee=ss_fee,
+            unique_id="4-Pool"
+        )
+        amm_list.append(stablepool4)
+
     return initial_state, amm_list
 
 
@@ -343,22 +397,100 @@ def test_single_trade_does_not_settle():
     assert intent_deltas[0][1] == 0
 
 
+def test_single_trade_partially_settles():
+    intent_omnipool = {  # selling DOT for $4.00, too big to fully execute against AMMs
+        'sell_quantity': mpf(1000000), 'buy_quantity': mpf(4000000), 'tkn_sell': 'DOT', 'tkn_buy': '2-Pool',
+        'agent': Agent(enforce_holdings=False), 'partial': True  # uses 2-Pool instead of USDT
+    }
+    intent_stableswap = {  # selling DOT for $4.00, too big to fully execute against AMMs
+        'sell_quantity': mpf(1000000), 'buy_quantity': mpf(4000000), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT',
+        'agent': Agent(enforce_holdings=False), 'partial': True
+    }
+
+    asset_fee = 0.0025
+    lrna_fee = 0.0005
+    ss_fee = 0.0005
+
+    intents_lists = [copy.deepcopy(intent_omnipool), copy.deepcopy(intent_stableswap), copy.deepcopy(intent_stableswap), copy.deepcopy(intent_stableswap)]
+    initial_state1, amm_list1 = get_markets_even(  # only Omnipool
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        ss_fee=ss_fee,
+        include_2_pool=False,
+        include_4_pool=False
+    )
+    initial_state2, amm_list2 = get_markets_even(  # Omnipool + 2-Pool
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        ss_fee=ss_fee,
+        include_4_pool=False
+    )
+    initial_state3, amm_list3 = get_markets_even(  # Omnipool + 4-Pool
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        ss_fee=ss_fee,
+        include_2_pool=False
+    )
+    initial_state4, amm_list4 = get_markets_even(  # Omnipool + 2-Pool + 4-Pool
+        asset_fee=asset_fee,
+        lrna_fee=lrna_fee,
+        ss_fee=ss_fee
+    )
+    initial_states = [initial_state1, initial_state2, initial_state3, initial_state4]
+    amm_lists = [amm_list1, amm_list2, amm_list3, amm_list4]
+    tolerances = [0.001, 0.02, 0.02, 0.02]
+    for i in range(len(initial_states)):
+        initial_state = initial_states[i].copy()
+        amm_list = copy.deepcopy(amm_lists[i])
+        intent = copy.deepcopy(intents_lists[i])
+        spot_limit = intent['buy_quantity'] / intent['sell_quantity'] / ((1 - asset_fee) * (1 - lrna_fee) * (1 - ss_fee))
+        # do the DOT sale alone
+        state_sale = initial_state.copy()
+        intents_sale = [copy.deepcopy(intent)]
+        amms = copy.deepcopy(amm_list)
+
+        x = find_solution_outer_approx(state_sale, intents_sale, amms)
+        amm_deltas = x['amm_deltas']
+        sale_deltas = x['deltas']
+        omnipool_deltas = x['omnipool_deltas']
+
+        valid, profit = validate_and_execute_solution(state_sale, amms, intents_sale, sale_deltas, omnipool_deltas, amm_deltas)
+
+        assert valid
+        assert abs(sale_deltas[0][0]) > 0
+        if len(amms) > 0:
+            dot_price_2_pool = state_sale.price("DOT", "2-Pool")
+            twopool_price_usdt = amms[0].share_price("USDT")
+            price = dot_price_2_pool * twopool_price_usdt
+            init_dot_price_2_pool = initial_state.price("DOT", "2-Pool")
+            init_twopool_price_usdt = amm_list[0].share_price("USDT")
+            init_price = init_dot_price_2_pool * init_twopool_price_usdt
+        else:
+            price = state_sale.price("DOT", "2-Pool")
+            init_price = initial_state.price("DOT", "2-Pool")
+        if abs(price - spot_limit)/spot_limit > tolerances[i]:
+            raise AssertionError("Price after sale is not within tolerance of expected price.")
+
+
+# TODO fix test
 def test_matching_trades_execute_more():
-    agents = [Agent(holdings={'DOT': 1000, 'LRNA': 7500}), Agent(holdings={'USDT': 9010})]
+    # agents = [Agent(holdings={'DOT': 10000, 'LRNA': 7500}), Agent(holdings={'USDT': 9010})]
+    agents = [Agent(enforce_holdings=False), Agent(enforce_holdings=False)]
 
-    intent1 = {  # selling DOT for $8.99
-        'sell_quantity': mpf(1000), 'buy_quantity': mpf(8990), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+    intent1 = {  # selling DOT for $4.00, too big to fully execute against AMMs
+        'sell_quantity': mpf(100000), 'buy_quantity': mpf(400000), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
     }
 
-    intent2 = {  # buying DOT for $9.01
-        'sell_quantity': mpf(9010), 'buy_quantity': mpf(1000), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
+    intent2 = {  # buying DOT for $6.00
+        'sell_quantity': mpf(600000 / 2), 'buy_quantity': mpf(100000 / 2), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
     }
 
-    intent1_lrna = {  # selling DOT for $7.49
-        'sell_quantity': mpf(7500), 'buy_quantity': mpf(7480), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+    intent1_lrna = {  # selling LRNA for $0.90
+        'sell_quantity': mpf(750000), 'buy_quantity': mpf(750000 * 0.9), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
     }
 
-    initial_state, amm_list = get_markets_minimal()
+    # initial_state, amm_list = get_markets_minimal()
+    initial_state, amm_list = get_markets_even()
 
     # do the DOT sale alone
     state_sale = initial_state.copy()
@@ -501,6 +633,7 @@ def test_matching_trades_execute_more_full_execution():
 # Other tests #
 ###############
 
+@reproduce_failure('6.127.0', b'ACg+5Pi1iONo8Q==')
 @given(st.floats(min_value=1e-7, max_value=0.01))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_fuzz_single_trade_settles(size_factor: float):
@@ -738,6 +871,7 @@ def test_small_trade():  # this is to test that rounding errors don't screw up s
     assert intent_deltas[1][0] == 0
     assert intent_deltas[1][1] == 0
 
+@reproduce_failure('6.127.0', b'ACg/UEpYBc6F7A==')
 @given(st.floats(min_value=1e-7, max_value=1e-3))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_inclusion_problem_small_trade_fuzz(trade_size_pct: float):
@@ -805,6 +939,7 @@ def test_inclusion_problem_small_trade_fuzz(trade_size_pct: float):
     # assert intent_deltas[0][0] == -intents[0]['sell_quantity']
     # assert intent_deltas[0][1] == pytest.approx(intents[0]['buy_quantity'], rel=1e-10)
 
+# TODO fix test
 @given(st.floats(min_value=1e-10, max_value=1e-3))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that rounding errors don't screw up small trades
@@ -852,6 +987,7 @@ def test_small_trade_fuzz(trade_size_pct: float):  # this is to test that roundi
     assert intent_deltas[0][1] == pytest.approx(intents[0]['buy_quantity'], rel=1e-10)
 
 
+# TODO fix test
 def test_solver_with_real_omnipool_one_full():
     agents = [
         Agent(holdings={'HDX': 100}),
@@ -959,6 +1095,7 @@ def test_full_solver():
 
     pprint(intent_deltas)
 
+@reproduce_failure('6.127.0', b'AXic07C9XXP/5vW9uzUwGfZvzoDAWUyGIwMCAgEA0vQlJA==')
 @given(st.lists(st.floats(min_value=1e-10, max_value=0.5), min_size=3, max_size=3),
        st.lists(st.floats(min_value=0.9, max_value=1.1), min_size=3, max_size=3),
         st.lists(st.integers(min_value=0, max_value=18), min_size=3, max_size=3),
@@ -1122,9 +1259,16 @@ def test_more_random_intents():
     # intents.append({'sell_quantity': 1000, 'buy_quantity': 100000, 'tkn_sell': '2-Pool', 'tkn_buy': 'HDX', 'agent': Agent(holdings={"2-Pool": 10}), 'partial': True})
     # intents.append({'sell_quantity': 1000, 'buy_quantity': 4000, 'tkn_sell': 'DOT', 'tkn_buy': '2-Pool', 'agent': Agent(holdings={'DOT': 10}), 'partial': False})
 
-    intent_deltas, predicted_profit, Z_Ls, Z_Us = find_solution_outer_approx(initial_state, intents)
-
-    valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(intents), intent_deltas, "HDX")
+    # intent_deltas, predicted_profit, Z_Ls, Z_Us = find_solution_outer_approx(initial_state, intents)
+    x = find_solution_outer_approx(initial_state, intents)
+    intent_deltas = x['deltas']
+    predicted_profit = x['profit']
+    Z_Ls = x['Z_L']
+    Z_Us = x['Z_U']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    valid, profit = validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents),
+                                                  intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     assert valid
     abs_error = predicted_profit - profit
     # if profit > 0:
@@ -1215,7 +1359,7 @@ def test_more_random_intents_with_small():
 
     pprint(intent_deltas)
 
-
+# TODO fix test
 def test_get_leftover_bounds():
     agents = [
         Agent(holdings={'HDX': 100}),
@@ -1545,9 +1689,13 @@ def test_more_random_intents_with_stableswap():
                         'tkn_buy': buy_tkn, 'agent': agent, 'partial': partial_flags[i]})
 
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
-    intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
-    z_l_archive = x[2]
-    z_u_archive = x[3]
+    # intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
+    intent_deltas = x['deltas']
+    predicted_profit = x['profit']
+    omnipool_deltas = x['omnipool_deltas']
+    amm_deltas = x['amm_deltas']
+    z_l_archive = x['Z_L']
+    z_u_archive = x['Z_U']
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
     # valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas)
 

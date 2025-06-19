@@ -94,7 +94,7 @@ def validate_intents(intents: list, intent_deltas: list):
 
 def validate_transfer_amounts(transfers: list):
     for transfer in transfers:
-        if transfer['agent'].get_holdings(transfer['tkn_sell']) < transfer['sell_quantity']:
+        if not transfer['agent'].validate_holdings(transfer['tkn_sell'], transfer['sell_quantity']):
             raise Exception(f"agent does not have enough holdings in token {transfer['tkn_sell']}")
 
     return True
@@ -330,27 +330,21 @@ def execute_solution(
     # transfer assets in from agents whose intents are being executed
     for transfer in transfers:
         if transfer['sell_quantity'] > 0:
-            if transfer['tkn_sell'] not in pool_agent.holdings:
-                pool_agent.holdings[transfer['tkn_sell']] = 0
-            pool_agent.holdings[transfer['tkn_sell']] += transfer['sell_quantity']
-            transfer['agent'].holdings[transfer['tkn_sell']] -= transfer['sell_quantity']
+            pool_agent.add(transfer['tkn_sell'], transfer['sell_quantity'])
+            transfer['agent'].remove(transfer['tkn_sell'], transfer['sell_quantity'])
         elif transfer['sell_quantity'] < 0:
             raise Exception("sell quantity is negative")
 
     # transfer assets out to intent agents
     for transfer in transfers:
         if transfer['buy_quantity'] > 0:
-            if transfer['tkn_buy'] not in pool_agent.holdings:
-                pool_agent.holdings[transfer['tkn_buy']] = 0
-            pool_agent.holdings[transfer['tkn_buy']] -= transfer['buy_quantity']
-            if transfer['tkn_buy'] not in transfer['agent'].holdings:
-                transfer['agent'].holdings[transfer['tkn_buy']] = 0
-            transfer['agent'].holdings[transfer['tkn_buy']] += transfer['buy_quantity']
+            pool_agent.remove(transfer['tkn_buy'], transfer['buy_quantity'])
+            transfer['agent'].add(transfer['tkn_buy'], transfer['buy_quantity'])
         elif transfer['buy_quantity'] < 0:
             raise Exception("buy quantity is negative")
 
     for tkn in minted:
-        pool_agent.holdings[tkn] -= minted[tkn]
+        pool_agent.remove(tkn, minted[tkn])
         minted[tkn] = 0
 
     if exit_to is not None:  # have pool agent exit to a specific token
