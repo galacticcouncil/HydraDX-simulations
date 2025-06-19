@@ -439,13 +439,14 @@ def get_current_omnipool():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
     current_block = get_current_block_height()
+    scanning_block = current_block
     asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
     while asset_ids_remaining:
         omnipool_data = get_omnipool_asset_data(
-            min_block_id=current_block - 100,
-            max_block_id=current_block,
+            min_block_id=scanning_block - 100,
+            max_block_id=scanning_block,
             asset_ids=asset_ids_remaining
         )
         for item in reversed(omnipool_data):
@@ -456,7 +457,7 @@ def get_current_omnipool():
                 lrna[asset.symbol] = int(item['assetState']['hubReserve']) / (
                             10 ** asset_info[1].decimals)
                 asset_ids_remaining.remove(asset.id)
-        current_block -= 100
+        scanning_block -= 100
 
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
