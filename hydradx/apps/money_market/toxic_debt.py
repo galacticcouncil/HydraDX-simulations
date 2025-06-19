@@ -22,6 +22,7 @@ from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model.indexer_utils import get_current_omnipool_router, get_asset_info_by_ids
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.exchange import Exchange
+from hydradx.apps.display_utils import display_liquidity_usd
 
 st.markdown("""
     <style>
@@ -142,6 +143,42 @@ def run_script(live_data: bool = False):
         tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list else mm.price(tkn)
         for tkn in mm.asset_list
     }
+    debt_full = {
+        tkn: sum([cdp.debt[tkn] if tkn in cdp.debt else 0 for cdp in mm.cdps]) * mm.price(tkn)
+        for tkn in mm.asset_list
+    }
+    debt_total = sum(debt_full.values())
+    major_debt_tokens = [tkn for tkn in debt_full if debt_full[tkn] > debt_total / 100]
+    debt_comp = {tkn: debt_full[tkn] / debt_total * 100 for tkn in major_debt_tokens}
+    debt_comp['other'] = sum(
+        debt_full[tkn] for tkn in debt_full if tkn not in major_debt_tokens
+    ) / debt_total * 100
+
+    collateral_full = {
+        tkn: sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in mm.cdps]) * mm.price(tkn)
+        for tkn in mm.asset_list
+    }
+    collateral_total = sum(collateral_full.values())
+    major_collateral_tokens = [tkn for tkn in collateral_full if collateral_full[tkn] > collateral_total / 100]
+    collateral_comp = {tkn: collateral_full[tkn] / collateral_total * 100 for tkn in major_collateral_tokens}
+    collateral_comp['other'] = (
+        sum([collateral_full[tkn] for tkn in collateral_full if tkn not in major_collateral_tokens])
+        / collateral_total * 100
+    )
+    print(debt_comp)
+    fig, axes = plt.subplots(2, 1)
+    axes[0].barh(
+        list(reversed(debt_comp.keys())),
+        list(reversed(debt_comp.values()))
+    )
+    axes[0].set_title("debt composition (%)")
+    axes[1].barh(
+        list(reversed(collateral_comp.keys())),
+        list(reversed(collateral_comp.values()))
+    )
+    axes[1].set_title("collateral composition (%)")
+    fig.subplots_adjust(hspace=0.4)
+    st.pyplot(fig)
 
     with st.sidebar:
         time_steps = st.number_input(
@@ -159,6 +196,7 @@ def run_script(live_data: bool = False):
                 key=tkn
             ) for tkn in start_price
         }
+        include_liquidator = st.checkbox(label="Include liquidator", value=True)
 
     # calculate price path from start price to crash price
     final_price = {tkn: start_price[tkn] * (1 + price_factor[tkn] / 100) for tkn in start_price}
@@ -197,7 +235,6 @@ def run_script(live_data: bool = False):
     initial_state = GlobalState(
         pools=[router, mm_sim, omnipool_sim, *stableswaps],
         agents={
-            'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps()),
             'panic seller': Agent(
                 enforce_holdings=False,
                 trade_strategy=schedule_swaps('omnipool', trade_sequence)
@@ -213,6 +250,8 @@ def run_script(live_data: bool = False):
         evolve_function=update_prices,
         external_market=start_price
     )
+    if include_liquidator:
+        initial_state.agents['liquidator'] = Agent(enforce_holdings=False, trade_strategy=liquidate_cdps())
 
     with st.spinner(f"Running {time_steps} simulation steps..."):
         sim_start = time.time()
@@ -235,30 +274,31 @@ def run_script(live_data: bool = False):
     ])
     ax1.set_title("Toxic debt as a percentage of total debt")
     st.pyplot(fig1)
+    #
+    # for tkn in start_price:
+    #     fig, ax = plt.subplots()
+    #     ax.set_xlabel("Time Steps")
+    #     ax.set_ylabel(f"{tkn} price (USD)")
+    #     tkn_price_path = [
+    #         event.pools['omnipool'].usd_price(tkn)
+    #         if tkn in event.pools['omnipool'].asset_list
+    #         else event.pools['money_market'].price(tkn)
+    #         for event in events
+    #     ]
+    #     if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
+    #         st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
+    #     ax.plot(tkn_price_path, label=f"{tkn} price")
+    #     st.pyplot(fig)
 
-    for tkn in start_price:
-        fig, ax = plt.subplots()
-        ax.set_xlabel("Time Steps")
-        ax.set_ylabel(f"{tkn} price (USD)")
-        tkn_price_path = [
-            event.pools['omnipool'].usd_price(tkn)
-            if tkn in event.pools['omnipool'].asset_list
-            else event.pools['money_market'].price(tkn)
-            for event in events
-        ]
-        if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
-            st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
-        ax.plot(tkn_price_path, label=f"{tkn} price")
-        st.pyplot(fig)
+    if 'liquidator' in initial_state.agents:
+        for tkn in [t for t, amt in events[-1].agents['liquidator'].holdings.items() if amt > 0]:
+            fig, ax = plt.subplots()
+            ax.set_xlabel("Time Steps")
+            ax.set_ylabel(f'liquidator holdings ({tkn})')
+            ax.plot(
+                [event.agents['liquidator'].get_holdings(tkn) for event in events],
+                label=f"{tkn} price"
+            )
+            st.pyplot(fig)
 
-    for tkn in [t for t, amt in events[-1].agents['liquidator'].holdings.items() if amt > 0]:
-        fig, ax = plt.subplots()
-        ax.set_xlabel("Time Steps")
-        ax.set_ylabel(f'liquidator holdings ({tkn})')
-        ax.plot(
-            [event.agents['liquidator'].get_holdings(tkn) for event in events],
-            label=f"{tkn} price"
-        )
-        st.pyplot(fig)
-
-run_script(live_data=False)
+run_script(live_data=True)
