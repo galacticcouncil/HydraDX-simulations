@@ -45,13 +45,15 @@ class Oracle:
         self.volume_out[tkn] = 0
         self.asset_list.append(tkn)
 
-    def update(self, block: Block):
+    def update(self, block: Block, assets: list[str] = None):
+        if assets is None:
+            assets = self.asset_list
         if self.age == block.time_step:
             return self
         update_steps = block.time_step - self.age
         update_factor = (1 - self.decay_factor) ** update_steps
         self.age = block.time_step
-        for tkn in block.liquidity:
+        for tkn in assets:
             self.liquidity[tkn] = (
                 update_factor * self.liquidity[tkn] + (1 - update_factor) * block.liquidity[tkn]
             ) if tkn in self.liquidity else block.liquidity[tkn]
