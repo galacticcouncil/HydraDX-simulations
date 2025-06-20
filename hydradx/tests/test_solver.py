@@ -473,22 +473,23 @@ def test_single_trade_partially_settles():
 
 
 def test_matching_trades_execute_more():
-    # agents = [Agent(holdings={'DOT': 10000, 'LRNA': 7500}), Agent(holdings={'USDT': 9010})]
-    agents = [Agent(enforce_holdings=False), Agent(enforce_holdings=False)]
+    dot_sale, usdt_buy = mpf(1_000_000), mpf(4_000_000)
+    usdt_sale, dot_buy = mpf(6_000_000 / 2), mpf(1_000_000 / 2)
+    lrna_sale, usdt_lrna_buy = mpf(7_500_000), mpf(7_500_000 * 0.9)
+    agents = [
+        Agent(holdings={'DOT': dot_sale}), Agent(holdings={'USDT': usdt_sale}), Agent(holdings={'LRNA': lrna_sale})
+    ]
 
     intent1 = {  # selling DOT for $4.00, too big to fully execute against AMMs
-        'sell_quantity': mpf(1000000), 'buy_quantity': mpf(4000000), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+        'sell_quantity': dot_sale, 'buy_quantity': usdt_buy, 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
     }
-
     intent2 = {  # buying DOT for $6.00
-        'sell_quantity': mpf(6000000 / 2), 'buy_quantity': mpf(1000000 / 2), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
+        'sell_quantity': usdt_sale, 'buy_quantity': dot_buy, 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
     }
-
     intent1_lrna = {  # selling LRNA for $0.90
-        'sell_quantity': mpf(7500000), 'buy_quantity': mpf(7500000 * 0.9), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+        'sell_quantity': lrna_sale, 'buy_quantity': usdt_lrna_buy, 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[2], 'partial': True
     }
 
-    # initial_state, amm_list = get_markets_minimal()
     initial_state, amm_list = get_markets_even()
 
     # do the DOT sale alone
