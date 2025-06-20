@@ -922,7 +922,7 @@ def _find_solution_unrounded(
         if approx == "linear":  # linearize the AMM constraint
             if tkn not in omnipool_directions:
                 c1 = 1 / (1 + epsilon_tkn[tkn])
-                c2 = 1 / (1 - epsilon_tkn[tkn])
+                c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
                 A4i = np.zeros((2, k))
                 b4i = np.zeros(2)
                 A4i[0, i] = -omnipool_lrna_coefs[tkn]
@@ -933,7 +933,7 @@ def _find_solution_unrounded(
                 cone_sizes4.append(2)
             else:
                 if omnipool_directions[tkn] == "sell":
-                    c = 1 / (1 - epsilon_tkn[tkn])
+                    c = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
                 else:
                     c = 1 / (1 + epsilon_tkn[tkn])
                 A4i = np.zeros((1, k))

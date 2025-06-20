@@ -654,7 +654,7 @@ class OmnipoolState(Exchange):
             denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
             delta_qa = -self.lrna[tkn] * delta_ra / denom
             if "LRNA" not in agent.holdings or delta_qa + agent.holdings["LRNA"] < 0:
-                return self.fail_transaction('Agent has insufficient LRNA', agent)
+                return self.fail_transaction('Agent has insufficient LRNA')
             delta_qm = -asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
             delta_q = -delta_qa + delta_qm
 
