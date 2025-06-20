@@ -49,7 +49,7 @@ class Oracle:
     def update(self, block: Block, assets: list[str] = None):
         if assets is None:
             assets = self.asset_list
-        update_steps = {tkn: block.time_step - self.last_updated[tkn] for tkn in assets}
+        update_steps = {tkn: max(block.time_step - self.last_updated[tkn], 1) for tkn in assets}
         update_factor = {tkn: (1 - self.decay_factor) ** update_steps[tkn] for tkn in assets}
         for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
             block_attr = getattr(block, attr)
