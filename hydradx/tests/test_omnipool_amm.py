@@ -1419,22 +1419,24 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
 
     events = run.run(initial_state=initial_state, time_steps=1, silent=True)
     omnipool_oracle = events[0].pools['omnipool'].oracles['price']
+    # manually update oracle - it won't automatically update tokens that weren't used this block
+    omnipool_oracle.update(events[-1].pools['omnipool'].current_block)
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
-        if omnipool_oracle.liquidity[tkn] != expected_liquidity:
+        if omnipool_oracle.liquidity[tkn] != pytest.approx(expected_liquidity, rel=1e-12):
             raise AssertionError('Liquidity is not correct.')
 
         expected_vol_in = init_oracle['volume_in'][tkn] * (1 - alpha)
-        if omnipool_oracle.volume_in[tkn] != expected_vol_in:
+        if omnipool_oracle.volume_in[tkn] != pytest.approx(expected_vol_in, rel=1e-12):
             raise AssertionError('Volume is not correct.')
 
         expected_vol_out = init_oracle['volume_out'][tkn] * (1 - alpha)
-        if omnipool_oracle.volume_out[tkn] != expected_vol_out:
+        if omnipool_oracle.volume_out[tkn] != pytest.approx(expected_vol_out, rel=1e-12):
             raise AssertionError('Volume is not correct.')
 
         init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
         expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
-        if omnipool_oracle.price[tkn] != expected_price:
+        if omnipool_oracle.price[tkn] != pytest.approx(expected_price, rel=1e-12):
             raise AssertionError('Price is not correct.')
 
 
@@ -1509,7 +1511,9 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
     )
 
     events = run.run(initial_state=initial_state, time_steps=2, silent=True)
-    omnipool_oracle_0 = events[0].pools['omnipool'].oracles['price']
+    omnipool_oracle_0 = copy.deepcopy(
+        events[0].pools['omnipool'].oracles['price']
+    ).update(initial_omnipool.current_block)
 
     vol_in = {
         'HDX': 0,
@@ -1522,26 +1526,27 @@ def test_oracle_one_block_with_swaps(liquidity: list[float], lrna: list[float], 
         'USD': 0,
         'DOT': events[0].agents['Trader1'].holdings['DOT'] - trader1_holdings['DOT'],
     }
-
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
-        if omnipool_oracle_0.liquidity[tkn] != expected_liquidity:
+        if omnipool_oracle_0.liquidity[tkn] != pytest.approx(expected_liquidity, rel=1e-12):
             raise AssertionError('Liquidity is not correct.')
 
         expected_vol_in = init_oracle['volume_in'][tkn] * (1 - alpha)
-        if omnipool_oracle_0.volume_in[tkn] != expected_vol_in:
+        if omnipool_oracle_0.volume_in[tkn] != pytest.approx(expected_vol_in, rel=1e-12):
             raise AssertionError('Volume is not correct.')
 
         expected_vol_out = init_oracle['volume_out'][tkn] * (1 - alpha)
-        if omnipool_oracle_0.volume_out[tkn] != expected_vol_out:
+        if omnipool_oracle_0.volume_out[tkn] != pytest.approx(expected_vol_out, rel=1e-12):
             raise AssertionError('Volume is not correct.')
 
         init_price = init_liquidity[tkn]['LRNA'] / init_liquidity[tkn]['liquidity']
         expected_price = init_oracle['price'][tkn] * (1 - alpha) + alpha * init_price
-        if omnipool_oracle_0.price[tkn] != expected_price:
+        if omnipool_oracle_0.price[tkn] != pytest.approx(expected_price, rel=1e-12):
             raise AssertionError('Price is not correct.')
 
     omnipool_oracle_1 = events[1].pools['omnipool'].oracles['price']
+    omnipool_oracle_1.update(events[1].pools['omnipool'].current_block)
+    omnipool_oracle_0 = events[0].pools['omnipool'].oracles['price']
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = omnipool_oracle_0.liquidity[tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
         if omnipool_oracle_1.liquidity[tkn] != pytest.approx(expected_liquidity, 1e-10):
