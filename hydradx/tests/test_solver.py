@@ -472,21 +472,20 @@ def test_single_trade_partially_settles():
             raise AssertionError("Price after sale is not within tolerance of expected price.")
 
 
-# TODO fix test
 def test_matching_trades_execute_more():
     # agents = [Agent(holdings={'DOT': 10000, 'LRNA': 7500}), Agent(holdings={'USDT': 9010})]
     agents = [Agent(enforce_holdings=False), Agent(enforce_holdings=False)]
 
     intent1 = {  # selling DOT for $4.00, too big to fully execute against AMMs
-        'sell_quantity': mpf(100000), 'buy_quantity': mpf(400000), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+        'sell_quantity': mpf(1000000), 'buy_quantity': mpf(4000000), 'tkn_sell': 'DOT', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
     }
 
     intent2 = {  # buying DOT for $6.00
-        'sell_quantity': mpf(600000 / 2), 'buy_quantity': mpf(100000 / 2), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
+        'sell_quantity': mpf(6000000 / 2), 'buy_quantity': mpf(1000000 / 2), 'tkn_sell': 'USDT', 'tkn_buy': 'DOT', 'agent': agents[1], 'partial': True
     }
 
     intent1_lrna = {  # selling LRNA for $0.90
-        'sell_quantity': mpf(750000), 'buy_quantity': mpf(750000 * 0.9), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
+        'sell_quantity': mpf(7500000), 'buy_quantity': mpf(7500000 * 0.9), 'tkn_sell': 'LRNA', 'tkn_buy': 'USDT', 'agent': agents[0], 'partial': True
     }
 
     # initial_state, amm_list = get_markets_minimal()
@@ -500,7 +499,7 @@ def test_matching_trades_execute_more():
     amm_deltas = x['amm_deltas']
     sale_deltas = x['deltas']
     omnipool_deltas = x['omnipool_deltas']
-    assert validate_and_execute_solution(state_sale, amms, intents_sale, sale_deltas, omnipool_deltas, amm_deltas, "HDX")
+    assert validate_and_execute_solution(state_sale, amms, intents_sale, sale_deltas, omnipool_deltas, amm_deltas)
 
     # do the DOT buy alone
     state_buy = initial_state.copy()
@@ -510,7 +509,7 @@ def test_matching_trades_execute_more():
     amm_buy_deltas = x['amm_deltas']
     buy_deltas = x['deltas']
     omnipool_deltas = x['omnipool_deltas']
-    assert validate_and_execute_solution(state_buy, amms, intents_buy, buy_deltas, omnipool_deltas, amm_buy_deltas, "HDX")
+    assert validate_and_execute_solution(state_buy, amms, intents_buy, buy_deltas, omnipool_deltas, amm_buy_deltas)
 
     # do both trades together
     state_match = initial_state.copy()
@@ -520,7 +519,7 @@ def test_matching_trades_execute_more():
     amm_match_deltas = x['amm_deltas']
     match_deltas = x['deltas']
     omnipool_deltas = x['omnipool_deltas']
-    assert validate_and_execute_solution(state_match, amms, intents_match, match_deltas, omnipool_deltas, amm_match_deltas, "HDX")
+    assert validate_and_execute_solution(state_match, amms, intents_match, match_deltas, omnipool_deltas, amm_match_deltas)
 
     # check that matching trades caused more execution than executing either alone
     assert abs(sale_deltas[0][0]) > 0
@@ -531,18 +530,22 @@ def test_matching_trades_execute_more():
     # do the LRNA sale alone
     state_sale = initial_state.copy()
     intents_sale = [copy.deepcopy(intent1_lrna)]
-    x = find_solution_outer_approx(state_sale, intents_sale)
+    amms = copy.deepcopy(amm_list)
+    x = find_solution_outer_approx(state_sale, intents_sale, amm_list)
+    amm_deltas = x['amm_deltas']
     sale_deltas = x['deltas']
     omnipool_deltas = x['omnipool_deltas']
-    assert validate_and_execute_solution(state_sale, [], intents_sale, sale_deltas, omnipool_deltas, [], "HDX")
+    assert validate_and_execute_solution(state_sale, amms, intents_sale, sale_deltas, omnipool_deltas, amm_deltas)
 
     # do both LRNA sale & DOT buy together
     state_match = initial_state.copy()
     intents_match = [copy.deepcopy(intent1_lrna), copy.deepcopy(intent2)]
-    x = find_solution_outer_approx(state_match, intents_match)
+    amms = copy.deepcopy(amm_list)
+    x = find_solution_outer_approx(state_match, intents_match, amm_list)
+    amm_deltas = x['amm_deltas']
     match_deltas = x['deltas']
     omnipool_deltas = x['omnipool_deltas']
-    assert validate_and_execute_solution(state_match, [], intents_match, match_deltas, omnipool_deltas, [], "HDX")
+    assert validate_and_execute_solution(state_match, amms, intents_match, match_deltas, omnipool_deltas, amm_deltas)
 
     # check that matching trades caused more execution than executing either alone
     assert abs(sale_deltas[0][0]) > 0
