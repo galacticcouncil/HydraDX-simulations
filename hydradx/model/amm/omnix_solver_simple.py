@@ -1842,15 +1842,16 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
     best_intent_deltas = [0]*m
     milp_obj = -inf
 
-    # - force small trades to execute
-    mandatory_indicators = [0] * r
-    for i in exec_indices:
-        mandatory_indicators[i] = 1
-    BK = np.where(np.array(mandatory_indicators) == 1)[0] + 4 * n + 3 * sigma + m
+    # # - force small trades to execute
+    # mandatory_indicators = [0] * r
+    # for i in exec_indices:
+    #     mandatory_indicators[i] = 1
+    # BK = np.where(np.array(mandatory_indicators) == 1)[0] + 4 * n + 3 * sigma + m
     new_A = np.zeros((1, k_milp))
-    new_A[0, BK] = 1
+    # new_A[0, BK] = 1
     new_A_upper = np.array([inf])
-    new_A_lower = np.array([len(BK)])
+    # new_A_lower = np.array([len(BK)])
+    new_A_lower = np.array([0])  # removing mandatory_indicators for now
 
     Z_U_archive = []
     Z_L_archive = []
