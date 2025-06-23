@@ -10,6 +10,7 @@ class Block:
         self.withdrawals = {tkn: 0 for tkn in input_state.asset_list}
         self.lps = {tkn: 0 for tkn in input_state.asset_list}
         self.asset_list = input_state.asset_list.copy()
+        self.time_step = input_state.time_step
 
 
 class Oracle:
@@ -37,6 +38,7 @@ class Oracle:
         else:
             raise ValueError('Either last_values or first_block must be specified')
         self.age = 0
+        self.last_updated = {tkn: first_block.time_step - 1 if first_block is not None else 0 for tkn in self.asset_list}
 
     def add_asset(self, tkn: str, liquidity: float):
         self.liquidity[tkn] = liquidity
@@ -44,21 +46,21 @@ class Oracle:
         self.volume_out[tkn] = 0
         self.asset_list.append(tkn)
 
-    def update(self, block: Block):
-        self.age += 1
-        for tkn in block.liquidity:
-            self.liquidity[tkn] = (
-                (1 - self.decay_factor) * self.liquidity[tkn] + self.decay_factor * block.liquidity[tkn]
-            ) if tkn in self.liquidity else block.liquidity[tkn]
-            self.price[tkn] = (
-                (1 - self.decay_factor) * self.price[tkn] + self.decay_factor * block.price[tkn]
-            ) if tkn in self.price else block.price[tkn]
-            self.volume_in[tkn] = (
-                (1 - self.decay_factor) * self.volume_in[tkn] + self.decay_factor * block.volume_in[tkn]
-            ) if tkn in self.volume_in else block.volume_in[tkn]
-            self.volume_out[tkn] = (
-                (1 - self.decay_factor) * self.volume_out[tkn] + self.decay_factor * block.volume_out[tkn]
-            ) if tkn in self.volume_out else block.volume_out[tkn]
+    def update(self, block: Block, assets: list[str] = None):
+        if assets is None:
+            assets = self.asset_list
+        update_steps = {tkn: max(block.time_step - self.last_updated[tkn], 1) for tkn in assets}
+        update_factor = {tkn: (1 - self.decay_factor) ** update_steps[tkn] for tkn in assets}
+        for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
+            block_attr = getattr(block, attr)
+            self_attr = getattr(self, attr)
+            for tkn in assets:
+                self_attr[tkn] = (
+                    update_factor[tkn] * self_attr.get(tkn, block_attr[tkn])
+                    + (1 - update_factor[tkn]) * block_attr[tkn]
+                )
+        self.last_updated.update({tkn: block.time_step for tkn in assets})
+        self.age = block.time_step
         return self
 
 
