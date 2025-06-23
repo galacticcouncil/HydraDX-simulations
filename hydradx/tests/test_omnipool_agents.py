@@ -297,9 +297,6 @@ def test_dca_with_lping(
 
 
 def test_schedule_swaps():
-    """
-    Test the schedule_swaps function.
-    """
     omnipool = OmnipoolState(
         tokens={tkn: {'liquidity': 1000, 'LRNA': 1000} for tkn in ('HDX', 'USD', 'DOT')}
     )

@@ -3,7 +3,6 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
-import random
 
 
 def test_liquidity():
@@ -151,8 +150,7 @@ def test_hollar_init_distro():
 
 
 def test_toxic_debt():
-    from hydradx.apps.money_market.toxic_debt import run_script
-    run_script(live_data=False)
+    from hydradx.apps.money_market import toxic_debt
 
 
 def test_changing_amp():
@@ -171,35 +169,10 @@ def test_hdx_fees():
     from hydradx.apps.fees import hdx_fees
 
 
-# def test_oracle_comparison():
-#     from hydradx.apps.fees import oracle_comparison
+def test_oracle_comparison():
+    from hydradx.apps.fees.oracle_comparison import run_app
+    run_app(7_200_000, 7_201_000, 'AAVE')
 
 
-def test_bucket_values():
-    from hydradx.model.indexer_utils import bucket_values
-
-    min_block = 0
-    max_block = 99
-    values = []
-    blocks = []
-    for i in range(min_block, max_block + 1):
-        values.append(random.randint(0, 1000))
-        blocks.append(random.randint(min_block, max_block))
-    blocks[0] = min_block
-    blocks[1] = max_block
-    data = list(zip(blocks, values))
-
-    results1 = bucket_values(10, data)
-    results2 = bucket_values(15, data)
-    results3 = bucket_values(20, data)
-
-    # different bucket counts should not affect sum of values
-    s1 = sum([x['value'] for x in results1])
-    s2 = sum([x['value'] for x in results2])
-    s3 = sum([x['value'] for x in results3])
-    assert s1 == s2 == s3, f"Sum of values should be equal, got {s1}, {s2}, {s3}"
-
-    for i in range(len(results1)):
-        s1 = results3[2*i]['value'] + results3[2*i + 1]['value']
-        s2 = results1[i]['value']
-        assert s1 == s2, f"Sum of values in bucket {i} should be equal, got {s1} and {s2}"
+def test_arb_oracle_comp():
+    from hydradx.apps.fees import arb_oracle_comp

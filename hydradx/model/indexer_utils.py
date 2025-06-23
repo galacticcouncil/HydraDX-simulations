@@ -438,15 +438,15 @@ def get_current_omnipool():
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
-    current_block = get_current_block_height()
-    scanning_block = current_block
+    max_block = get_current_block_height()
     asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
+    current_block = max_block
     while asset_ids_remaining:
         omnipool_data = get_omnipool_asset_data(
-            min_block_id=scanning_block - 100,
-            max_block_id=scanning_block,
+            min_block_id=current_block - 100,
+            max_block_id=current_block,
             asset_ids=asset_ids_remaining
         )
         for item in reversed(omnipool_data):
@@ -457,7 +457,7 @@ def get_current_omnipool():
                 lrna[asset.symbol] = int(item['assetState']['hubReserve']) / (
                             10 ** asset_info[1].decimals)
                 asset_ids_remaining.remove(asset.id)
-        scanning_block -= 100
+        current_block -= 100
 
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
@@ -474,7 +474,7 @@ def get_current_omnipool():
         asset_fee=asset_fee,
         lrna_fee=lrna_fee
     )
-    omnipool.time_step = current_block
+    omnipool.time_step = max_block
     return omnipool
 
 
@@ -840,8 +840,16 @@ def download_omnipool_swap_fees(tkn_id: int, min_block: int, max_block: int, pat
         }, f)
 
 
-def bucket_values(bucket_ct: int, data, min_block: int = None, max_block: int = None):
-    # data is a a list of tuples (block_number, value)
+def bucket_values(bucket_ct: int, data: list, min_block: int = None, max_block: int = None):
+    """Aggregates values in data into buckets based on block numbers.
+
+    Args:
+        bucket_ct (int): Number of buckets to create.
+        data (list): List of tuples where each tuple contains (block_number, value).
+        min_block (int, optional): Minimum block number to consider.
+        max_block (int, optional): Maximum block number to consider.
+    """
+
     if min_block == None or max_block == None:
         min_block = float('inf')
         max_block = -1
