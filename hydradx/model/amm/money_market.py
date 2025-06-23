@@ -1,5 +1,8 @@
 import copy
+from typing import Callable
+
 from .agents import Agent
+from .exchange import Exchange
 
 
 class CDP:
@@ -9,7 +12,7 @@ class CDP:
             collateral: dict[str: float],
             liquidation_threshold: float = None,
             health_factor: float = None,
-            e_mode: int = None
+            e_mode: str = None
     ):
         self.debt: dict[str: float] = {tkn: debt[tkn] for tkn in debt}
         self.collateral: dict[str: float] = {tkn: collateral[tkn] for tkn in collateral}
@@ -71,14 +74,17 @@ class MoneyMarketAsset:
         self.emode_label = emode_label
 
 
-class MoneyMarket:
+class MoneyMarket(Exchange):
     def __init__(
             self,
             assets: list[MoneyMarketAsset],
             cdps: list = None,
             full_liquidation_threshold: float = 0.95,
-            close_factor: float = 0.5
+            close_factor: float = 0.5,
+            oracle_source: Callable[[str], float] = None,
+            unique_id: str = 'money_market',
     ):
+        super().__init__()
         self.liquidity = {
             asset.name: asset.liquidity
             for asset in assets
@@ -106,6 +112,9 @@ class MoneyMarket:
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
+        self.oracle_source = oracle_source
+        self.time_step = 0
+        self.unique_id = unique_id
 
     def __repr__(self):
         total_collateral = {tkn: sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in self.cdps])
@@ -123,6 +132,12 @@ class MoneyMarket:
 
     def copy(self):
         return copy.deepcopy(self)
+
+    def update(self):
+        self.time_step += 1
+        if self.oracle_source:
+            for tkn in self.asset_list:
+                self.prices[tkn] = self.oracle_source(tkn)
 
     def add_new_asset(self, new_asset: MoneyMarketAsset):
         self.liquidity[new_asset.name] = new_asset.liquidity
@@ -208,7 +223,7 @@ class MoneyMarket:
             float: The calculated liquidation threshold as a decimal (0.0-1.0)
         """
 
-        threshold = {tkn: 0 for tkn in cdp.collateral}
+        threshold = {tkn: 0.0 for tkn in cdp.collateral}
         debt_values = {tkn: cdp.debt[tkn] * self.price(tkn) for tkn in cdp.debt}
         collateral_values = {tkn: cdp.collateral[tkn] * self.price(tkn) for tkn in cdp.collateral}
         total_debt = sum(debt_values.values())
@@ -216,21 +231,23 @@ class MoneyMarket:
         if total_collateral == 0 or total_debt == 0:
             return 0
         for tkn in threshold:
-            threshold[tkn] = sum(
-                [value * self.get_liquidation_threshold(tkn, debt_tkn, cdp.e_mode) for debt_tkn, value in
-                 debt_values.items()]) / total_debt
+            threshold[tkn] = sum([
+                value * self.get_liquidation_threshold(tkn, debt_tkn, cdp.e_mode)
+                for debt_tkn, value in debt_values.items()
+            ]) / total_debt
         threshold_weights = {tkn: value / total_collateral for tkn, value in collateral_values.items()}
         return sum([value * threshold[tkn] for tkn, value in collateral_values.items()]) / total_collateral
 
     def borrow(self, agent: Agent, borrow_asset: str, collateral_asset: str, borrow_amt: float,
-               collateral_amt: float) -> CDP:
+               collateral_amt: float) -> CDP or None:
         assert borrow_asset != collateral_asset
         assert borrow_asset in self.liquidity
         assert borrow_amt <= self.liquidity[borrow_asset] - self.borrowed[borrow_asset]
         assert agent.validate_holdings(collateral_asset, collateral_amt)
         price = self.price(collateral_asset) / self.price(borrow_asset)
         if price * collateral_amt * self.get_ltv(collateral_asset, borrow_asset, self.assets[collateral_asset].emode_label) < borrow_amt:
-            return self.fail_transaction(f"Tried to borrow more than allowed by LTV ({borrow_asset, collateral_asset}")
+            self.fail_transaction(f"Tried to borrow more than allowed by LTV ({borrow_asset, collateral_asset}")
+            return None
         self.borrowed[borrow_asset] += borrow_amt
         # if borrow_asset not in agent.holdings:
         #     agent.holdings[borrow_asset] = 0
@@ -332,11 +349,8 @@ class MoneyMarket:
             cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
         return self
 
-    def value_assets(self, assets: dict[str: float]) -> float:
-        return sum([assets[tkn] * self.price(tkn) for tkn in assets])
-
-    def update(self):
-        pass
+    def value_assets(self, assets: dict[str: float], numeraire: str = None) -> float:
+        return sum([assets[tkn] * self.price(tkn, numeraire) for tkn in assets])
 
     def validate(self):
         cdp_borrowed = {asset: 0 for asset in self.liquidity}
@@ -359,3 +373,61 @@ class MoneyMarket:
         if not (len(self.liquidity) == len(self.borrowed) == len(cdp_borrowed) ):
             return False
         return True
+
+
+    def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float) -> float:
+        """
+        Calculate the amount of tkn_buy that can be bought with amount of tkn_sell.
+        """
+        assert tkn_sell in self.liquidity
+        assert tkn_buy in self.liquidity
+        return sell_quantity * self.price(tkn_sell, tkn_buy)
+
+
+    def calculate_sell_from_buy(self, tkn_buy: str, tkn_sell: str, buy_quantity: float) -> float:
+        """
+        Calculate the amount of tkn_sell that can be bought with amount of tkn_buy.
+        """
+        assert tkn_buy in self.liquidity
+        assert tkn_sell in self.liquidity
+        return buy_quantity / self.price(tkn_buy, tkn_sell)
+
+
+    def swap(self, agent: Agent, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0,
+             sell_quantity: float = 0):
+        """
+        Swap tkn_sell for tkn_buy.
+        """
+        assert tkn_sell != tkn_buy
+        assert tkn_sell in self.liquidity
+        assert tkn_buy in self.liquidity
+        assert agent.validate_holdings(tkn_sell, sell_quantity)
+        if buy_quantity > 0:
+            sell_quantity = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
+        elif sell_quantity > 0:
+            buy_quantity = self.calculate_buy_from_sell(tkn_sell, tkn_buy, sell_quantity)
+        else:
+            raise ValueError("Either buy_quantity or sell_quantity must be greater than 0.")
+
+        if buy_quantity > self.liquidity[tkn_buy] - self.borrowed[tkn_buy]:
+            return self.fail_transaction('Not enough liquidity')
+
+        if not agent.validate_holdings(tkn_sell, sell_quantity):
+            return self.fail_transaction('Not enough holdings')
+
+        agent.add(tkn_buy, buy_quantity)
+        agent.remove(tkn_sell, sell_quantity)
+        self.liquidity[tkn_sell] += sell_quantity
+        self.liquidity[tkn_buy] -= buy_quantity
+
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = 0):
+        return self.price(tkn_buy, tkn_sell) / (1 - fee)
+
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = 0):
+        return self.price(tkn_sell, tkn_buy) * (1 - fee)
+
+    def buy_limit(self, tkn_buy: str, tkn_sell: str):
+        return self.liquidity[tkn_buy] - self.borrowed[tkn_buy]
+
+    def sell_limit(self, tkn_buy, tkn_sell):
+        return self.liquidity[tkn_sell]

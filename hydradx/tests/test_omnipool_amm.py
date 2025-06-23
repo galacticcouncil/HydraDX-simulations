@@ -12,7 +12,7 @@ from hydradx.model import run, processing
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, OmnipoolLiquidityPosition
+from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, OmnipoolLiquidityPosition, trade_to_price
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 
@@ -2828,3 +2828,29 @@ def test_fee_against_invariant_spec(sell_amt, asset_fee):
     lhs2 = (q_plus * r_plus + (F - r) * q) / delta_q
     rhs2 = r * q * (1 - fA) / (q - delta_q) - (1 + fA) * r_plus + fA * r_plus * delta_q / q
     assert lhs2 == pytest.approx(rhs2, rel=1e-10)
+
+
+def test_trade_to_price():
+    omnipool = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+            'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)}
+        },
+        asset_fee=0.0,
+        lrna_fee=0.0
+    )
+    agent = Agent(enforce_holdings=False)
+
+    expected_price = 0.9
+    sell_quantity = trade_to_price(omnipool, 'USD', target_price=expected_price)
+    omnipool.swap(agent, tkn_sell='USD', tkn_buy='HDX', sell_quantity=sell_quantity)
+    price = omnipool.lrna_price('USD')
+
+    assert price == pytest.approx(expected_price, rel=1e-15)
+
+    expected_price = 1.1
+    buy_quantity = -trade_to_price(omnipool, 'USD', target_price=expected_price)
+    omnipool.swap(agent, tkn_buy='USD', tkn_sell='HDX', buy_quantity=buy_quantity)
+    price = omnipool.lrna_price('USD')
+
+    assert price == pytest.approx(expected_price, rel=1e-15)
