@@ -184,7 +184,7 @@ def get_omnipool_liquidity(
     data = get_omnipool_data_by_asset(min_block_id, max_block_id, asset_ids)
     liquidity = {}
     hub_liquidity = {}
-    for asset_id in asset_ids:
+    for asset_id in data.keys():
         tkn_balances = [int(block['balances']['free']) / (10 ** asset_dict[asset_id].decimals) for block in data[asset_id]]
         hub_balances = [int(block['assetState']['hubReserve']) / (10 ** asset_dict[1].decimals) for block in data[asset_id]]
         liquidity[asset_id] = tkn_balances
