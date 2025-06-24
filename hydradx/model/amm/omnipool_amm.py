@@ -441,7 +441,7 @@ class OmnipoolState(Exchange):
         Given a buy quantity, calculate the effective price, so we can execute it as a sell
         """
         asset_fee = self.asset_fee(tkn_buy)
-        if buy_quantity >= self.liquidity[tkn_buy]:
+        if buy_quantity >= self.liquidity[tkn_buy] * (1 - asset_fee):
             return float('inf')
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
