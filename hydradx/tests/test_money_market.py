@@ -8,6 +8,7 @@ from hydradx.model.amm.money_market import CDP, MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps
 from hydradx.model.processing import save_money_market, load_money_market, get_current_money_market
+from hydradx.tests.utils import find_test_directory
 
 mp.dps = 50
 
@@ -1095,9 +1096,10 @@ def test_calculate_health_factor():
 
 
 def test_save_load():
+    path = find_test_directory()
     mm = get_current_money_market()
-    save_money_market(mm, filename='test_mm.json')
-    mm2 = load_money_market(filename='test_mm.json')
+    save_money_market(mm, path=path, filename='test_mm.json')
+    mm2 = load_money_market(path=path, filename='test_mm.json')
     if mm2 is None:
         raise ValueError("Money market should be loaded")
     if mm.asset_list != mm2.asset_list:
