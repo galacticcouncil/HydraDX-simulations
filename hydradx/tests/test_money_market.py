@@ -7,6 +7,8 @@ from hydradx.model.amm.global_state import GlobalState, value_assets, historical
 from hydradx.model.amm.money_market import CDP, MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps
+from hydradx.model.processing import save_money_market, load_money_market, get_current_money_market
+from hydradx.tests.utils import find_test_directory
 
 mp.dps = 50
 
@@ -767,6 +769,7 @@ def test_set_mm_oracles_to_external_market():
         ], oracle_source=omnipool.usd_price
     )
     prices = {tkn: omnipool.price(tkn, "USDT") for tkn in omnipool.asset_list}
+    mm.oracle_source = omnipool.usd_price
     mm.update()
     for tkn in mm.liquidity:
         if mm.price(tkn) != pytest.approx(prices[tkn], rel=1e-40):
@@ -1090,3 +1093,27 @@ def test_calculate_health_factor():
         raise AssertionError("CDP 2 wrong health factor")
     print (f"CDP1: {cdp1.health_factor}")
     print(f"CDP2: {cdp2.liquidation_threshold}")
+
+
+def test_save_load():
+    path = find_test_directory()
+    mm = get_current_money_market()
+    save_money_market(mm, path=path, filename='test_mm.json')
+    mm2 = load_money_market(path=path, filename='test_mm.json')
+    if mm2 is None:
+        raise ValueError("Money market should be loaded")
+    if mm.asset_list != mm2.asset_list:
+        raise ValueError("Money market assets should be the same after loading")
+    for tkn in mm.assets:
+        for attribute in [
+            'emode_label', 'emode_liquidation_bonus', 'emode_liquidation_threshold', 'emode_ltv',
+            'liquidity', 'liquidation_bonus', 'liquidation_threshold', 'ltv', 'price'
+        ]:
+            if getattr(mm.assets[tkn], attribute) != getattr(mm2.assets[tkn], attribute):
+                raise ValueError(f"Money market asset {tkn} {attribute} should be the same after loading")
+    for i in range(len(mm.cdps)):
+        for attribute in ['collateral', 'debt', 'health_factor', 'liquidation_threshold']:
+            if getattr(mm.cdps[i], attribute) != getattr(mm2.cdps[i], attribute):
+                raise ValueError(f"CDP {i} {attribute} should be the same after loading")
+
+

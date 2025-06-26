@@ -1225,3 +1225,84 @@ def get_omnipool_price_history(asset_name: str):
 
     print(f"Total records fetched: {len(all_data)}")
 
+
+def save_money_market(mm: MoneyMarket, path: str = './archive', filename: str = '') -> None:
+    """
+    Save the money market state to a JSON file.
+    """
+    if filename == '':
+        filename = f'money_market_savefile_{int(time.time())}.json'
+    elif not filename.endswith('.json'):
+        filename += '.json'
+    with open(os.path.join(path, filename), 'w+') as output_file:
+        json.dump(
+            {
+                'assets': {
+                    asset.name: {
+                        'price': asset.price,
+                        'liquidity': asset.liquidity,
+                        'liquidation_bonus': asset.liquidation_bonus,
+                        'liquidation_threshold': asset.liquidation_threshold,
+                        'ltv': asset.ltv,
+                        'emode_liquidation_bonus': asset.emode_liquidation_bonus,
+                        'emode_liquidation_threshold': asset.emode_liquidation_threshold,
+                        'emode_ltv': asset.emode_ltv,
+                        'emode_label': asset.emode_label
+                    }
+                    for asset in mm.assets.values()
+                },
+                'cdps': [
+                    {
+                        'debt': cdp.debt,
+                        'collateral': cdp.collateral,
+                        'liquidation_threshold': cdp.liquidation_threshold,
+                        'health_factor': cdp.health_factor,
+                        'e_mode': cdp.e_mode
+                    }
+                    for cdp in mm.cdps
+                ]
+            },
+            output_file
+        )
+
+
+def load_money_market(path: str = './archive', filename: str = '') -> MoneyMarket:
+    """
+    Load the money market state from a JSON file.
+    """
+    if filename:
+        file_ls = [filename]
+    else:
+        file_ls = list(filter(lambda file: file.startswith('money_market'), os.listdir(path)))
+    for filename in reversed(sorted(file_ls)):  # by default, load the latest first
+        with open(os.path.join(path, filename), 'r') as input_file:
+            json_state = json.load(input_file)
+            # pprint(json_state)
+        assets = [
+            MoneyMarketAsset(
+                name=tkn,
+                price=json_state['assets'][tkn]['price'],
+                liquidity=json_state['assets'][tkn]['liquidity'],
+                liquidation_bonus=json_state['assets'][tkn]['liquidation_bonus'],
+                liquidation_threshold=json_state['assets'][tkn]['liquidation_threshold'],
+                ltv=json_state['assets'][tkn]['ltv'],
+                emode_liquidation_bonus=json_state['assets'][tkn]['emode_liquidation_bonus'],
+                emode_liquidation_threshold=json_state['assets'][tkn]['emode_liquidation_threshold'],
+                emode_ltv=json_state['assets'][tkn]['emode_ltv'],
+                emode_label=json_state['assets'][tkn]['emode_label']
+            )
+            for tkn in json_state['assets']
+        ]
+        cdps = [
+            CDP(
+                debt=cdp['debt'],
+                collateral=cdp['collateral'],
+                liquidation_threshold=cdp['liquidation_threshold'],
+                health_factor=cdp['health_factor'],
+                e_mode=cdp.get('e_mode', 'None')
+            )
+            for cdp in json_state['cdps']
+        ]
+        mm = MoneyMarket(assets=assets, cdps=cdps)
+        return mm
+    raise FileNotFoundError(f'Money market file not found in {path}.')

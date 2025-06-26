@@ -210,7 +210,7 @@ class MoneyMarket(Exchange):
         return health_factor < self.full_liquidation_threshold
 
     def is_toxic(self, cdp: CDP) -> bool:
-        return self.value_assets(cdp.collateral) < self.value_assets(cdp.debt)
+        return self.value_assets(cdp.collateral) <= self.value_assets(cdp.debt)
 
     def cdp_liquidation_threshold(self, cdp: CDP) -> float:
         """

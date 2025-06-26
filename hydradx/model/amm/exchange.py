@@ -7,6 +7,7 @@ class Exchange:
     asset_list: list[str]
     liquidity: dict[str: float]
     update_function: Callable = None
+    time_step: int = 0
 
     def __init__(self):
         self.fail = ''

@@ -295,10 +295,8 @@ def test_dca_with_lping(
     if agent.holdings[buy_tkn] != pytest.approx(init_buy_tkn, rel=1e-20):
         raise AssertionError('Agent buy token changed.')
 
+
 def test_schedule_swaps():
-    """
-    Test the schedule_swaps function.
-    """
     omnipool = OmnipoolState(
         tokens={tkn: {'liquidity': 1000, 'LRNA': 1000} for tkn in ('HDX', 'USD', 'DOT')}
     )

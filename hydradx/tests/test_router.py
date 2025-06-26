@@ -192,7 +192,7 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     router.swap_route(agent1, tkn_sell="DOT", tkn_buy="USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2",
                       sell_pool_id="omnipool")
     # calculate how many shares to buy
-    delta_shares = stablepool2_copy.calculate_withdrawal_shares("USDT", buy_quantity)
+    delta_shares = stablepool2_copy.calculate_withdraw_asset("USDT", buy_quantity)
     # buy shares
     omnipool2.swap(agent2, tkn_buy="stablepool2", tkn_sell="DOT", buy_quantity=delta_shares)
     # withdraw USDT
@@ -967,7 +967,7 @@ def test_calculate_buy_from_sell():
         {'tkn_buy': 'BTC', 'tkn_sell': 'HDX', 'sell_quantity': 11},
         {'tkn_buy': 'HDX', 'tkn_sell': 'ETH', 'sell_quantity': 12},
         {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'sell_quantity': 13},
-        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'sell_quantity': 14},
+        {'tkn_buy': 'WBTC', 'tkn_sell': 'WETH', 'sell_quantity': 14},
         {'tkn_buy': 'ETH', 'tkn_sell': 'BTC', 'sell_quantity': 15},
     ]
     for trade in trades:
@@ -976,7 +976,70 @@ def test_calculate_buy_from_sell():
             tkn_sell=tkn_sell, tkn_buy=tkn_buy, sell_quantity=sell_quantity
         )
         agent = Agent(enforce_holdings=False)
-        router.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
+        test_router = router.copy()
+        test_router.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=sell_quantity)
         buy_result = agent.get_holdings(tkn_buy)
         if buy_prediction != pytest.approx(buy_result, rel=1e-15):
+            raise AssertionError('Trade did not come out as predicted.')
+
+
+def test_calculate_sell_from_buy():
+    stable1 = StableSwapPoolState(
+        tokens={
+            'BTC': mpf(1000),
+            'WBTC': mpf(1001)
+        }, amplification=100,
+        unique_id='btc pool',
+        # trade_fee=0.000123,
+        precision=1e-12,
+        spot_price_precision=1e-12
+    )
+    stable2 = StableSwapPoolState(
+        tokens={
+            'ETH': mpf(1001),
+            'WETH': mpf(999)
+        }, amplification=222,
+        unique_id='eth pool',
+        # trade_fee=0.00011,
+        precision=1e-12,
+        spot_price_precision=1e-12
+    )
+    omnipool = OmnipoolState(
+        tokens={
+            'eth pool': {'liquidity': mpf(101), 'LRNA': mpf(1999)},
+            'btc pool': {'liquidity': mpf(102), 'LRNA': mpf(20202)},
+            'HDX': {'liquidity': mpf(1003333), 'LRNA': mpf(1234)},
+            'USD': {'liquidity': mpf(100000), 'LRNA': mpf(5000)},
+            'ETH': {'liquidity': mpf(100), 'LRNA': mpf(2000)}
+        },
+        # asset_fee=0.0022, lrna_fee=0.0011
+    )
+    router = OmnipoolRouter(
+        [stable1, stable2, omnipool]
+    )
+    if router.find_best_route('ETH', 'BTC') != ('btc pool', 'eth pool'):
+        # this is to make sure we test the case where one of the assets exists in two different pools.
+        raise AssertionError('ETH -> BTC trade should go through both subpools.')
+    elif router.find_best_route('BTC', 'ETH') != ('omnipool', 'btc pool'):
+        # this is to test the case where buy route and sell route are different.
+        raise AssertionError('BTC -> ETH trade should go through omnipool -> btc pool.')
+
+    trades = [
+        {'tkn_buy': 'BTC', 'tkn_sell': 'ETH', 'buy_quantity': 1.1},
+        {'tkn_buy': 'BTC', 'tkn_sell': 'HDX', 'buy_quantity': 2.1},
+        {'tkn_buy': 'HDX', 'tkn_sell': 'ETH', 'buy_quantity': 3.1},
+        {'tkn_buy': 'USD', 'tkn_sell': 'HDX', 'buy_quantity': 4.1},
+        {'tkn_buy': 'WBTC', 'tkn_sell': 'WETH', 'buy_quantity': 5.1},
+        {'tkn_buy': 'ETH', 'tkn_sell': 'BTC', 'buy_quantity': 6.1},
+    ]
+    for trade in trades:
+        tkn_buy, tkn_sell, buy_quantity = trade.values()
+        sell_prediction = router.calculate_sell_from_buy(
+            tkn_sell=tkn_sell, tkn_buy=tkn_buy, buy_quantity=buy_quantity
+        )
+        agent = Agent(enforce_holdings=False)
+        test_router = router.copy()
+        test_router.swap(agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=buy_quantity)
+        sell_result = -agent.get_holdings(tkn_sell)
+        if sell_prediction != pytest.approx(sell_result, rel=1e-15):
             raise AssertionError('Trade did not come out as predicted.')

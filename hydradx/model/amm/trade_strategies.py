@@ -1116,12 +1116,15 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
                     collateral_tkn, debt_tkn = best_pair[0]
                     debt_paid = best_pair[1]['amount']
                     pool = best_pair[1]['pool']
-                    pool.swap(
-                        agent=agent,
-                        tkn_buy=debt_tkn,
-                        tkn_sell=collateral_tkn,
-                        buy_quantity=debt_paid
-                    )
+                    if collateral_tkn != debt_tkn:
+                        pool.swap(
+                            agent=agent,
+                            tkn_buy=debt_tkn,
+                            tkn_sell=collateral_tkn,
+                            buy_quantity=debt_paid
+                        )
+                    else:
+                        pass
                     mm.liquidate(
                         cdp, agent,
                         collateral_asset=collateral_tkn,
@@ -1140,8 +1143,10 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
         [
             {'tkn_sell': str, 'tkn_buy': str, <'sell_quantity' OR 'buy_quantity'>: float},
             ... for each trade at this time step
-        ],
-        for each time step
+        ]
+        or {tkn_sell: str, tkn_buy: str, <'sell_quantity' OR 'buy_quantity'>: float} for a single trade
+        or None for no trades at this time step
+        ... for each time step
     ]
     """
     class Strategy:
@@ -1151,7 +1156,15 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
             if self.initial_time_step == -1:
                 self.initial_time_step = state.time_step
             agent = state.agents[agent_id]
-            for trade in swaps [state.time_step - self.initial_time_step]:
+            step_swaps = (
+                swaps[state.time_step - self.initial_time_step]
+                if isinstance(swaps[state.time_step - self.initial_time_step], list)
+                else [swaps[state.time_step - self.initial_time_step]]
+            )
+            if step_swaps == [None] or len(step_swaps) == 0:
+                # no trades this step
+                return state
+            for trade in step_swaps:
                 state.pools[pool_id].swap(
                     tkn_sell=trade['tkn_sell'],
                     tkn_buy=trade['tkn_buy'],
@@ -1159,7 +1172,6 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
                     buy_quantity=trade['buy_quantity'] if 'buy_quantity' in trade else 0,
                     agent=agent
                 )
-
             return state
 
     return TradeStrategy(Strategy().execute, name="scheduled_swaps")

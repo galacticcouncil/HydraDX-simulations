@@ -181,6 +181,57 @@ def test_spot_price(token_a: int, token_b: int, token_c: int, token_d: int, amp:
         raise AssertionError('Execution price should be lower than final spot price.')
 
 
+def test_add_remove_spot_prices():
+    initial_pool = StableSwapPoolState(
+        tokens={"A": mpf(1000011), "B": mpf(1500022), 'C': mpf(2000033), 'D': mpf(2500044)},
+        amplification=101,
+        trade_fee=0.00123,
+        unique_id='stableswap',
+        peg=[1.5, 2.0, 2.5],
+        precision=1e-12
+    )
+    spot_price_initial = initial_pool.price("B", "A")
+
+    agent = Agent(enforce_holdings=False)
+    precision = 1e-12
+    shares_initial = initial_pool.shares
+    add_liquidity_spot = initial_pool.add_liquidity_spot(tkn_add='A', precision=precision)
+    remove_liquidity_spot = initial_pool.remove_liquidity_spot(tkn_remove='B', precision=precision)
+    buy_shares_spot = initial_pool.buy_shares_spot(tkn_add='C', precision=precision)
+    withdraw_asset_spot = initial_pool.withdraw_asset_spot(tkn_remove='D', precision=precision)
+
+    add_pool = initial_pool.copy()
+    trade_size = add_pool.liquidity['A'] * precision * 1.9
+    add_pool.add_liquidity(agent, quantity=trade_size, tkn_add="A")
+    ex_price = trade_size / agent.get_holdings(add_pool.unique_id)
+    if ex_price != pytest.approx(add_liquidity_spot, rel=1e-12):
+        raise AssertionError('Add liquidity spot price does not match expected value.')
+
+    agent.clear_holdings()
+    remove_pool = initial_pool.copy()
+    trade_size = remove_pool.liquidity['B'] * precision * 1.8
+    remove_pool.remove_liquidity(agent, shares_removed=trade_size, tkn_remove="B")
+    ex_price = agent.get_holdings('B') / trade_size
+    if ex_price != pytest.approx(remove_liquidity_spot, rel=1e-12):
+        raise AssertionError('Add liquidity spot price does not match expected value.')
+
+    agent.clear_holdings()
+    buy_shares_pool = initial_pool.copy()
+    trade_size = buy_shares_pool.liquidity['C'] * precision * 1.7
+    buy_shares_pool.buy_shares(agent, quantity=trade_size, tkn_add="C")
+    ex_price = -agent.get_holdings('C') / trade_size
+    if ex_price != pytest.approx(buy_shares_spot, rel=1e-12):
+        raise AssertionError('Buy shares spot price does not match expected value.')
+
+    agent.clear_holdings()
+    withdraw_asset_pool = initial_pool.copy()
+    trade_size = withdraw_asset_pool.liquidity['D'] * precision * 1.6
+    withdraw_asset_pool.withdraw_asset(agent, quantity=trade_size, tkn_remove="D")
+    ex_price = trade_size / -agent.get_holdings(withdraw_asset_pool.unique_id)
+    if ex_price != pytest.approx(withdraw_asset_spot, rel=1e-12):
+        raise AssertionError('Withdraw asset spot price does not match expected value.')
+
+
 @given(st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=1000, max_value=1000000),
        st.integers(min_value=10, max_value=1000)
