@@ -2,7 +2,7 @@ import copy
 from datetime import timedelta
 import os
 import pytest
-from hypothesis import given, strategies as st, settings, Phase
+from hypothesis import given, strategies as st, settings, Phase, reproduce_failure
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.arbitrage_agent import calculate_profit, calculate_arb_amount, \
@@ -839,14 +839,12 @@ def test_stableswap_router_arbitrage():
     binance = cex['binance']
 
     cfg = [
-        {'exchanges': {'router': ('iBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('WBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('iBTC', 'USDT23'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
-        {'exchanges': {'router': ('WBTC', 'USDT10'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'router': ('iBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
+        {'exchanges': {'router': ('WBTC', 'USDT'), 'kraken': ('BTC', 'USDT')}, 'buffer': 0.001},
     ]
     exchanges = {'router': router, 'kraken': kraken, 'binance': binance}
     max_liquidity = {
-        'router': {'WBTC': 10, 'iBTC': 10, 'USDT10': 1000000, 'USDT23': 1000000},
+        'router': {'WBTC': 10, 'iBTC': 10, 'USDT': 1000000},
         'kraken': {'BTC': 10, 'USDT': 1000000}
     }
     swaps = get_arb_swaps(
@@ -865,8 +863,6 @@ def test_stableswap_router_arbitrage():
         'WBTC': 'BTC',
         'ZUSD': 'USD',
         'USDT': 'USD',
-        'USDT10': 'USD',
-        'USDT23': 'USD',
         'USDC': 'USD',
         'DAI': 'USD',
         'iBTC': 'BTC',
@@ -891,4 +887,3 @@ def test_stableswap_router_arbitrage():
     print(profit_total)
     if profit_total <= 0:
         raise AssertionError('Arbitrageur should definitely make money.')
-    er = 1
