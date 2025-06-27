@@ -789,6 +789,18 @@ def simulate_buy_shares(
     ), new_agent
 
 
+def simulate_withdraw_asset(
+        old_state: StableSwapPoolState,
+        old_agent: Agent,
+        quantity: float,
+        tkn_remove: str,
+        fail_on_overdraw: bool = True
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+    return new_state.withdraw_asset(new_agent, quantity, tkn_remove, fail_on_overdraw), new_agent
+
+
 def balance_ratio_at_price(
         amplification: float,
         price: float,
