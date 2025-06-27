@@ -1568,7 +1568,7 @@ def _solve_inclusion_problem(
     q = p.get_q()
     A8[0, :] = -q
     A8_upper = np.array([upper_bound / scaling[p.tkn_profit]])
-    A8_upper = np.array([upper_bound/10 / scaling[p.tkn_profit]])
+    # A8_upper = np.array([upper_bound/10 / scaling[p.tkn_profit]])
     A8_lower = np.array([lower_bound / scaling[p.tkn_profit]])
 
     if old_A is None:
