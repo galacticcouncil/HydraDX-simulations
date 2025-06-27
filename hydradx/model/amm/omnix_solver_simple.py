@@ -1315,19 +1315,18 @@ def _find_good_solution(
     # if omnipool_deltas["LRNA"] / p.min_partial < 1e-6:
     #     omnipool_deltas["LRNA"] = 0
     for i, amm_delta in enumerate(amm_deltas):
-        offset = p._amm_starting_indices[i]
-        n_amm = len(amm_delta)
+        amm_i = p.amm_i[i]
         if abs(amm_delta[0] / p.amm_list[i].shares) < 1e-11:
-            x_unscaled[4 * n + offset] = 0  # X
-            x_unscaled[4 * n + offset + n_amm] = 0  # L
-            x_unscaled[4 * n + offset + 2 * n_amm] = 0  # a
+            x_unscaled[amm_i.shares_net] = 0  # X
+            x_unscaled[amm_i.shares_out] = 0  # L
+            x_unscaled[amm_i.aux[0]] = 0  # a  # TODO generalize beyond stableswap
             amm_deltas[i][0] = 0
         for j, tkn in enumerate(p.amm_list[i].asset_list):
             if abs(amm_delta[j+1] / p.amm_list[i].liquidity[tkn]) < 1e-11:
                 amm_deltas[i][j+1] = 0
-                x_unscaled[4 * n + offset + j + 1] = 0  # X
-                x_unscaled[4 * n + offset + n_amm + j + 1] = 0  # L
-                x_unscaled[4 * n + offset + 2*n_amm + j + 1] = 0  # a
+                x_unscaled[amm_i.asset_net[j]] = 0  # X
+                x_unscaled[amm_i.asset_out[j]] = 0  # L
+                x_unscaled[amm_i.aux[j+1]] = 0  # a
 
     return omnipool_deltas, intent_deltas, x_unscaled, obj, dual_obj, status, amm_deltas
 
@@ -1476,6 +1475,7 @@ def _solve_inclusion_problem(
 
         offset = 0
         for _s, amm in enumerate(p.amm_list):
+            amm_i = p.amm_i[_s]
             C = C_list[_s]
             B = B_list[_s]
             D0_prime = amm.d - amm.d/amm.ann
@@ -1483,8 +1483,8 @@ def _solve_inclusion_problem(
             c = C[0]
             sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
             denom = sum_assets - D0_prime
-            a0 = x[4*n + 2*sigma + offset]
-            X0 = x[4*n + offset]
+            a0 = x[amm_i.aux[0]]
+            X0 = x[amm_i.shares_net]
             exp = np.exp(float(a0 / (1 + (c*X0/s0))))
             term = (c / s0 - c*a0 / (s0 + c)) * exp
             # linearization of shares constraint, i.e. a0
@@ -1492,12 +1492,12 @@ def _solve_inclusion_problem(
             grad_s = term + c * D0_prime / (s0 * denom)
             grads_i = [- B[l] / denom for l in range(1, len(amm.asset_list) + 1)]
             grad_a = exp
-            S_row[0, 4*n + offset] = grad_s
-            S_row[0, 4*n + 2*sigma + offset] = grad_a
+            S_row[0, amm_i.shares_net] = grad_s
+            S_row[0, amm_i.aux[0]] = grad_a
             for l, tkn in enumerate(amm.asset_list):
-                S_row[0, 4*n + offset + l + 1] = grads_i[l]
-            grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[4*n + offset + l + 1] for l in range(len(amm.asset_list))])
-            sum_deltas = sum([B[l + 1] * x[4*n + offset + l + 1] for l in range(len(amm.asset_list))])
+                S_row[0, amm_i.asset_net[l]] = grads_i[l]
+            grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
+            sum_deltas = sum([B[l + 1] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
             g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
             S_row_upper = np.array([grad_dot_x + g_neg])
             S = np.vstack([S, S_row])
@@ -1509,12 +1509,12 @@ def _solve_inclusion_problem(
                 grad_s = term
                 grad_a = exp
                 grad_x = -B[l + 1] / amm.liquidity[tkn]
-                S_row[0, 4*n + offset] = grad_s
-                S_row[0, 4*n + 2*sigma + offset + l + 1] = grad_a
-                S_row[0, 4*n + offset + l + 1] = grad_x
-                ai = x[4*n + 2*sigma + offset + l + 1]
-                grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[4*n + offset + l + 1]
-                g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[4*n + offset + l + 1]  / amm.liquidity[tkn] - 1
+                S_row[0, amm_i.shares_net] = grad_s
+                S_row[0, amm_i.aux[l + 1]] = grad_a
+                S_row[0, amm_i.asset_net[l]] = grad_x
+                ai = x[amm_i.aux[l + 1]]
+                grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[amm_i.asset_net[l]]
+                g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[amm_i.asset_net[l]] / amm.liquidity[tkn] - 1
                 S_row_upper = np.array([grad_dot_x + g_neg])
                 S = np.vstack([S, S_row])
                 S_upper = np.concatenate([S_upper, S_row_upper])
@@ -1527,8 +1527,9 @@ def _solve_inclusion_problem(
     A_amm = np.zeros((p.s, k))
     offset = 0
     for i, amm in enumerate(p.amm_list):
+        amm_i = p.amm_i[i]
         for j in range(1 + len(amm.asset_list)):
-            A_amm[i, 4*n + 2*sigma + offset + j] = 1
+            A_amm[i, amm_i.aux[j]] = 1
         offset += 1 + len(amm.asset_list)
     A_amm_upper = np.array([inf]*p.s)
     A_amm_lower = np.zeros(p.s)
@@ -1550,15 +1551,17 @@ def _solve_inclusion_problem(
     A5_lower = np.zeros(2 * n)
 
     # inequality constraints: X_j + L_j >= 0
-    A7 = np.zeros((sigma, k))
-    for i in range(sigma):
-        A7[i, 4*n + i] = 1
-        A7[i, 4*n + sigma + i] = 1
+    A7 = np.zeros((0, k))
+    for amm_i in p.amm_i:
+        n_amm = len(amm_i.asset_net) + 1
+        for j in range(n_amm):
+            A7i = np.zeros((1, k))
+            A7i[0, amm_i.shares_net + j] = 1  # X_j
+            A7i[0, amm_i.shares_out + j] = 1  # L_j
+            A7 = np.vstack([A7, A7i])
+
     A7_upper = np.array([inf] * sigma)
     A7_lower = np.zeros(sigma)
-    # A7 = np.zeros((0,k))
-    # A7_upper = np.array([])
-    # A7_lower = np.array([])
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
@@ -1637,14 +1640,15 @@ def _solve_inclusion_problem(
 
     offset = 0
     new_amm_deltas = []
-    for amm in p.amm_list:
-        deltas = [x_expanded[4 * n + offset] * scaling[amm.unique_id]]
+    for i, amm in enumerate(p.amm_list):
+        amm_i = p.amm_i[i]
+        deltas = [x_expanded[amm_i.shares_net] * scaling[amm.unique_id]]
         for l, tkn in enumerate(amm.asset_list):
-            deltas.append(x_expanded[4 * n + offset + l + 1] * scaling[tkn])
+            deltas.append(x_expanded[amm_i.asset_net[l]] * scaling[tkn])
         new_amm_deltas.append(deltas)
         offset += len(amm.asset_list) + 1
 
-    for i in range(m):
+    for i in range(m):  # TODO generalize indexing beyond stableswap, get rid of sigma
         exec_partial_intent_deltas[i] = -x_expanded[4 * n + 3*sigma + i] * scaling[p.partial_intents[i]['tkn_sell']]
 
     exec_full_intent_flags = [1 if x_expanded[4 * n + 3*sigma + m + i] > 0.5 else 0 for i in range(r)]
