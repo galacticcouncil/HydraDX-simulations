@@ -75,11 +75,11 @@ class XykState(Exchange):
 
     def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
         x, y = self.liquidity[tkn_sell], self.liquidity[tkn_buy]
-        return y * (- sell_quantity / (x + sell_quantity)) * (1 - self.trade_fee)
+        return y * sell_quantity / (x + sell_quantity) * (1 - self.trade_fee)
 
     def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
         x, y = self.liquidity[tkn_sell], self.liquidity[tkn_buy]
-        return x * (- buy_quantity / (buy_quantity + y * (1 - self.trade_fee)))
+        return x * (buy_quantity / (-buy_quantity + y * (1 - self.trade_fee)))
 
     def price(self, tkn, denomination: str = ''):
         """
