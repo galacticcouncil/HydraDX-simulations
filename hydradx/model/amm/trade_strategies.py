@@ -1133,7 +1133,7 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
     return TradeStrategy(strategy, name='liquidate against omnipool')
 
 
-def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
+def schedule_swaps(pool_id: str, swaps: list[list[dict]] or list[dict]):
     """
     swaps should be in this format:
     [
@@ -1157,7 +1157,7 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
                 swaps[state.time_step - self.initial_time_step]
                 if isinstance(swaps[state.time_step - self.initial_time_step], list)
                 else [swaps[state.time_step - self.initial_time_step]]
-            )
+            ) if len(swaps) > state.time_step - self.initial_time_step else []
             if step_swaps == [None] or len(step_swaps) == 0:
                 # no trades this step
                 return state
