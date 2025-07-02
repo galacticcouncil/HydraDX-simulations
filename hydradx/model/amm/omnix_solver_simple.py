@@ -7,13 +7,15 @@ import clarabel as cb
 import highspy
 from scipy import sparse
 
+from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.xyk_amm import XykState
 
 
 class AmmIndexObject:
-    def __init__(self, amm, offset: int, is_convex_opt: bool = True):
+    def __init__(self, amm, offset: int):
         n_amm = len(amm.asset_list) + 1
         self.shares_net = offset  # X_0
         self.shares_out = offset + n_amm  # L_0
@@ -24,9 +26,10 @@ class AmmIndexObject:
             self.asset_out.append(offset + n_amm + i)  # L_i
         self.aux = []
         if isinstance(amm, StableSwapPoolState):
-            if is_convex_opt:
-                for i in range(n_amm):
-                    self.aux.append(offset + 2 * n_amm + i)
+            for i in range(n_amm):
+                self.aux.append(offset + 2 * n_amm + i)
+        elif isinstance(amm, XykState):
+            pass  # no auxiliary variables for XYK AMM
         else:  # TODO generalize auxiliary handling beyond stableswap
             raise ValueError("Only stableswap implemented for now")
         self.num_vars = 2 * n_amm + len(self.aux)  # total number of variables for this AMM
@@ -84,36 +87,34 @@ class ICEProblem:
         else:
             self.I = None
 
-        self.sigmas = []
+        # self.sigmas = []
         self.auxiliaries = []
         self.asset_list = [tkn for tkn in omnipool.asset_list]
         self._amm_starting_indices = []
-        var_ct = 0
         self._amm_asset_indices = []
         self._amm_share_indices = []
+        self.amm_i = []
+        self.amm_vars = 0
+        self.u = 0
         for amm in self.amm_list:  # add assets from other amms
-            self._amm_starting_indices.append(var_ct)
-            var_ct = 0
-            asset_indices = []
+            amm_i = AmmIndexObject(amm, self.amm_vars + 4 * self.n)
+            self.amm_i.append(amm_i)
+            self._amm_starting_indices.append(amm_i.shares_net)
+            self.auxiliaries.append(len(amm_i.aux))
+            self.u += len(amm_i.aux)
+            self.amm_vars += amm_i.num_vars
             share_tkn = amm.unique_id
             if share_tkn not in self.asset_list:
                 self.asset_list.append(share_tkn)
             self._amm_share_indices.append(self.asset_list.index(share_tkn))
-            self.sigmas.append(len(amm.asset_list)+1)
-            var_ct += 2*(len(amm.asset_list) + 1)
-            if isinstance(amm, StableSwapPoolState):
-                self.auxiliaries.append(len(amm.asset_list) + 1)
-                var_ct += len(amm.asset_list) + 1
-            else:
-                self.auxiliaries.append(0)
+            asset_indices = []
             for tkn in amm.asset_list:
                 if tkn not in self.asset_list:
                     self.asset_list.append(tkn)
                 asset_indices.append(self.asset_list.index(tkn))
             self._amm_asset_indices.append(asset_indices)
         assert "LRNA" not in self.asset_list
-        self.sigma = sum(self.sigmas)
-        self.u = sum(self.auxiliaries)
+        # self.sigma = sum(self.sigmas)
         for intent in self.intents:  # add assets from intents
             if intent['tkn_sell'] != "LRNA" and intent['tkn_sell'] not in self.asset_list:
                 self.asset_list.append(intent['tkn_sell'])
@@ -149,11 +150,7 @@ class ICEProblem:
         else:
             self.trading_tkns = trading_tkns
 
-        self.amm_i = []
-        offset = 4 * self.n
-        for amm in self.amm_list:
-            self.amm_i.append(AmmIndexObject(amm, offset))
-            offset += self.amm_i[-1].num_vars
+
 
         self._set_indicator_matrices()  # only depends on amm structures
 
@@ -398,7 +395,7 @@ class ICEProblem:
         # lrna_lambda_i are LRNA amounts coming out of Omnipool
         profit_lrna_lrna_lambda_coefs = -np.array([self.omnipool.last_lrna_fee[tkn] for tkn in self.omnipool.asset_list])
         profit_lrna_lambda_coefs = np.zeros(self.n)
-        profit_lrna_amm_coefs = np.zeros(2 * self.sigma + self.u)
+        profit_lrna_amm_coefs = np.zeros(self.amm_vars)
         profit_lrna_d_coefs = self._tau[0, :self.m].flatten()
         sell_amts = np.array([intent['sell_quantity'] for intent in self.full_intents])
         profit_lrna_I_coefs = self._tau[0, self.m:].flatten() * sell_amts / self._scaling["LRNA"]
@@ -409,10 +406,8 @@ class ICEProblem:
 
         # leftover must be higher than required fees
         # other assets
-        tkn_list = ["LRNA"] + self.asset_list
         fees = [self.omnipool.last_fee[tkn] + buffer_fee for tkn in self.omnipool.asset_list]
-        stableswap_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
-        stableswap_fees_flat = [item - self.fee_match for sublist in stableswap_fees for item in sublist]
+        amm_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
         partial_intent_prices = self.get_partial_intent_prices()
         profit_y_coefs = np.zeros((self.N, self.n))
         profit_x_coefs = np.zeros((self.N, self.n))
@@ -427,7 +422,7 @@ class ICEProblem:
         profit_amm_coefs = np.zeros((self.N, 0))
         for i in range(len(self.amm_list)):
             X_coefs = self._amm_rhos[i] - self._amm_psis[i]
-            L_coefs = self._amm_psis[i] @ np.diag(-np.array([fee - self.fee_match for fee in stableswap_fees[i]]))
+            L_coefs = self._amm_psis[i] @ np.diag(-np.array([fee - self.fee_match for fee in amm_fees[i]]))
             a_coefs = np.zeros((self.N, self.auxiliaries[i]))
             profit_amm_coefs = np.hstack((profit_amm_coefs, X_coefs, L_coefs, a_coefs))
         scaling_vars = np.array([partial_intent_prices[j] * self._scaling[intent['tkn_sell']] / self._scaling[intent['tkn_buy']]
@@ -593,13 +588,16 @@ class ICEProblem:
         The d_i are scaled to scaling[sell_tkn], and the I_l are in {0,1}.
         '''
         n, m, r = self.n, self.m, self.r
-        N, sigma, s, u = self.N, self.sigma, self.s, self.u
-        if len(x) == 4 * n + 2 * sigma + u + m:  # this is detecting convex optimization
-            is_convex_opt = True  # TODO improve this logic, this is detecting MILP
-        elif len(x) == 4 * n + 2 * sigma + m + r:  # this is detecting MILP
-            is_convex_opt = False
+        if len(x) == 4 * n + self.amm_vars + m + r:
+            is_convex_prob = False
+        elif len(x) == 4 * n + self.amm_vars + m:
+            is_convex_prob = True
         else:
-            raise ValueError("x has unexpected length: {}".format(len(x)))
+            raise AssertionError("x has wrong length")
+        # if self.u == 0:
+        #     use_auxiliaries = False
+        # else:
+        #     use_auxiliaries = True
         scaled_yi = [x[i] * self._scaling["LRNA"] for i in range(n)]
         scaled_xi = [x[n + i] * self._scaling[tkn] for i, tkn in enumerate(self.omnipool.asset_list)]
         scaled_lrna_lambda = [x[2*n + i] * self._scaling["LRNA"] for i in range(n)]
@@ -612,28 +610,32 @@ class ICEProblem:
             X_scaling = (rho + psi).T @ self._S
             scaled_X = x[amm_i.net_is] * X_scaling
             scaled_L = x[amm_i.out_is] * X_scaling
-            if is_convex_opt:
-                scaled_a = x[amm_i.aux_is]
-                scaled_amm = np.concatenate([scaled_amm, scaled_X, scaled_L, scaled_a])
-            else:
-                scaled_amm = np.concatenate([scaled_amm, scaled_X, scaled_L])
-        if not is_convex_opt:
-            scaled_d = [x[4 * n + 2 * sigma + j] * self._scaling[intent['tkn_sell']] for j, intent in
-                        enumerate(self.partial_intents)]
+            scaled_a = x[amm_i.aux_is]
+            scaled_amm = np.concatenate([scaled_amm, scaled_X, scaled_L, scaled_a])
+            # if use_auxiliaries:
+            #     scaled_a = x[amm_i.aux_is]
+            #     scaled_amm = np.concatenate([scaled_amm, scaled_X, scaled_L, scaled_a])
+            # else:
+            #     scaled_amm = np.concatenate([scaled_amm, scaled_X, scaled_L])
+        scaled_d = [x[4 * n + self.amm_vars + j] * self._scaling[intent['tkn_sell']] for j, intent in
+                    enumerate(self.partial_intents)]
+        # if not use_auxiliaries:
+        #     scaled_I = [x[4 * n + m + l] for l in range(r)]
+        #     scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amm, scaled_d,
+        #                                scaled_I])
+        #     scaled_x = np.concatenate([scaled_x, scaled_I])  # TODO this looks wrong?
+        # else:
+        #     scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amm, scaled_d])
+        scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amm, scaled_d])
+        if not is_convex_prob:
             scaled_I = [x[4 * n + m + l] for l in range(r)]
-            scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amm, scaled_d,
-                                       scaled_I])
             scaled_x = np.concatenate([scaled_x, scaled_I])
-        else:
-            scaled_d = [x[4 * n + 2 * sigma + u + j] * self._scaling[intent['tkn_sell']] for j, intent in
-                        enumerate(self.partial_intents)]
-            # scaled_a = x[4 * n + 2 * sigma: 4 * n + 2 * sigma + u]
-            scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amm, scaled_d])
         return scaled_x
 
     def get_scaled_x(self, x):
-        n, m, r, sigma = self.n, self.m, self.r, self.sigma
-        assert len(x) in [4 * n + 3 * sigma + m, 4 * n + 3 * sigma + m + r]
+        n, m, r = self.n, self.m, self.r
+        assert len(x) in [4 * n + self.amm_vars + m, 4 * n + self.amm_vars + m + r]
+        # assert len(x) in [4 * n + 3 * sigma + m, 4 * n + 3 * sigma + m + r]
         scaled_yi = [x[i] / self._scaling["LRNA"] for i in range(n)]
         scaled_xi = [x[n + i] / self._scaling[tkn] for i, tkn in enumerate(self.omnipool.asset_list)]
         scaled_lrna_lambda = [x[2*n + i] / self._scaling["LRNA"] for i in range(n)]
@@ -643,14 +645,14 @@ class ICEProblem:
             amm_i = self.amm_i[i]
             rho = self._amm_rhos[i]
             psi = self._amm_psis[i]
-            stableswap_scalars = (rho + psi).T @ self._S
-            scaled_X = x[amm_i.net_is] / stableswap_scalars
-            scaled_L = x[amm_i.out_is] / stableswap_scalars
+            amm_scalars = (rho + psi).T @ self._S
+            scaled_X = x[amm_i.net_is] / amm_scalars
+            scaled_L = x[amm_i.out_is] / amm_scalars
             scaled_a = x[amm_i.aux_is]
             scaled_amms = np.concatenate([scaled_amms, scaled_X, scaled_L, scaled_a])
-        scaled_d = [x[4 * n + 3 * sigma + j] / self._scaling[intent['tkn_sell']] for j, intent in enumerate(self.partial_intents)]
+        scaled_d = [x[4 * n + self.amm_vars + j] / self._scaling[intent['tkn_sell']] for j, intent in enumerate(self.partial_intents)]
         scaled_x = np.concatenate([scaled_yi, scaled_xi, scaled_lrna_lambda, scaled_lambda, scaled_amms, scaled_d])
-        if len(x) == 4 * n + 3 * sigma + m + r:
+        if len(x) == 4 * n + self.amm_vars + m + r:
             scaled_I = [x[4 * n + m + l] for l in range(r)]
             scaled_x = np.concatenate([scaled_x, scaled_I])
         return scaled_x
@@ -664,7 +666,7 @@ class ICEProblem:
         return new_intents
 
 
-def _get_amm_limits_A(amm, amm_i: AmmIndexObject, amm_directions: list, last_amm_deltas: list, k: int,
+def _get_amm_limits_A(amm: Exchange, amm_i: AmmIndexObject, amm_directions: list, last_amm_deltas: list, k: int,
                       trading_tkns: list[str]):
     """Uses AMM structures and directional information to bound AMM variables"""
     if last_amm_deltas is None:
@@ -748,7 +750,7 @@ def scale_down_partial_intents(p, trade_pcts: list, scale: float):
 
 
 def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
-    k = 4 * p.n + 2 * p.sigma + p.u + p.m
+    k = 4 * p.n + p.amm_vars + p.m
     profit_A = p.get_profit_A()
     A3 = -profit_A[:, :k]
     I_coefs = -profit_A[:, k:]
@@ -765,92 +767,129 @@ def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
     return A3_trimmed, b3
 
 
-def _get_stableswap_bounds(p, indices_to_keep=None):
+def _get_xyk_bounds(amm: XykState, amm_i: AmmIndexObject, approx, C, B, k):
+    # TODO implement linear, quadratic approximations
+    # TODO allow xyk add/remove liquidity
+    A5j = np.zeros((2, k))
+    A5j[0, amm_i.shares_net] = 1  # force share deltas to 0 for now
+    A5j[1, amm_i.shares_out] = 1
+    b5j = np.zeros(2)
+    cones5j = [cb.ZeroConeT(2)]
+    cones_count5j = [2]
+
+    A5j2 = np.zeros((3, k))
+    b5j2 = np.ones(3)
+    A5j2[0, amm_i.asset_net[0]] = -B[0]
+    A5j2[1, amm_i.asset_net[1]] = -B[1]
+    A5j = np.vstack([A5j, A5j2])
+    b5j = np.append(b5j, b5j2)
+    cones5j.append(cb.PowerConeT(0.5))
+    cones_count5j.append(3)
+
+    return A5j, b5j, cones5j, cones_count5j
+
+
+def _get_stableswap_bounds(amm, amm_i: AmmIndexObject, approx, C, B, k):
+    ann = amm.ann
+    s0 = amm.shares
+    D0 = amm.d
+    n_amm = len(amm.asset_list) + 1
+    sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
+    # D0' = D_0 * (1 - 1/ann)
+    D0_prime = D0 * (1 - 1 / ann)
+    # a0 ~= -delta_s/s0 + [1 / (sum x_i^0 - D0') * sum delta_x_i - (D0'/s0) / (sum x_i^0 - D0') * delta_s]
+    denom = sum_assets - D0_prime
+    if approx[0] == "linear":
+        A5j = np.zeros((1, k))
+        A5j[0, amm_i.aux[0]] = 1  # a_{j,0} coefficient
+        A5j[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # delta_s coefficient
+        for t in range(1, n_amm):
+            A5j[0, amm_i.asset_net[t - 1]] = -B[t] / denom  # delta_x_i coefficient
+        b5j = np.array([0])
+        cones5j = [cb.ZeroConeT(1)]
+        cones_count5j = [1]
+    else:
+        A5j = np.zeros((3, k))
+        b5j = np.array([0, 0, 0])
+        # x = a_{j,0}
+        A5j[0, amm_i.aux[0]] = -1  # a_{j,0} coefficient
+        # y = 1 + C_jS_j / s_0
+        A5j[1, amm_i.shares_net] = -C[0] / s0  # delta_s coefficient
+        b5j[1] = 1
+        # z = An^n / D_0 sum(x_i^0 + B_i X_i) + (1 - An^n)(1 + C_jS_j / s_0)
+        A5j[2, amm_i.shares_net] = D0_prime * C[0] / denom / s0
+        for t in range(1, n_amm):
+            A5j[2, amm_i.asset_net[t - 1]] = -B[t] / denom
+        b5j[2] = 1
+        cones5j = [cb.ExponentialConeT()]
+        cones_count5j = [3]
+
+    for t in range(1, n_amm):
+        x0 = amm.liquidity[amm.asset_list[t - 1]]
+        if approx[t] == "linear":
+            A5jt = np.zeros((1, k))
+            A5jt[0, amm_i.aux[t]] = 1  # a_{j,t} coefficient
+            A5jt[0, amm_i.shares_net] = C[0] / s0  # delta_s coefficient
+            A5jt[0, amm_i.asset_net[t - 1]] = -B[t] / x0  # delta_x_i coefficient
+            b5jt = np.array([0])
+            cone5jt = cb.ZeroConeT(1)
+            cone_count5jt = 1
+        else:
+            A5jt = np.zeros((3, k))
+            b5jt = np.zeros(3)
+            # x = a_{j,t}
+            A5jt[0, amm_i.aux[t]] = -1
+            # y = 1 + C_jS_j / s_0
+            A5jt[1, amm_i.shares_net] = -C[0] / s0
+            b5jt[1] = 1
+            # z = (x_t^0 + B_t X_t) / D_0
+            A5jt[2, amm_i.asset_net[t - 1]] = -B[t] / x0
+            b5jt[2] = 1
+            cone5jt = cb.ExponentialConeT()
+            cone_count5jt = 3
+        cones5j.append(cone5jt)
+        cones_count5j.append(cone_count5jt)
+        A5j = np.vstack([A5j, A5jt])
+        b5j = np.append(b5j, np.array(b5jt))
+
+    A5j_final = np.zeros((1, k))
+    for t in range(n_amm):
+        A5j_final[0, amm_i.aux[t]] = -1
+    b5j_final = np.array([0])
+    A5j = np.vstack([A5j, A5j_final])
+    b5j = np.append(b5j, b5j_final)
+    cones5j.append(cb.NonnegativeConeT(1))
+    cones_count5j.append(1)
+
+    return A5j, b5j, cones5j, cones_count5j
+
+def _get_amm_bounds(p, indices_to_keep=None):
     # CFMM invariants must be respected
-    n, sigma, u, m, N = p.n, p.sigma, p.u, p.m, p.N
-    k = 4 * n + 2 * sigma + u + m
+    n, u, m, N = p.n, p.u, p.m, p.N
+    k = 4 * n + p.amm_vars + m
 
     A5 = np.zeros((0, k))
     b5 = np.array([])
     cones5 = []
+    cones_count5 = []
     C_list = p.get_C_list()
     B_list = p.get_B_list()
-    share_indices = p.get_share_indices()
     for j, amm in enumerate(p.amm_list):
         amm_i = p.amm_i[j]
         C = C_list[j]
         B = B_list[j]
-        if not isinstance(amm, StableSwapPoolState):
-            raise
-        l = share_indices[j]
-        ann = amm.ann
-        s0 = amm.shares
-        D0 = amm.d
-        n_amm = len(amm.asset_list) + 1
-        sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
-        # TODO: think about indexing of auxiliary variables
         approx = p.get_amm_approx(j)
-        # D0' = D_0 * (1 - 1/ann)
-        D0_prime = D0 * (1 - 1 / ann)
-        # a0 ~= -delta_s/s0 + [1 / (sum x_i^0 - D0') * sum delta_x_i - (D0'/s0) / (sum x_i^0 - D0') * delta_s]
-        denom = sum_assets - D0_prime
-        if approx[0] == "linear":
-            A5j = np.zeros((1, k))
-            A5j[0, amm_i.aux[0]] = 1  # a_{j,0} coefficient
-            A5j[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # delta_s coefficient
-            for t in range(1, n_amm):
-                A5j[0, amm_i.asset_net[t-1]] = -B[t] / denom  # delta_x_i coefficient
-            b5j = np.array([0])
-            cones5.append(cb.ZeroConeT(1))
+        if isinstance(amm, StableSwapPoolState):
+            A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, C, B, k)
+        elif isinstance(amm, XykState):
+            A5j, b5j, cones5j, cones_count5j = _get_xyk_bounds(amm, amm_i, approx, C, B, k)
         else:
-            A5j = np.zeros((3, k))
-            b5j = np.array([0, 0, 0])
-            # x = a_{j,0}
-            A5j[0, amm_i.aux[0]] = -1  # a_{j,0} coefficient
-            # y = 1 + C_jS_j / s_0
-            A5j[1, amm_i.shares_net] = -C[0] / s0  # delta_s coefficient
-            b5j[1] = 1
-            # z = An^n / D_0 sum(x_i^0 + B_i X_i) + (1 - An^n)(1 + C_jS_j / s_0)
-            A5j[2, amm_i.shares_net] = D0_prime * C[0] / denom / s0
-            for t in range(1, n_amm):
-                A5j[2, amm_i.asset_net[t-1]] = -B[t] / denom
-            b5j[2] = 1
-            cones5.append(cb.ExponentialConeT())
-
-        for t in range(1, n_amm):
-            x0 = amm.liquidity[amm.asset_list[t - 1]]
-            if approx[t] == "linear":
-                A5jt = np.zeros((1, k))
-                A5jt[0, amm_i.aux[t]] = 1  # a_{j,t} coefficient
-                A5jt[0, amm_i.shares_net] = C[0] / s0  # delta_s coefficient
-                A5jt[0, amm_i.asset_net[t-1]] = -B[t] / x0  # delta_x_i coefficient
-                b5jt = np.array([0])
-                cone5jt = cb.ZeroConeT(1)
-            else:
-                A5jt = np.zeros((3, k))
-                b5jt = np.zeros(3)
-                # x = a_{j,t}
-                A5jt[0, amm_i.aux[t]] = -1
-                # y = 1 + C_jS_j / s_0
-                A5jt[1, amm_i.shares_net] = -C[0] / s0
-                b5jt[1] = 1
-                # z = (x_t^0 + B_t X_t) / D_0
-                A5jt[2, amm_i.asset_net[t-1]] = -B[t] / x0
-                b5jt[2] = 1
-                cone5jt = cb.ExponentialConeT()
-            cones5.append(cone5jt)
-            A5j = np.vstack([A5j, A5jt])
-            b5j = np.append(b5j, np.array(b5jt))
-
-        A5j_final = np.zeros((1, k))
-        for t in range(n_amm):
-            A5j_final[0, amm_i.aux[t]] = -1
-        b5j_final = np.array([0])
-        cones5.append(cb.NonnegativeConeT(1))
-
-        A5 = np.vstack([A5, A5j, A5j_final])
-        b5 = np.concatenate([b5, b5j, b5j_final])
-    return A5[:, indices_to_keep], b5, cones5
+            raise AssertionError("Unrecognized AMM type")
+        A5 = np.vstack([A5, A5j])
+        b5 = np.concatenate([b5, b5j])
+        cones5 = cones5 + cones5j
+        cones_count5 = cones_count5 + cones_count5j
+    return A5[:, indices_to_keep], b5, cones5, cones_count5
 
 
 def _find_solution_unrounded(
@@ -870,13 +909,12 @@ def _find_solution_unrounded(
     # assets involved trades for which execution is being solved
     asset_list = p.asset_list
     n, m, r = p.n, p.m, p.r
-    N, sigma, s, u = p.N, p.sigma, p.s, p.u
     # if len(partial_intents) + sum(I) == 0:  # nothing for solver to do
     #     return {tkn: 0 for tkn in asset_list}, [], np.zeros(4*n), 0, 0, 'Solved'  # TODO enable solver with m=0
 
     omnipool_directions, amm_directions = p.get_directions()
     # directions = {}
-    k = 4 * n + 2 * sigma + u + m
+    k = 4 * n + p.amm_vars + m
 
     indices_to_keep = list(range(k))
     # for tkn in directions:
@@ -1045,8 +1083,7 @@ def _find_solution_unrounded(
     A4_trimmed = A4[:, indices_to_keep]
 
     # CFMM invariants must be respected
-    A5_trimmed, b5, cones5 = _get_stableswap_bounds(p, indices_to_keep)
-    cone_sizes5 = []  # TODO
+    A5_trimmed, b5, cones5, cone_sizes5 = _get_amm_bounds(p, indices_to_keep)
 
     # inequality constraints on comparison of lrna_lambda to yi, lambda to xi
     A6 = np.zeros((0, k))
@@ -1108,7 +1145,7 @@ def _find_solution_unrounded(
     amm_deltas = [x_scaled[amm_i.net_is] for amm_i in p.amm_i]
 
     for j in range(len(partial_intents)):
-        exec_intent_deltas[j] = -x_scaled[4 * n + 2 * sigma + u + j]
+        exec_intent_deltas[j] = -x_scaled[4 * n + p.amm_vars + j]
 
     obj_offset = objective_I_coefs @ I if I is not None else 0
     score = p.scale_obj_amt(solution.obj_val + obj_offset)
@@ -1156,7 +1193,6 @@ def _find_good_solution(
         allow_loss: bool = False
 ):
     n, m, r = p.n, p.m, p.r
-    N, u, s, sigma = p.N, p.u, p.s, p.sigma
     force_omnipool_approx = {tkn: "linear" for tkn in p.omnipool.asset_list}
     force_amm_approx = [["linear" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
     p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, force_amm_approx=force_amm_approx)
@@ -1196,19 +1232,19 @@ def _find_good_solution(
                 force_omnipool_approx[tkn] = "full"  # don't actually want to force quadratic approximation
                 approx_adjusted_ct += 1
 
-        stableswap_pcts = []
+        amm_pcts = []
         for _i, amm in enumerate(p.amm_list):
             pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
             sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
             pcts.append(sum_delta_x / amm.d)
             pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-            stableswap_pcts.append(pcts)
+            amm_pcts.append(pcts)
         for s, amm in enumerate(p.amm_list):
-            if force_amm_approx[s][0] == "linear" and max(stableswap_pcts[s][0], stableswap_pcts[s][1]) > 1e-5:
+            if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
                 force_amm_approx[s][0] = "full"
                 approx_adjusted_ct += 1
             for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                if force_amm_approx[s][j + 1] == "linear" and stableswap_pcts[s][j + 2] > 1e-5:
+                if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
                     force_amm_approx[s][j + 1] = "full"
                     approx_adjusted_ct += 1
 
@@ -1263,19 +1299,19 @@ def _find_good_solution(
                 #         force_omnipool_approx[tkn] = "quadratic"
                 #         approx_adjusted_ct += 1
 
-            stableswap_pcts = []
+            amm_pcts = []
             for _i, amm in enumerate(p.amm_list):
                 pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
                 sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
                 pcts.append(sum_delta_x / amm.d)
                 pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-                stableswap_pcts.append(pcts)
+                amm_pcts.append(pcts)
             for s, amm in enumerate(p.amm_list):
-                if force_amm_approx[s][0] == "linear" and max(stableswap_pcts[s][0], stableswap_pcts[s][1]) > 1e-5:
+                if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
                     force_amm_approx[s][0] = "full"
                     approx_adjusted_ct += 1
                 for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                    if force_amm_approx[s][j + 1] == "linear" and stableswap_pcts[s][j + 2] > 1e-5:
+                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
                         force_amm_approx[s][j + 1] = "full"
                         approx_adjusted_ct += 1
 
@@ -1315,18 +1351,22 @@ def _find_good_solution(
     # if omnipool_deltas["LRNA"] / p.min_partial < 1e-6:
     #     omnipool_deltas["LRNA"] = 0
     for i, amm_delta in enumerate(amm_deltas):
+        amm = p.amm_list[i]
         amm_i = p.amm_i[i]
         if abs(amm_delta[0] / p.amm_list[i].shares) < 1e-11:
             x_unscaled[amm_i.shares_net] = 0  # X
             x_unscaled[amm_i.shares_out] = 0  # L
-            x_unscaled[amm_i.aux[0]] = 0  # a  # TODO generalize beyond stableswap
             amm_deltas[i][0] = 0
+            if isinstance(amm, StableSwapPoolState):
+                x_unscaled[amm_i.aux[0]] = 0  # a
         for j, tkn in enumerate(p.amm_list[i].asset_list):
             if abs(amm_delta[j+1] / p.amm_list[i].liquidity[tkn]) < 1e-11:
                 amm_deltas[i][j+1] = 0
                 x_unscaled[amm_i.asset_net[j]] = 0  # X
                 x_unscaled[amm_i.asset_out[j]] = 0  # L
-                x_unscaled[amm_i.aux[j+1]] = 0  # a
+                if isinstance(amm, StableSwapPoolState):
+                    x_unscaled[amm_i.aux[j+1]] = 0  # a
+
 
     return omnipool_deltas, intent_deltas, x_unscaled, obj, dual_obj, status, amm_deltas
 
@@ -1343,8 +1383,8 @@ def _solve_inclusion_problem(
     asset_list = p.asset_list
     op_asset_list = p.omnipool.asset_list
     tkn_list = ["LRNA"] + asset_list
-    n, m, r, sigma = p.n, p.m, p.r, p.sigma
-    k = 4 * n + 3 * sigma + m + r
+    n, m, r = p.n, p.m, p.r
+    k = 4 * n + p.amm_vars + m + r
     N, s = p.N, p.s
 
     scaling = p.get_scaling()
@@ -1419,15 +1459,20 @@ def _solve_inclusion_problem(
     max_amms = []
     min_amms = []
     for i, amm in enumerate(p.amm_list):
+        amm_i = p.amm_i[i]
         B = B_list[i]
         C = C_list[i]
         n = len(amm.asset_list) + 1
-        max_L = np.array([amm.shares] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
-        min_L = np.zeros(n)
+        if isinstance(amm, XykState):  # temporarily force share deltas to 0
+            max_L = np.array([0] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
+            max_X = [0] + [inf] * (n-1)
+        else:
+            max_L = np.array([amm.shares] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
+            max_X = [inf] * n
         min_X = [-x for x in max_L]
-        max_X = [inf] * n
-        min_a = [-inf] * n
-        max_a = [inf] * n
+        min_L = np.zeros(n)
+        min_a = [-inf] * len(amm_i.aux)
+        max_a = [inf] * len(amm_i.aux)
         max_amms = np.concatenate([max_amms, max_X, max_L, max_a])
         min_amms = np.concatenate([min_amms, min_X, min_L, min_a])
 
@@ -1473,64 +1518,81 @@ def _solve_inclusion_problem(
             S = np.vstack([S, S_row])
             S_upper = np.concatenate([S_upper, S_row_upper])
 
-        offset = 0
         for _s, amm in enumerate(p.amm_list):
             amm_i = p.amm_i[_s]
             C = C_list[_s]
             B = B_list[_s]
-            D0_prime = amm.d - amm.d/amm.ann
-            s0 = amm.shares
-            c = C[0]
-            sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
-            denom = sum_assets - D0_prime
-            a0 = x[amm_i.aux[0]]
-            X0 = x[amm_i.shares_net]
-            exp = np.exp(float(a0 / (1 + (c*X0/s0))))
-            term = (c / s0 - c*a0 / (s0 + c)) * exp
-            # linearization of shares constraint, i.e. a0
-            S_row = np.zeros((1, k))
-            grad_s = term + c * D0_prime / (s0 * denom)
-            grads_i = [- B[l] / denom for l in range(1, len(amm.asset_list) + 1)]
-            grad_a = exp
-            S_row[0, amm_i.shares_net] = grad_s
-            S_row[0, amm_i.aux[0]] = grad_a
-            for l, tkn in enumerate(amm.asset_list):
-                S_row[0, amm_i.asset_net[l]] = grads_i[l]
-            grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
-            sum_deltas = sum([B[l + 1] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
-            g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
-            S_row_upper = np.array([grad_dot_x + g_neg])
-            S = np.vstack([S, S_row])
-            S_upper = np.concatenate([S_upper, S_row_upper])
-
-            # linearization of asset constraints, i.e. a1, a2, ...
-            for l, tkn in enumerate(amm.asset_list):
+            if isinstance(amm, StableSwapPoolState):
+                D0_prime = amm.d - amm.d/amm.ann
+                s0 = amm.shares
+                c = C[0]
+                sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
+                denom = sum_assets - D0_prime
+                a0 = x[amm_i.aux[0]]
+                X0 = x[amm_i.shares_net]
+                exp = np.exp(float(a0 / (1 + (c*X0/s0))))
+                term = (c / s0 - c*a0 / (s0 + c)) * exp
+                # linearization of shares constraint, i.e. a0
                 S_row = np.zeros((1, k))
-                grad_s = term
+                grad_s = term + c * D0_prime / (s0 * denom)
+                grads_i = [- B[l] / denom for l in range(1, len(amm.asset_list) + 1)]
                 grad_a = exp
-                grad_x = -B[l + 1] / amm.liquidity[tkn]
                 S_row[0, amm_i.shares_net] = grad_s
-                S_row[0, amm_i.aux[l + 1]] = grad_a
-                S_row[0, amm_i.asset_net[l]] = grad_x
-                ai = x[amm_i.aux[l + 1]]
-                grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[amm_i.asset_net[l]]
-                g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[amm_i.asset_net[l]] / amm.liquidity[tkn] - 1
+                S_row[0, amm_i.aux[0]] = grad_a
+                for l, tkn in enumerate(amm.asset_list):
+                    S_row[0, amm_i.asset_net[l]] = grads_i[l]
+                grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
+                sum_deltas = sum([B[l + 1] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
+                g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
                 S_row_upper = np.array([grad_dot_x + g_neg])
                 S = np.vstack([S, S_row])
                 S_upper = np.concatenate([S_upper, S_row_upper])
 
-            offset += 1 + len(amm.asset_list)
+                # linearization of asset constraints, i.e. a1, a2, ...
+                for l, tkn in enumerate(amm.asset_list):
+                    S_row = np.zeros((1, k))
+                    grad_s = term
+                    grad_a = exp
+                    grad_x = -B[l + 1] / amm.liquidity[tkn]
+                    S_row[0, amm_i.shares_net] = grad_s
+                    S_row[0, amm_i.aux[l + 1]] = grad_a
+                    S_row[0, amm_i.asset_net[l]] = grad_x
+                    ai = x[amm_i.aux[l + 1]]
+                    grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[amm_i.asset_net[l]]
+                    g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[amm_i.asset_net[l]] / amm.liquidity[tkn] - 1
+                    S_row_upper = np.array([grad_dot_x + g_neg])
+                    S = np.vstack([S, S_row])
+                    S_upper = np.concatenate([S_upper, S_row_upper])
+            elif isinstance(amm, XykState):
+                S_row = np.zeros((1, k))
+                S_row_upper = np.zeros(1)
+                # lrna_c = p.get_omnipool_lrna_coefs()
+                # asset_c = p.get_omnipool_asset_coefs()
+                i = amm_i.asset_net[0]
+                j = amm_i.asset_net[1]
+                grads_x0 = -C[0] - C[0] * C[1] * x[j]
+                grads_x1 = -C[1] - C[0] * C[1] * x[i]
+                # TODO generalize this process for any AMM type
+                S_row[0, i] = grads_x0
+                S_row[0, j] = grads_x1
+                grad_dot_x = grads_x0 * x[i] + grads_x1 * x[j]
+                g_neg = C[0] * x[i] + C[1] * x[j] + C[0] * C[1] * x[i] * x[j]
+                S_row_upper[0] = grad_dot_x + g_neg
+                S = np.vstack([S, S_row])
+                S_upper = np.concatenate([S_upper, S_row_upper])
+            else:
+                raise AssertionError("Unknown AMM type: {}".format(type(amm)))
+
 
     S_lower = np.array([-inf]*len(S_upper))
 
     # need top level Stableswap constraint
     A_amm = np.zeros((p.s, k))
-    offset = 0
     for i, amm in enumerate(p.amm_list):
-        amm_i = p.amm_i[i]
-        for j in range(1 + len(amm.asset_list)):
-            A_amm[i, amm_i.aux[j]] = 1
-        offset += 1 + len(amm.asset_list)
+        if isinstance(amm, StableSwapPoolState):
+            amm_i = p.amm_i[i]
+            for j in range(1 + len(amm.asset_list)):
+                A_amm[i, amm_i.aux[j]] = 1
     A_amm_upper = np.array([inf]*p.s)
     A_amm_lower = np.zeros(p.s)
 
@@ -1560,8 +1622,8 @@ def _solve_inclusion_problem(
             A7i[0, amm_i.shares_out + j] = 1  # L_j
             A7 = np.vstack([A7, A7i])
 
-    A7_upper = np.array([inf] * sigma)
-    A7_lower = np.zeros(sigma)
+    A7_upper = np.array([inf] * A7.shape[0])
+    A7_lower = np.zeros(A7.shape[0])
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
@@ -1638,7 +1700,6 @@ def _solve_inclusion_problem(
         new_omnipool_deltas[tkn] = x_expanded[n+i] * scaling[tkn]
         # new_omnipool_deltas["LRNA"] += x_expanded[i] * scaling["LRNA"]
 
-    offset = 0
     new_amm_deltas = []
     for i, amm in enumerate(p.amm_list):
         amm_i = p.amm_i[i]
@@ -1646,12 +1707,11 @@ def _solve_inclusion_problem(
         for l, tkn in enumerate(amm.asset_list):
             deltas.append(x_expanded[amm_i.asset_net[l]] * scaling[tkn])
         new_amm_deltas.append(deltas)
-        offset += len(amm.asset_list) + 1
 
-    for i in range(m):  # TODO generalize indexing beyond stableswap, get rid of sigma
-        exec_partial_intent_deltas[i] = -x_expanded[4 * n + 3*sigma + i] * scaling[p.partial_intents[i]['tkn_sell']]
+    for i in range(m):
+        exec_partial_intent_deltas[i] = -x_expanded[4 * n + p.amm_vars + i] * scaling[p.partial_intents[i]['tkn_sell']]
 
-    exec_full_intent_flags = [1 if x_expanded[4 * n + 3*sigma + m + i] > 0.5 else 0 for i in range(r)]
+    exec_full_intent_flags = [1 if x_expanded[4 * n + p.amm_vars + m + i] > 0.5 else 0 for i in range(r)]
 
     save_A = np.vstack([old_A])
     save_A_upper = np.concatenate([old_A_upper])
@@ -1893,9 +1953,9 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
     intents = copy.deepcopy(init_intents)
     p = ICEProblem(state, intents, amm_list=amm_list, init_i=init_i, min_partial=min_partial, trading_tkns=trading_tkns)
 
-    m, r, n, sigma = p.m, p.r, p.n, p.sigma
+    m, r, n = p.m, p.r, p.n
     inf = highspy.kHighsInf
-    k_milp = 4 * n + 3*sigma + m + r
+    k_milp = 4 * n + p.amm_vars + m + r
     # get initial I values
     # set Z_L = -inf, Z_U = inf
     Z_L = -inf
@@ -1920,7 +1980,7 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
     Z_U_archive = []
     Z_L_archive = []
     indicators = [i for i in p.I]
-    x_list = np.zeros((0,4 * n + 3*sigma + m))
+    x_list = np.zeros((0,4 * n + p.amm_vars + m))
 
     # loop until MILP has no solution:
     for _i in range(5):
@@ -1939,8 +1999,8 @@ def find_solution_outer_approx(state: OmnipoolState, init_intents: list, amm_lis
             x_list = np.vstack([x_list, np.array(x)])
 
         # - get new cone constraint from I^K
-        BK = np.where(np.array(indicators) == 1)[0] + 4 * n + 3 * sigma + m
-        NK = np.where(np.array(indicators) == 0)[0] + 4 * n + 3 * sigma + m
+        BK = np.where(np.array(indicators) == 1)[0] + 4 * n + p.amm_vars + m
+        NK = np.where(np.array(indicators) == 0)[0] + 4 * n + p.amm_vars + m
         IC_A = np.zeros((1, k_milp))
         IC_A[0, BK] = 1
         IC_A[0, NK] = -1

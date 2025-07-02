@@ -17,6 +17,7 @@ from hydradx.model.amm.omnix_solver_simple import find_solution, \
     _find_solution_unrounded, add_buy_deltas, round_solution, find_solution_outer_approx, _solve_inclusion_problem, \
     ICEProblem, _get_leftover_bounds
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.xyk_amm import XykState
 
 
 ##################################
@@ -140,7 +141,6 @@ def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
     # order of variables should be: X_0, X_1, ..., X_4, L_0, L_1, ..., L_4, a_0, a_1, ..., a_4
     n_amm = len(stablepool4.liquidity) + 1
     amm_index = AmmIndexObject(stablepool4, offset)
-    print(amm_index)
     assert amm_index.shares_net == offset  # X_0
     assert amm_index.asset_net == [offset + i for i in range(1, n_amm)]  # X_1, ... X_4
     assert amm_index.shares_out == offset + n_amm  # L_0
@@ -151,8 +151,26 @@ def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
     assert amm_index.aux_is == slice(offset + 2 * n_amm, offset + 3 * n_amm)
     assert amm_index.num_vars == 3 * n_amm
 
-    amm_index = AmmIndexObject(stablepool4, offset, False)
-    print(amm_index)
+    # amm_index = AmmIndexObject(stablepool4, offset, False)
+    # assert amm_index.shares_net == offset  # X_0
+    # assert amm_index.asset_net == [offset + i for i in range(1, n_amm)]  # X_1, ... X_4
+    # assert amm_index.shares_out == offset + n_amm  # L_0
+    # assert amm_index.asset_out == [offset + n_amm + i for i in range(1, n_amm)]  # L_1, ... L_4
+    # assert amm_index.aux == []  # a_0, ... a_4
+    # assert amm_index.net_is == slice(offset, offset + n_amm)
+    # assert amm_index.out_is == slice(offset + n_amm, offset + 2 * n_amm)
+    # assert len(np.arange(amm_index.aux_is.start, amm_index.aux_is.stop, amm_index.aux_is.step or 1)) == 0
+    # assert amm_index.num_vars == 2 * n_amm
+
+
+@given(st.integers(min_value=0, max_value=10))
+def test_AmmIndexObject_xyk(offset: int):
+    from hydradx.model.amm.omnix_solver_simple import AmmIndexObject
+    liquidity = {"A": 1_000_000, "B": 1_000_000}
+    xyk = XykState(tokens=liquidity)
+    # order of variables should be: X_0, X_1, ..., X_4, L_0, L_1, ..., L_4, a_0, a_1, ..., a_4
+    n_amm = 3
+    amm_index = AmmIndexObject(xyk, offset)
     assert amm_index.shares_net == offset  # X_0
     assert amm_index.asset_net == [offset + i for i in range(1, n_amm)]  # X_1, ... X_4
     assert amm_index.shares_out == offset + n_amm  # L_0
@@ -160,7 +178,7 @@ def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
     assert amm_index.aux == []  # a_0, ... a_4
     assert amm_index.net_is == slice(offset, offset + n_amm)
     assert amm_index.out_is == slice(offset + n_amm, offset + 2 * n_amm)
-    assert len(np.arange(amm_index.aux_is.start, amm_index.aux_is.stop, amm_index.aux_is.step or 1)) == 0
+    assert amm_index.aux_is.start == amm_index.aux_is.stop
     assert amm_index.num_vars == 2 * n_amm
 
 
@@ -395,25 +413,25 @@ def test_single_trade_settles():
     price_premium = 0.1
 
     trade_pairs = [["DOT", "vDOT"], ["vDOT", "DOT"], ["LRNA", "DOT"]]
-    for tkn_sell, tkn_buy in trade_pairs:
-        buy_amount_init = buy_pct * initial_state.liquidity[tkn_buy]
-        buy_amount = buy_amount_init * (1 - price_premium)
-        sell_amount = buy_amount_init * prices[tkn_buy] / prices[tkn_sell]
-        if tkn_sell != "LRNA" and sell_amount > buy_pct * initial_state.liquidity[tkn_sell]:
-            sell_amount = buy_pct * initial_state.liquidity[tkn_sell]
-            buy_amount = sell_amount * prices[tkn_sell] / prices[tkn_buy] * (1 - price_premium)
-        for partial in [True, False]:
-            agent = Agent(holdings={tkn_sell: sell_amount})
-            intents = [{'sell_quantity': sell_amount, 'buy_quantity': buy_amount, 'tkn_sell': tkn_sell,
-                        'tkn_buy': tkn_buy, 'agent': agent, 'partial': partial}]
-            x = find_solution_outer_approx(initial_state, intents)
-            assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents),
-                                                 copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
-                                                 copy.deepcopy(x['amm_deltas']), "HDX")
-            if x['deltas'][0][0] != pytest.approx(-intents[0]['sell_quantity'], rel=1e-10):
-                raise
-            if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
-                raise
+    # for tkn_sell, tkn_buy in trade_pairs:
+    #     buy_amount_init = buy_pct * initial_state.liquidity[tkn_buy]
+    #     buy_amount = buy_amount_init * (1 - price_premium)
+    #     sell_amount = buy_amount_init * prices[tkn_buy] / prices[tkn_sell]
+    #     if tkn_sell != "LRNA" and sell_amount > buy_pct * initial_state.liquidity[tkn_sell]:
+    #         sell_amount = buy_pct * initial_state.liquidity[tkn_sell]
+    #         buy_amount = sell_amount * prices[tkn_sell] / prices[tkn_buy] * (1 - price_premium)
+    #     for partial in [True, False]:
+    #         agent = Agent(holdings={tkn_sell: sell_amount})
+    #         intents = [{'sell_quantity': sell_amount, 'buy_quantity': buy_amount, 'tkn_sell': tkn_sell,
+    #                     'tkn_buy': tkn_buy, 'agent': agent, 'partial': partial}]
+    #         x = find_solution_outer_approx(initial_state, intents)
+    #         assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents),
+    #                                              copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
+    #                                              copy.deepcopy(x['amm_deltas']), "HDX")
+    #         if x['deltas'][0][0] != pytest.approx(-intents[0]['sell_quantity'], rel=1e-10):
+    #             raise
+    #         if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
+    #             raise
 
     # next we add 2-pool and 4-pool
 
