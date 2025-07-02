@@ -38,6 +38,13 @@ class AmmIndexObject:
         self.aux_is = slice(self.shares_out + n_amm, self.shares_out + n_amm + len(self.aux))  # returns aux indices
 
 
+class XykConstraints:
+    def __init__(self):
+        pass
+
+
+
+
 class ICEProblem:
     def __init__(self,
                  omnipool: OmnipoolState,
@@ -767,7 +774,7 @@ def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
     return A3_trimmed, b3
 
 
-def _get_xyk_bounds(amm: XykState, amm_i: AmmIndexObject, approx, C, B, k):
+def _get_xyk_bounds(amm: XykState, amm_i: AmmIndexObject, approx, k, scaling: dict):
     # TODO implement linear, quadratic approximations
     # TODO allow xyk add/remove liquidity
     A5j = np.zeros((2, k))
@@ -776,20 +783,42 @@ def _get_xyk_bounds(amm: XykState, amm_i: AmmIndexObject, approx, C, B, k):
     b5j = np.zeros(2)
     cones5j = [cb.ZeroConeT(2)]
     cones_count5j = [2]
+    coef = [scaling[amm.unique_id] / amm.shares] + [scaling[tkn] / amm.liquidity[tkn] for tkn in amm.asset_list]
 
+    # if approx == "linear":  # linearize the AMM constraint
+    #     c1 = 1 / (1 + epsilon_tkn[tkn])
+    #     c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
+    #     A5j2 = np.zeros((2, k))
+    #     b5j2 = np.zeros(2)
+    #     A5j2[0, amm_i.asset_net[0]] = -B[1]
+    #     A5j2[0, amm_i.asset_net[1]] = -B[2] * c1
+    #     A5j2[1, amm_i.asset_net[0]] = -B[1]
+    #     A5j2[1, amm_i.asset_net[1]] = -B[2] * c2
+    #     cones5j.append(cb.NonnegativeConeT(2))
+    #     cones_count5j.append(2)
+    # else:  # full constraint
+    #     A5j2 = np.zeros((3, k))
+    #     b5j2 = np.ones(3)
+    #     A5j2[0, amm_i.asset_net[0]] = -B[1]
+    #     A5j2[1, amm_i.asset_net[1]] = -B[2]
+    #     cones5j.append(cb.PowerConeT(0.5))
+    #     cones_count5j.append(3)
     A5j2 = np.zeros((3, k))
     b5j2 = np.ones(3)
-    A5j2[0, amm_i.asset_net[0]] = -B[0]
-    A5j2[1, amm_i.asset_net[1]] = -B[1]
-    A5j = np.vstack([A5j, A5j2])
-    b5j = np.append(b5j, b5j2)
+    A5j2[0, amm_i.asset_net[0]] = -coef[1]
+    A5j2[1, amm_i.asset_net[1]] = -coef[2]
     cones5j.append(cb.PowerConeT(0.5))
     cones_count5j.append(3)
+
+    A5j = np.vstack([A5j, A5j2])
+    b5j = np.append(b5j, b5j2)
 
     return A5j, b5j, cones5j, cones_count5j
 
 
-def _get_stableswap_bounds(amm, amm_i: AmmIndexObject, approx, C, B, k):
+def _get_stableswap_bounds(amm, amm_i: AmmIndexObject, approx, k, scaling):
+    B = [0] + [scaling[tkn] for tkn in amm.asset_list]
+    C = [scaling[amm.unique_id]]
     ann = amm.ann
     s0 = amm.shares
     D0 = amm.d
@@ -880,9 +909,9 @@ def _get_amm_bounds(p, indices_to_keep=None):
         B = B_list[j]
         approx = p.get_amm_approx(j)
         if isinstance(amm, StableSwapPoolState):
-            A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, C, B, k)
+            A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, k, p._scaling)
         elif isinstance(amm, XykState):
-            A5j, b5j, cones5j, cones_count5j = _get_xyk_bounds(amm, amm_i, approx, C, B, k)
+            A5j, b5j, cones5j, cones_count5j = _get_xyk_bounds(amm, amm_i, approx, k, p._scaling)
         else:
             raise AssertionError("Unrecognized AMM type")
         A5 = np.vstack([A5, A5j])
@@ -1235,18 +1264,30 @@ def _find_good_solution(
         amm_pcts = []
         for _i, amm in enumerate(p.amm_list):
             pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-            sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
-            pcts.append(sum_delta_x / amm.d)
+            if isinstance(amm, StableSwapPoolState):
+                sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
+                pcts.append(sum_delta_x / amm.d)
             pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
             amm_pcts.append(pcts)
         for s, amm in enumerate(p.amm_list):
-            if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                force_amm_approx[s][0] = "full"
-                approx_adjusted_ct += 1
-            for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                    force_amm_approx[s][j + 1] = "full"
+            if isinstance(amm, StableSwapPoolState):
+                if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
+                    force_amm_approx[s][0] = "full"
                     approx_adjusted_ct += 1
+                for j in range(len(amm.asset_list)):  # evaluate each asset constraint
+                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
+                        force_amm_approx[s][j + 1] = "full"
+                        approx_adjusted_ct += 1
+            elif isinstance(amm, XykState):
+                if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
+                    force_amm_approx[s][0] = "full"
+                    approx_adjusted_ct += 1
+                for j in range(len(amm.asset_list)):
+                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 1] > 1e-5:
+                        force_amm_approx[s][j + 1] = "full"
+                        approx_adjusted_ct += 1
+            else:
+                raise AssertionError("Unrecognized AMM type")
 
     for i in range(100):
         # lower maxes for intents
@@ -1302,18 +1343,30 @@ def _find_good_solution(
             amm_pcts = []
             for _i, amm in enumerate(p.amm_list):
                 pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-                sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
-                pcts.append(sum_delta_x / amm.d)
+                if isinstance(amm, StableSwapPoolState):
+                    sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
+                    pcts.append(sum_delta_x / amm.d)
                 pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
                 amm_pcts.append(pcts)
             for s, amm in enumerate(p.amm_list):
-                if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                    force_amm_approx[s][0] = "full"
-                    approx_adjusted_ct += 1
-                for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                        force_amm_approx[s][j + 1] = "full"
+                if isinstance(amm, StableSwapPoolState):
+                    if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
+                        force_amm_approx[s][0] = "full"
                         approx_adjusted_ct += 1
+                    for j in range(len(amm.asset_list)):  # evaluate each asset constraint
+                        if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
+                            force_amm_approx[s][j + 1] = "full"
+                            approx_adjusted_ct += 1
+                elif isinstance(amm, XykState):
+                    if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
+                        force_amm_approx[s][0] = "full"
+                        approx_adjusted_ct += 1
+                    for j in range(len(amm.asset_list)):
+                        if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 1] > 1e-5:
+                            force_amm_approx[s][j + 1] = "full"
+                            approx_adjusted_ct += 1
+                else:
+                    raise AssertionError("Unrecognized AMM type")
 
     # once solution is found, re-run with directional flags
     if do_directional_run:
@@ -1570,13 +1623,15 @@ def _solve_inclusion_problem(
                 # asset_c = p.get_omnipool_asset_coefs()
                 i = amm_i.asset_net[0]
                 j = amm_i.asset_net[1]
-                grads_x0 = -C[0] - C[0] * C[1] * x[j]
-                grads_x1 = -C[1] - C[0] * C[1] * x[i]
+                c0 = B[1] / amm.liquidity[amm.asset_list[0]]
+                c1 = B[2] / amm.liquidity[amm.asset_list[1]]
+                grads_x0 = -c0 - c0 * c1 * x[j]
+                grads_x1 = -c1 - c0 * c1 * x[i]
                 # TODO generalize this process for any AMM type
                 S_row[0, i] = grads_x0
                 S_row[0, j] = grads_x1
                 grad_dot_x = grads_x0 * x[i] + grads_x1 * x[j]
-                g_neg = C[0] * x[i] + C[1] * x[j] + C[0] * C[1] * x[i] * x[j]
+                g_neg = c0 * x[i] + c1 * x[j] + c0 * c1 * x[i] * x[j]
                 S_row_upper[0] = grad_dot_x + g_neg
                 S = np.vstack([S, S_row])
                 S_upper = np.concatenate([S_upper, S_row_upper])

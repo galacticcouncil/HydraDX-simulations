@@ -15,7 +15,7 @@ from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.omnix import validate_and_execute_solution
 from hydradx.model.amm.omnix_solver_simple import find_solution, \
     _find_solution_unrounded, add_buy_deltas, round_solution, find_solution_outer_approx, _solve_inclusion_problem, \
-    ICEProblem, _get_leftover_bounds
+    ICEProblem, _get_leftover_bounds, AmmIndexObject
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import XykState
 
@@ -191,123 +191,181 @@ def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
     return True
 
 
-def test_get_stableswap_limits_A():
-    from hydradx.model.amm.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject, check_cone_feasibility
-    tkn_ct = 4
-    liquidity = {f"tkn_{i}": 1_000_000 for i in range(tkn_ct)}
+def test_get_amm_limits_A():
+    from hydradx.model.amm.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject
+    ss_tkn_ct = 4
+    liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
-    all_trading_tkns = [stablepool4.unique_id] + list(stablepool4.liquidity.keys())
+    xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
+    xyk = XykState(tokens=xyk_liquidity)
     amm_directions = []
     last_amm_deltas = []
     offset = 5
     k = 30
-    amm_i = AmmIndexObject(stablepool4, offset)
-    for trading_is in [list(range(tkn_ct + 1)), [0, 2], [1, 3]]:
-        trading_tkns = [all_trading_tkns[i] for i in trading_is]
-        A_limits, b_limits, cones, cones_sizes = _get_amm_limits_A(stablepool4, amm_i, amm_directions, last_amm_deltas,
-                                                                   k, trading_tkns)
-        assert A_limits.shape[1] == k
-        assert A_limits.shape[0] == 2 * len(trading_tkns) + 2 * (tkn_ct + 1 - len(trading_tkns))
-        # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
-        # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
-        x = np.zeros(k)
-        for i in trading_is:
-            x[amm_i.shares_out + i] = 1  # set correct Lis to 1
-        s = b_limits - A_limits @ x
-        assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # check if appropriate Xis != 0
-        for val in [1, -1]:
-            x_copy = copy.deepcopy(x)
-            for i in trading_is:
-                x_copy[amm_i.shares_net + i] = val  # set correct Xis to 1
-            s = b_limits - A_limits @ x_copy
-            assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make one of the restricted Lis negative
-        for i in trading_is:
-            x_copy = copy.deepcopy(x)
-            x_copy[amm_i.shares_out + i] = -1  # make one of the Ls negative
-            s = b_limits - A_limits @ x_copy
-            assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make one of the other Xs or Ls non-zero
-        non_trading_is = [i for i in range(tkn_ct + 1) if i not in trading_is]
-        for i in non_trading_is:
-            for val in [-1, 1]:
-                for offset in [amm_i.shares_net, amm_i.shares_out]:
-                    x_copy = copy.deepcopy(x)
-                    x_copy[offset + i] = val  # make variable nonzero
-                    s = b_limits - A_limits @ x_copy
-                    assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make Xj + Lj < 0
-        for i in trading_is:
-            x_copy = copy.deepcopy(x)
-            x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
-            s = b_limits - A_limits @ x_copy
-            assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
 
-    with pytest.raises(ValueError):  # if k is too small, we should raise an error
-        _get_amm_limits_A(stablepool4, amm_i, amm_directions, last_amm_deltas, amm_i.shares_net + amm_i.num_vars - 1,
-                          trading_tkns)
+    for amm, trading_pairs in [[stablepool4, [list(range(ss_tkn_ct + 1)), [0, 2], [1, 3]]], [xyk, [[1, 2]]]]:
+        amm_i = AmmIndexObject(amm, offset)
+        all_trading_tkns = [amm.unique_id] + list(amm.liquidity.keys())
+        for trading_is in trading_pairs:
+            trading_tkns = [all_trading_tkns[i] for i in trading_is]
+
+            A_limits, b_limits, cones, cones_sizes = _get_amm_limits_A(amm, amm_i, amm_directions, last_amm_deltas,
+                                                                       k, trading_tkns)
+            assert A_limits.shape[1] == k
+            # assert A_limits.shape[0] == 2 * len(trading_tkns) + 2 * (tkn_ct + 1 - len(trading_tkns))
+            # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
+            # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
+            x = np.zeros(k)
+            for i in trading_is:
+                x[amm_i.shares_out + i] = 1  # set correct Lis to 1
+            s = b_limits - A_limits @ x
+            if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+                raise AssertionError("Cone feasibility check failed for Li >= 0")
+            # check if appropriate Xis != 0
+            for val in [1, -1]:
+                x_copy = copy.deepcopy(x)
+                for i in trading_is:
+                    x_copy[amm_i.shares_net + i] = val  # set correct Xis to 1
+                s = b_limits - A_limits @ x_copy
+                if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+                    raise AssertionError("Cone feasibility check failed for Xis != 0")
+            # next we check what happens if we make one of the restricted Lis negative
+            for i in trading_is:
+                x_copy = copy.deepcopy(x)
+                x_copy[amm_i.shares_out + i] = -1  # make one of the Ls negative
+                s = b_limits - A_limits @ x_copy
+                if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+                    raise AssertionError("Cone feasibility check should fail for negative Li")
+            # next we check what happens if we make one of the other Xs or Ls non-zero
+            non_trading_is = [i for i in range(len(amm.asset_list) + 1) if i not in trading_is]
+            for i in non_trading_is:
+                for val in [-1, 1]:
+                    for offset in [amm_i.shares_net, amm_i.shares_out]:
+                        x_copy = copy.deepcopy(x)
+                        x_copy[offset + i] = val  # make variable nonzero
+                        s = b_limits - A_limits @ x_copy
+                        if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+                            raise AssertionError("Cone feasibility check should fail for non-trading variables")
+            # next we check what happens if we make Xj + Lj < 0
+            for i in trading_is:
+                x_copy = copy.deepcopy(x)
+                x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
+                s = b_limits - A_limits @ x_copy
+                assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+
+        with pytest.raises(ValueError):  # if k is too small, we should raise an error
+            _get_amm_limits_A(amm, amm_i, amm_directions, last_amm_deltas, amm_i.shares_net + amm_i.num_vars - 1,
+                              trading_tkns)
 
 
 @given(st.lists(st.booleans(), min_size=5, max_size=5),
+       st.booleans(),
        st.lists(st.integers(min_value=0, max_value=4), min_size=2, max_size=5, unique=True))
-def test_get_stableswap_limits_A_directions(dirs, trading_indices):
-    from hydradx.model.amm.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject, check_cone_feasibility
-    tkn_ct = 4
-    liquidity = {f"tkn_{i}": 1_000_000 for i in range(tkn_ct)}
+def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
+    from hydradx.model.amm.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject
+    ss_tkn_ct = 4
+    liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
-    all_trading_tkns = [stablepool4.unique_id] + list(stablepool4.liquidity.keys())
-    amm_directions = ['buy' if dir else 'sell' for dir in dirs]
+    xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
+    xyk = XykState(tokens=xyk_liquidity)
+    xyk_directions = ['none', 'buy' if xyk_dir else 'sell', 'sell' if xyk_dir else 'buy']
+    ss_directions = ['buy' if dir else 'sell' for dir in ss_dirs]
     last_amm_deltas = []
     offset = 5
     k = 30
-    amm_i = AmmIndexObject(stablepool4, offset)
-    for trading_is in [list(range(tkn_ct + 1)), trading_indices]:
-        trading_tkns = [all_trading_tkns[i] for i in trading_is]
-        A_limits, b_limits, cones, cones_sizes = _get_amm_limits_A(stablepool4, amm_i, amm_directions,
-                                                                   last_amm_deltas,
-                                                                   k, trading_tkns)
-        assert A_limits.shape[1] == k
-        # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
-        # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
-        x = np.zeros(k)
-        for i in trading_is:
-            x[amm_i.shares_out + i] = 1  # set correct Lis to 1
-        s = b_limits - A_limits @ x
-        assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # check if appropriate Xis != 0
-        for i in trading_is:
-            x[amm_i.shares_net + i] = 1 if amm_directions[i] == 'buy' else -1  # set correct Xis to 1
-        s = b_limits - A_limits @ x
-        assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # try flipping an Xi in the wrong direction
-        for i in trading_is:
-            x_copy = copy.deepcopy(x)
-            x_copy[amm_i.shares_net + i] *= -1
-            s = b_limits - A_limits @ x_copy
-            assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make one of the restricted Lis negative
-        for i in trading_is:
-            x_copy = copy.deepcopy(x)
-            x_copy[amm_i.shares_out + i] = -1  # make one of the Ls negative
-            s = b_limits - A_limits @ x_copy
-            assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make one of the other Xs or Ls non-zero
-        non_trading_is = [i for i in range(tkn_ct + 1) if i not in trading_is]
-        for i in non_trading_is:
-            for val in [-1, 1]:
-                for offset in [amm_i.shares_net, amm_i.shares_out]:
-                    x_copy = copy.deepcopy(x)
-                    x_copy[offset + i] = val  # make variable nonzero
-                    s = b_limits - A_limits @ x_copy
-                    assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        # next we check what happens if we make Xj + Lj < 0
-        for i in trading_is:
-            x_copy = copy.deepcopy(x)
-            x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
-            s = b_limits - A_limits @ x_copy
-            assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+    for amm, directions, trading_pairs in [[stablepool4, ss_directions, [list(range(ss_tkn_ct + 1)), trading_indices]],
+                                           [xyk, xyk_directions, [[1, 2]]]]:
+        amm_i = AmmIndexObject(amm, offset)
+        all_trading_tkns = [amm.unique_id] + list(amm.liquidity.keys())
+        for trading_is in trading_pairs:
+            trading_tkns = [all_trading_tkns[i] for i in trading_is]
+            A_limits, b_limits, cones, cones_sizes = _get_amm_limits_A(amm, amm_i, directions,
+                                                                       last_amm_deltas,
+                                                                       k, trading_tkns)
+            assert A_limits.shape[1] == k
+            # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
+            # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
+            x = np.zeros(k)
+            for i in trading_is:
+                x[amm_i.shares_out + i] = 1  # set correct Lis to 1
+            s = b_limits - A_limits @ x
+            assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+            # check if appropriate Xis != 0
+            for i in trading_is:
+                x[amm_i.shares_net + i] = 1 if directions[i] == 'buy' else -1  # set correct Xis to 1
+            s = b_limits - A_limits @ x
+            assert check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+            # try flipping an Xi in the wrong direction
+            for i in trading_is:
+                x_copy = copy.deepcopy(x)
+                x_copy[amm_i.shares_net + i] *= -1
+                s = b_limits - A_limits @ x_copy
+                assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+            # next we check what happens if we make one of the restricted Lis negative
+            for i in trading_is:
+                x_copy = copy.deepcopy(x)
+                x_copy[amm_i.shares_out + i] = -1  # make one of the Ls negative
+                s = b_limits - A_limits @ x_copy
+                assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+            # next we check what happens if we make one of the other Xs or Ls non-zero
+            non_trading_is = [i for i in range(len(amm.asset_list) + 1) if i not in trading_is]
+            for i in non_trading_is:
+                for val in [-1, 1]:
+                    for offset in [amm_i.shares_net, amm_i.shares_out]:
+                        x_copy = copy.deepcopy(x)
+                        x_copy[offset + i] = val  # make variable nonzero
+                        s = b_limits - A_limits @ x_copy
+                        if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+                            raise AssertionError("Cone feasibility check should fail for non-trading variables")
+            # next we check what happens if we make Xj + Lj < 0
+            for i in trading_is:
+                x_copy = copy.deepcopy(x)
+                x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
+                s = b_limits - A_limits @ x_copy
+                assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
 
+
+def test_get_xyk_bounds():
+    from hydradx.model.amm.omnix_solver_simple import _get_xyk_bounds
+    amm = XykState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
+    scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
+    offset = 7
+    amm_i = AmmIndexObject(amm, 7)
+    k = 40
+    A, b, cones, cones_sizes = _get_xyk_bounds(amm, amm_i, "None", k, scaling)
+    x = np.zeros(k)
+    # selling 5 B for 1 A should work
+    b_sell_amt, a_buy_amt = 5, 1
+    x[amm_i.asset_net[0]] = -a_buy_amt
+    x[amm_i.asset_net[1]] = b_sell_amt
+    x[amm_i.asset_out[0]] = a_buy_amt
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check failed for valid XYK bounds")
+    # selling 1 A for 1 5 should not work
+    a_sell_amt, b_buy_amt = 1, 5
+    x[amm_i.asset_net[1]] = -b_buy_amt
+    x[amm_i.asset_net[0]] = a_sell_amt
+    x[amm_i.asset_out[1]] = b_buy_amt
+    s = b - A @ x
+    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should fail")
+    # selling 1 A for 1 B should work
+    a_sell_amt, b_buy_amt = 1, 1
+    x[amm_i.asset_net[1]] = -b_buy_amt
+    x[amm_i.asset_net[0]] = a_sell_amt
+    x[amm_i.asset_out[1]] = b_buy_amt
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should succeed")
+    # selling 1 B for 1 A should not work
+    b_sell_amt, a_buy_amt = 1, 1
+    x[amm_i.asset_net[0]] = -a_buy_amt
+    x[amm_i.asset_net[1]] = b_sell_amt
+    x[amm_i.asset_out[0]] = a_buy_amt
+    s = b - A @ x
+    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should fail")
 
 def test_no_intent_arbitrage():
 
@@ -388,6 +446,41 @@ def test_no_intent_arbitrage():
     assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents),
                                          copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
                                          copy.deepcopy(x['amm_deltas']),"HDX")
+
+
+def test_no_intent_arbitrage_xyk():
+    # test where xyk price is different from Omnipool
+    prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 0.99, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
+              'USDT2': 1, 'DAI': 1}
+    weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
+    total_lrna = 65000000
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna},
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+
+    xyk_fee = 0.003
+
+    xyk = XykState(
+        tokens={
+            'HDX': liquidity['HDX'] * 0.5,
+            'DOT': liquidity['DOT'] * 0.5
+        },
+        trade_fee=xyk_fee
+    )
+
+    amm_list = [xyk]
+    intents = []
+    x = find_solution_outer_approx(initial_state, intents, amm_list)
+    agent = Agent(enforce_holdings=False)
+    xyk.swap(agent, "DOT", "HDX", sell_quantity = x['amm_deltas'][0][1])
+    initial_state.swap(agent, "HDX", "DOT", sell_quantity = agent.get_holdings("DOT"))
+    print(x)
 
 
 def test_single_trade_settles():

@@ -125,8 +125,8 @@ class XykState(Exchange):
     def swap(
             self,
             agent: Agent,
-            tkn_sell: str,
             tkn_buy: str,
+            tkn_sell: str,
             buy_quantity: float = 0,
             sell_quantity: float = 0
     ):
@@ -151,8 +151,8 @@ class XykState(Exchange):
 def simulate_swap(
         old_state: XykState,
         old_agent: Agent,
-        tkn_sell: str,
         tkn_buy: str,
+        tkn_sell: str,
         buy_quantity: float = 0,
         sell_quantity: float = 0
 ):
