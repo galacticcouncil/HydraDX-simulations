@@ -1523,13 +1523,13 @@ def _solve_inclusion_problem(
         amm_i = p.amm_i[i]
         B = B_list[i]
         C = C_list[i]
-        n = len(amm.asset_list) + 1
+        n_amm = len(amm.asset_list) + 1
         if isinstance(amm, ConstantProductPoolState):  # temporarily force share deltas to 0
             max_L = np.array([0] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
-            max_X = [0] + [inf] * (n-1)
+            max_X = [0] + [inf] * (n_amm-1)
         else:
             max_L = np.array([amm.shares] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
-            max_X = [inf] * n
+            max_X = [inf] * n_amm
         min_X = [-x for x in max_L]
         min_L = np.zeros(n)
         min_a = [-inf] * len(amm_i.aux)

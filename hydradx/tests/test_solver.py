@@ -564,7 +564,7 @@ def test_no_intent_arbitrage_stableswap_xyk_feeless(ratio):
 def test_single_trade_settles():
 
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
-              'USDT2': 1, 'DAI': 1}
+              'USDT2': 1, 'DAI': 1, 'MYTH': 0.09}
     weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
     total_lrna = 65000000
 
@@ -584,25 +584,25 @@ def test_single_trade_settles():
     price_premium = 0.1
 
     trade_pairs = [["DOT", "vDOT"], ["vDOT", "DOT"], ["LRNA", "DOT"]]
-    # for tkn_sell, tkn_buy in trade_pairs:
-    #     buy_amount_init = buy_pct * initial_state.liquidity[tkn_buy]
-    #     buy_amount = buy_amount_init * (1 - price_premium)
-    #     sell_amount = buy_amount_init * prices[tkn_buy] / prices[tkn_sell]
-    #     if tkn_sell != "LRNA" and sell_amount > buy_pct * initial_state.liquidity[tkn_sell]:
-    #         sell_amount = buy_pct * initial_state.liquidity[tkn_sell]
-    #         buy_amount = sell_amount * prices[tkn_sell] / prices[tkn_buy] * (1 - price_premium)
-    #     for partial in [True, False]:
-    #         agent = Agent(holdings={tkn_sell: sell_amount})
-    #         intents = [{'sell_quantity': sell_amount, 'buy_quantity': buy_amount, 'tkn_sell': tkn_sell,
-    #                     'tkn_buy': tkn_buy, 'agent': agent, 'partial': partial}]
-    #         x = find_solution_outer_approx(initial_state, intents)
-    #         assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents),
-    #                                              copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
-    #                                              copy.deepcopy(x['amm_deltas']), "HDX")
-    #         if x['deltas'][0][0] != pytest.approx(-intents[0]['sell_quantity'], rel=1e-10):
-    #             raise
-    #         if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
-    #             raise
+    for tkn_sell, tkn_buy in trade_pairs:
+        buy_amount_init = buy_pct * initial_state.liquidity[tkn_buy]
+        buy_amount = buy_amount_init * (1 - price_premium)
+        sell_amount = buy_amount_init * prices[tkn_buy] / prices[tkn_sell]
+        if tkn_sell != "LRNA" and sell_amount > buy_pct * initial_state.liquidity[tkn_sell]:
+            sell_amount = buy_pct * initial_state.liquidity[tkn_sell]
+            buy_amount = sell_amount * prices[tkn_sell] / prices[tkn_buy] * (1 - price_premium)
+        for partial in [True, False]:
+            agent = Agent(holdings={tkn_sell: sell_amount})
+            intents = [{'sell_quantity': sell_amount, 'buy_quantity': buy_amount, 'tkn_sell': tkn_sell,
+                        'tkn_buy': tkn_buy, 'agent': agent, 'partial': partial}]
+            x = find_solution_outer_approx(initial_state, intents)
+            assert validate_and_execute_solution(initial_state.copy(), [], copy.deepcopy(intents),
+                                                 copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
+                                                 copy.deepcopy(x['amm_deltas']), "HDX")
+            if x['deltas'][0][0] != pytest.approx(-intents[0]['sell_quantity'], rel=1e-10):
+                raise
+            if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
+                raise
 
     # next we add 2-pool and 4-pool
 
@@ -686,6 +686,48 @@ def test_single_trade_settles():
                 raise
             if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
                 raise
+
+    # test with xyk pool
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(
+        tokens={
+            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna
+        },
+        asset_fee=mpf(0.0025),
+        lrna_fee=mpf(0.0005)
+    )
+
+    xyk_fee = 0.0005
+
+    xyk_tokens = {'DOT': mpf(50_000), 'MYTH': mpf(5_000_000)}
+    xyk = ConstantProductPoolState(
+        tokens=xyk_tokens, trade_fee=xyk_fee, unique_id="xyk"
+    )
+    amm_list = [xyk]
+    trade_pairs = [["DOT", "MYTH"], ["MYTH", "DOT"], ["HDX", "MYTH"], ["MYTH", "HDX"], ["HDX", "DOT"], ["DOT", "HDX"]]
+
+    buy_amts = {'DOT': 1000, 'MYTH': 100_000, 'HDX': 100_000}
+    price_premium = 0.5
+    for tkn_sell, tkn_buy in trade_pairs:
+        buy_amount_init = buy_amts[tkn_buy]
+        buy_amount = buy_amount_init * (1 - price_premium)
+        sell_amount = buy_amount_init * prices[tkn_buy] / prices[tkn_sell]
+        for partial in [True, False]:
+            agent = Agent(holdings={tkn_sell: sell_amount})
+            intents = [{'sell_quantity': sell_amount, 'buy_quantity': buy_amount, 'tkn_sell': tkn_sell,
+                        'tkn_buy': tkn_buy, 'agent': agent, 'partial': partial}]
+            x = find_solution_outer_approx(initial_state, intents, amm_list)
+            # assert validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list),
+            #                                      copy.deepcopy(intents), copy.deepcopy(x['deltas']),
+            #                                      copy.deepcopy(x['omnipool_deltas']), copy.deepcopy(x['amm_deltas']),
+            #                                      "HDX")
+            if x['deltas'][0][0] != pytest.approx(-intents[0]['sell_quantity'], rel=1e-10):
+                raise AssertionError("Sell quantity does not match intent")
+            if x['deltas'][0][1] != pytest.approx(intents[0]['buy_quantity'], rel=1e-10):
+                raise AssertionError("Buy quantity does not match intent")
 
 
 def test_single_trade_does_not_settle():
