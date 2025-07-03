@@ -508,6 +508,59 @@ def test_no_intent_arbitrage_xyk(ratio):
         raise AssertionError("XYK price should be close to Omnipool price")
 
 
+@given(st.floats(min_value=0.1, max_value=0.9))
+def test_no_intent_arbitrage_stableswap_xyk_feeless(ratio):
+    # test where stablepool shares have different values
+    prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 0.99, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
+              'USDT2': 1, 'DAI': 1}
+    weights = {'HDX': 0.08, 'DOT': 0.5, 'vDOT': 0.2, '2-Pool': 0.2, '4-Pool': 0.02}
+    total_lrna = 65000000
+
+    lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
+    liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
+
+    initial_state = OmnipoolState(tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna})
+
+    sp_tokens = {"USDT": 7600000, "USDC": 9200000}
+    stablepool = StableSwapPoolState(
+        tokens=sp_tokens, amplification=1000, unique_id="2-Pool"
+    )
+
+    xyk = ConstantProductPoolState(
+        tokens={
+            'USDT': mpf(liquidity['2-Pool'] * ratio),
+            'DOT': mpf(liquidity['DOT'] * (1 - ratio))
+        },
+    )
+
+    amm_list = [stablepool, xyk]
+    intents = []
+
+    orig_op_price = initial_state.price( "DOT", "2-Pool") * stablepool.share_price("USDT")
+    orig_xyk_price = xyk.liquidity['USDT'] / xyk.liquidity['DOT']
+    max_delta = float('inf')
+    while max_delta > 0:
+        x = find_solution_outer_approx(initial_state, intents, amm_list)
+
+        agent = Agent(enforce_holdings=False)
+        if x['amm_deltas'][1][1] >= 0:  # XYK pool is in index 1
+            assert x['amm_deltas'][1][2] <= 0  # DOT bought from XYK
+            xyk.swap(agent, tkn_sell = "USDT", tkn_buy = "DOT", sell_quantity = x['amm_deltas'][1][1])
+            initial_state.swap(agent, tkn_buy = "2-Pool", tkn_sell = "DOT", sell_quantity = agent.get_holdings("DOT"))
+            stablepool.remove_liquidity(agent, agent.get_holdings("2-Pool"), "USDT")
+        else:
+            assert x['amm_deltas'][1][2] >= 0  # DOT sold to AMM
+            xyk.swap(agent, tkn_sell="DOT", tkn_buy="USDT", sell_quantity=x['amm_deltas'][1][2])
+            stablepool.add_liquidity(agent, agent.get_holdings("USDT"), "USDT")
+            initial_state.swap(agent, tkn_buy="DOT", tkn_sell="2-Pool", sell_quantity=agent.get_holdings("2-Pool"))
+
+        op_price = initial_state.price( "DOT", "2-Pool") * stablepool.share_price("USDT")
+        xyk_price = xyk.liquidity['USDT'] / xyk.liquidity['DOT']
+        max_delta = max([max(y) for y in x['amm_deltas']])
+    if abs((op_price - xyk_price) / op_price) >= 0.005:
+        raise AssertionError("XYK price should be close to Omnipool price")
+
+
 def test_single_trade_settles():
 
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 1.01, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
