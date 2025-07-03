@@ -17,7 +17,7 @@ from hydradx.model.amm.omnix_solver_simple import find_solution, \
     _find_solution_unrounded, add_buy_deltas, round_solution, find_solution_outer_approx, _solve_inclusion_problem, \
     ICEProblem, _get_leftover_bounds, AmmIndexObject
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.amm.xyk_amm import XykState
+from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 
 
 ##################################
@@ -167,7 +167,7 @@ def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
 def test_AmmIndexObject_xyk(offset: int):
     from hydradx.model.amm.omnix_solver_simple import AmmIndexObject
     liquidity = {"A": 1_000_000, "B": 1_000_000}
-    xyk = XykState(tokens=liquidity)
+    xyk = ConstantProductPoolState(tokens=liquidity)
     # order of variables should be: X_0, X_1, ..., X_4, L_0, L_1, ..., L_4, a_0, a_1, ..., a_4
     n_amm = 3
     amm_index = AmmIndexObject(xyk, offset)
@@ -197,7 +197,7 @@ def test_get_amm_limits_A():
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
     xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
-    xyk = XykState(tokens=xyk_liquidity)
+    xyk = ConstantProductPoolState(tokens=xyk_liquidity)
     amm_directions = []
     last_amm_deltas = []
     offset = 5
@@ -267,7 +267,7 @@ def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
     xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
-    xyk = XykState(tokens=xyk_liquidity)
+    xyk = ConstantProductPoolState(tokens=xyk_liquidity)
     xyk_directions = ['none', 'buy' if xyk_dir else 'sell', 'sell' if xyk_dir else 'buy']
     ss_directions = ['buy' if dir else 'sell' for dir in ss_dirs]
     last_amm_deltas = []
@@ -327,7 +327,7 @@ def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
 
 def test_get_xyk_bounds():
     from hydradx.model.amm.omnix_solver_simple import _get_xyk_bounds
-    amm = XykState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
+    amm = ConstantProductPoolState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
     scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
     offset = 7
     amm_i = AmmIndexObject(amm, 7)
@@ -448,7 +448,8 @@ def test_no_intent_arbitrage():
                                          copy.deepcopy(x['amm_deltas']),"HDX")
 
 
-def test_no_intent_arbitrage_xyk():
+@given(st.floats(min_value=0.1, max_value=0.9))
+def test_no_intent_arbitrage_xyk(ratio):
     # test where xyk price is different from Omnipool
     prices = {'HDX': 0.013, 'DOT': 9, 'vDOT': 13, '2-Pool': 1.01, '4-Pool': 0.99, 'LRNA': 1, 'USDT': 1, 'USDC': 1,
               'USDT2': 1, 'DAI': 1}
@@ -458,29 +459,53 @@ def test_no_intent_arbitrage_xyk():
     lrna = {tkn: weights[tkn] * total_lrna for tkn in weights}
     liquidity = {tkn: lrna[tkn] / prices[tkn] for tkn in lrna}
 
-    initial_state = OmnipoolState(
-        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in lrna},
-        asset_fee=mpf(0.0025),
-        lrna_fee=mpf(0.0005)
-    )
+    initial_state = OmnipoolState(tokens={tkn: {'liquidity': mpf(liquidity[tkn]), 'LRNA': mpf(lrna[tkn])} for tkn in lrna})
 
-    xyk_fee = 0.003
-
-    xyk = XykState(
+    xyk = ConstantProductPoolState(
         tokens={
-            'HDX': liquidity['HDX'] * 0.5,
-            'DOT': liquidity['DOT'] * 0.5
+            'HDX': mpf(liquidity['HDX'] * ratio),
+            'DOT': mpf(liquidity['DOT'] * (1 - ratio))
         },
-        trade_fee=xyk_fee
     )
-
+    orig_op_price = initial_state.price("HDX", "DOT")
+    orig_xyk_price = xyk.liquidity['DOT'] / xyk.liquidity['HDX']
     amm_list = [xyk]
     intents = []
     x = find_solution_outer_approx(initial_state, intents, amm_list)
     agent = Agent(enforce_holdings=False)
-    xyk.swap(agent, "DOT", "HDX", sell_quantity = x['amm_deltas'][0][1])
-    initial_state.swap(agent, "HDX", "DOT", sell_quantity = agent.get_holdings("DOT"))
-    print(x)
+    # assert x['amm_deltas'][0][1] > 0  # HDX sold to AMM
+
+    if x['amm_deltas'][0][1] >= 0:
+        assert x['amm_deltas'][0][2] <= 0  # DOT bought from AMM
+        xyk.swap(agent, tkn_sell = "HDX", tkn_buy = "DOT", sell_quantity = x['amm_deltas'][0][1])
+        initial_state.swap(agent, tkn_buy = "HDX", tkn_sell = "DOT", sell_quantity = agent.get_holdings("DOT"))
+    else:
+        assert x['amm_deltas'][0][2] >= 0  # DOT sold to AMM
+        xyk.swap(agent, tkn_sell="DOT", tkn_buy="HDX", sell_quantity=x['amm_deltas'][0][2])
+        initial_state.swap(agent, tkn_buy="DOT", tkn_sell="HDX", sell_quantity=agent.get_holdings("HDX"))
+    op_price = initial_state.price("HDX", "DOT")
+    xyk_price = xyk.liquidity['DOT'] / xyk.liquidity['HDX']
+    if abs((op_price - xyk_price) / op_price) >= 0.04:
+        raise AssertionError("XYK price should be close to Omnipool price")
+
+    # we should get much closer just re-running the solver
+    x2 = find_solution_outer_approx(initial_state, intents, amm_list)
+    print(x2)
+    agent = Agent(enforce_holdings=False)
+    # assert x['amm_deltas'][0][1] > 0  # HDX sold to AMM
+
+    if x2['amm_deltas'][0][1] >= 0:
+        assert x2['amm_deltas'][0][2] <= 0  # DOT bought from AMM
+        xyk.swap(agent, tkn_sell = "HDX", tkn_buy = "DOT", sell_quantity = x2['amm_deltas'][0][1])
+        initial_state.swap(agent, tkn_buy = "HDX", tkn_sell = "DOT", sell_quantity = agent.get_holdings("DOT"))
+    else:
+        assert x2['amm_deltas'][0][2] >= 0  # DOT sold to AMM
+        xyk.swap(agent, tkn_sell="DOT", tkn_buy="HDX", sell_quantity=x2['amm_deltas'][0][2])
+        initial_state.swap(agent, tkn_buy="DOT", tkn_sell="HDX", sell_quantity=agent.get_holdings("HDX"))
+    op_price2 = initial_state.price("HDX", "DOT")
+    xyk_price2 = xyk.liquidity['DOT'] / xyk.liquidity['HDX']
+    if abs((op_price2 - xyk_price2) / op_price2) >= 0.0005:
+        raise AssertionError("XYK price should be close to Omnipool price")
 
 
 def test_single_trade_settles():

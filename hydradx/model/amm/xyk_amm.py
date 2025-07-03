@@ -1,43 +1,63 @@
 import math
+from typing import Callable
 
-from .agents import Agent
 from .exchange import Exchange
+from .agents import Agent
+# when checking i.e. liquidity < 0, how many zeroes do we need to see before it's close enough?
+precision_level = 20
 
-class XykState(Exchange):
-    unique_id: str = 'xyk'
-
+class ConstantProductPoolState(Exchange):
     def __init__(
             self,
-            tokens: dict[str, float],
+            tokens: dict[str: float],
             trade_fee: float = 0,
-            unique_id: str = '',
+            unique_id='',
             shares: float = 0
     ):
-
         """
         Tokens should be in the form of:
         {
             token1: quantity,
             token2: quantity
         }
-        There must be exactly two.
+        There should only be two.
         """
         super().__init__()
-        if len(tokens.keys()) != 2:
-            raise ValueError('Need exactly two tokens for XYK AMM')
-
-        self.time_step = 0
+        self.trade_fee = trade_fee
         self.liquidity = dict()
         self.asset_list: list[str] = []
-        self.trade_fee = trade_fee
-        if unique_id:
-            self.unique_id = unique_id
+        self.time_step = 0
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
-        self.shares = shares or self.calculate_k()
+        self.shares = shares or self.liquidity[self.asset_list[0]]
+
+        self.unique_id = unique_id
+
+    def thorchain_fee(self):
+        def fee_function(tkn: str, delta_tkn: float):
+            return delta_tkn / (delta_tkn + self.liquidity[tkn])
+
+        return fee_function
+
+    def custom_slip_fee(self, slip_factor: float, minimum: float = 0) :
+        def fee_function(
+            tkn: str, delta_tkn: float
+        ) -> float:
+            fee = (slip_factor * delta_tkn
+                   / (delta_tkn + self.liquidity[tkn])) + minimum
+
+            return fee
+        return fee_function
+
+    @property
+    def invariant(self):
+        return math.prod(self.liquidity.values())
+
+    def calculate_k(self):
+        math.sqrt(self.invariant)
 
     def fail_transaction(self, error: str, **kwargs):
         self.fail = error
@@ -46,116 +66,210 @@ class XykState(Exchange):
     def update(self):
         self.time_step += 1
 
-    def calculate_k(self) -> float:
-        return math.sqrt(self.liquidity[self.asset_list[0]] * self.liquidity[self.asset_list[1]])
-
-    def sell_spot(self, tkn_sell, tkn_buy: str, fee: float = None):
-        if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
-            return 0
-        if fee is None:
-            fee = self.trade_fee
-        return self.price(tkn_sell, tkn_buy) * (1 - fee)
-
-    def buy_spot(self, tkn_buy: str, tkn_sell, fee: float = None):
-        if tkn_buy not in self.liquidity or tkn_sell not in self.liquidity:
-            return 0
-        if fee is None:
-            fee = self.trade_fee
-        return self.price(tkn_buy, tkn_sell) / (1 - fee)
-
-    def sell_limit(self, tkn_buy, tkn_sell):
-        if tkn_sell not in self.liquidity:
-            return 0
-        return float("inf")
-
-    def buy_limit(self, tkn_buy, tkn_sell):
-        if tkn_buy not in self.liquidity:
-            return 0
-        return self.liquidity[tkn_buy]
-
-    def calculate_buy_from_sell(self, tkn_buy, tkn_sell, sell_quantity):
-        x, y = self.liquidity[tkn_sell], self.liquidity[tkn_buy]
-        return y * sell_quantity / (x + sell_quantity) * (1 - self.trade_fee)
-
-    def calculate_sell_from_buy(self, tkn_buy, tkn_sell, buy_quantity):
-        x, y = self.liquidity[tkn_sell], self.liquidity[tkn_buy]
-        return x * (buy_quantity / (-buy_quantity + y * (1 - self.trade_fee)))
-
-    def price(self, tkn, denomination: str = ''):
-        """
-        return the price of TKN denominated in NUMÉRAIRE
-        """
-        if tkn not in self.liquidity or denomination not in self.liquidity:
-            return 0
-        return self.liquidity[denomination] / self.liquidity[tkn] if tkn != denomination else 1
-
-    def share_price(self, numeraire: str = ''):
-        return 2 * self.liquidity[numeraire] / self.shares
-
-    def copy(self):
-        new_pool = XykState(
-            {k: v for k,v in self.liquidity.items()},
-            trade_fee=self.trade_fee,
-            unique_id=self.unique_id,
-            shares=self.shares
-        )
-        new_pool.time_step = self.time_step
-        return new_pool
-
     def __repr__(self):
-        # round to given precision
-        precision = 10
-        liquidity = {tkn: round(self.liquidity[tkn], precision) for tkn in self.asset_list}
-        shares = round(self.shares, precision)
+        precision = 12
         return (
-            f'XYK Pool: {self.unique_id}\n'
-            f'********************************\n'
-            f'trade fee: {self.trade_fee}\n'
-            f'shares: {shares}\n'
-            f'tokens: (\n\n'
-        ) + '\n'.join(
+            f'Constant Product Pool\n'
+            f'base trade fee: {round(self.trade_fee(self.asset_list[1], 1) * 1000) / 1000}\n'
+            f'shares: {self.shares}\n'
+            f'tokens: (\n'
+        ) + ')\n(\n'.join(
             [(
-                    f'    {token}\n'
-                    f'    quantity: {liquidity[token]}\n'
+                f'    {token}\n'
+                f'    quantity: {round(self.liquidity[token], precision)}\n'
+                f'    weight: {round(self.liquidity[token] / sum(self.liquidity.values()), precision)}\n'
             ) for token in self.asset_list]
-        ) + '\n)\n' + (
-            f'error message:{self.fail or "none"}'
-        )
+        ) + '\n)'
+
+    @property
+    def trade_fee(self):
+        return self._trade_fee
+
+    @trade_fee.setter
+    def trade_fee(self, fee: float or Callable[[str, float], float]):
+        def fee_function(tkn: str = '', delta_tkn: float = 0):
+            return fee
+        self._trade_fee = fee if isinstance(fee, Callable) else fee_function
 
     def swap(
-            self,
-            agent: Agent,
-            tkn_buy: str,
-            tkn_sell: str,
-            buy_quantity: float = 0,
-            sell_quantity: float = 0
+        self,
+        agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
     ):
-        if buy_quantity:
-            if buy_quantity > self.liquidity[tkn_buy]:
-                return self.fail_transaction('Pool has insufficient liquidity.')
-            sell_quantity = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-        elif sell_quantity:
-            buy_quantity = self.calculate_buy_from_sell(tkn_buy, tkn_sell, sell_quantity)
+    
+        if not (tkn_buy in self.asset_list and tkn_sell in self.asset_list):
+            return self.fail_transaction('Invalid token name.')
+
+        # assert buy_quantity >= 0 and sell_quantity >= 0  # TODO enforce this
+    
+        # turn a negative buy into a sell and vice versa
+        if buy_quantity < 0:
+            sell_quantity = -buy_quantity
+            buy_quantity = 0
+            t = tkn_sell
+            tkn_sell = tkn_buy
+            tkn_buy = t
+        elif sell_quantity < 0:
+            buy_quantity = -sell_quantity
+            sell_quantity = 0
+            t = tkn_sell
+            tkn_sell = tkn_buy
+            tkn_buy = t
+    
+        if sell_quantity != 0:
+            # when amount to be paid in is specified, calculate payout
+            buy_quantity = sell_quantity * self.liquidity[tkn_buy] / (
+                    self.liquidity[tkn_sell] + sell_quantity)
+            if math.isnan(buy_quantity):
+                buy_quantity = sell_quantity  # this allows infinite liquidity for testing
+            trade_fee = self.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
+            buy_quantity *= 1 - trade_fee
+    
+        elif buy_quantity != 0:
+            if buy_quantity >= self.liquidity[tkn_buy]:
+                return self.fail_transaction('Not enough liquidity in the pool.')
+            # calculate input price from a given payout
+            sell_quantity = buy_quantity * self.liquidity[tkn_sell] / (self.liquidity[tkn_buy] - buy_quantity)
+            if math.isnan(sell_quantity):
+                sell_quantity = buy_quantity  # this allows infinite liquidity for testing
+            trade_fee = self.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
+            sell_quantity /= 1 - trade_fee
+    
+        else:
+            return self.fail_transaction('Must specify buy quantity or sell quantity.')
+    
+        if self.liquidity[tkn_sell] + sell_quantity <= 0 or self.liquidity[tkn_buy] - buy_quantity <= 0:
+            return self.fail_transaction('Not enough liquidity in the pool.')
 
         if not agent.validate_holdings(tkn_sell, sell_quantity):
-            return self.fail_transaction('Agent has insufficient funds.')
+            return self.fail_transaction('Agent has insufficient holdings.')
+        if agent.get_holdings(tkn_buy) + buy_quantity < 0 and agent.enforce_holdings:  # TODO: remove
+            return self.fail_transaction('Agent has insufficient holdings.')
 
-        agent.remove(tkn_sell, sell_quantity)
-        agent.add(tkn_buy, buy_quantity)
-        self.liquidity[tkn_buy] -= buy_quantity
+        # TODO: switch to new API
+        # agent.add(tkn_buy, buy_quantity)
+        # agent.remove(tkn_sell, sell_quantity)
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
+        agent.holdings[tkn_buy] += buy_quantity
+        if tkn_sell not in agent.holdings:
+            agent.holdings[tkn_sell] = 0
+        agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_sell] += sell_quantity
+        self.liquidity[tkn_buy] -= buy_quantity
 
+    
+        return self, agent
+    
+    def add_liquidity(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_add: str
+    ):
+        if self.unique_id not in agent.holdings:
+            agent.holdings[self.unique_id] = 0
+    
+        delta_r = {}
+        for tkn in self.asset_list:
+            delta_r[tkn] = quantity * self.liquidity[tkn] / self.liquidity[tkn_add]
+    
+            if agent.holdings[tkn] - delta_r[tkn] < 0:
+                # fail
+                return self.fail_transaction(f'Agent has insufficient funds ({tkn}).')
+    
+        for tkn in self.asset_list:
+            agent.holdings[tkn] -= delta_r[tkn]
+            self.liquidity[tkn] += delta_r[tkn]
+    
+        new_shares = (self.liquidity[tkn_add] / (self.liquidity[tkn_add] - quantity) - 1) * self.shares
+        self.shares += new_shares
+    
+        agent.holdings[self.unique_id] += new_shares
+        if agent.holdings[self.unique_id] > 0:
+            agent.share_prices[self.unique_id] = (
+                self.liquidity[self.asset_list[1]] / self.liquidity[self.asset_list[0]]
+            )
+        return self, agent
+
+    def remove_liquidity(
+            self,
+            agent: Agent,
+            quantity: float,
+            tkn_remove: str = ''
+    ):
+
+        if quantity < 0:
+            return self.fail_transaction('Cannot remove negative liquidity.')
+        if quantity > agent.holdings[self.unique_id]:
+            return self.fail_transaction('Tried to remove more shares than agent owns.')
+        if tkn_remove not in self.asset_list:
+            # withdraw some of each
+            tkns = self.asset_list
+            withdraw_fraction = quantity / self.shares
+            for tkn in tkns:
+                withdraw_quantity = self.liquidity[tkn] * withdraw_fraction
+                self.liquidity[tkn] -= withdraw_quantity
+                agent.holdings[tkn] += withdraw_quantity
+            agent.holdings[tkn_remove] -= quantity
+        else:
+            withdraw_quantity = abs(quantity) / self.shares * self.liquidity[tkn_remove]
+            self.add_liquidity(
+                agent, -withdraw_quantity, tkn_remove
+            )
         return self
 
 
-def simulate_swap(
-        old_state: XykState,
-        old_agent: Agent,
-        tkn_buy: str,
-        tkn_sell: str,
-        buy_quantity: float = 0,
-        sell_quantity: float = 0
+def simulate_add_liquidity(
+    old_state: ConstantProductPoolState,
+    old_agent: Agent,
+    quantity: float,
+    tkn_add: str
 ):
     new_state = old_state.copy()
     new_agent = old_agent.copy()
-    return new_state.swap(new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity), new_agent
+
+    new_state.add_liquidity(
+        agent=new_agent,
+        quantity=quantity,
+        tkn_add=tkn_add
+    )
+    return new_state, new_agent
+
+
+def simulate_remove_liquidity(
+    old_state: ConstantProductPoolState,
+    old_agent: Agent,
+    quantity: float,
+    tkn_remove: str
+):
+    new_state = old_state.copy()
+    new_agent = old_agent.copy()
+
+    new_state.remove_liquidity(
+        agent=new_agent,
+        quantity=quantity,
+        tkn_remove=tkn_remove
+    )
+    return new_state, new_agent
+
+
+def simulate_swap(
+        old_state: ConstantProductPoolState,
+        old_agent: Agent,
+        tkn_sell: str,
+        tkn_buy: str,
+        buy_quantity: float = 0,
+        sell_quantity: float = 0
+
+) -> tuple[ConstantProductPoolState, Agent]:
+    new_agent = old_agent.copy()
+    new_state = old_state.copy()
+    new_state.swap(
+        new_agent, tkn_sell, tkn_buy, buy_quantity, sell_quantity
+    )
+    return new_state, new_agent
+

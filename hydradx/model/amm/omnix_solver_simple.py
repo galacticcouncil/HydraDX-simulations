@@ -11,7 +11,7 @@ from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.amm.xyk_amm import XykState
+from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 
 
 class AmmIndexObject:
@@ -28,7 +28,7 @@ class AmmIndexObject:
         if isinstance(amm, StableSwapPoolState):
             for i in range(n_amm):
                 self.aux.append(offset + 2 * n_amm + i)
-        elif isinstance(amm, XykState):
+        elif isinstance(amm, ConstantProductPoolState):
             pass  # no auxiliary variables for XYK AMM
         else:  # TODO generalize auxiliary handling beyond stableswap
             raise ValueError("Only stableswap implemented for now")
@@ -414,7 +414,15 @@ class ICEProblem:
         # leftover must be higher than required fees
         # other assets
         fees = [self.omnipool.last_fee[tkn] + buffer_fee for tkn in self.omnipool.asset_list]
-        amm_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
+        amm_fees = []
+        for amm in self.amm_list:
+            if isinstance(amm, StableSwapPoolState):
+                amm_fees.append([amm.trade_fee + buffer_fee] * (len(amm.asset_list) + 1))
+            elif isinstance(amm, ConstantProductPoolState):
+                amm_fees.append([amm.trade_fee(amm.asset_list[0], 0)] * (len(amm.asset_list) + 1))
+            else:
+                raise ValueError("Only stableswap and XYK AMMs are supported")
+        # amm_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
         partial_intent_prices = self.get_partial_intent_prices()
         profit_y_coefs = np.zeros((self.N, self.n))
         profit_x_coefs = np.zeros((self.N, self.n))
@@ -774,7 +782,7 @@ def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
     return A3_trimmed, b3
 
 
-def _get_xyk_bounds(amm: XykState, amm_i: AmmIndexObject, approx, k, scaling: dict):
+def _get_xyk_bounds(amm: ConstantProductPoolState, amm_i: AmmIndexObject, approx, k, scaling: dict):
     # TODO implement linear, quadratic approximations
     # TODO allow xyk add/remove liquidity
     A5j = np.zeros((2, k))
@@ -910,7 +918,7 @@ def _get_amm_bounds(p, indices_to_keep=None):
         approx = p.get_amm_approx(j)
         if isinstance(amm, StableSwapPoolState):
             A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, k, p._scaling)
-        elif isinstance(amm, XykState):
+        elif isinstance(amm, ConstantProductPoolState):
             A5j, b5j, cones5j, cones_count5j = _get_xyk_bounds(amm, amm_i, approx, k, p._scaling)
         else:
             raise AssertionError("Unrecognized AMM type")
@@ -1278,7 +1286,7 @@ def _find_good_solution(
                     if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
                         force_amm_approx[s][j + 1] = "full"
                         approx_adjusted_ct += 1
-            elif isinstance(amm, XykState):
+            elif isinstance(amm, ConstantProductPoolState):
                 if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
                     force_amm_approx[s][0] = "full"
                     approx_adjusted_ct += 1
@@ -1357,7 +1365,7 @@ def _find_good_solution(
                         if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
                             force_amm_approx[s][j + 1] = "full"
                             approx_adjusted_ct += 1
-                elif isinstance(amm, XykState):
+                elif isinstance(amm, ConstantProductPoolState):
                     if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
                         force_amm_approx[s][0] = "full"
                         approx_adjusted_ct += 1
@@ -1516,7 +1524,7 @@ def _solve_inclusion_problem(
         B = B_list[i]
         C = C_list[i]
         n = len(amm.asset_list) + 1
-        if isinstance(amm, XykState):  # temporarily force share deltas to 0
+        if isinstance(amm, ConstantProductPoolState):  # temporarily force share deltas to 0
             max_L = np.array([0] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
             max_X = [0] + [inf] * (n-1)
         else:
@@ -1616,7 +1624,7 @@ def _solve_inclusion_problem(
                     S_row_upper = np.array([grad_dot_x + g_neg])
                     S = np.vstack([S, S_row])
                     S_upper = np.concatenate([S_upper, S_row_upper])
-            elif isinstance(amm, XykState):
+            elif isinstance(amm, ConstantProductPoolState):
                 S_row = np.zeros((1, k))
                 S_row_upper = np.zeros(1)
                 # lrna_c = p.get_omnipool_lrna_coefs()

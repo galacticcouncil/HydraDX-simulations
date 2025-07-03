@@ -1,135 +1,329 @@
-import copy
-import math
-from datetime import timedelta
-
 import pytest
-from hypothesis import given, strategies as st, assume, settings, reproduce_failure
-import mpmath
-from mpmath import mp, mpf
-import os
-os.chdir('../..')
-
+from hypothesis import given, strategies as st, assume
+from hydradx.model.amm import xyk_amm as bamm
 from hydradx.model.amm.agents import Agent
-from hydradx.model.amm.xyk_amm import XykState
+from mpmath import mp, mpf
+mp.dps = 50
 
-settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
-settings.load_profile("long")
-
-def test_xyk_init():
-    tokens = {'A': 1000, 'B': 2000}
-    xyk = XykState(tokens=tokens, trade_fee=0.01)
-
-    assert xyk.unique_id == 'xyk'
-    assert xyk.asset_list == ['A', 'B']
-    assert xyk.liquidity == {'A': 1000, 'B': 2000}
-    assert xyk.trade_fee == 0.01
-    assert xyk.shares == math.sqrt(1000 * 2000)
-
-    xyk = XykState(tokens=tokens, unique_id='custom_id', shares=5000)
-    assert xyk.unique_id == 'custom_id'
-    assert xyk.shares == 5000
+asset_price_strategy = st.floats(min_value=0.01, max_value=1000)
+asset_quantity_strategy = st.floats(min_value=1000, max_value=100000)
+fee_strategy = st.floats(min_value=0, max_value=0.1, allow_nan=False)
+trade_quantity_strategy = st.floats(min_value=-1000, max_value=1000)
 
 
-def test_xyk_init_invalid_tokens():
-    with pytest.raises(ValueError, match='Need exactly two tokens for XYK AMM'):
-        XykState(tokens={'A': 1000, 'B': 2000, 'C': 3000})
+@st.composite
+def assets_config(draw) -> dict:
+    token_count = 2
+    return_dict = {
+        f"{'abcdefghijklmnopqrstuvwxyz'[i % 26]}{i // 26}": mpf(draw(asset_quantity_strategy))
+        for i in range(token_count)
+    }
+    return return_dict
 
-    with pytest.raises(ValueError, match='Need exactly two tokens for XYK AMM'):
-        XykState(tokens={})  # No tokens provided
+
+@st.composite
+def constant_product_pool_config(
+        draw,
+        asset_dict=None,
+        trade_fee=None
+) -> bamm.ConstantProductPoolState:
+    asset_dict = asset_dict or draw(assets_config())
+    return bamm.ConstantProductPoolState(
+        tokens=asset_dict,
+        trade_fee=draw(fee_strategy) if trade_fee is None else trade_fee,
+        unique_id="/".join(sorted(asset_dict.keys()))
+    )
+
+
+@given(constant_product_pool_config())
+def test_basilisk_construction(initial_state):
+    assert isinstance(initial_state, bamm.ConstantProductPoolState)
+
+
+@given(constant_product_pool_config(trade_fee=0.1), trade_quantity_strategy)
+def test_swap(initial_state: bamm.ConstantProductPoolState, delta_r):
+    old_state = initial_state
+    old_agent = Agent(
+        holdings={token: 1000000 for token in initial_state.asset_list}
+    )
+    tkn_sell = initial_state.asset_list[0]
+    tkn_buy = initial_state.asset_list[1]
+    swap_state, swap_agent = bamm.simulate_swap(
+        old_state=old_state,
+        old_agent=old_agent,
+        sell_quantity=delta_r,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy
+    )
+    if (old_agent.holdings[tkn_buy] + old_state.liquidity[tkn_buy]
+            != pytest.approx(swap_agent.holdings[tkn_buy] + swap_state.liquidity[tkn_buy])
+            or old_state.liquidity[tkn_sell] + old_agent.holdings[tkn_sell]
+            != pytest.approx(swap_state.liquidity[tkn_sell] + swap_agent.holdings[tkn_sell])):
+        raise AssertionError('Asset quantity is not constant after swap!')
+
+    # swap back, specifying buy_quantity this time
+    delta_r = swap_state.liquidity[tkn_sell] - old_state.liquidity[tkn_sell]
+    revert_state, revert_agent = bamm.simulate_swap(
+        old_state=swap_state,
+        old_agent=swap_agent,
+        buy_quantity=delta_r,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy
+    )
+    # should still total the same
+    if ((old_agent.holdings[tkn_buy] + old_agent.holdings[tkn_sell]
+         + old_state.liquidity[tkn_buy] + old_state.liquidity[tkn_sell])
+            != pytest.approx(revert_agent.holdings[tkn_buy] + revert_agent.holdings[tkn_sell]
+                             + revert_state.liquidity[tkn_buy] + revert_state.liquidity[tkn_sell])):
+        raise AssertionError('Asset quantity is not constant after swap!')
+
+
+@given(constant_product_pool_config(trade_fee=0), trade_quantity_strategy)
+def test_swap_pool_invariant(initial_state: bamm.ConstantProductPoolState, delta_r: float):
+    old_state = initial_state
+    old_agent = Agent(
+        holdings={token: 1000 for token in initial_state.asset_list}
+    )
+
+    tkn_sell = initial_state.asset_list[0]
+    tkn_buy = initial_state.asset_list[1]
+    swap_state, swap_agent = bamm.simulate_swap(
+        old_state=old_state,
+        old_agent=old_agent,
+        sell_quantity=delta_r,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy
+    )
+    if ((old_state.liquidity[tkn_buy] * old_state.liquidity[tkn_sell])
+            != pytest.approx(swap_state.liquidity[tkn_buy] * swap_state.liquidity[tkn_sell])):
+        raise AssertionError('Pool invariant has varied.')
+
+    # swap back, specifying buy_quantity this time
+    delta_r = swap_state.liquidity[tkn_sell] - old_state.liquidity[tkn_sell]
+    revert_state, revert_agent = bamm.simulate_swap(
+        old_state=swap_state,
+        old_agent=swap_agent,
+        buy_quantity=delta_r,
+        tkn_sell=tkn_buy,
+        tkn_buy=tkn_sell
+    )
+    # invariant should remain
+    if old_state.invariant != pytest.approx(revert_state.invariant):
+        raise AssertionError('Pool invariant has varied.')
+
+    if ((old_state.liquidity[tkn_buy] != pytest.approx(revert_state.liquidity[tkn_buy]))
+            or old_state.liquidity[tkn_sell] != pytest.approx(revert_state.liquidity[tkn_sell])):
+        raise AssertionError('Reverse sell with no fees yielded unexpected result')
+
+
+@given(constant_product_pool_config(trade_fee=0), asset_quantity_strategy)
+def test_add_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_token: float):
+    old_state = initial_state
+    old_agent = Agent(
+        holdings={token: 1000000 for token in initial_state.asset_list}
+    )
+
+    tkn_add = initial_state.asset_list[0]
+    other_tkn = initial_state.asset_list[1]
+    new_state, new_agent = bamm.simulate_add_liquidity(
+        old_state, old_agent,
+        quantity=delta_token,
+        tkn_add=tkn_add
+    )
+    if (old_state.liquidity[tkn_add] / old_state.liquidity[other_tkn]
+            != pytest.approx(new_state.liquidity[tkn_add] / new_state.liquidity[other_tkn])):
+        raise AssertionError('Asset ratios not constant after liquidity add!')
+
+    if ((old_agent.holdings[tkn_add] + old_agent.holdings[other_tkn]
+         + old_state.liquidity[tkn_add] + old_state.liquidity[other_tkn])
+            != pytest.approx(new_agent.holdings[tkn_add] + new_agent.holdings[other_tkn]
+                             + new_state.liquidity[tkn_add] + new_state.liquidity[other_tkn])):
+        raise AssertionError('Asset quantity is not constant after liquidity add!')
+
+    # if that transaction was successful, see if we can reverse it using remove_liquidity
+    if not new_state.fail:
+        revert_state, revert_agent = bamm.simulate_remove_liquidity(
+            new_state, new_agent,
+            quantity=new_agent.holdings[new_state.unique_id],
+            tkn_remove=tkn_add
+        )
+        if (
+                revert_state.liquidity[tkn_add] != pytest.approx(old_state.liquidity[tkn_add])
+                or revert_state.liquidity[other_tkn] != pytest.approx(old_state.liquidity[other_tkn])
+                or revert_state.shares != pytest.approx(old_state.shares)
+                or revert_agent.holdings[tkn_add] != pytest.approx(revert_agent.holdings[tkn_add])
+                or revert_agent.holdings[other_tkn] != pytest.approx(revert_agent.holdings[other_tkn])
+                or revert_agent.holdings[old_state.unique_id] != pytest.approx(
+                    revert_agent.holdings[old_state.unique_id]
+                )
+        ):
+            raise AssertionError('Withdrawal failed to return to previous state.')
+
+
+@given(constant_product_pool_config(trade_fee=0), asset_quantity_strategy)
+def test_remove_liquidity(initial_state: bamm.ConstantProductPoolState, delta_token: float):
+    initial_agent = Agent(
+        holdings={token: 1000000 for token in initial_state.asset_list}
+    )
+    tkn_remove = initial_state.asset_list[0]
+    # gotta add liquidity before we can remove it
+    old_state, old_agent = bamm.simulate_add_liquidity(
+        initial_state, initial_agent,
+        quantity=delta_token,
+        tkn_add=tkn_remove
+    )
+    new_state, new_agent = bamm.simulate_remove_liquidity(
+        old_state, old_agent,
+        quantity=old_agent.holdings[old_state.unique_id],
+        tkn_remove=tkn_remove
+    )
+    other_tkn = initial_state.asset_list[1]
+    if (old_state.liquidity[tkn_remove] / old_state.liquidity[other_tkn]
+            != pytest.approx(new_state.liquidity[tkn_remove] / new_state.liquidity[other_tkn])):
+        raise AssertionError('Asset ratios not constant after liquidity remove!')
+
+    if ((old_agent.holdings[tkn_remove] + old_agent.holdings[other_tkn]
+         + old_state.liquidity[tkn_remove] + old_state.liquidity[other_tkn])
+            != pytest.approx(new_agent.holdings[tkn_remove] + new_agent.holdings[other_tkn]
+                             + new_state.liquidity[tkn_remove] + new_state.liquidity[other_tkn])):
+        raise AssertionError('Asset quantity is not constant after liquidity remove!')
+
+    if new_agent.holdings[tkn_remove] != pytest.approx(initial_agent.holdings[tkn_remove]):
+        raise AssertionError('Agent did not get back what it put in.')
+
+    cheat_state, cheat_agent = bamm.simulate_remove_liquidity(
+        old_state, old_agent,
+        quantity=delta_token + 1,
+        tkn_remove=tkn_remove
+    )
+
+    if not cheat_state.fail:
+        raise AssertionError('Agent was able to remove more shares than it owned!')
 
 
 @given(
-    st.floats(min_value=100, max_value=100000),
-    st.floats(min_value=100, max_value=100000)
+    initial_state = constant_product_pool_config(trade_fee=0),
+    slip_factor = st.floats(min_value=0.01, max_value=0.1, allow_nan=False)
 )
-def test_calculate_k(liq_A, liq_B):
-    tokens = {'A': liq_A, 'B': liq_B}
-    xyk = XykState(tokens=tokens)
-    assert xyk.calculate_k() == math.sqrt(liq_A * liq_B)
+def test_slip_fees(initial_state, slip_factor):
+    minimum_fee = 0.0001
+    initial_state.trade_fee = initial_state.custom_slip_fee(
+        slip_factor=slip_factor, minimum=minimum_fee)
+    initial_agent = Agent(
+        holdings={token: 1000000 for token in initial_state.asset_list}
+    )
+    tkn_buy = initial_state.asset_list[1]
+    tkn_sell = initial_state.asset_list[0]
+    # buy half of the available asset with slip based fees
+    buy_quantity = initial_state.liquidity[tkn_buy] / 2
+    buy_state, buy_agent = bamm.simulate_swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        buy_quantity=buy_quantity
+    )
+
+    # now buy the same quantity, but do it in two smaller trades
+    split_buy_state, split_buy_agent = initial_state.copy(), initial_agent.copy()
+    next_state, next_agent = {}, {}
+    for i in range(2):
+        next_state[i], next_agent[i] = bamm.simulate_swap(
+            old_state=split_buy_state,
+            old_agent=split_buy_agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            buy_quantity=buy_quantity / 2
+        )
+        split_buy_state, split_buy_agent = next_state[i], next_agent[i]
+
+    if buy_state.fail or split_buy_state.fail:
+        return
+
+    if (buy_state.liquidity[tkn_buy] != pytest.approx(split_buy_state.liquidity[tkn_buy]) or
+            pytest.approx(split_buy_agent.holdings[tkn_buy]) != buy_agent.holdings[tkn_buy]):
+        raise AssertionError('Buy quantities not equal.')
+
+    if (buy_state.liquidity[tkn_sell] <= split_buy_state.liquidity[tkn_sell] or
+            buy_agent.holdings[tkn_sell] >= split_buy_agent.holdings[tkn_sell]):
+        # show that when using slip-based fees,
+        # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
+        raise AssertionError('Agent did not save money by breaking the trade into two parts.')
+
+    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(buy_agent.holdings[tkn_sell] + buy_agent.holdings[tkn_buy]
+                             + buy_state.liquidity[tkn_sell] + buy_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (one-part)')
+
+    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(split_buy_agent.holdings[tkn_sell] + split_buy_agent.holdings[tkn_buy]
+                             + split_buy_state.liquidity[tkn_sell] + split_buy_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after trade (two-part)')
+
+    sell_quantity = buy_state.liquidity[tkn_sell] - initial_state.liquidity[tkn_sell]
+    sell_state, sell_agent = bamm.simulate_swap(
+        old_state=initial_state,
+        old_agent=initial_agent,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=sell_quantity
+    )
+
+    sell_fee = initial_state.trade_fee(tkn=tkn_sell, delta_tkn=sell_quantity)
+    if sell_state.liquidity[tkn_sell] * (sell_fee - minimum_fee) != pytest.approx(abs(slip_factor * sell_quantity)):
+        raise AssertionError('Math mismatch, please re-check.')
+
+    if ((initial_agent.holdings[tkn_sell] + initial_agent.holdings[tkn_buy]
+         + initial_state.liquidity[tkn_sell] + initial_state.liquidity[tkn_buy])
+            != pytest.approx(sell_agent.holdings[tkn_sell] + sell_agent.holdings[tkn_buy]
+                             + sell_state.liquidity[tkn_sell] + sell_state.liquidity[tkn_buy])):
+        raise AssertionError('Asset quantity is not constant after sell trade')
+
+    # now sell the same quantity, but do it in two smaller trades
+    split_sell_state, split_sell_agent = initial_state, initial_agent
+    next_state, next_agent = {}, {}
+    for i in range(2):
+        next_state[i], next_agent[i] = bamm.simulate_swap(
+            old_state=split_sell_state,
+            old_agent=split_sell_agent,
+            tkn_sell=tkn_sell,
+            tkn_buy=tkn_buy,
+            sell_quantity=sell_quantity / 2
+        )
+        split_sell_state, split_sell_agent = next_state[i], next_agent[i]
+
+    if sell_state.fail or split_sell_state.fail:
+        raise AssertionError('sell swap failed!')
+
+    if (sell_state.liquidity[tkn_buy] <= split_sell_state.liquidity[tkn_buy] or
+            sell_agent.holdings[tkn_buy] >= split_sell_agent.holdings[tkn_buy]):
+        # show that when using slip-based fees,
+        # a two-part trade should always be cheaper than a one-part trade for the same total quantity.
+        # this should apply regardless of how the trade is specified.
+        raise AssertionError('Agent did not save money by breaking the trade into two parts.')
+
+    # this is commented out because it doesn't work. the spec would have to be adjusted
+    # in some yet-to-be-determined way. not currently a priority.
+    # if sell_state.liquidity[tkn_buy] != pytest.approx(buy_state.liquidity[tkn_buy]):
+    #     raise AssertionError('Buy transaction was not reversed accurately.')
 
 
-@given(
-    st.floats(min_value=100, max_value=100000),
-    st.floats(min_value=100, max_value=100000),
-    st.floats(min_value=0, max_value=0.1, exclude_min=True)
-)
-def test_spot(liq_A, liq_B, fee):
-    tokens = {'A': liq_A, 'B': liq_B}
-    xyk = XykState(tokens=tokens)
-
-    price_A_to_B = xyk.sell_spot('A', 'B')
-    assert price_A_to_B == pytest.approx(liq_B / liq_A, rel=1e-12)
-    price_B_to_A = xyk.sell_spot('B', 'A')
-    assert price_B_to_A == pytest.approx(liq_A / liq_B, rel=1e-12)
-    price_A_to_B_with_fee = xyk.sell_spot('A', 'B', fee)
-    assert price_A_to_B_with_fee == pytest.approx(liq_B / liq_A * (1 - fee), rel=1e-12)
-    price_B_to_A_with_fee = xyk.sell_spot('B', 'A', fee)
-    assert price_B_to_A_with_fee == pytest.approx(liq_A / liq_B * (1 - fee), rel=1e-12)
-    price_A_to_B_buy = xyk.buy_spot('B', 'A')
-    assert price_A_to_B_buy == pytest.approx(1 / price_A_to_B, rel=1e-12)
-    price_B_to_A_buy = xyk.buy_spot('A', 'B')
-    assert price_B_to_A_buy == pytest.approx(1 / price_B_to_A, rel=1e-12)
-    price_A_to_B_buy_with_fee = xyk.buy_spot('B', 'A', fee)
-    assert price_A_to_B_buy_with_fee == pytest.approx(1 / price_A_to_B_with_fee, rel=1e-12)
-    price_B_to_A_buy_with_fee = xyk.buy_spot('A', 'B', fee)
-    assert price_B_to_A_buy_with_fee == pytest.approx(1 / price_B_to_A_with_fee, rel=1e-12)
+def test_fee_difference():
+    initial_state = bamm.ConstantProductPoolState(
+        tokens={'R1': 1000, 'R2': 1000}
+    )
+    initial_state.trade_fee = initial_state.custom_slip_fee(slip_factor=1)
+    trader = Agent(
+        holdings={'R1': 1000, 'R2': 1000}
+    )
+    pass
 
 
-@given(
-    st.floats(min_value=100, max_value=100000),
-    st.floats(min_value=100, max_value=100000),
-    st.floats(min_value=0, max_value=0.1, exclude_min=True),
-    st.floats(min_value=0.001, max_value=0.5)
-)
-def test_swap(liq_A, liq_B, fee, swap_pct):
-    from hydradx.model.amm.xyk_amm import simulate_swap
-    # Test sells
-    tokens = {'A': liq_A, 'B': liq_B}
-    swap_quantity = tokens['A'] * swap_pct
-    agent = Agent(holdings={'A': swap_quantity})
-    for f in [0.0, fee]:
-        xyk = XykState(tokens=tokens, trade_fee=f)
-        k_init = xyk.calculate_k()
-        for buy_tkn, sell_tkn in [('B', 'A'), ('A', 'B')]:
-            new_state, new_agent = simulate_swap(xyk, agent, sell_tkn, buy_tkn, sell_quantity=swap_quantity)
-            if f == 0.0:
-                k_final = new_state.calculate_k()
-            else:
-                fee_taken = (xyk.liquidity[buy_tkn] - new_state.liquidity[buy_tkn]) * f/(1 - f)
-                k_final = math.sqrt(new_state.liquidity[sell_tkn] * (new_state.liquidity[buy_tkn] - fee_taken))
-            if k_init != pytest.approx(k_final, rel=1e-12):
-                raise AssertionError("K value changed after swap")
-            init_A_total = xyk.liquidity['A'] + agent.get_holdings('A')
-            final_A_total = new_state.liquidity['A'] + new_agent.get_holdings('A')
-            init_B_total = xyk.liquidity['B'] + agent.get_holdings('B')
-            final_B_total = new_state.liquidity['B'] + new_agent.get_holdings('B')
-            if init_A_total != pytest.approx(final_A_total, rel=1e-12):
-                raise AssertionError("A total quantity changed after swap")
-            if init_B_total != pytest.approx(final_B_total, rel=1e-12):
-                raise AssertionError("B total quantity changed after swap")
-
-    # Test buys, feeless
-    swap_A_quantity = tokens['A'] * swap_pct
-    swap_B_quantity = tokens['B'] * swap_pct
-    agent = Agent(enforce_holdings=False)
-    for f in [0.0, fee]:
-        xyk = XykState(tokens=tokens, trade_fee=f)
-        k_init = xyk.calculate_k()
-        for buy_tkn, sell_tkn in [('B', 'A'), ('A', 'B')]:
-            buy_quantity = swap_A_quantity if buy_tkn == 'A' else swap_B_quantity
-            new_state, new_agent = simulate_swap(xyk, agent, sell_tkn, buy_tkn, buy_quantity=buy_quantity)
-            if f == 0.0:
-                k_final = new_state.calculate_k()
-            else:
-                fee_taken = buy_quantity * f/(1 - f)
-                k_final = math.sqrt(new_state.liquidity[sell_tkn] * (new_state.liquidity[buy_tkn] - fee_taken))
-            if k_init != pytest.approx(k_final, rel=1e-12):
-                raise AssertionError("K value changed after swap")
-            init_A_total = xyk.liquidity['A'] + agent.get_holdings('A')
-            final_A_total = new_state.liquidity['A'] + new_agent.get_holdings('A')
-            init_B_total = xyk.liquidity['B'] + agent.get_holdings('B')
-            final_B_total = new_state.liquidity['B'] + new_agent.get_holdings('B')
-            if init_A_total != pytest.approx(final_A_total, rel=1e-12):
-                raise AssertionError("A total quantity changed after swap")
-            if init_B_total != pytest.approx(final_B_total, rel=1e-12):
-                raise AssertionError("B total quantity changed after swap")
+if __name__ == '__main__':
+    test_basilisk_construction()
+    test_swap()
+    test_swap_pool_invariant()
+    test_add_remove_liquidity()
+    test_remove_liquidity()

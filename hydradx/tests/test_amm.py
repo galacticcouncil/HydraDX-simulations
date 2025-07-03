@@ -3,8 +3,8 @@ import copy
 import pytest
 from hypothesis import given, strategies as st, settings, reproduce_failure
 from hydradx.tests.test_omnipool_amm import omnipool_config
-from hydradx.tests.test_basilisk_amm import constant_product_pool_config
-from hydradx.model.amm.basilisk_amm import ConstantProductPoolState
+from hydradx.tests.test_xyk_amm import constant_product_pool_config
+from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 from hydradx.model.amm.global_state import GlobalState, fluctuate_prices
 from hydradx.model.amm.agents import Agent
 
