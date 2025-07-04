@@ -9,34 +9,11 @@ from scipy import sparse
 
 from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints
+from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints, AmmConstraints
+from hydradx.model.solver.amm_constraints import AmmIndexObject
 from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
-
-
-class AmmIndexObject:
-    def __init__(self, amm, offset: int):
-        n_amm = len(amm.asset_list) + 1
-        self.shares_net = offset  # X_0
-        self.shares_out = offset + n_amm  # L_0
-        self.asset_net = []
-        self.asset_out = []
-        for i in range(1, n_amm):
-            self.asset_net.append(offset + i)  # X_i
-            self.asset_out.append(offset + n_amm + i)  # L_i
-        self.aux = []
-        if isinstance(amm, StableSwapPoolState):
-            for i in range(n_amm):
-                self.aux.append(offset + 2 * n_amm + i)
-        elif isinstance(amm, ConstantProductPoolState):
-            pass  # no auxiliary variables for XYK AMM
-        else:  # TODO generalize auxiliary handling beyond stableswap
-            raise ValueError("Only stableswap implemented for now")
-        self.num_vars = 2 * n_amm + len(self.aux)  # total number of variables for this AMM
-        self.net_is = slice(self.shares_net, self.shares_out)  # returns X_0, ..., X_n indices
-        self.out_is = slice(self.shares_out, self.shares_out + n_amm)  # returns L_0, ..., L_n indices
-        self.aux_is = slice(self.shares_out + n_amm, self.shares_out + n_amm + len(self.aux))  # returns aux indices
 
 
 class ICEProblem:
@@ -666,67 +643,71 @@ class ICEProblem:
         return new_intents
 
 
-def _get_amm_limits_A(amm: Exchange, amm_i: AmmIndexObject, amm_directions: list, last_amm_deltas: list, k: int,
+def _get_amm_limits_A(amm_constraints: AmmConstraints, amm_i: AmmIndexObject, amm_directions: list, last_amm_deltas: list, k: int,
                       trading_tkns: list[str]):
-    """Uses AMM structures and directional information to bound AMM variables"""
-    if last_amm_deltas is None:
-        last_amm_deltas = []
-    if amm_i.shares_net + amm_i.num_vars > k:
-        raise ValueError("AMM index shares_net + num_vars exceeds the number of variables k.")
-    cones_limits = []
-    cones_sizes = []
+    # """Uses AMM structures and directional information to bound AMM variables"""
+    # if last_amm_deltas is None:
+    #     last_amm_deltas = []
+    # if amm_i.shares_net + amm_i.num_vars > k:
+    #     raise ValueError("AMM index shares_net + num_vars exceeds the number of variables k.")
+    # cones_limits = []
+    # cones_sizes = []
+    #
+    # if len(amm_directions) > 0 and len(last_amm_deltas) > 0:
+    #     delta_pct = last_amm_deltas[0] / amm.shares  # possibly round to zero
+    # else:
+    #     delta_pct = 1  # to avoid causing any rounding
+    # if amm.unique_id in trading_tkns and abs(delta_pct) > 1e-11:
+    #     A_limits = np.zeros((2, k))
+    #     A_limits[0, amm_i.shares_out] = -1  # L0 >= 0
+    #     A_limits[1, amm_i.shares_net] = -1  # X_0 + L_0 >= 0
+    #     A_limits[1, amm_i.shares_out] = -1  # X_0 + L_0 >= 0
+    #     cones_limits.append(cb.NonnegativeConeT(2))
+    #     cones_sizes.append(2)
+    #     if len(amm_directions) > 0:
+    #         if (dir := amm_directions[0]) in ["buy", "sell"]:
+    #             A_limits_dir = np.zeros((1, k))
+    #             A_limits_dir[0, amm_i.shares_net] = -1 if dir == "buy" else 1
+    #             A_limits = np.vstack([A_limits, A_limits_dir])
+    #             cones_limits.append(cb.NonnegativeConeT(1))
+    #             cones_sizes.append(1)
+    # else:
+    #     A_limits = np.zeros((2, k))  # TODO delete variables instead of forcing to zero
+    #     A_limits[0, amm_i.shares_net] = 1
+    #     A_limits[1, amm_i.shares_out] = 1
+    #     cones_limits.append(cb.ZeroConeT(2))
+    #     cones_sizes.append(2)
+    # for j, tkn in enumerate(amm.asset_list):
+    #     if len(amm_directions) > 0 and len(last_amm_deltas) > 0:
+    #         delta_pct = last_amm_deltas[j+1] / amm.liquidity[tkn]  # possibly round to zero
+    #     else:
+    #         delta_pct = 1  # to avoid causing any rounding
+    #     if tkn in trading_tkns and abs(delta_pct) > 1e-11:
+    #         A_limits_j = np.zeros((2, k))
+    #         A_limits_j[0, amm_i.asset_out[j]] = -1  # Lj >= 0
+    #         A_limits_j[1, amm_i.asset_net[j]] = -1  # Xj + Lj >= 0
+    #         A_limits_j[1, amm_i.asset_out[j]] = -1
+    #         cones_limits.append(cb.NonnegativeConeT(2))
+    #         cones_sizes.append(2)
+    #         if len(amm_directions) > 0:
+    #             if (dir := amm_directions[j+1]) in ["buy", "sell"]:
+    #                 A_limits_j_dir = np.zeros((1, k))
+    #                 A_limits_j_dir[0, amm_i.asset_net[j]] = -1 if dir == "buy" else 1
+    #                 A_limits_j = np.vstack([A_limits_j, A_limits_j_dir])
+    #                 cones_limits.append(cb.NonnegativeConeT(1))
+    #                 cones_sizes.append(1)
+    #     else:
+    #         A_limits_j = np.zeros((2, k))  # TODO delete variables instead of forcing to zero
+    #         A_limits_j[0, amm_i.asset_net[j]] = 1
+    #         A_limits_j[1, amm_i.asset_out[j]] = 1
+    #         cones_limits.append(cb.ZeroConeT(2))
+    #         cones_sizes.append(2)
+    #     A_limits = np.vstack([A_limits, A_limits_j])
+    # b_limits = np.zeros(A_limits.shape[0])
 
-    if len(amm_directions) > 0 and len(last_amm_deltas) > 0:
-        delta_pct = last_amm_deltas[0] / amm.shares  # possibly round to zero
-    else:
-        delta_pct = 1  # to avoid causing any rounding
-    if amm.unique_id in trading_tkns and abs(delta_pct) > 1e-11:
-        A_limits = np.zeros((2, k))
-        A_limits[0, amm_i.shares_out] = -1  # L0 >= 0
-        A_limits[1, amm_i.shares_net] = -1  # X_0 + L_0 >= 0
-        A_limits[1, amm_i.shares_out] = -1  # X_0 + L_0 >= 0
-        cones_limits.append(cb.NonnegativeConeT(2))
-        cones_sizes.append(2)
-        if len(amm_directions) > 0:
-            if (dir := amm_directions[0]) in ["buy", "sell"]:
-                A_limits_dir = np.zeros((1, k))
-                A_limits_dir[0, amm_i.shares_net] = -1 if dir == "buy" else 1
-                A_limits = np.vstack([A_limits, A_limits_dir])
-                cones_limits.append(cb.NonnegativeConeT(1))
-                cones_sizes.append(1)
-    else:
-        A_limits = np.zeros((2, k))  # TODO delete variables instead of forcing to zero
-        A_limits[0, amm_i.shares_net] = 1
-        A_limits[1, amm_i.shares_out] = 1
-        cones_limits.append(cb.ZeroConeT(2))
-        cones_sizes.append(2)
-    for j, tkn in enumerate(amm.asset_list):
-        if len(amm_directions) > 0 and len(last_amm_deltas) > 0:
-            delta_pct = last_amm_deltas[j+1] / amm.liquidity[tkn]  # possibly round to zero
-        else:
-            delta_pct = 1  # to avoid causing any rounding
-        if tkn in trading_tkns and abs(delta_pct) > 1e-11:
-            A_limits_j = np.zeros((2, k))
-            A_limits_j[0, amm_i.asset_out[j]] = -1  # Lj >= 0
-            A_limits_j[1, amm_i.asset_net[j]] = -1  # Xj + Lj >= 0
-            A_limits_j[1, amm_i.asset_out[j]] = -1
-            cones_limits.append(cb.NonnegativeConeT(2))
-            cones_sizes.append(2)
-            if len(amm_directions) > 0:
-                if (dir := amm_directions[j+1]) in ["buy", "sell"]:
-                    A_limits_j_dir = np.zeros((1, k))
-                    A_limits_j_dir[0, amm_i.asset_net[j]] = -1 if dir == "buy" else 1
-                    A_limits_j = np.vstack([A_limits_j, A_limits_j_dir])
-                    cones_limits.append(cb.NonnegativeConeT(1))
-                    cones_sizes.append(1)
-        else:
-            A_limits_j = np.zeros((2, k))  # TODO delete variables instead of forcing to zero
-            A_limits_j[0, amm_i.asset_net[j]] = 1
-            A_limits_j[1, amm_i.asset_out[j]] = 1
-            cones_limits.append(cb.ZeroConeT(2))
-            cones_sizes.append(2)
-        A_limits = np.vstack([A_limits, A_limits_j])
-    b_limits = np.zeros(A_limits.shape[0])
+    A_limits_amm, b_limits, cones_limits, cones_sizes = amm_constraints.get_amm_limits_A(amm_directions, last_amm_deltas, trading_tkns)
+    A_limits = np.zeros((A_limits_amm.shape[0], k))
+    A_limits[:, amm_i.shares_net:(amm_i.shares_net + A_limits_amm.shape[1])] = A_limits_amm
     return A_limits, b_limits, cones_limits, cones_sizes
 
 
@@ -1129,13 +1110,20 @@ def _find_solution_unrounded(
     cone_sizes_amms = []
     for i, amm in enumerate(p.amm_list):
         amm_i = p.amm_i[i]
+        amm_constraints = p.amm_constraints[i]
         directions = [] if len(amm_directions) <= i else amm_directions[i]
         last_amm_deltas = [] if p._last_amm_deltas is None else p._last_amm_deltas[i]
-        x = _get_amm_limits_A(amm, amm_i, directions, last_amm_deltas, k, p.trading_tkns)
-        A_limits_amms = np.vstack([A_limits_amms, x[0]])
-        b_limits_amms = np.concatenate([b_limits_amms, x[1]])
-        cones_limits_amms.extend(x[2])
-        cone_sizes_amms.extend(x[3])
+        # x = _get_amm_limits_A(amm_constraints, amm, amm_i, directions, last_amm_deltas, k, p.trading_tkns)
+
+        x = amm_constraints.get_amm_limits_A(directions, last_amm_deltas, p.trading_tkns)
+        A_limits_amm_i, b_limits_amm_i, cones_limits_amm_i, cones_sizes_amm_i = x
+        A_limits_i = np.zeros((A_limits_amm_i.shape[0], k))
+        A_limits_i[:, amm_i.shares_net:(amm_i.shares_net + A_limits_amm_i.shape[1])] = A_limits_amm_i
+
+        A_limits_amms = np.vstack([A_limits_amms, A_limits_i])
+        b_limits_amms = np.concatenate([b_limits_amms, b_limits_amm_i])
+        cones_limits_amms.extend(cones_limits_amm_i)
+        cone_sizes_amms.extend(cones_sizes_amm_i)
 
     A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A5_trimmed, A6_trimmed, A_limits_amms])
     A_sparse = sparse.csc_matrix(A)
