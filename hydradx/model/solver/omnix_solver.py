@@ -680,46 +680,10 @@ def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
     return A3_trimmed, b3
 
 
-def _get_xyk_bounds(amm: ConstantProductPoolState, amm_i: AmmIndexObject, approx, k, scaling: dict):
-    # TODO implement linear, quadratic approximations
-    # TODO allow xyk add/remove liquidity
-    A5j = np.zeros((2, k))
-    A5j[0, amm_i.shares_net] = 1  # force share deltas to 0 for now
-    A5j[1, amm_i.shares_out] = 1
-    b5j = np.zeros(2)
-    cones5j = [cb.ZeroConeT(2)]
-    cones_count5j = [2]
-    coef = [scaling[amm.unique_id] / amm.shares] + [scaling[tkn] / amm.liquidity[tkn] for tkn in amm.asset_list]
-
-    # if approx == "linear":  # linearize the AMM constraint
-    #     c1 = 1 / (1 + epsilon_tkn[tkn])
-    #     c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
-    #     A5j2 = np.zeros((2, k))
-    #     b5j2 = np.zeros(2)
-    #     A5j2[0, amm_i.asset_net[0]] = -B[1]
-    #     A5j2[0, amm_i.asset_net[1]] = -B[2] * c1
-    #     A5j2[1, amm_i.asset_net[0]] = -B[1]
-    #     A5j2[1, amm_i.asset_net[1]] = -B[2] * c2
-    #     cones5j.append(cb.NonnegativeConeT(2))
-    #     cones_count5j.append(2)
-    # else:  # full constraint
-    #     A5j2 = np.zeros((3, k))
-    #     b5j2 = np.ones(3)
-    #     A5j2[0, amm_i.asset_net[0]] = -B[1]
-    #     A5j2[1, amm_i.asset_net[1]] = -B[2]
-    #     cones5j.append(cb.PowerConeT(0.5))
-    #     cones_count5j.append(3)
-    A5j2 = np.zeros((3, k))
-    b5j2 = np.ones(3)
-    A5j2[0, amm_i.asset_net[0]] = -coef[1]
-    A5j2[1, amm_i.asset_net[1]] = -coef[2]
-    cones5j.append(cb.PowerConeT(0.5))
-    cones_count5j.append(3)
-
-    A5j = np.vstack([A5j, A5j2])
-    b5j = np.append(b5j, b5j2)
-
-    return A5j, b5j, cones5j, cones_count5j
+def _expand_submatrix(A, k: int, start: int):
+    A_limits_i = np.zeros((A.shape[0], k))
+    A_limits_i[:, start:(start + A.shape[1])] = A
+    return A_limits_i
 
 
 def _get_stableswap_bounds(amm, amm_i: AmmIndexObject, approx, k, scaling):
@@ -807,17 +771,15 @@ def _get_amm_bounds(p, indices_to_keep=None):
     b5 = np.array([])
     cones5 = []
     cones_count5 = []
-    C_list = p.get_C_list()
-    B_list = p.get_B_list()
     for j, amm in enumerate(p.amm_list):
         amm_i = p.amm_i[j]
-        C = C_list[j]
-        B = B_list[j]
+        amm_constraints = p.amm_constraints[j]
         approx = p.get_amm_approx(j)
         if isinstance(amm, StableSwapPoolState):
             A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, k, p._scaling)
         elif isinstance(amm, ConstantProductPoolState):
-            A5j, b5j, cones5j, cones_count5j = _get_xyk_bounds(amm, amm_i, approx, k, p._scaling)
+            A5j_small, b5j, cones5j, cones_count5j = amm_constraints.get_amm_bounds(approx, p._scaling)
+            A5j = _expand_submatrix(A5j_small, k, p.amm_i[j].shares_net)
         else:
             raise AssertionError("Unrecognized AMM type")
         A5 = np.vstack([A5, A5j])
@@ -1041,16 +1003,12 @@ def _find_solution_unrounded(
     cones_limits_amms = []
     cone_sizes_amms = []
     for i, amm in enumerate(p.amm_list):
-        amm_i = p.amm_i[i]
         amm_constraints = p.amm_constraints[i]
         directions = [] if len(amm_directions) <= i else amm_directions[i]
         last_amm_deltas = [] if p._last_amm_deltas is None else p._last_amm_deltas[i]
-        # x = _get_amm_limits_A(amm_constraints, amm, amm_i, directions, last_amm_deltas, k, p.trading_tkns)
-
         x = amm_constraints.get_amm_limits_A(directions, last_amm_deltas, p.trading_tkns)
         A_limits_amm_i, b_limits_amm_i, cones_limits_amm_i, cones_sizes_amm_i = x
-        A_limits_i = np.zeros((A_limits_amm_i.shape[0], k))
-        A_limits_i[:, amm_i.shares_net:(amm_i.shares_net + A_limits_amm_i.shape[1])] = A_limits_amm_i
+        A_limits_i = _expand_submatrix(A_limits_amm_i, k, p.amm_i[i].shares_net)
 
         A_limits_amms = np.vstack([A_limits_amms, A_limits_i])
         b_limits_amms = np.concatenate([b_limits_amms, b_limits_amm_i])

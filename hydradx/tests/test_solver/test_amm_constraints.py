@@ -191,3 +191,45 @@ def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
                 x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
                 s = b_limits - A_limits @ x_copy
                 assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+
+
+def test_get_xyk_bounds():
+    amm = ConstantProductPoolState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
+    constraints = XykConstraints(amm)
+    scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
+    amm_i = constraints.amm_i
+
+    A, b, cones, cones_sizes = constraints.get_amm_bounds("None", scaling)
+    x = np.zeros(constraints.k)
+    # selling 5 B for 1 A should work
+    b_sell_amt, a_buy_amt = 5, 1
+    x[amm_i.asset_net[0]] = -a_buy_amt
+    x[amm_i.asset_net[1]] = b_sell_amt
+    x[amm_i.asset_out[0]] = a_buy_amt
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check failed for valid XYK bounds")
+    # selling 1 A for 1 5 should not work
+    a_sell_amt, b_buy_amt = 1, 5
+    x[amm_i.asset_net[1]] = -b_buy_amt
+    x[amm_i.asset_net[0]] = a_sell_amt
+    x[amm_i.asset_out[1]] = b_buy_amt
+    s = b - A @ x
+    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should fail")
+    # selling 1 A for 1 B should work
+    a_sell_amt, b_buy_amt = 1, 1
+    x[amm_i.asset_net[1]] = -b_buy_amt
+    x[amm_i.asset_net[0]] = a_sell_amt
+    x[amm_i.asset_out[1]] = b_buy_amt
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should succeed")
+    # selling 1 B for 1 A should not work
+    b_sell_amt, a_buy_amt = 1, 1
+    x[amm_i.asset_net[0]] = -a_buy_amt
+    x[amm_i.asset_net[1]] = b_sell_amt
+    x[amm_i.asset_out[0]] = a_buy_amt
+    s = b - A @ x
+    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+        raise AssertionError("Cone feasibility check should fail")

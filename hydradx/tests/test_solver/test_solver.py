@@ -188,48 +188,6 @@ def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
     return True
 
 
-def test_get_xyk_bounds():
-    from hydradx.model.solver.omnix_solver import _get_xyk_bounds
-    amm = ConstantProductPoolState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
-    scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
-    offset = 7
-    amm_i = AmmIndexObject(amm, 7)
-    k = 40
-    A, b, cones, cones_sizes = _get_xyk_bounds(amm, amm_i, "None", k, scaling)
-    x = np.zeros(k)
-    # selling 5 B for 1 A should work
-    b_sell_amt, a_buy_amt = 5, 1
-    x[amm_i.asset_net[0]] = -a_buy_amt
-    x[amm_i.asset_net[1]] = b_sell_amt
-    x[amm_i.asset_out[0]] = a_buy_amt
-    s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check failed for valid XYK bounds")
-    # selling 1 A for 1 5 should not work
-    a_sell_amt, b_buy_amt = 1, 5
-    x[amm_i.asset_net[1]] = -b_buy_amt
-    x[amm_i.asset_net[0]] = a_sell_amt
-    x[amm_i.asset_out[1]] = b_buy_amt
-    s = b - A @ x
-    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should fail")
-    # selling 1 A for 1 B should work
-    a_sell_amt, b_buy_amt = 1, 1
-    x[amm_i.asset_net[1]] = -b_buy_amt
-    x[amm_i.asset_net[0]] = a_sell_amt
-    x[amm_i.asset_out[1]] = b_buy_amt
-    s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should succeed")
-    # selling 1 B for 1 A should not work
-    b_sell_amt, a_buy_amt = 1, 1
-    x[amm_i.asset_net[0]] = -a_buy_amt
-    x[amm_i.asset_net[1]] = b_sell_amt
-    x[amm_i.asset_out[0]] = a_buy_amt
-    s = b - A @ x
-    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should fail")
-
 def test_no_intent_arbitrage():
 
     # test where stablepool shares have different values

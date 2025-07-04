@@ -32,7 +32,7 @@ class AmmIndexObject:
 
 class AmmConstraints:
     def __init__(self, amm: Exchange):
-        self.asset_list = amm.asset_list
+        self.asset_list = [tkn for tkn in amm.asset_list]
         self.tkn_share = amm.unique_id
         self.amm_i = AmmIndexObject(amm, 0)
 
@@ -114,6 +114,10 @@ class AmmConstraints:
         a_coefs = np.zeros((len(global_asset_list), self.auxiliary_ct))
         return np.hstack((X_coefs, L_coefs, a_coefs))
 
+    @abstractmethod
+    def get_amm_bounds(self, amm: Exchange, amm_i: AmmIndexObject, approx: str, scaling: dict) -> tuple:
+        pass
+
 
 class XykConstraints(AmmConstraints):
     def __init__(self, amm: ConstantProductPoolState):
@@ -123,6 +127,48 @@ class XykConstraints(AmmConstraints):
         self.k = 2*(len(amm.asset_list) + 1)
         self.shares = amm.shares
         self.liquidity = {tkn: amm.liquidity[tkn] for tkn in amm.asset_list}
+
+    def get_amm_bounds(self, approx: str, scaling: dict) -> tuple:
+        # TODO implement linear, quadratic approximations
+        # TODO allow xyk add/remove liquidity
+        A = np.zeros((2, self.k))
+        amm_i = self.amm_i
+        A[0, amm_i.shares_net] = 1  # force share deltas to 0 for now
+        A[1, amm_i.shares_out] = 1
+        b = np.zeros(2)
+        cones = [cb.ZeroConeT(2)]
+        cone_sizes = [2]
+        coef = [scaling[self.tkn_share] / self.shares] + [scaling[tkn] / self.liquidity[tkn] for tkn in self.asset_list]
+
+        # if approx == "linear":  # linearize the AMM constraint
+        #     c1 = 1 / (1 + epsilon_tkn[tkn])
+        #     c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
+        #     A5j2 = np.zeros((2, k))
+        #     b5j2 = np.zeros(2)
+        #     A5j2[0, amm_i.asset_net[0]] = -B[1]
+        #     A5j2[0, amm_i.asset_net[1]] = -B[2] * c1
+        #     A5j2[1, amm_i.asset_net[0]] = -B[1]
+        #     A5j2[1, amm_i.asset_net[1]] = -B[2] * c2
+        #     cones5j.append(cb.NonnegativeConeT(2))
+        #     cones_count5j.append(2)
+        # else:  # full constraint
+        #     A5j2 = np.zeros((3, k))
+        #     b5j2 = np.ones(3)
+        #     A5j2[0, amm_i.asset_net[0]] = -B[1]
+        #     A5j2[1, amm_i.asset_net[1]] = -B[2]
+        #     cones5j.append(cb.PowerConeT(0.5))
+        #     cones_count5j.append(3)
+        A2 = np.zeros((3, self.k))
+        b2 = np.ones(3)
+        A2[0, amm_i.asset_net[0]] = -coef[1]
+        A2[1, amm_i.asset_net[1]] = -coef[2]
+        cones.append(cb.PowerConeT(0.5))
+        cone_sizes.append(3)
+
+        A = np.vstack([A, A2])
+        b = np.append(b, b2)
+
+        return A, b, cones, cone_sizes
 
 
 class StableswapConstraints(AmmConstraints):
