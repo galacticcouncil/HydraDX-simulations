@@ -3,7 +3,7 @@ import copy
 from .global_state import GlobalState
 from .agents import Agent
 from .exchange import Exchange
-from .basilisk_amm import ConstantProductPoolState
+from .xyk_amm import ConstantProductPoolState
 from .money_market import MoneyMarket
 from .omnipool_amm import OmnipoolState
 from .stableswap_amm import StableSwapPoolState
