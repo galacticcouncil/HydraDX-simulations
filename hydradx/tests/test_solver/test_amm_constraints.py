@@ -130,7 +130,6 @@ def test_get_amm_limits_A():
        st.booleans(),
        st.lists(st.integers(min_value=0, max_value=4), min_size=2, max_size=5, unique=True))
 def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
-    from hydradx.model.solver.omnix_solver import _get_amm_limits_A, AmmIndexObject
     ss_tkn_ct = 4
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
