@@ -159,8 +159,6 @@ class ICEProblem:
         else:
             self.trading_tkns = trading_tkns
 
-
-
         self._set_indicator_matrices()  # only depends on amm structures
 
     def clear(self):
@@ -411,15 +409,6 @@ class ICEProblem:
         # leftover must be higher than required fees
         # other assets
         fees = [self.omnipool.last_fee[tkn] + buffer_fee for tkn in self.omnipool.asset_list]
-        amm_fees = []
-        for amm in self.amm_list:
-            if isinstance(amm, StableSwapPoolState):
-                amm_fees.append([amm.trade_fee + buffer_fee] * (len(amm.asset_list) + 1))
-            elif isinstance(amm, ConstantProductPoolState):
-                amm_fees.append([amm.trade_fee(amm.asset_list[0], 0)] * (len(amm.asset_list) + 1))
-            else:
-                raise ValueError("Only stableswap and XYK AMMs are supported")
-        # amm_fees = [[amm.trade_fee + buffer_fee]*(len(amm.asset_list) + 1) for amm in self.amm_list]
         partial_intent_prices = self.get_partial_intent_prices()
         profit_y_coefs = np.zeros((self.N, self.n))
         profit_x_coefs = np.zeros((self.N, self.n))
@@ -433,10 +422,9 @@ class ICEProblem:
                 profit_lambda_coefs[i, j] = self.fee_match - fees[j]
         profit_amm_coefs = np.zeros((self.N, 0))
         for i in range(len(self.amm_list)):
-            X_coefs = self._amm_rhos[i] - self._amm_psis[i]
-            L_coefs = self._amm_psis[i] @ np.diag(-np.array([fee - self.fee_match for fee in amm_fees[i]]))
-            a_coefs = np.zeros((self.N, self.auxiliaries[i]))
-            profit_amm_coefs = np.hstack((profit_amm_coefs, X_coefs, L_coefs, a_coefs))
+            profit_coefs = self.amm_constraints[i].get_profit_coefs(self.asset_list, buffer_fee, self.fee_match)
+            profit_amm_coefs = np.hstack((profit_amm_coefs, profit_coefs))
+
         scaling_vars = np.array([partial_intent_prices[j] * self._scaling[intent['tkn_sell']] / self._scaling[intent['tkn_buy']]
                                  for j, intent in enumerate(self.partial_intents)])
         scaled_phi = self._phi[1:, :self.m] * scaling_vars * 1 / (1 - self.fee_match)
