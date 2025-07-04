@@ -9,6 +9,7 @@ from scipy import sparse
 
 from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
+from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints
 from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
@@ -36,13 +37,6 @@ class AmmIndexObject:
         self.net_is = slice(self.shares_net, self.shares_out)  # returns X_0, ..., X_n indices
         self.out_is = slice(self.shares_out, self.shares_out + n_amm)  # returns L_0, ..., L_n indices
         self.aux_is = slice(self.shares_out + n_amm, self.shares_out + n_amm + len(self.aux))  # returns aux indices
-
-
-class XykConstraints:
-    def __init__(self):
-        pass
-
-
 
 
 class ICEProblem:
@@ -100,11 +94,19 @@ class ICEProblem:
         self._amm_starting_indices = []
         self._amm_asset_indices = []
         self._amm_share_indices = []
+        self.amm_constraints = []
         self.amm_i = []
         self.amm_vars = 0
         self.u = 0
         for amm in self.amm_list:  # add assets from other amms
             amm_i = AmmIndexObject(amm, self.amm_vars + 4 * self.n)
+            if isinstance(amm, StableSwapPoolState):
+                amm_constraints = StableswapConstraints(amm)
+            elif isinstance(amm, ConstantProductPoolState):
+                amm_constraints = XykConstraints(amm)
+            else:
+                raise ValueError("Only XYK and stableswap AMMs are supported for now")
+            self.amm_constraints.append(amm_constraints)
             self.amm_i.append(amm_i)
             self._amm_starting_indices.append(amm_i.shares_net)
             self.auxiliaries.append(len(amm_i.aux))
@@ -375,16 +377,11 @@ class ICEProblem:
         offset = 0
         for j, amm in enumerate(self.amm_list):
             self._share_indices.append(offset)
-            asset_indices = self._amm_asset_indices[j]
             offset += len(amm.asset_list) + 1
 
-            amm_rho = np.zeros((self.N, len(amm.asset_list) + 1))
-            amm_psi = np.zeros((self.N, len(amm.asset_list) + 1))
-            amm_rho[self._amm_share_indices[j], 0] = 1
-            for k, i in enumerate(asset_indices):
-                amm_psi[i, k + 1] = 1
-            self._amm_rhos.append(amm_rho)
+            amm_rho, amm_psi = self.amm_constraints[j].get_indicator_matrices(self.asset_list)
             self._amm_psis.append(amm_psi)
+            self._amm_rhos.append(amm_rho)
 
     def _set_omnipool_coefs(self):
         self._omnipool_lrna_coefs = {tkn: self._scaling["LRNA"] / self.omnipool.lrna[tkn] for tkn in self.omnipool.asset_list}
