@@ -7,6 +7,7 @@ from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
+INF = highspy.kHighsInf
 
 class AmmIndexObject:
     def __init__(self, amm, offset: int):
@@ -134,6 +135,26 @@ class AmmConstraints:
     def get_boundary_values(self, global_asset_list: list, scaling_mat) -> tuple:
         pass
 
+    @abstractmethod
+    def get_linearized_amm_constraints(self, x_list, global_asset_list: list, scaling_mat):
+        pass
+
+    def get_delta_limits(self):  # inequality constraints: X_j + L_j >= 0
+        A = np.zeros((len(self.asset_list) + 1, self.k))
+        for i in range(len(self.asset_list) + 1):
+            A[i, self.amm_i.shares_net + i] = 1  # X_j
+            A[i, self.amm_i.shares_out + i] = 1  # L_j
+        A_upper = np.array([INF] * A.shape[0])
+        A_lower = np.zeros(A.shape[0])
+        return A, A_lower, A_upper
+
+    def get_milp_constraints(self, x_list, global_asset_list, scaling_mat):
+        A1, A1_lower, A1_upper = self.get_linearized_amm_constraints(x_list, global_asset_list, scaling_mat)
+        A2, A2_lower, A2_upper = self.get_delta_limits()
+        A = np.vstack([A1, A2])
+        A_lower = np.concatenate([A1_lower, A2_lower])
+        A_upper = np.concatenate([A1_upper, A2_upper])
+        return A, A_lower, A_upper
 
 class XykConstraints(AmmConstraints):
     def __init__(self, amm: ConstantProductPoolState):
@@ -187,17 +208,44 @@ class XykConstraints(AmmConstraints):
         return A, b, cones, cone_sizes
 
     def get_boundary_values(self, global_asset_list: list, scaling_mat):
-        inf = highspy.kHighsInf
         rho, psi = self.get_indicator_matrices(global_asset_list)
         C = rho.T @ scaling_mat
         B = psi.T @ scaling_mat
         max_L = np.array([0] + [self.liquidity[tkn] for tkn in self.asset_list]) / (B + C)
-        max_X = [0] + [inf] * len(self.asset_list)
+        max_X = [0] + [INF] * len(self.asset_list)
         min_X = [-x for x in max_L]
         min_L = np.zeros(len(self.asset_list) + 1)
         max_vals = np.concatenate([max_X, max_L])
         min_vals = np.concatenate([min_X, min_L])
         return min_vals, max_vals
+
+    def get_linearized_amm_constraints(self, x_list, global_asset_list: list, scaling_mat):
+        S = np.zeros((0, self.k))
+        S_upper = np.zeros(0)
+        amm_i = self.amm_i
+        _, psi = self.get_indicator_matrices(global_asset_list)
+        B = psi.T @ scaling_mat
+        for x in x_list:
+            S_row = np.zeros((1, self.k))
+            S_row_upper = np.zeros(1)
+            # lrna_c = p.get_omnipool_lrna_coefs()
+            # asset_c = p.get_omnipool_asset_coefs()
+            i = amm_i.asset_net[0]
+            j = amm_i.asset_net[1]
+            c0 = B[1] / self.liquidity[self.asset_list[0]]
+            c1 = B[2] / self.liquidity[self.asset_list[1]]
+            grads_x0 = -c0 - c0 * c1 * x[j]
+            grads_x1 = -c1 - c0 * c1 * x[i]
+            # TODO generalize this process for any AMM type
+            S_row[0, i] = grads_x0
+            S_row[0, j] = grads_x1
+            grad_dot_x = grads_x0 * x[i] + grads_x1 * x[j]
+            g_neg = c0 * x[i] + c1 * x[j] + c0 * c1 * x[i] * x[j]
+            S_row_upper[0] = grad_dot_x + g_neg
+            S = np.vstack([S, S_row])
+            S_upper = np.concatenate([S_upper, S_row_upper])
+        S_lower = np.array([-INF] * len(S_upper))  # no lower bounds for linearized constraints
+        return S, S_lower, S_upper
 
 
 class StableswapConstraints(AmmConstraints):
@@ -302,3 +350,71 @@ class StableswapConstraints(AmmConstraints):
         max_vals = np.concatenate([max_X, max_L, max_a])
         min_vals = np.concatenate([min_X, min_L, min_a])
         return min_vals, max_vals
+
+    def get_linearized_amm_constraints(self, x_list, global_asset_list: list, scaling_mat):
+        S = np.zeros((0, self.k))
+        S_upper = np.zeros(0)
+        amm_i = self.amm_i
+        rho, psi = self.get_indicator_matrices(global_asset_list)
+        B = psi.T @ scaling_mat
+        C = rho.T @ scaling_mat
+        for x in x_list:
+            D0_prime = self.d - self.d / self.ann
+            s0 = self.shares
+            c = C[0]
+            sum_assets = sum([self.liquidity[tkn] for tkn in self.asset_list])
+            denom = sum_assets - D0_prime
+            a0 = x[amm_i.aux[0]]
+            X0 = x[amm_i.shares_net]
+            exp = np.exp(float(a0 / (1 + (c * X0 / s0))))
+            term = (c / s0 - c * a0 / (s0 + c)) * exp
+            # linearization of shares constraint, i.e. a0
+            S_row = np.zeros((1, self.k))
+            grad_s = term + c * D0_prime / (s0 * denom)
+            grads_i = [- B[l] / denom for l in range(1, len(self.asset_list) + 1)]
+            grad_a = exp
+            S_row[0, amm_i.shares_net] = grad_s
+            S_row[0, amm_i.aux[0]] = grad_a
+            for l, tkn in enumerate(self.asset_list):
+                S_row[0, amm_i.asset_net[l]] = grads_i[l]
+            grad_dot_x = grad_s * X0 + grad_a * a0 + sum(
+                [grads_i[l] * x[amm_i.asset_net[l]] for l in range(len(self.asset_list))])
+            sum_deltas = sum([B[l + 1] * x[amm_i.asset_net[l]] for l in range(len(self.asset_list))])
+            g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
+            S_row_upper = np.array([grad_dot_x + g_neg])
+            S = np.vstack([S, S_row])
+            S_upper = np.concatenate([S_upper, S_row_upper])
+
+            # linearization of asset constraints, i.e. a1, a2, ...
+            for l, tkn in enumerate(self.asset_list):
+                S_row = np.zeros((1, self.k))
+                grad_s = term
+                grad_a = exp
+                grad_x = -B[l + 1] / self.liquidity[tkn]
+                S_row[0, amm_i.shares_net] = grad_s
+                S_row[0, amm_i.aux[l + 1]] = grad_a
+                S_row[0, amm_i.asset_net[l]] = grad_x
+                ai = x[amm_i.aux[l + 1]]
+                grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[amm_i.asset_net[l]]
+                g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[amm_i.asset_net[l]] / self.liquidity[tkn] - 1
+                S_row_upper = np.array([grad_dot_x + g_neg])
+                S = np.vstack([S, S_row])
+                S_upper = np.concatenate([S_upper, S_row_upper])
+        S_lower = np.array([-INF] * len(S_upper))  # no lower bounds for linearized constraints
+        return S, S_lower, S_upper
+
+    def get_overall_constraint(self):
+        A = np.zeros((1, self.k))
+        for aux_i in self.amm_i.aux:
+            A[0, aux_i] = 1
+        A_upper = np.array([INF])
+        A_lower = np.zeros(1)
+        return A, A_lower, A_upper
+
+    def get_milp_constraints(self, x_list, global_asset_list, scaling_mat):
+        A1, A1_lower, A1_upper = super().get_milp_constraints(x_list, global_asset_list, scaling_mat)
+        A2, A2_lower, A2_upper = self.get_overall_constraint()
+        A = np.vstack([A1, A2])
+        A_lower = np.concatenate([A1_lower, A2_lower])
+        A_upper = np.concatenate([A1_upper, A2_upper])
+        return A, A_lower, A_upper

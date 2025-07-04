@@ -1273,23 +1273,12 @@ def _solve_inclusion_problem(
     # min_lambda = np.zeros(n)
     # min_lrna_lambda = np.zeros(n)
 
-    B_list = p.get_B_list()
-    C_list = p.get_C_list()
     max_amms = []
     min_amms = []
     for constraints in p.amm_constraints:
         min_amm_i, max_amm_i = constraints.get_boundary_values(p.asset_list, p._S)
         min_amms = np.concatenate([min_amms, min_amm_i])
         max_amms = np.concatenate([max_amms, max_amm_i])
-
-    # max_L = max_L / (B + C)
-    # min_L = np.zeros(sigma)
-    # min_X = [-x for x in max_L]
-    # max_X = [inf] * sigma
-    # min_a = [-inf] * sigma
-    # max_a = [inf] * sigma
-
-    # max_L = np.zeros(sigma)  # TODO: remove
 
     lower = np.concatenate([min_y, min_x, min_lrna_lambda, min_lambda, min_amms, [0] * (m + r)])
     upper = np.concatenate([max_y, max_x, max_lrna_lambda, max_lambda, max_amms, partial_intent_sell_amts, [1] * r])
@@ -1323,86 +1312,7 @@ def _solve_inclusion_problem(
             S_row_upper[0] = grad_dot_x + g_neg
             S = np.vstack([S, S_row])
             S_upper = np.concatenate([S_upper, S_row_upper])
-
-        for _s, amm in enumerate(p.amm_list):
-            amm_i = p.amm_i[_s]
-            C = C_list[_s]
-            B = B_list[_s]
-            if isinstance(amm, StableSwapPoolState):
-                D0_prime = amm.d - amm.d/amm.ann
-                s0 = amm.shares
-                c = C[0]
-                sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
-                denom = sum_assets - D0_prime
-                a0 = x[amm_i.aux[0]]
-                X0 = x[amm_i.shares_net]
-                exp = np.exp(float(a0 / (1 + (c*X0/s0))))
-                term = (c / s0 - c*a0 / (s0 + c)) * exp
-                # linearization of shares constraint, i.e. a0
-                S_row = np.zeros((1, k))
-                grad_s = term + c * D0_prime / (s0 * denom)
-                grads_i = [- B[l] / denom for l in range(1, len(amm.asset_list) + 1)]
-                grad_a = exp
-                S_row[0, amm_i.shares_net] = grad_s
-                S_row[0, amm_i.aux[0]] = grad_a
-                for l, tkn in enumerate(amm.asset_list):
-                    S_row[0, amm_i.asset_net[l]] = grads_i[l]
-                grad_dot_x = grad_s * X0 + grad_a * a0 + sum([grads_i[l] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
-                sum_deltas = sum([B[l + 1] * x[amm_i.asset_net[l]] for l in range(len(amm.asset_list))])
-                g_neg = (1 + c * X0 / s0) * exp - sum_deltas / denom + D0_prime * c * X0 / (denom * s0) - 1
-                S_row_upper = np.array([grad_dot_x + g_neg])
-                S = np.vstack([S, S_row])
-                S_upper = np.concatenate([S_upper, S_row_upper])
-
-                # linearization of asset constraints, i.e. a1, a2, ...
-                for l, tkn in enumerate(amm.asset_list):
-                    S_row = np.zeros((1, k))
-                    grad_s = term
-                    grad_a = exp
-                    grad_x = -B[l + 1] / amm.liquidity[tkn]
-                    S_row[0, amm_i.shares_net] = grad_s
-                    S_row[0, amm_i.aux[l + 1]] = grad_a
-                    S_row[0, amm_i.asset_net[l]] = grad_x
-                    ai = x[amm_i.aux[l + 1]]
-                    grad_dot_x = grad_s * X0 + grad_a * ai + grad_x * x[amm_i.asset_net[l]]
-                    g_neg = (1 + c * X0 / s0) * exp - B[l + 1] * x[amm_i.asset_net[l]] / amm.liquidity[tkn] - 1
-                    S_row_upper = np.array([grad_dot_x + g_neg])
-                    S = np.vstack([S, S_row])
-                    S_upper = np.concatenate([S_upper, S_row_upper])
-            elif isinstance(amm, ConstantProductPoolState):
-                S_row = np.zeros((1, k))
-                S_row_upper = np.zeros(1)
-                # lrna_c = p.get_omnipool_lrna_coefs()
-                # asset_c = p.get_omnipool_asset_coefs()
-                i = amm_i.asset_net[0]
-                j = amm_i.asset_net[1]
-                c0 = B[1] / amm.liquidity[amm.asset_list[0]]
-                c1 = B[2] / amm.liquidity[amm.asset_list[1]]
-                grads_x0 = -c0 - c0 * c1 * x[j]
-                grads_x1 = -c1 - c0 * c1 * x[i]
-                # TODO generalize this process for any AMM type
-                S_row[0, i] = grads_x0
-                S_row[0, j] = grads_x1
-                grad_dot_x = grads_x0 * x[i] + grads_x1 * x[j]
-                g_neg = c0 * x[i] + c1 * x[j] + c0 * c1 * x[i] * x[j]
-                S_row_upper[0] = grad_dot_x + g_neg
-                S = np.vstack([S, S_row])
-                S_upper = np.concatenate([S_upper, S_row_upper])
-            else:
-                raise AssertionError("Unknown AMM type: {}".format(type(amm)))
-
-
     S_lower = np.array([-inf]*len(S_upper))
-
-    # need top level Stableswap constraint
-    A_amm = np.zeros((p.s, k))
-    for i, amm in enumerate(p.amm_list):
-        if isinstance(amm, StableSwapPoolState):
-            amm_i = p.amm_i[i]
-            for j in range(1 + len(amm.asset_list)):
-                A_amm[i, amm_i.aux[j]] = 1
-    A_amm_upper = np.array([inf]*p.s)
-    A_amm_lower = np.zeros(p.s)
 
     # asset leftover must be above zero
     A3 = p.get_profit_A()
@@ -1420,18 +1330,15 @@ def _solve_inclusion_problem(
     A5_upper = np.array([inf] * 2 * n)
     A5_lower = np.zeros(2 * n)
 
-    # inequality constraints: X_j + L_j >= 0
-    A7 = np.zeros((0, k))
-    for amm_i in p.amm_i:
-        n_amm = len(amm_i.asset_net) + 1
-        for j in range(n_amm):
-            A7i = np.zeros((1, k))
-            A7i[0, amm_i.shares_net + j] = 1  # X_j
-            A7i[0, amm_i.shares_out + j] = 1  # L_j
-            A7 = np.vstack([A7, A7i])
-
-    A7_upper = np.array([inf] * A7.shape[0])
-    A7_lower = np.zeros(A7.shape[0])
+    A_amms = np.zeros((0, k))
+    A_amms_lower = np.array([])
+    A_amms_upper = np.array([])
+    for i, constraints in enumerate(p.amm_constraints):
+        A_amms_i_small, A_amms_i_lower, A_amms_i_upper = constraints.get_milp_constraints(np.vstack([x_zero, x_list]), p.asset_list, p._S)
+        A_amms_i = _expand_submatrix(A_amms_i_small, k, p.amm_i[i].shares_net)
+        A_amms = np.vstack([A_amms, A_amms_i])
+        A_amms_lower = np.concatenate([A_amms_lower, A_amms_i_lower])
+        A_amms_upper = np.concatenate([A_amms_upper, A_amms_i_upper])
 
     # optimized value must be lower than best we have so far, higher than lower bound
     A8 = np.zeros((1, k))
@@ -1448,15 +1355,9 @@ def _solve_inclusion_problem(
     if old_A_lower is None:
         old_A_lower = np.array([])
     assert len(old_A_upper) == len(old_A_lower) == old_A.shape[0]
-    A = np.vstack([old_A, S, A_amm, A3, A5, A7, A8])
-    A_upper = np.concatenate([old_A_upper, S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper, A8_upper])
-    A_lower = np.concatenate([old_A_lower, S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower, A8_lower])
-    # A = np.vstack([S, A_amm, A3, A5, A7, A8])
-    # A_upper = np.concatenate([S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper, A8_upper])
-    # A_lower = np.concatenate([S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower, A8_lower])
-    # A = np.vstack([S, A_amm, A3, A5, A7])
-    # A_upper = np.concatenate([S_upper, A_amm_upper, A3_upper, A5_upper, A7_upper])
-    # A_lower = np.concatenate([S_lower, A_amm_lower, A3_lower, A5_lower, A7_lower])
+    A = np.vstack([old_A, S, A3, A5, A_amms, A8])
+    A_upper = np.concatenate([old_A_upper, S_upper, A3_upper, A5_upper, A_amms_upper, A8_upper])
+    A_lower = np.concatenate([old_A_lower, S_lower, A3_lower, A5_lower, A_amms_lower, A8_lower])
 
     nonzeros = []
     start = [0]
