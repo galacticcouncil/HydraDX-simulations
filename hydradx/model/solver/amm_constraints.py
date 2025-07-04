@@ -115,8 +115,18 @@ class AmmConstraints:
         return np.hstack((X_coefs, L_coefs, a_coefs))
 
     @abstractmethod
-    def get_amm_bounds(self, amm: Exchange, amm_i: AmmIndexObject, approx: str, scaling: dict) -> tuple:
+    def get_amm_bounds(self, approx: str, scaling: dict) -> tuple:
         pass
+
+    def get_amm_constraint_matrix(self, approx: str, scaling: dict, amm_directions: list, last_amm_deltas: list,
+                                  trading_tkns: list):
+        A1, b1, cones1, cone_sizes1 = self.get_amm_limits_A(amm_directions, last_amm_deltas, trading_tkns)
+        A2, b2, cones2, cone_sizes2 = self.get_amm_bounds(approx, scaling)
+        A = np.vstack([A1, A2])
+        b = np.concatenate([b1, b2])
+        cones = cones1 + cones2
+        cone_sizes = cone_sizes1 + cone_sizes2
+        return A, b, cones, cone_sizes
 
 
 class XykConstraints(AmmConstraints):

@@ -9,7 +9,7 @@ from scipy import sparse
 
 from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints, AmmConstraints
+from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints
 from hydradx.model.solver.amm_constraints import AmmIndexObject
 from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
@@ -686,27 +686,6 @@ def _expand_submatrix(A, k: int, start: int):
     return A_limits_i
 
 
-def _get_amm_bounds(p, indices_to_keep=None):
-    # CFMM invariants must be respected
-    n, u, m, N = p.n, p.u, p.m, p.N
-    k = 4 * n + p.amm_vars + m
-
-    A5 = np.zeros((0, k))
-    b5 = np.array([])
-    cones5 = []
-    cones_count5 = []
-    for j, amm in enumerate(p.amm_list):
-        amm_constraints = p.amm_constraints[j]
-        approx = p.get_amm_approx(j)
-        A5j_small, b5j, cones5j, cones_count5j = amm_constraints.get_amm_bounds(approx, p._scaling)
-        A5j = _expand_submatrix(A5j_small, k, p.amm_i[j].shares_net)
-        A5 = np.vstack([A5, A5j])
-        b5 = np.concatenate([b5, b5j])
-        cones5 = cones5 + cones5j
-        cones_count5 = cones_count5 + cones_count5j
-    return A5[:, indices_to_keep], b5, cones5, cones_count5
-
-
 def _find_solution_unrounded(
         p: ICEProblem,
         allow_loss: bool = False
@@ -897,9 +876,6 @@ def _find_solution_unrounded(
         b4 = np.append(b4, b4i)
     A4_trimmed = A4[:, indices_to_keep]
 
-    # CFMM invariants must be respected
-    A5_trimmed, b5, cones5, cone_sizes5 = _get_amm_bounds(p, indices_to_keep)
-
     # inequality constraints on comparison of lrna_lambda to yi, lambda to xi
     A6 = np.zeros((0, k))
     for i in range(n):
@@ -916,28 +892,29 @@ def _find_solution_unrounded(
     cone6 = cb.NonnegativeConeT(A6.shape[0])
     cone_sizes6 = [A6.shape[0]]
 
-    A_limits_amms = np.zeros((0, k))
-    b_limits_amms = np.zeros(0)
-    cones_limits_amms = []
+    A_amms = np.zeros((0, k))
+    b_amms = np.zeros(0)
+    cones_amms = []
     cone_sizes_amms = []
     for i, amm in enumerate(p.amm_list):
         amm_constraints = p.amm_constraints[i]
+        approx = p.get_amm_approx(i)
         directions = [] if len(amm_directions) <= i else amm_directions[i]
         last_amm_deltas = [] if p._last_amm_deltas is None else p._last_amm_deltas[i]
-        x = amm_constraints.get_amm_limits_A(directions, last_amm_deltas, p.trading_tkns)
-        A_limits_amm_i, b_limits_amm_i, cones_limits_amm_i, cones_sizes_amm_i = x
-        A_limits_i = _expand_submatrix(A_limits_amm_i, k, p.amm_i[i].shares_net)
+        x = amm_constraints.get_amm_constraint_matrix(approx, p._scaling, directions, last_amm_deltas, p.trading_tkns)
+        A_amm_i_small, b_amm_i, cones_amm_i, cones_sizes_amm_i = x
+        A_amm_i = _expand_submatrix(A_amm_i_small, k, p.amm_i[i].shares_net)
 
-        A_limits_amms = np.vstack([A_limits_amms, A_limits_i])
-        b_limits_amms = np.concatenate([b_limits_amms, b_limits_amm_i])
-        cones_limits_amms.extend(cones_limits_amm_i)
+        A_amms = np.vstack([A_amms, A_amm_i])
+        b_amms = np.concatenate([b_amms, b_amm_i])
+        cones_amms.extend(cones_amm_i)
         cone_sizes_amms.extend(cones_sizes_amm_i)
 
-    A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A5_trimmed, A6_trimmed, A_limits_amms])
+    A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A6_trimmed, A_amms])
     A_sparse = sparse.csc_matrix(A)
-    b = np.concatenate([b1, b2, b3, b4, b5, b6, b_limits_amms])
-    cones = cones1 + [cone2, cone3] + cones4 + cones5 + [cone6] + cones_limits_amms
-    cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes5 + cone_sizes6 + cone_sizes_amms
+    b = np.concatenate([b1, b2, b3, b4, b6, b_amms])
+    cones = cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
+    cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
 
     # solve
     settings = clarabel.DefaultSettings()
