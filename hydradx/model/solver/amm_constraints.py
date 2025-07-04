@@ -1,6 +1,8 @@
 import copy, math, numpy as np, clarabel as cb
 from abc import abstractmethod
 
+import highspy
+
 from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
@@ -128,6 +130,10 @@ class AmmConstraints:
         cone_sizes = cone_sizes1 + cone_sizes2
         return A, b, cones, cone_sizes
 
+    @abstractmethod
+    def get_boundary_values(self, global_asset_list: list, scaling_mat) -> tuple:
+        pass
+
 
 class XykConstraints(AmmConstraints):
     def __init__(self, amm: ConstantProductPoolState):
@@ -179,6 +185,19 @@ class XykConstraints(AmmConstraints):
         b = np.append(b, b2)
 
         return A, b, cones, cone_sizes
+
+    def get_boundary_values(self, global_asset_list: list, scaling_mat):
+        inf = highspy.kHighsInf
+        rho, psi = self.get_indicator_matrices(global_asset_list)
+        C = rho.T @ scaling_mat
+        B = psi.T @ scaling_mat
+        max_L = np.array([0] + [self.liquidity[tkn] for tkn in self.asset_list]) / (B + C)
+        max_X = [0] + [inf] * len(self.asset_list)
+        min_X = [-x for x in max_L]
+        min_L = np.zeros(len(self.asset_list) + 1)
+        max_vals = np.concatenate([max_X, max_L])
+        min_vals = np.concatenate([min_X, min_L])
+        return min_vals, max_vals
 
 
 class StableswapConstraints(AmmConstraints):
@@ -268,3 +287,18 @@ class StableswapConstraints(AmmConstraints):
         cone_sizes.append(1)
 
         return A, b, cones, cone_sizes
+
+    def get_boundary_values(self, global_asset_list: list, scaling_mat):
+        inf = highspy.kHighsInf
+        rho, psi = self.get_indicator_matrices(global_asset_list)
+        C = rho.T @ scaling_mat
+        B = psi.T @ scaling_mat
+        max_L = np.array([self.shares] + [self.liquidity[tkn] for tkn in self.asset_list]) / (B + C)
+        max_X = [inf] * (len(self.asset_list) + 1)
+        min_X = [-x for x in max_L]
+        min_L = np.zeros(len(self.asset_list) + 1)
+        min_a = [-inf] * self.auxiliary_ct
+        max_a = [inf] * self.auxiliary_ct
+        max_vals = np.concatenate([max_X, max_L, max_a])
+        min_vals = np.concatenate([min_X, min_L, min_a])
+        return min_vals, max_vals

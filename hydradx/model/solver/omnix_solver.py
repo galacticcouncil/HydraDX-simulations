@@ -1277,23 +1277,10 @@ def _solve_inclusion_problem(
     C_list = p.get_C_list()
     max_amms = []
     min_amms = []
-    for i, amm in enumerate(p.amm_list):
-        amm_i = p.amm_i[i]
-        B = B_list[i]
-        C = C_list[i]
-        n_amm = len(amm.asset_list) + 1
-        if isinstance(amm, ConstantProductPoolState):  # temporarily force share deltas to 0
-            max_L = np.array([0] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
-            max_X = [0] + [inf] * (n_amm-1)
-        else:
-            max_L = np.array([amm.shares] + [amm.liquidity[tkn] for tkn in amm.asset_list]) / (B + C)
-            max_X = [inf] * n_amm
-        min_X = [-x for x in max_L]
-        min_L = np.zeros(n)
-        min_a = [-inf] * len(amm_i.aux)
-        max_a = [inf] * len(amm_i.aux)
-        max_amms = np.concatenate([max_amms, max_X, max_L, max_a])
-        min_amms = np.concatenate([min_amms, min_X, min_L, min_a])
+    for constraints in p.amm_constraints:
+        min_amm_i, max_amm_i = constraints.get_boundary_values(p.asset_list, p._S)
+        min_amms = np.concatenate([min_amms, min_amm_i])
+        max_amms = np.concatenate([max_amms, max_amm_i])
 
     # max_L = max_L / (B + C)
     # min_L = np.zeros(sigma)
