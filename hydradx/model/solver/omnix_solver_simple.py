@@ -1,5 +1,5 @@
 import copy
-import math, bisect, mpmath
+import math
 
 import clarabel
 import numpy as np
@@ -9,7 +9,7 @@ from scipy import sparse
 
 from hydradx.model.amm.exchange import Exchange
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.omnix import validate_and_execute_solution
+from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 

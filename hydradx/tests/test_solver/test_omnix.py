@@ -1,11 +1,8 @@
 import pytest
 
-from hypothesis import given, strategies as st, settings
-from mpmath import mp, mpf
-
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.omnix import validate_solution, calculate_transfers
+from hydradx.model.solver.omnix import validate_solution, calculate_transfers
 
 
 def test_calculate_transfers():
