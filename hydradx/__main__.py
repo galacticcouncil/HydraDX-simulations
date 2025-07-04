@@ -5,7 +5,7 @@ from pprint import pprint
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mpf
-from hydradx.model.solver.omnix_solver_simple import  find_solution_outer_approx
+from hydradx.model.solver.omnix_solver import  find_solution_outer_approx
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
 

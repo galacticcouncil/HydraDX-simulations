@@ -12,7 +12,7 @@ import numpy as np
 
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.solver.omnix import validate_and_execute_solution
-from hydradx.model.solver.omnix_solver_simple import find_solution_outer_approx, ICEProblem, _get_leftover_bounds, AmmIndexObject
+from hydradx.model.solver.omnix_solver import find_solution_outer_approx, ICEProblem, _get_leftover_bounds, AmmIndexObject
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 
@@ -132,7 +132,7 @@ def get_markets_even(
 
 @given(st.integers(min_value=0, max_value=10), st.integers(min_value=2, max_value=5))
 def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
-    from hydradx.model.solver.omnix_solver_simple import AmmIndexObject
+    from hydradx.model.solver.omnix_solver import AmmIndexObject
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
     # order of variables should be: X_0, X_1, ..., X_4, L_0, L_1, ..., L_4, a_0, a_1, ..., a_4
@@ -162,7 +162,7 @@ def test_AmmIndexObject_stableswap(offset: int, tkn_ct: int):
 
 @given(st.integers(min_value=0, max_value=10))
 def test_AmmIndexObject_xyk(offset: int):
-    from hydradx.model.solver.omnix_solver_simple import AmmIndexObject
+    from hydradx.model.solver.omnix_solver import AmmIndexObject
     liquidity = {"A": 1_000_000, "B": 1_000_000}
     xyk = ConstantProductPoolState(tokens=liquidity)
     # order of variables should be: X_0, X_1, ..., X_4, L_0, L_1, ..., L_4, a_0, a_1, ..., a_4
@@ -180,7 +180,7 @@ def test_AmmIndexObject_xyk(offset: int):
 
 
 def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
-    from hydradx.model.solver.omnix_solver_simple import check_cone_feasibility
+    from hydradx.model.solver.omnix_solver import check_cone_feasibility
     res = check_cone_feasibility(s, cones, cone_sizes, tol)
     for _, _, cone_feas in res:
         if not cone_feas:
@@ -189,7 +189,7 @@ def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
 
 
 def test_get_amm_limits_A():
-    from hydradx.model.solver.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject
+    from hydradx.model.solver.omnix_solver import _get_amm_limits_A, AmmIndexObject
     ss_tkn_ct = 4
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
@@ -259,7 +259,7 @@ def test_get_amm_limits_A():
        st.booleans(),
        st.lists(st.integers(min_value=0, max_value=4), min_size=2, max_size=5, unique=True))
 def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
-    from hydradx.model.solver.omnix_solver_simple import _get_amm_limits_A, AmmIndexObject
+    from hydradx.model.solver.omnix_solver import _get_amm_limits_A, AmmIndexObject
     ss_tkn_ct = 4
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
@@ -323,7 +323,7 @@ def test_get_amm_limits_A_directions(ss_dirs, xyk_dir, trading_indices):
 
 
 def test_get_xyk_bounds():
-    from hydradx.model.solver.omnix_solver_simple import _get_xyk_bounds
+    from hydradx.model.solver.omnix_solver import _get_xyk_bounds
     amm = ConstantProductPoolState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
     scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
     offset = 7
