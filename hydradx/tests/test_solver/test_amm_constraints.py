@@ -233,3 +233,47 @@ def test_get_xyk_bounds():
     s = b - A @ x
     if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
         raise AssertionError("Cone feasibility check should fail")
+
+
+# TODO test with auxiliary variable calculation
+# def test_get_stableswap_bounds():
+#     amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)
+#     constraints = StableswapConstraints(amm)
+#     scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
+#     amm_i = constraints.amm_i
+#
+#     for approx in ["Linear", "None"]:
+#         A, b, cones, cones_sizes = constraints.get_amm_bounds(approx, scaling)
+#         x = np.zeros(constraints.k)
+#         # selling 5 B for 1 A should work
+#         b_sell_amt, a_buy_amt = 5, 1
+#         x[amm_i.asset_net[0]] = -a_buy_amt
+#         x[amm_i.asset_net[1]] = b_sell_amt
+#         x[amm_i.asset_out[0]] = a_buy_amt
+#         s = b - A @ x
+#         if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+#             raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
+#         # selling 1 A for 1 5 should not work
+#         a_sell_amt, b_buy_amt = 1, 5
+#         x[amm_i.asset_net[1]] = -b_buy_amt
+#         x[amm_i.asset_net[0]] = a_sell_amt
+#         x[amm_i.asset_out[1]] = b_buy_amt
+#         s = b - A @ x
+#         if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+#             raise AssertionError("Cone feasibility check should fail")
+#         # selling 5 A for 1 B should work
+#         a_sell_amt, b_buy_amt = 5, 1
+#         x[amm_i.asset_net[1]] = -b_buy_amt
+#         x[amm_i.asset_net[0]] = a_sell_amt
+#         x[amm_i.asset_out[1]] = b_buy_amt
+#         s = b - A @ x
+#         if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+#             raise AssertionError("Cone feasibility check should succeed")
+#         # selling 1 B for 5 A should not work
+#         b_sell_amt, a_buy_amt = 1, 5
+#         x[amm_i.asset_net[0]] = -a_buy_amt
+#         x[amm_i.asset_net[1]] = b_sell_amt
+#         x[amm_i.asset_out[0]] = a_buy_amt
+#         s = b - A @ x
+#         if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+#             raise AssertionError("Cone feasibility check should fail")

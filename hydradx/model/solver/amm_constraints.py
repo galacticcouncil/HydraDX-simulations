@@ -179,3 +179,82 @@ class StableswapConstraints(AmmConstraints):
         self.k = 2*(len(amm.asset_list) + 1) + self.auxiliary_ct
         self.shares = amm.shares
         self.liquidity = {tkn: amm.liquidity[tkn] for tkn in amm.asset_list}
+        self.ann = amm.ann
+        self.d = amm.d
+
+    def get_amm_bounds(self, approx: str, scaling: dict):
+        B = [0] + [scaling[tkn] for tkn in self.asset_list]
+        C = [scaling[self.tkn_share]]
+        ann = self.ann
+        s0 = self.shares
+        D0 = self.d
+        amm_i = self.amm_i
+        n_amm = len(self.asset_list) + 1
+        sum_assets = sum([self.liquidity[tkn] for tkn in self.asset_list])
+        # D0' = D_0 * (1 - 1/ann)
+        D0_prime = D0 * (1 - 1 / ann)
+        # a0 ~= -delta_s/s0 + [1 / (sum x_i^0 - D0') * sum delta_x_i - (D0'/s0) / (sum x_i^0 - D0') * delta_s]
+        denom = sum_assets - D0_prime
+        if approx[0] == "linear":
+            A = np.zeros((1, self.k))
+            A[0, amm_i.aux[0]] = 1  # a_{j,0} coefficient
+            A[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # delta_s coefficient
+            for t in range(1, n_amm):
+                A[0, amm_i.asset_net[t - 1]] = -B[t] / denom  # delta_x_i coefficient
+            b = np.array([0])
+            cones = [cb.ZeroConeT(1)]
+            cone_sizes = [1]
+        else:
+            A = np.zeros((3, self.k))
+            b = np.array([0, 0, 0])
+            # x = a_{j,0}
+            A[0, amm_i.aux[0]] = -1  # a_{j,0} coefficient
+            # y = 1 + C_jS_j / s_0
+            A[1, amm_i.shares_net] = -C[0] / s0  # delta_s coefficient
+            b[1] = 1
+            # z = An^n / D_0 sum(x_i^0 + B_i X_i) + (1 - An^n)(1 + C_jS_j / s_0)
+            A[2, amm_i.shares_net] = D0_prime * C[0] / denom / s0
+            for t in range(1, n_amm):
+                A[2, amm_i.asset_net[t - 1]] = -B[t] / denom
+            b[2] = 1
+            cones = [cb.ExponentialConeT()]
+            cone_sizes = [3]
+
+        for t in range(1, n_amm):
+            x0 = self.liquidity[self.asset_list[t - 1]]
+            if approx[t] == "linear":
+                A_t = np.zeros((1, self.k))
+                A_t[0, amm_i.aux[t]] = 1  # a_{j,t} coefficient
+                A_t[0, amm_i.shares_net] = C[0] / s0  # delta_s coefficient
+                A_t[0, amm_i.asset_net[t - 1]] = -B[t] / x0  # delta_x_i coefficient
+                b_t = np.array([0])
+                cone_t = cb.ZeroConeT(1)
+                cone_size_t = 1
+            else:
+                A_t = np.zeros((3, self.k))
+                b_t = np.zeros(3)
+                # x = a_{j,t}
+                A_t[0, amm_i.aux[t]] = -1
+                # y = 1 + C_jS_j / s_0
+                A_t[1, amm_i.shares_net] = -C[0] / s0
+                b_t[1] = 1
+                # z = (x_t^0 + B_t X_t) / D_0
+                A_t[2, amm_i.asset_net[t - 1]] = -B[t] / x0
+                b_t[2] = 1
+                cone_t = cb.ExponentialConeT()
+                cone_size_t = 3
+            cones.append(cone_t)
+            cone_sizes.append(cone_size_t)
+            A = np.vstack([A, A_t])
+            b = np.append(b, np.array(b_t))
+
+        A_final = np.zeros((1, self.k))
+        for t in range(n_amm):
+            A_final[0, amm_i.aux[t]] = -1
+        b_final = np.array([0])
+        A = np.vstack([A, A_final])
+        b = np.append(b, b_final)
+        cones.append(cb.NonnegativeConeT(1))
+        cone_sizes.append(1)
+
+        return A, b, cones, cone_sizes

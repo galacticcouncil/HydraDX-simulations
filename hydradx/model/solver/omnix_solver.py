@@ -686,82 +686,6 @@ def _expand_submatrix(A, k: int, start: int):
     return A_limits_i
 
 
-def _get_stableswap_bounds(amm, amm_i: AmmIndexObject, approx, k, scaling):
-    B = [0] + [scaling[tkn] for tkn in amm.asset_list]
-    C = [scaling[amm.unique_id]]
-    ann = amm.ann
-    s0 = amm.shares
-    D0 = amm.d
-    n_amm = len(amm.asset_list) + 1
-    sum_assets = sum([amm.liquidity[tkn] for tkn in amm.asset_list])
-    # D0' = D_0 * (1 - 1/ann)
-    D0_prime = D0 * (1 - 1 / ann)
-    # a0 ~= -delta_s/s0 + [1 / (sum x_i^0 - D0') * sum delta_x_i - (D0'/s0) / (sum x_i^0 - D0') * delta_s]
-    denom = sum_assets - D0_prime
-    if approx[0] == "linear":
-        A5j = np.zeros((1, k))
-        A5j[0, amm_i.aux[0]] = 1  # a_{j,0} coefficient
-        A5j[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # delta_s coefficient
-        for t in range(1, n_amm):
-            A5j[0, amm_i.asset_net[t - 1]] = -B[t] / denom  # delta_x_i coefficient
-        b5j = np.array([0])
-        cones5j = [cb.ZeroConeT(1)]
-        cones_count5j = [1]
-    else:
-        A5j = np.zeros((3, k))
-        b5j = np.array([0, 0, 0])
-        # x = a_{j,0}
-        A5j[0, amm_i.aux[0]] = -1  # a_{j,0} coefficient
-        # y = 1 + C_jS_j / s_0
-        A5j[1, amm_i.shares_net] = -C[0] / s0  # delta_s coefficient
-        b5j[1] = 1
-        # z = An^n / D_0 sum(x_i^0 + B_i X_i) + (1 - An^n)(1 + C_jS_j / s_0)
-        A5j[2, amm_i.shares_net] = D0_prime * C[0] / denom / s0
-        for t in range(1, n_amm):
-            A5j[2, amm_i.asset_net[t - 1]] = -B[t] / denom
-        b5j[2] = 1
-        cones5j = [cb.ExponentialConeT()]
-        cones_count5j = [3]
-
-    for t in range(1, n_amm):
-        x0 = amm.liquidity[amm.asset_list[t - 1]]
-        if approx[t] == "linear":
-            A5jt = np.zeros((1, k))
-            A5jt[0, amm_i.aux[t]] = 1  # a_{j,t} coefficient
-            A5jt[0, amm_i.shares_net] = C[0] / s0  # delta_s coefficient
-            A5jt[0, amm_i.asset_net[t - 1]] = -B[t] / x0  # delta_x_i coefficient
-            b5jt = np.array([0])
-            cone5jt = cb.ZeroConeT(1)
-            cone_count5jt = 1
-        else:
-            A5jt = np.zeros((3, k))
-            b5jt = np.zeros(3)
-            # x = a_{j,t}
-            A5jt[0, amm_i.aux[t]] = -1
-            # y = 1 + C_jS_j / s_0
-            A5jt[1, amm_i.shares_net] = -C[0] / s0
-            b5jt[1] = 1
-            # z = (x_t^0 + B_t X_t) / D_0
-            A5jt[2, amm_i.asset_net[t - 1]] = -B[t] / x0
-            b5jt[2] = 1
-            cone5jt = cb.ExponentialConeT()
-            cone_count5jt = 3
-        cones5j.append(cone5jt)
-        cones_count5j.append(cone_count5jt)
-        A5j = np.vstack([A5j, A5jt])
-        b5j = np.append(b5j, np.array(b5jt))
-
-    A5j_final = np.zeros((1, k))
-    for t in range(n_amm):
-        A5j_final[0, amm_i.aux[t]] = -1
-    b5j_final = np.array([0])
-    A5j = np.vstack([A5j, A5j_final])
-    b5j = np.append(b5j, b5j_final)
-    cones5j.append(cb.NonnegativeConeT(1))
-    cones_count5j.append(1)
-
-    return A5j, b5j, cones5j, cones_count5j
-
 def _get_amm_bounds(p, indices_to_keep=None):
     # CFMM invariants must be respected
     n, u, m, N = p.n, p.u, p.m, p.N
@@ -772,16 +696,10 @@ def _get_amm_bounds(p, indices_to_keep=None):
     cones5 = []
     cones_count5 = []
     for j, amm in enumerate(p.amm_list):
-        amm_i = p.amm_i[j]
         amm_constraints = p.amm_constraints[j]
         approx = p.get_amm_approx(j)
-        if isinstance(amm, StableSwapPoolState):
-            A5j, b5j, cones5j, cones_count5j = _get_stableswap_bounds(amm, amm_i, approx, k, p._scaling)
-        elif isinstance(amm, ConstantProductPoolState):
-            A5j_small, b5j, cones5j, cones_count5j = amm_constraints.get_amm_bounds(approx, p._scaling)
-            A5j = _expand_submatrix(A5j_small, k, p.amm_i[j].shares_net)
-        else:
-            raise AssertionError("Unrecognized AMM type")
+        A5j_small, b5j, cones5j, cones_count5j = amm_constraints.get_amm_bounds(approx, p._scaling)
+        A5j = _expand_submatrix(A5j_small, k, p.amm_i[j].shares_net)
         A5 = np.vstack([A5, A5j])
         b5 = np.concatenate([b5, b5j])
         cones5 = cones5 + cones5j
