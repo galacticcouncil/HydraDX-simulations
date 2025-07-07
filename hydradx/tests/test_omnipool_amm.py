@@ -2726,9 +2726,9 @@ def test_dynamic_fee_test_case():
                     'DOT': mpf(0)
                 },
                 'volume_out': {
-                    'HDX': mpf(1000),
-                    'USD': mpf(1000),
-                    'DOT': mpf(1000)
+                    'HDX': mpf(0),
+                    'USD': mpf(0),
+                    'DOT': mpf(0)
                 }
             }
         }, unique_id='omnipool1'
@@ -2750,7 +2750,7 @@ def test_dynamic_fee_test_case():
     omnipool1 = omnipool.copy()
     omnipool2 = omnipool.copy()
     omnipool2.update_function = lambda self: self.oracles['price'].update(self.current_block)
-    omnipool2.unique_id = 'omnipool2'
+    omnipool2.unique_id = 'omnipool2'  # ignore for now
     initial_state = GlobalState(
         pools=[omnipool1, omnipool2],
         agents={
@@ -2792,3 +2792,46 @@ def test_dynamic_fee_test_case():
             raise AssertionError('Asset fee is not correct.')
 
         print ('everything checked out for', tkn)
+
+    for block in events:
+        omnipool = block.pools['omnipool1']
+        print(f"block {block.time_step} asset fees:")
+        print('\n'.join([f"    {tkn}: {omnipool.asset_fee(tkn)}" for tkn in omnipool.asset_list]))
+        print("protocol:")
+        print('\n'.join([f"    {tkn}: {omnipool.lrna_fee(tkn)}" for tkn in omnipool.asset_list]))
+
+    # block 1 asset fees:
+    #     HDX: 0.00098999999999999999918196946085968690454137686174363
+    #     USD: 0.00098999999999999999918196946085968690454137686174363
+    #     DOT: 0.00098999999999999999918196946085968690454137686174363
+    # protocol:
+    #     HDX: 0.00099499999999999999959098473042984345227068843087182
+    #     USD: 0.00099499999999999999959098473042984345227068843087182
+    #     DOT: 0.00099499999999999999959098473042984345227068843087182
+
+    # block 2 asset fees:
+    #     HDX: 0.0007569140091580043675389150596080201111429446491462
+    #     USD: 0.00097999999999999999836393892171937380908275372348726
+    #     DOT: 0.0012018065866005950918572725161358182734808359344127
+    # protocol:
+    #     HDX: 0.0011015429954209978145944813919153637535112813989142
+    #     USD: 0.00098999999999999999918196946085968690454137686174363
+    #     DOT: 0.00087909670669970245243530266365146467234233575628089
+
+    # block 3 asset fees:
+    #     HDX: 0.00055105494081592356074528432762534566013772684973103
+    #     USD: 0.00096999999999999999754590838257906071362413058523089
+    #     DOT: 0.0013865846641330796153036865988954290849688324000587
+    # protocol:
+    #     HDX: 0.0011944725295920382171732662187663878835552671603654
+    #     USD: 0.00098499999999999999877295419128953035681206529261544
+    #     DOT: 0.00077670766793346018989406508313134617113971438520153
+
+    # block 4 asset fees:
+    #     HDX: 0.00037112076677782517789694366152568704522933218252749
+    #     USD: 0.00095999999999999999503381194893014694002886244561523
+    #     DOT: 0.0015456158655752671975624948858733191380900488778607
+    # protocol:
+    #     HDX: 0.0012744396166110874060853401181673034174141963543515
+    #     USD: 0.00097999999999999999751690597446507347001443122280762
+    #     DOT: 0.00068719206721236639625256450599348737098383800668491
