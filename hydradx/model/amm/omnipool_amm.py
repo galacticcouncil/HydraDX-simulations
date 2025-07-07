@@ -325,6 +325,33 @@ class OmnipoolState(Exchange):
         return self
 
     def update(self):
+
+        # update oracles
+        oracle_update_assets=[tkn for tkn in self.asset_list if (
+            self.current_block.volume_in[tkn] != 0
+            or self.current_block.volume_out[tkn] != 0
+            or self.current_block.lps[tkn] != 0
+            or self.current_block.withdrawals[tkn] != 0
+        )]
+        if len(oracle_update_assets) > 0:
+            for name, oracle in self.oracles.items():
+                unique_id = self.unique_id
+                oracle.update(
+                    block=self.last_block,
+                    assets=oracle_update_assets
+                )
+
+        self.current_block.time_step += 1
+        if len(oracle_update_assets) > 0:
+            for name, oracle in self.oracles.items():
+                oracle.update(
+                    block=self.current_block,
+                    assets=oracle_update_assets
+                )
+
+        if self.update_function:
+            self.update_function(self)
+
         # update fees
         self._lrna_fee.update(
             time_step=self.time_step,
@@ -343,34 +370,13 @@ class OmnipoolState(Exchange):
             liquidity=self.oracles['price'].liquidity
         )
 
-        # update oracles
-        oracle_update_assets=[tkn for tkn in self.asset_list if (
-            self.current_block.volume_in[tkn] != 0
-            or self.current_block.volume_out[tkn] != 0
-            or self.current_block.lps[tkn] != 0
-            or self.current_block.withdrawals[tkn] != 0
-        )]
-        if len(oracle_update_assets) > 0:
-            for name, oracle in self.oracles.items():
-                unique_id = self.unique_id
-                oracle.update(
-                    block=self.last_block,
-                    assets=oracle_update_assets
-                )
-        self.time_step += 1
-        self.current_block.time_step = self.time_step
-        if len(oracle_update_assets) > 0:
-            for name, oracle in self.oracles.items():
-                oracle.update(
-                    block=self.current_block,
-                    assets=oracle_update_assets
-                )
-        if self.update_function:
-            self.update_function(self)
-
         # update current block
         self.last_block = self.current_block
+        self.last_block.time_step -= 1
+        self.last_block.volume_in = {tkn: 0 for tkn in self.asset_list}
+        self.last_block.volume_out = {tkn: 0 for tkn in self.asset_list}
         self.current_block = Block(self)
+        self.time_step += 1
 
         self.fail = ''
 
