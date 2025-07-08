@@ -2795,10 +2795,79 @@ def test_dynamic_fee_test_case():
 
     for block in events:
         omnipool = block.pools['omnipool1']
-        print(f"block {block.time_step} asset fees:")
-        print('\n'.join([f"    {tkn}: {omnipool.asset_fee(tkn)}" for tkn in omnipool.asset_list]))
-        print("protocol:")
-        print('\n'.join([f"    {tkn}: {omnipool.lrna_fee(tkn)}" for tkn in omnipool.asset_list]))
+        print(f"block {block.time_step} oracle values:")
+        for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
+            print(f"  {attr}:")
+            print('\n'.join([f"    {tkn}: {getattr(omnipool.oracles['price'], attr)[tkn]}" for tkn in omnipool.asset_list]))
+
+    # block 1 oracle values:
+    #   liquidity:
+    #     HDX: 2000000.0
+    #     USD: 2000000.0
+    #     DOT: 2000000.0
+    #   price:
+    #     HDX: 1.0
+    #     USD: 1.0
+    #     DOT: 1.0
+    #   volume_in:
+    #     HDX: 0.0
+    #     USD: 0.0
+    #     DOT: 0.0
+    #   volume_out:
+    #     HDX: 0.0
+    #     USD: 0.0
+    #     DOT: 0.0
+    # block 2 oracle values:
+    #   liquidity:
+    #     HDX: 1800200.7997895678043666698972521577319458831942521
+    #     USD: 1800000.0
+    #     DOT: 1799800.3962087772662420550436464079797351392749116
+    #   price:
+    #     HDX: 0.99959900442057571185280760264883792956295622042659
+    #     USD: 1.000000396789808129034384735294152787818289763127
+    #     DOT: 1.0004002027983811854892756886833343706998886320967
+    #   volume_in:
+    #     HDX: 200.79978956780436666989725215773194588319425211001
+    #     USD: 200.0
+    #     DOT: 0.0
+    #   volume_out:
+    #     HDX: 0.0
+    #     USD: 200.0
+    #     DOT: 199.60379122273375794495635359202026486072508840922
+    # block 3 oracle values:
+    #   liquidity:
+    #     HDX: 1800200.7997895678043666698972521577319458831942521
+    #     USD: 1800000.0
+    #     DOT: 1799800.3962087772662420550436464079797351392749116
+    #   price:
+    #     HDX: 0.99959900442057571185280760264883792956295622042659
+    #     USD: 1.000000396789808129034384735294152787818289763127
+    #     DOT: 1.0004002027983811854892756886833343706998886320967
+    #   volume_in:
+    #     HDX: 200.79978956780436666989725215773194588319425211001
+    #     USD: 200.0
+    #     DOT: 0.0
+    #   volume_out:
+    #     HDX: 0.0
+    #     USD: 200.0
+    #     DOT: 199.60379122273375794495635359202026486072508840922
+    # block 4 oracle values:
+    #   liquidity:
+    #     HDX: 1800200.7997895678043666698972521577319458831942521
+    #     USD: 1800000.0
+    #     DOT: 1799800.3962087772662420550436464079797351392749116
+    #   price:
+    #     HDX: 0.99959900442057571185280760264883792956295622042659
+    #     USD: 1.000000396789808129034384735294152787818289763127
+    #     DOT: 1.0004002027983811854892756886833343706998886320967
+    #   volume_in:
+    #     HDX: 200.79978956780436666989725215773194588319425211001
+    #     USD: 200.0
+    #     DOT: 0.0
+    #   volume_out:
+    #     HDX: 0.0
+    #     USD: 200.0
+    #     DOT: 199.60379122273375794495635359202026486072508840922
 
     # block 1 asset fees:
     #     HDX: 0.00098999999999999999918196946085968690454137686174363
