@@ -1293,6 +1293,7 @@ def test_full_solver():
 
     pprint(intent_deltas)
 
+
 @given(st.lists(st.floats(min_value=1e-10, max_value=0.5), min_size=3, max_size=3),
        st.lists(st.floats(min_value=0.9, max_value=1.1), min_size=3, max_size=3),
         st.lists(st.integers(min_value=0, max_value=18), min_size=3, max_size=3),
