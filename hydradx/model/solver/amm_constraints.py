@@ -156,6 +156,19 @@ class AmmConstraints:
         A_upper = np.concatenate([A1_upper, A2_upper])
         return A, A_lower, A_upper
 
+    @abstractmethod
+    def get_approx(self, deltas: list):
+        pass
+
+    @abstractmethod
+    def upgrade_approx(self, deltas: list, current_approx):
+        pass
+
+    @abstractmethod
+    def get_linear_approx(self):
+        pass
+
+
 class XykConstraints(AmmConstraints):
     def __init__(self, amm: ConstantProductPoolState):
         super().__init__(amm)
@@ -236,6 +249,20 @@ class XykConstraints(AmmConstraints):
             S_upper = np.concatenate([S_upper, S_row_upper])
         S_lower = np.array([-INF] * len(S_upper))  # no lower bounds for linearized constraints
         return S, S_lower, S_upper
+
+    def get_approx(self, deltas: list) -> str:
+        pcts = [abs(deltas[0]) / self.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
+        pcts.extend([abs(deltas[j + 1]) / self.liquidity[tkn] for j, tkn in enumerate(self.asset_list)])
+        approx = "linear" if max(pcts) <= 1e-5 else "full"
+        return approx
+
+    def upgrade_approx(self, deltas: list, current_approx: str) -> str:
+        if current_approx == "full":
+            return "full"  # we don't want to downgrade full constraints to linear approximations
+        return self.get_approx(deltas)
+
+    def get_linear_approx(self):  # generate a linear approximation object
+        return "linear"
 
 
 class StableswapConstraints(AmmConstraints):
@@ -408,3 +435,23 @@ class StableswapConstraints(AmmConstraints):
         A_lower = np.concatenate([A1_lower, A2_lower])
         A_upper = np.concatenate([A1_upper, A2_upper])
         return A, A_lower, A_upper
+
+    def get_approx(self, deltas: list) -> list[str]:
+        pcts = [abs(deltas[0]) / self.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
+        sum_delta_x = sum([abs(deltas[j + 1]) for j in range(len(self.asset_list))])
+        pcts.append(sum_delta_x / self.d)
+        pcts.extend([abs(deltas[j + 1]) / self.liquidity[tkn] for j, tkn in enumerate(self.asset_list)])
+        approx = ["linear" if max(pcts[0], pcts[1]) <= 1e-5 else "full"]
+        for pct in pcts[2:]:
+            approx.append("linear" if pct <= 1e-5 else "full")
+        return approx
+
+    def upgrade_approx(self, deltas: list, current_approx: list[str]) -> list[str]:
+        new_approx = self.get_approx(deltas)
+        for i, approx in enumerate(current_approx):
+            if approx == "full" and new_approx[i] == "linear":
+                new_approx[i] = "full"  # we don't want to downgrade full constraints to linear approximations
+        return new_approx
+
+    def get_linear_approx(self):  # generate a linear approximation object
+        return ["linear"] * (len(self.asset_list) + 1)

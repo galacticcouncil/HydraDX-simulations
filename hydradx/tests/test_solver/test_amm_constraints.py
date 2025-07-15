@@ -235,6 +235,74 @@ def test_get_xyk_bounds():
         raise AssertionError("Cone feasibility check should fail")
 
 
+def test_xyk_upgrade_approx():
+    amm = ConstantProductPoolState(tokens={"A": 1_000_000, "B": 2_000_000})  # spot price is 2 B = 1 A
+    constraints = XykConstraints(amm)
+
+    # current_approx is linear, we need to upgrade to full because of shares
+    current_approx = "linear"
+    deltas = [amm.shares / 10000, amm.liquidity["A"] / 1000000, amm.liquidity["B"] / 1000000]
+    if constraints.upgrade_approx(deltas, current_approx) != "full":
+        raise AssertionError("Upgrade to full approximation should be required due to shares delta")
+    # current_approx is linear, we need to upgrade to full because of an asset
+    current_approx = "linear"
+    deltas = [amm.shares / 1000000, amm.liquidity["A"] / 10000, amm.liquidity["B"] / 1000000]
+    if constraints.upgrade_approx(deltas, current_approx) != "full":
+        raise AssertionError("Upgrade to full approximation should be required due to asset delta")
+    # current_approx is full, all deltas are low enough for linear approximation
+    current_approx = "full"
+    deltas = [amm.shares / 10000, amm.liquidity["A"] / 10000, amm.liquidity["B"] / 10000]
+    if constraints.upgrade_approx(deltas, current_approx) != "full":
+        raise AssertionError("Full approximation should never be downgraded to linear")
+    # current_approx is linear, all deltas are low enough for linear approximation
+    current_approx = "linear"
+    deltas = [amm.shares / 1000000, amm.liquidity["A"] / 1000000, amm.liquidity["B"] / 1000000]
+    if constraints.upgrade_approx(deltas, current_approx) != "linear":
+        raise AssertionError("Linear approximation should be kept as deltas are low enough")
+    # current_approx is full, correct approximation is full
+    current_approx = "full"
+    deltas = [amm.shares / 10000, amm.liquidity["A"] / 1000000, amm.liquidity["B"] / 1000000]
+    if constraints.upgrade_approx(deltas, current_approx) != "full":
+        raise AssertionError("Full approximation should always be kept")
+
+
+def test_stableswap_upgrade_approx():
+    amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)  # spot price is 2 B = 1 A
+    constraints = StableswapConstraints(amm)
+
+    # current_approx is entirely linear
+    current_approx = ["linear", "linear", "linear"]
+    examples = [  # [delta_mults, expected_approx]
+        [[1e-4, 1e-6, 1e-6], ["full", "linear", "linear"]],
+        [[1e-6, 1e-4, 1e-6], ["full", "full", "linear"]],
+        [[1e-6, 1e-6, 1e-4], ["full", "linear", "full"]],
+        [[1e-4, 1e-4, 1e-4], ["full", "full", "full"]],
+        [[1e-6, 1e-6, 1e-6], ["linear", "linear", "linear"]]
+    ]
+    for delta_mults, expected_approx in examples:
+        deltas = [amm.shares * delta_mults[0], amm.liquidity["A"] * delta_mults[1], amm.liquidity["B"] * delta_mults[2]]
+        real_approx = constraints.upgrade_approx(deltas, current_approx)
+        for i, approx in enumerate(real_approx):
+            if approx != expected_approx[i]:
+                raise AssertionError(f"Expected {expected_approx[i]} for {amm.asset_list[i]} but got {approx}")
+
+    # current_approx is mixed
+    current_approx = ["full", "linear", "full"]
+    examples = [  # [delta_mults, expected_approx]
+        [[1e-4, 1e-6, 1e-6], ["full", "linear", "full"]],
+        [[1e-6, 1e-4, 1e-6], ["full", "full", "full"]],
+        [[1e-6, 1e-6, 1e-4], ["full", "linear", "full"]],
+        [[1e-4, 1e-4, 1e-4], ["full", "full", "full"]],
+        [[1e-6, 1e-6, 1e-6], ["full", "linear", "full"]]
+    ]
+    for delta_mults, expected_approx in examples:
+        deltas = [amm.shares * delta_mults[0], amm.liquidity["A"] * delta_mults[1], amm.liquidity["B"] * delta_mults[2]]
+        real_approx = constraints.upgrade_approx(deltas, current_approx)
+        for i, approx in enumerate(real_approx):
+            if approx != expected_approx[i]:
+                raise AssertionError(f"Expected {expected_approx[i]} for {amm.asset_list[i]} but got {approx}")
+
+
 # TODO test with auxiliary variable calculation
 # def test_get_stableswap_bounds():
 #     amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)

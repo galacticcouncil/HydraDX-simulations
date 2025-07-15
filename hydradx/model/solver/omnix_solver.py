@@ -813,8 +813,6 @@ def _find_solution_unrounded(
         approx = p.get_omnipool_approx(tkn)
         # if approx == "none" and epsilon_tkn[tkn] <= 1e-6 and tkn != p.tkn_profit:
         #     approx = "linear"
-        # elif approx == "none" and epsilon_tkn[tkn] <= 1e-3:
-        #     approx = "quadratic"
         if tkn == p.tkn_profit:
             approx = "none"
         if approx == "linear":  # linearize the AMM constraint
@@ -858,14 +856,6 @@ def _find_solution_unrounded(
             # A4i = np.vstack([A4i, A4i_bounds])
             # b4i = np.append(b4i, b4i_bounds)
             # cones4.append(cb.NonnegativeConeT(4))
-        elif approx == "quadratic":  # quadratic approximation to in-given-out function
-            A4i = np.zeros((3, k))
-            A4i[1,i] = -omnipool_lrna_coefs[tkn]
-            A4i[1,n+i] = -omnipool_asset_coefs[tkn]
-            A4i[2,n+i] = -omnipool_asset_coefs[tkn]
-            b4i = np.array([1, 0, 0])
-            cones4.append(cb.PowerConeT(0.5))
-            cone_sizes4.append(3)
         else:  # full AMM constraint
             A4i = np.zeros((3, k))
             b4i = np.ones(3)
@@ -991,11 +981,8 @@ def _find_good_solution(
     n, m, r = p.n, p.m, p.r
     force_omnipool_approx = {tkn: "linear" for tkn in p.omnipool.asset_list}
     amm_approx_list = []
-    for amm in p.amm_list:
-        if isinstance(amm, StableSwapPoolState):
-            amm_approx_list.append(["linear" for _ in range(len(amm.asset_list) + 1)])
-        elif isinstance(amm, ConstantProductPoolState):
-            amm_approx_list.append("linear")
+    for amm_constraints in p.amm_constraints:
+        amm_approx_list.append(amm_constraints.get_linear_approx())
     p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, amm_approx_list=amm_approx_list)
     omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = _find_solution_unrounded(p, allow_loss=allow_loss)
     # if partial trade size is much higher than executed trade, lower trade max
@@ -1021,40 +1008,19 @@ def _find_good_solution(
     #     stableswap_pcts.append(pcts)
 
     # force_omnipool_approx = None
-    approx_adjusted_ct = 0
+    approx_adjusted = False
     if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update approximations if necessary
         omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
         for tkn in p.omnipool.asset_list:
             if force_omnipool_approx[tkn] == "linear" and omnipool_pcts[tkn] > 1e-6:
-                force_omnipool_approx[tkn] = "quadratic"  # don't actually want to force linear approximation
-                approx_adjusted_ct += 1
-            if force_omnipool_approx[tkn] == "quadratic" and omnipool_pcts[tkn] > 1e-3:
-                force_omnipool_approx[tkn] = "full"  # don't actually want to force quadratic approximation
-                approx_adjusted_ct += 1
+                force_omnipool_approx[tkn] = "full"  # don't actually want to force linear approximation
+                approx_adjusted = True
 
-        amm_pcts = []
-        for _i, amm in enumerate(p.amm_list):
-            pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-            if isinstance(amm, StableSwapPoolState):
-                sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
-                pcts.append(sum_delta_x / amm.d)
-            pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-            amm_pcts.append(pcts)
-        for s, amm in enumerate(p.amm_list):
-            if isinstance(amm, StableSwapPoolState):
-                if amm_approx_list[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                    amm_approx_list[s][0] = "full"
-                    approx_adjusted_ct += 1
-                for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                    if amm_approx_list[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                        amm_approx_list[s][j + 1] = "full"
-                        approx_adjusted_ct += 1
-            elif isinstance(amm, ConstantProductPoolState):
-                if amm_approx_list[s][0] == "linear" and max(amm_pcts[s]) > 1e-5:
-                    amm_approx_list[s][0] = "full"
-                    approx_adjusted_ct += 1
-            else:
-                raise AssertionError("Unrecognized AMM type")
+        for _i, amm_constraints in enumerate(p.amm_constraints):
+            old_approx = amm_approx_list[_i]
+            amm_approx_list[_i] = amm_constraints.upgrade_approx(amm_deltas[_i], old_approx)
+            if old_approx != amm_approx_list[_i]:
+                approx_adjusted = True
 
     for i in range(100):
         # lower maxes for intents
@@ -1066,7 +1032,7 @@ def _find_good_solution(
         # so we should be looking at trade_pcts where max is nonzero
         trade_pcts_nonzero_max = [max(-intent_deltas[i],0) / m for i, m in enumerate(p.partial_sell_maxs) if m > 0]
 
-        if (len(trade_pcts_nonzero_max) == 0 or min(trade_pcts_nonzero_max) >= 0.1) and approx_adjusted_ct == 0:
+        if (len(trade_pcts_nonzero_max) == 0 or min(trade_pcts_nonzero_max) >= 0.1) and (not approx_adjusted):
             break  # no changes to problem were made
         if len(trade_pcts_nonzero_max) > 0 and min(trade_pcts_nonzero_max) < 0.1:
             new_maxes, zero_ct = scale_down_partial_intents(p, trade_pcts, 10)
@@ -1086,50 +1052,19 @@ def _find_good_solution(
         if scale_trade_max:  # update trade_pcts
             trade_pcts = [-intent_deltas[i] / m if m > 0 else 0 for i, m in enumerate(p.partial_sell_maxs)]
             # trade_pcts + [1 for _ in range(r)]
+        approx_adjusted = False
         if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update approximations if necessary
             omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
-            approx_adjusted_ct = 0
             for tkn in p.omnipool.asset_list:
                 if force_omnipool_approx[tkn] == "linear" and omnipool_pcts[tkn] > 1e-6:
-                    force_omnipool_approx[tkn] = "quadratic"  # don't actually want to force linear approximation
-                    approx_adjusted_ct += 1
-                if force_omnipool_approx[tkn] == "quadratic" and omnipool_pcts[tkn] > 1e-3:
-                    force_omnipool_approx[tkn] = "full"  # don't actually want to force quadratic approximation
-                    approx_adjusted_ct += 1
-                    # elif omnipool_pcts[tkn] <= 1e-6:  # force linear
-                    #     force_omnipool_approx[tkn] = "linear"
-                    #     approx_adjusted_ct += 1
-                # else:
-                #     if omnipool_pcts[tkn] <= 1e-6:  # force linear
-                #         force_omnipool_approx[tkn] = "linear"
-                #         approx_adjusted_ct += 1
-                #     elif omnipool_pcts[tkn] <= 1e-3:  # force quadratic
-                #         force_omnipool_approx[tkn] = "quadratic"
-                #         approx_adjusted_ct += 1
+                    force_omnipool_approx[tkn] = "full"  # don't actually want to force linear approximation
+                    approx_adjusted = True
 
-            amm_pcts = []
-            for _i, amm in enumerate(p.amm_list):
-                pcts = [abs(amm_deltas[_i][0]) / amm.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
-                if isinstance(amm, StableSwapPoolState):
-                    sum_delta_x = sum([abs(amm_deltas[_i][j + 1]) for j in range(len(amm.asset_list))])
-                    pcts.append(sum_delta_x / amm.d)
-                pcts.extend([abs(amm_deltas[_i][j + 1]) / amm.liquidity[tkn] for j, tkn in enumerate(amm.asset_list)])
-                amm_pcts.append(pcts)
-            for s, amm in enumerate(p.amm_list):
-                if isinstance(amm, StableSwapPoolState):
-                    if amm_approx_list[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                        amm_approx_list[s][0] = "full"
-                        approx_adjusted_ct += 1
-                    for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                        if amm_approx_list[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                            amm_approx_list[s][j + 1] = "full"
-                            approx_adjusted_ct += 1
-                elif isinstance(amm, ConstantProductPoolState):
-                    if amm_approx_list[s][0] == "linear" and max(amm_pcts[s]) > 1e-5:
-                        amm_approx_list[s][0] = "full"
-                        approx_adjusted_ct += 1
-                else:
-                    raise AssertionError("Unrecognized AMM type")
+            for _i, amm_constraints in enumerate(p.amm_constraints):
+                old_approx = amm_approx_list[_i]
+                amm_approx_list[_i] = amm_constraints.upgrade_approx(amm_deltas[_i], old_approx)
+                if old_approx != amm_approx_list[_i]:
+                    approx_adjusted = True
 
     # once solution is found, re-run with directional flags
     if do_directional_run:
