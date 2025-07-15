@@ -99,6 +99,7 @@ class ICEProblem:
                     self.asset_list.append(tkn)
                 asset_indices.append(self.asset_list.index(tkn))
             self._amm_asset_indices.append(asset_indices)
+        self._amm_approx_list = [None] * len(self.amm_list)
         assert "LRNA" not in self.asset_list
         # self.sigma = sum(self.sigmas)
         for intent in self.intents:  # add assets from intents
@@ -449,7 +450,7 @@ class ICEProblem:
             clear_sell_maxes: bool = True,
             clear_I: bool = True,
             clear_omnipool_approx: bool = True,
-            force_amm_approx: list = None,
+            amm_approx_list: list = None,
             clear_amm_approx: bool = True,
             omnipool_deltas: dict = None,
             amm_deltas: list = None,
@@ -476,10 +477,10 @@ class ICEProblem:
             self._force_omnipool_approx = force_omnipool_approx
         elif clear_omnipool_approx:
             self._force_omnipool_approx = {tkn: "none" for tkn in self.omnipool.asset_list}
-        if force_amm_approx is not None:
-            self._force_amm_approx = force_amm_approx
+        if amm_approx_list is not None:
+            self._amm_approx_list = [copy.deepcopy(amm_approx) for amm_approx in amm_approx_list]
         elif clear_amm_approx:
-            self._force_amm_approx = [["none"]*(len(amm.asset_list) + 1) for amm in self.amm_list]
+            self._amm_approx_list = [None] * len(self.amm_list)
         if omnipool_deltas is not None:
             self._last_omnipool_deltas = omnipool_deltas
         if amm_deltas is not None:
@@ -539,7 +540,7 @@ class ICEProblem:
         return self._force_omnipool_approx[tkn]
 
     def get_amm_approx(self, i):
-        return self._force_amm_approx[i]
+        return self._amm_approx_list[i]
 
     def scale_obj_amt(self, amt):
         return amt * self._scaling[self.tkn_profit]
@@ -989,8 +990,13 @@ def _find_good_solution(
 ):
     n, m, r = p.n, p.m, p.r
     force_omnipool_approx = {tkn: "linear" for tkn in p.omnipool.asset_list}
-    force_amm_approx = [["linear" for _ in range(len(amm.asset_list) + 1)] for amm in p.amm_list]
-    p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, force_amm_approx=force_amm_approx)
+    amm_approx_list = []
+    for amm in p.amm_list:
+        if isinstance(amm, StableSwapPoolState):
+            amm_approx_list.append(["linear" for _ in range(len(amm.asset_list) + 1)])
+        elif isinstance(amm, ConstantProductPoolState):
+            amm_approx_list.append("linear")
+    p.set_up_problem(clear_I=False, force_omnipool_approx=force_omnipool_approx, amm_approx_list=amm_approx_list)
     omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = _find_solution_unrounded(p, allow_loss=allow_loss)
     # if partial trade size is much higher than executed trade, lower trade max
     if scale_trade_max:
@@ -1015,9 +1021,8 @@ def _find_good_solution(
     #     stableswap_pcts.append(pcts)
 
     # force_omnipool_approx = None
-    # force_amm_approx = None
     approx_adjusted_ct = 0
-    if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update force_amm_approx if necessary
+    if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update approximations if necessary
         omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
         for tkn in p.omnipool.asset_list:
             if force_omnipool_approx[tkn] == "linear" and omnipool_pcts[tkn] > 1e-6:
@@ -1037,21 +1042,17 @@ def _find_good_solution(
             amm_pcts.append(pcts)
         for s, amm in enumerate(p.amm_list):
             if isinstance(amm, StableSwapPoolState):
-                if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                    force_amm_approx[s][0] = "full"
+                if amm_approx_list[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
+                    amm_approx_list[s][0] = "full"
                     approx_adjusted_ct += 1
                 for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                        force_amm_approx[s][j + 1] = "full"
+                    if amm_approx_list[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
+                        amm_approx_list[s][j + 1] = "full"
                         approx_adjusted_ct += 1
             elif isinstance(amm, ConstantProductPoolState):
-                if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
-                    force_amm_approx[s][0] = "full"
+                if amm_approx_list[s][0] == "linear" and max(amm_pcts[s]) > 1e-5:
+                    amm_approx_list[s][0] = "full"
                     approx_adjusted_ct += 1
-                for j in range(len(amm.asset_list)):
-                    if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 1] > 1e-5:
-                        force_amm_approx[s][j + 1] = "full"
-                        approx_adjusted_ct += 1
             else:
                 raise AssertionError("Unrecognized AMM type")
 
@@ -1073,7 +1074,7 @@ def _find_good_solution(
             new_maxes, zero_ct = None, 0
         # constrain amm variables
         p.set_up_problem(sell_maxes=new_maxes, clear_I=False, force_omnipool_approx=force_omnipool_approx,
-                         force_amm_approx=force_amm_approx, omnipool_deltas=omnipool_deltas, amm_deltas=amm_deltas)
+                         amm_approx_list=amm_approx_list, omnipool_deltas=omnipool_deltas, amm_deltas=amm_deltas)
         # if zero_ct == m:
         #     break  # all partial intents have been eliminated from execution
         # solve refined problem
@@ -1085,7 +1086,7 @@ def _find_good_solution(
         if scale_trade_max:  # update trade_pcts
             trade_pcts = [-intent_deltas[i] / m if m > 0 else 0 for i, m in enumerate(p.partial_sell_maxs)]
             # trade_pcts + [1 for _ in range(r)]
-        if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update force_amm_approx if necessary
+        if approx_amm_eqs and status not in ['PrimalInfeasible', 'DualInfeasible']:  # update approximations if necessary
             omnipool_pcts = {tkn: abs(omnipool_deltas[tkn]) / p.omnipool.liquidity[tkn] for tkn in p.omnipool.asset_list}
             approx_adjusted_ct = 0
             for tkn in p.omnipool.asset_list:
@@ -1116,21 +1117,17 @@ def _find_good_solution(
                 amm_pcts.append(pcts)
             for s, amm in enumerate(p.amm_list):
                 if isinstance(amm, StableSwapPoolState):
-                    if force_amm_approx[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
-                        force_amm_approx[s][0] = "full"
+                    if amm_approx_list[s][0] == "linear" and max(amm_pcts[s][0], amm_pcts[s][1]) > 1e-5:
+                        amm_approx_list[s][0] = "full"
                         approx_adjusted_ct += 1
                     for j in range(len(amm.asset_list)):  # evaluate each asset constraint
-                        if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
-                            force_amm_approx[s][j + 1] = "full"
+                        if amm_approx_list[s][j + 1] == "linear" and amm_pcts[s][j + 2] > 1e-5:
+                            amm_approx_list[s][j + 1] = "full"
                             approx_adjusted_ct += 1
                 elif isinstance(amm, ConstantProductPoolState):
-                    if force_amm_approx[s][0] == "linear" and amm_pcts[s][0] > 1e-5:
-                        force_amm_approx[s][0] = "full"
+                    if amm_approx_list[s][0] == "linear" and max(amm_pcts[s]) > 1e-5:
+                        amm_approx_list[s][0] = "full"
                         approx_adjusted_ct += 1
-                    for j in range(len(amm.asset_list)):
-                        if force_amm_approx[s][j + 1] == "linear" and amm_pcts[s][j + 1] > 1e-5:
-                            force_amm_approx[s][j + 1] = "full"
-                            approx_adjusted_ct += 1
                 else:
                     raise AssertionError("Unrecognized AMM type")
 
