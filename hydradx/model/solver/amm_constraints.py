@@ -167,16 +167,8 @@ class XykConstraints(AmmConstraints):
 
     def get_amm_bounds(self, approx: str, scaling: dict) -> tuple:
         # TODO implement linear, quadratic approximations
-        # TODO allow xyk add/remove liquidity
-        A = np.zeros((2, self.k))
         amm_i = self.amm_i
-        A[0, amm_i.shares_net] = 1  # force share deltas to 0 for now
-        A[1, amm_i.shares_out] = 1
-        b = np.zeros(2)
-        cones = [cb.ZeroConeT(2)]
-        cone_sizes = [2]
         coef = [scaling[self.tkn_share] / self.shares] + [scaling[tkn] / self.liquidity[tkn] for tkn in self.asset_list]
-
         # if approx == "linear":  # linearize the AMM constraint
         #     c1 = 1 / (1 + epsilon_tkn[tkn])
         #     c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
@@ -195,15 +187,13 @@ class XykConstraints(AmmConstraints):
         #     A5j2[1, amm_i.asset_net[1]] = -B[2]
         #     cones5j.append(cb.PowerConeT(0.5))
         #     cones_count5j.append(3)
-        A2 = np.zeros((3, self.k))
-        b2 = np.ones(3)
-        A2[0, amm_i.asset_net[0]] = -coef[1]
-        A2[1, amm_i.asset_net[1]] = -coef[2]
-        cones.append(cb.PowerConeT(0.5))
-        cone_sizes.append(3)
-
-        A = np.vstack([A, A2])
-        b = np.append(b, b2)
+        A = np.zeros((3, self.k))
+        b = np.ones(3)
+        A[0, amm_i.asset_net[0]] = -coef[1]
+        A[1, amm_i.asset_net[1]] = -coef[2]
+        A[2, amm_i.shares_net] = -coef[0]
+        cones = [cb.PowerConeT(0.5)]
+        cone_sizes = [3]
 
         return A, b, cones, cone_sizes
 
@@ -274,20 +264,20 @@ class StableswapConstraints(AmmConstraints):
         denom = sum_assets - D0_prime
         if approx[0] == "linear":
             A = np.zeros((1, self.k))
-            A[0, amm_i.aux[0]] = 1  # a_{j,0} coefficient
-            A[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # delta_s coefficient
+            A[0, amm_i.aux[0]] = 1  # a_0 coefficient
+            A[0, amm_i.shares_net] = (1 + D0_prime / denom) * C[0] / s0  # X_0 coefficient
             for t in range(1, n_amm):
-                A[0, amm_i.asset_net[t - 1]] = -B[t] / denom  # delta_x_i coefficient
+                A[0, amm_i.asset_net[t - 1]] = -B[t] / denom  # X_t coefficient
             b = np.array([0])
             cones = [cb.ZeroConeT(1)]
             cone_sizes = [1]
         else:
             A = np.zeros((3, self.k))
             b = np.array([0, 0, 0])
-            # x = a_{j,0}
-            A[0, amm_i.aux[0]] = -1  # a_{j,0} coefficient
-            # y = 1 + C_jS_j / s_0
-            A[1, amm_i.shares_net] = -C[0] / s0  # delta_s coefficient
+            # x = a_0
+            A[0, amm_i.aux[0]] = -1  # a_0 coefficient
+            # y = 1 + C * X_0 / S
+            A[1, amm_i.shares_net] = -C[0] / s0  # X_0 coefficient
             b[1] = 1
             # z = An^n / D_0 sum(x_i^0 + B_i X_i) + (1 - An^n)(1 + C_jS_j / s_0)
             A[2, amm_i.shares_net] = D0_prime * C[0] / denom / s0
@@ -301,21 +291,21 @@ class StableswapConstraints(AmmConstraints):
             x0 = self.liquidity[self.asset_list[t - 1]]
             if approx[t] == "linear":
                 A_t = np.zeros((1, self.k))
-                A_t[0, amm_i.aux[t]] = 1  # a_{j,t} coefficient
-                A_t[0, amm_i.shares_net] = C[0] / s0  # delta_s coefficient
-                A_t[0, amm_i.asset_net[t - 1]] = -B[t] / x0  # delta_x_i coefficient
+                A_t[0, amm_i.aux[t]] = 1  # a_t coefficient
+                A_t[0, amm_i.shares_net] = C[0] / s0  # X_0 coefficient
+                A_t[0, amm_i.asset_net[t - 1]] = -B[t] / x0  # X_i coefficient
                 b_t = np.array([0])
                 cone_t = cb.ZeroConeT(1)
                 cone_size_t = 1
             else:
                 A_t = np.zeros((3, self.k))
                 b_t = np.zeros(3)
-                # x = a_{j,t}
+                # x = a_t
                 A_t[0, amm_i.aux[t]] = -1
-                # y = 1 + C_jS_j / s_0
+                # y = 1 + C * X_0 / S
                 A_t[1, amm_i.shares_net] = -C[0] / s0
                 b_t[1] = 1
-                # z = (x_t^0 + B_t X_t) / D_0
+                # z = 1 + B_t X_t / R_t
                 A_t[2, amm_i.asset_net[t - 1]] = -B[t] / x0
                 b_t[2] = 1
                 cone_t = cb.ExponentialConeT()

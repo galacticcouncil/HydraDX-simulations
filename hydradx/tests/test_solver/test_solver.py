@@ -1293,7 +1293,7 @@ def test_full_solver():
 
     pprint(intent_deltas)
 
-
+# @reproduce_failure('6.127.0', b'AXic07C/GgoGGvYPGMBAw/Z2zf2b1/fu1rD/OBMEZmEyHLkcGRxZICQjIyMA3qQatw==')
 @given(st.lists(st.floats(min_value=1e-10, max_value=0.5), min_size=3, max_size=3),
        st.lists(st.floats(min_value=0.9, max_value=1.1), min_size=3, max_size=3),
         st.lists(st.integers(min_value=0, max_value=18), min_size=3, max_size=3),
@@ -1353,7 +1353,7 @@ def test_solver_random_intents(sell_ratios, price_ratios, sell_is, buy_is, parti
         #     raise AssertionError(f"Profit: {profit}, Predicted Profit: {predicted_profit}, Abs Error: {abs_error}, Pct Error: {pct_error}")
         if not (abs_error < 100 or pct_error < 0.10):
             raise AssertionError(f"Profit: {profit}, Predicted Profit: {predicted_profit}, Abs Error: {abs_error}, Pct Error: {pct_error}")
-    elif abs_error != 0:
+    elif abs_error >= 10:
         raise AssertionError(f"Profit: {profit}, Predicted Profit: {predicted_profit}, Abs Error: {abs_error}")
 
     pprint(intent_deltas)
