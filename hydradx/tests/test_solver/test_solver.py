@@ -16,6 +16,9 @@ from hydradx.model.solver.omnix_solver import find_solution_outer_approx, ICEPro
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 
+settings.register_profile("ci", deadline=None, print_blob=True)
+settings.load_profile("ci")
+
 
 ##################################
 # Functional tests #
@@ -855,7 +858,7 @@ def test_matching_trades_execute_more_full_execution():
 ###############
 # Other tests #
 ###############
-
+@reproduce_failure('6.127.0', b'ACg/dZBsfh29sA==')
 @given(st.floats(min_value=1e-7, max_value=0.01))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_fuzz_single_trade_settles(size_factor: float):

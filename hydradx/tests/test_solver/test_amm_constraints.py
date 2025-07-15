@@ -199,40 +199,41 @@ def test_get_xyk_bounds():
     scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
     amm_i = constraints.amm_i
 
-    A, b, cones, cones_sizes = constraints.get_amm_bounds("None", scaling)
-    x = np.zeros(constraints.k)
-    # selling 5 B for 1 A should work
-    b_sell_amt, a_buy_amt = 5, 1
-    x[amm_i.asset_net[0]] = -a_buy_amt
-    x[amm_i.asset_net[1]] = b_sell_amt
-    x[amm_i.asset_out[0]] = a_buy_amt
-    s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check failed for valid XYK bounds")
-    # selling 1 A for 1 5 should not work
-    a_sell_amt, b_buy_amt = 1, 5
-    x[amm_i.asset_net[1]] = -b_buy_amt
-    x[amm_i.asset_net[0]] = a_sell_amt
-    x[amm_i.asset_out[1]] = b_buy_amt
-    s = b - A @ x
-    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should fail")
-    # selling 1 A for 1 B should work
-    a_sell_amt, b_buy_amt = 1, 1
-    x[amm_i.asset_net[1]] = -b_buy_amt
-    x[amm_i.asset_net[0]] = a_sell_amt
-    x[amm_i.asset_out[1]] = b_buy_amt
-    s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should succeed")
-    # selling 1 B for 1 A should not work
-    b_sell_amt, a_buy_amt = 1, 1
-    x[amm_i.asset_net[0]] = -a_buy_amt
-    x[amm_i.asset_net[1]] = b_sell_amt
-    x[amm_i.asset_out[0]] = a_buy_amt
-    s = b - A @ x
-    if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-        raise AssertionError("Cone feasibility check should fail")
+    for approx in ["none", "linear"]:  # mult = 10 should test full approximation, 0.1 should test linear approximation
+        A, b, cones, cones_sizes = constraints.get_amm_bounds(approx, scaling)
+        x = np.zeros(constraints.k)
+        # selling 5 B for 1 A should work
+        b_sell_amt, a_buy_amt = 5, 1
+        x[amm_i.asset_net[0]] = -a_buy_amt
+        x[amm_i.asset_net[1]] = b_sell_amt
+        x[amm_i.asset_out[0]] = a_buy_amt
+        s = b - A @ x
+        if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+            raise AssertionError("Cone feasibility check failed for valid XYK bounds")
+        # selling 1 A for 1 5 should not work
+        a_sell_amt, b_buy_amt = 1, 5
+        x[amm_i.asset_net[1]] = -b_buy_amt
+        x[amm_i.asset_net[0]] = a_sell_amt
+        x[amm_i.asset_out[1]] = b_buy_amt
+        s = b - A @ x
+        if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+            raise AssertionError("Cone feasibility check should fail")
+        # selling 1 A for 1 B should work
+        a_sell_amt, b_buy_amt = 1, 1
+        x[amm_i.asset_net[1]] = -b_buy_amt
+        x[amm_i.asset_net[0]] = a_sell_amt
+        x[amm_i.asset_out[1]] = b_buy_amt
+        s = b - A @ x
+        if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+            raise AssertionError("Cone feasibility check should succeed")
+        # selling 1 B for 1 A should not work
+        b_sell_amt, a_buy_amt = 1, 1
+        x[amm_i.asset_net[0]] = -a_buy_amt
+        x[amm_i.asset_net[1]] = b_sell_amt
+        x[amm_i.asset_out[0]] = a_buy_amt
+        s = b - A @ x
+        if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
+            raise AssertionError("Cone feasibility check should fail")
 
 
 def test_xyk_upgrade_approx():
@@ -273,11 +274,11 @@ def test_stableswap_upgrade_approx():
     # current_approx is entirely linear
     current_approx = ["linear", "linear", "linear"]
     examples = [  # [delta_mults, expected_approx]
-        [[1e-4, 1e-6, 1e-6], ["full", "linear", "linear"]],
-        [[1e-6, 1e-4, 1e-6], ["full", "full", "linear"]],
-        [[1e-6, 1e-6, 1e-4], ["full", "linear", "full"]],
+        [[1e-4, 1e-7, 1e-7], ["full", "linear", "linear"]],
+        [[1e-7, 1e-4, 1e-7], ["full", "full", "linear"]],
+        [[1e-7, 1e-6, 1e-4], ["full", "linear", "full"]],
         [[1e-4, 1e-4, 1e-4], ["full", "full", "full"]],
-        [[1e-6, 1e-6, 1e-6], ["linear", "linear", "linear"]]
+        [[1e-7, 1e-7, 1e-7], ["linear", "linear", "linear"]]
     ]
     for delta_mults, expected_approx in examples:
         deltas = [amm.shares * delta_mults[0], amm.liquidity["A"] * delta_mults[1], amm.liquidity["B"] * delta_mults[2]]
@@ -289,11 +290,11 @@ def test_stableswap_upgrade_approx():
     # current_approx is mixed
     current_approx = ["full", "linear", "full"]
     examples = [  # [delta_mults, expected_approx]
-        [[1e-4, 1e-6, 1e-6], ["full", "linear", "full"]],
-        [[1e-6, 1e-4, 1e-6], ["full", "full", "full"]],
-        [[1e-6, 1e-6, 1e-4], ["full", "linear", "full"]],
+        [[1e-4, 1e-7, 1e-7], ["full", "linear", "full"]],
+        [[1e-7, 1e-4, 1e-7], ["full", "full", "full"]],
+        [[1e-7, 1e-7, 1e-4], ["full", "linear", "full"]],
         [[1e-4, 1e-4, 1e-4], ["full", "full", "full"]],
-        [[1e-6, 1e-6, 1e-6], ["full", "linear", "full"]]
+        [[1e-7, 1e-7, 1e-7], ["full", "linear", "full"]]
     ]
     for delta_mults, expected_approx in examples:
         deltas = [amm.shares * delta_mults[0], amm.liquidity["A"] * delta_mults[1], amm.liquidity["B"] * delta_mults[2]]

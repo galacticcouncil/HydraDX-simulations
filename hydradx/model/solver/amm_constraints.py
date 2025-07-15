@@ -179,34 +179,35 @@ class XykConstraints(AmmConstraints):
         self.liquidity = {tkn: amm.liquidity[tkn] for tkn in amm.asset_list}
 
     def get_amm_bounds(self, approx: str, scaling: dict) -> tuple:
-        # TODO implement linear, quadratic approximations
         amm_i = self.amm_i
         coef = [scaling[self.tkn_share] / self.shares] + [scaling[tkn] / self.liquidity[tkn] for tkn in self.asset_list]
-        # if approx == "linear":  # linearize the AMM constraint
-        #     c1 = 1 / (1 + epsilon_tkn[tkn])
-        #     c2 = 1 / (1 - epsilon_tkn[tkn]) if epsilon_tkn[tkn] < 1 else 1e15
-        #     A5j2 = np.zeros((2, k))
-        #     b5j2 = np.zeros(2)
-        #     A5j2[0, amm_i.asset_net[0]] = -B[1]
-        #     A5j2[0, amm_i.asset_net[1]] = -B[2] * c1
-        #     A5j2[1, amm_i.asset_net[0]] = -B[1]
-        #     A5j2[1, amm_i.asset_net[1]] = -B[2] * c2
-        #     cones5j.append(cb.NonnegativeConeT(2))
-        #     cones_count5j.append(2)
-        # else:  # full constraint
-        #     A5j2 = np.zeros((3, k))
-        #     b5j2 = np.ones(3)
-        #     A5j2[0, amm_i.asset_net[0]] = -B[1]
-        #     A5j2[1, amm_i.asset_net[1]] = -B[2]
-        #     cones5j.append(cb.PowerConeT(0.5))
-        #     cones_count5j.append(3)
-        A = np.zeros((3, self.k))
-        b = np.ones(3)
-        A[0, amm_i.asset_net[0]] = -coef[1]
-        A[1, amm_i.asset_net[1]] = -coef[2]
-        A[2, amm_i.shares_net] = -coef[0]
-        cones = [cb.PowerConeT(0.5)]
-        cone_sizes = [3]
+        epsilon = 1e-6  # largest delta/balance for which we still use linear approximation
+        if approx == "linear":  # linearize the AMM constraint
+            A = np.zeros((6, self.k))
+            b = np.zeros((6))
+            cones = [cb.NonnegativeConeT(6)]
+            cone_sizes = [6]
+            share_cs = [coef[0] * (2 - coef[0] * epsilon), coef[0] * (2 + coef[0] * epsilon)]
+            asset_cs = [
+                [-coef[1], -coef[2]],
+                [-coef[1], -coef[2] * (1 + epsilon * coef[1])],
+                [-coef[1] * (1 + epsilon * coef[2]), -coef[2]]
+            ]
+            row = 0
+            for share_c in share_cs:
+                for asset_c in asset_cs:
+                    A[row, amm_i.shares_net] = share_c
+                    A[row, amm_i.asset_net[0]] = asset_c[0]
+                    A[row, amm_i.asset_net[1]] = asset_c[1]
+                    row += 1
+        else:  # full constraint
+            A = np.zeros((3, self.k))
+            b = np.ones(3)
+            A[0, amm_i.asset_net[0]] = -coef[1]
+            A[1, amm_i.asset_net[1]] = -coef[2]
+            A[2, amm_i.shares_net] = -coef[0]
+            cones = [cb.PowerConeT(0.5)]
+            cone_sizes = [3]
 
         return A, b, cones, cone_sizes
 
@@ -253,7 +254,7 @@ class XykConstraints(AmmConstraints):
     def get_approx(self, deltas: list) -> str:
         pcts = [abs(deltas[0]) / self.shares]  # first shares size constraint, delta_s / s_0 <= epsilon
         pcts.extend([abs(deltas[j + 1]) / self.liquidity[tkn] for j, tkn in enumerate(self.asset_list)])
-        approx = "linear" if max(pcts) <= 1e-5 else "full"
+        approx = "linear" if max(pcts) <= 1e-6 else "full"
         return approx
 
     def upgrade_approx(self, deltas: list, current_approx: str) -> str:
