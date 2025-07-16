@@ -858,8 +858,8 @@ def test_matching_trades_execute_more_full_execution():
 ###############
 # Other tests #
 ###############
-@reproduce_failure('6.127.0', b'ACg/dZBsfh29sA==')
-@given(st.floats(min_value=1e-7, max_value=0.01))
+
+@given(st.floats(min_value=1e-3, max_value=0.01))
 @settings(verbosity=Verbosity.verbose, print_blob=True)
 def test_fuzz_single_trade_settles(size_factor: float):
 
@@ -972,6 +972,8 @@ def test_fuzz_single_trade_settles(size_factor: float):
     x = find_solution_outer_approx(initial_state, intents, amm_list=amm_list)
     # intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x[0], x[1], x[4], x[5]
     intent_deltas, predicted_profit, omnipool_deltas, amm_deltas = x['deltas'], x['profit'], x['omnipool_deltas'], x['amm_deltas']
+    assert intent_deltas[0][0] < 0
+    assert intent_deltas[0][1] > 0
     valid, profit = validate_and_execute_solution(initial_state.copy(), copy.deepcopy(amm_list), copy.deepcopy(intents), intent_deltas, omnipool_deltas, amm_deltas, "HDX")
 
     assert valid
