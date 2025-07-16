@@ -4,6 +4,7 @@ from abc import abstractmethod
 import highspy
 
 from hydradx.model.amm.exchange import Exchange
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
@@ -167,6 +168,23 @@ class AmmConstraints:
     @abstractmethod
     def get_linear_approx(self):
         pass
+
+
+class OmnipoolConstraints(AmmConstraints):
+    def __init__(self, amm: OmnipoolState):
+        super().__init__(amm)
+        self.trade_fee = amm.trade_fee(amm.asset_list[0], 0)  # assuming fixed uniform fee
+        self.xyk_constraints = {}
+        for tkn in amm.asset_list:
+            xyk_amm = ConstantProductPoolState(
+                {"LRNA": amm.lrna[tkn], tkn: amm.liquidity[tkn]},
+                trade_fee=self.trade_fee,
+                unique_id=f"omnipool_{tkn}"
+            )
+            xyk_constraint = XykConstraints(xyk_amm)
+            self.xyk_constraints[tkn] = xyk_constraint
+
+        self.k = 4*len(amm.asset_list)
 
 
 class XykConstraints(AmmConstraints):

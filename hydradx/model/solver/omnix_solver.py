@@ -1084,7 +1084,7 @@ def _find_good_solution(
     if status in ['PrimalInfeasible', 'DualInfeasible']:
         omnipool_deltas = [0] * n
         intent_deltas = [0] * m
-        x = np.zeros(4 * n + m)
+        x = np.zeros(len(x))
         obj, dual_obj = 0, 0
         amm_deltas = [[0]*(len(amm.asset_list) + 1) for amm in p.amm_list]
         return omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas
