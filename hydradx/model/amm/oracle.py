@@ -1,11 +1,13 @@
 from .exchange import Exchange
 from typing import Protocol, Callable
 
+
 class ExchangeLike(Protocol):
     liquidity: dict
     asset_list: list
     price: dict or Callable[[str], float]
     time_step: int
+
 
 class Block:
     def __init__(self, input_state: ExchangeLike):
@@ -14,10 +16,12 @@ class Block:
         self.liquidity = {tkn: input_state.liquidity[tkn] for tkn in input_state.asset_list}
         self.price = {tkn: price[tkn] for tkn in input_state.asset_list}
         self.volume_in = {
-            tkn: input_state.volume_in if hasattr(input_state, 'volume_in') else 0.0 for tkn in input_state.asset_list
+            tkn: input_state.volume_in[tkn]
+            if hasattr(input_state, 'volume_in') else 0.0 for tkn in input_state.asset_list
         }
         self.volume_out = {
-            tkn: input_state.volume_out if hasattr(input_state, 'volume_out') else 0.0 for tkn in input_state.asset_list
+            tkn: input_state.volume_out[tkn]
+            if hasattr(input_state, 'volume_out') else 0.0 for tkn in input_state.asset_list
         }
         self.withdrawals = {tkn: 0.0 for tkn in input_state.asset_list}
         self.lps = {tkn: 0.0 for tkn in input_state.asset_list}
@@ -100,6 +104,7 @@ class Oracle:
         )
         new_oracle.time_step = self.time_step
         return new_oracle
+
 
 class OracleArchiveState:
     def __init__(self, oracle: Oracle):
