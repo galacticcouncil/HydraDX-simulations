@@ -1263,14 +1263,14 @@ def test_dynamic_fees(hdx_price: float):
     test_agent = Agent(
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
-    test_state = initial_state.copy()
+    test_state = initial_state.copy().update()
+    test_state.update_function = OmnipoolState.update_oracles
     test_state.swap(
         agent=test_agent,
         tkn_sell='USD',
         tkn_buy='HDX',
         sell_quantity=test_agent.holdings['USD']
-    )
-    test_state.update()
+    ).update()
 
     if test_state.asset_fee('R1') >= initial_R1_fee:
         raise AssertionError('R1 fee should be decreasing due to decay.')
@@ -1453,8 +1453,8 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
     events = run.run(initial_state=initial_state, time_steps=2, silent=True)
     omnipool = events[1].pools['omnipool']
     omnipool_oracle = omnipool.oracles['price']
-    prev_lrna_fees = events[0].pools['omnipool2'].last_lrna_fee
-    prev_asset_fees = events[0].pools['omnipool2'].last_fee
+    prev_lrna_fees = {tkn: events[0].pools['omnipool'].lrna_fee(tkn) for tkn in omnipool.asset_list}
+    prev_asset_fees = {tkn: events[0].pools['omnipool'].asset_fee(tkn) for tkn in omnipool.asset_list}
     for tkn in ['HDX', 'USD', 'DOT']:
         x = (omnipool_oracle.volume_out[tkn] - omnipool_oracle.volume_in[tkn]) / omnipool_oracle.liquidity[tkn]
 
@@ -1550,7 +1550,9 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        lrna_fee_burn=0
+        lrna_fee_burn=0,
+        unique_id='omnipool',
+        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
     initial_state = GlobalState(
@@ -1567,8 +1569,7 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
             ),
         }
     )
-
-    events = run.run(initial_state=initial_state, time_steps=4, silent=True)
+    events = run.run(initial_state=initial_state, time_steps=2, silent=True)
 
     omnipool = events[1].pools['omnipool']
     prev_lrna_fees = events[0].pools['omnipool'].last_lrna_fee
@@ -2682,202 +2683,3 @@ def test_trade_to_price():
     price = omnipool.lrna_price('USD')
 
     assert price == pytest.approx(expected_price, rel=1e-15)
-
-
-def test_dynamic_fee_test_case():
-    lrna_fee = DynamicFee(
-        minimum=mpf(1) / 20000,
-        amplification=1,
-        decay=0.000005,
-        maximum=float('inf')
-    )
-    asset_fee = DynamicFee(
-        minimum=mpf(1.5) / 10000,
-        amplification=2,
-        decay=0.00001,
-        maximum=float('inf')
-    )
-    omnipool = OmnipoolState(
-        tokens={
-            'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
-            'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
-            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)}
-        },
-        asset_fee=asset_fee,
-        lrna_fee=lrna_fee,
-        oracles={'price': mpf(9)},  # equivalent to a decay factor of 0.2
-        unique_id='omnipool1'
-    )
-    swaps = [
-        [
-            # block 1
-            {'tkn_sell': 'HDX', 'tkn_buy': 'USD', 'buy_quantity': mpf(1000)},
-            {'tkn_sell': 'USD', 'tkn_buy': 'DOT', 'sell_quantity': mpf(1000)}
-        ],
-        # no trades for the next 2 blocks
-        None, None,
-        [
-            # block 4
-            {'tkn_sell': 'DOT', 'tkn_buy': 'USD', 'buy_quantity': mpf(1000)},
-            {'tkn_sell': 'USD', 'tkn_buy': 'HDX', 'sell_quantity': mpf(1000)}
-        ]
-    ]
-    omnipool1 = omnipool.copy()
-    omnipool2 = omnipool.copy()
-    omnipool2.update_function = lambda self: self.oracles['price'].update(self.current_block)
-    omnipool2.unique_id = 'omnipool2'  # ignore for now
-    initial_state = GlobalState(
-        pools=[omnipool1, omnipool2],
-        agents={
-            'trader1': Agent(
-                enforce_holdings=False,
-                trade_strategy=schedule_swaps(pool_id='omnipool1', swaps=swaps)
-            ),
-            'trader2': Agent(
-                enforce_holdings=False,
-                trade_strategy=schedule_swaps(pool_id='omnipool2', swaps=swaps)
-            )
-        }
-    )
-    events = run.run(initial_state, time_steps=4, silent=True)
-    final_state = events[-1]
-    omnipool_final = final_state.pools['omnipool1']
-    print(f"LRNA fee for HDX: {omnipool.lrna_fee('HDX')} -> {omnipool_final.lrna_fee('HDX')}")
-    print(f"Asset fee for HDX: {omnipool.asset_fee('HDX')} -> {omnipool_final.asset_fee('HDX')}")
-    print(f"LRNA fee for USD: {omnipool.lrna_fee('USD')} -> {omnipool_final.lrna_fee('USD')}")
-    print(f"Asset fee for USD: {omnipool.asset_fee('USD')} -> {omnipool_final.asset_fee('USD')}")
-
-    omnipool = events[1].pools['omnipool2']
-    # omnipool.update()
-    prev_lrna_fees = events[0].pools['omnipool2'].last_lrna_fee
-    prev_asset_fees = events[0].pools['omnipool2'].last_fee
-    omnipool_oracle = events[1].pools['omnipool2'].oracles['price']
-    for tkn in ['HDX', 'USD', 'DOT']:
-        x = (omnipool_oracle.volume_out[tkn] - omnipool_oracle.volume_in[tkn]) / omnipool_oracle.liquidity[tkn]
-
-        df = -lrna_fee.amplification * x - lrna_fee.decay
-        expected_lrna_fee = min(max(prev_lrna_fees[tkn] + df, lrna_fee.minimum), lrna_fee.maximum)
-        if omnipool.lrna_fee(tkn) != pytest.approx(expected_lrna_fee, rel=1e-15):
-            raise AssertionError('LRNA fee is not correct.')
-
-        df = asset_fee.amplification * x - asset_fee.decay
-        expected_asset_fee = min(max(prev_asset_fees[tkn] + df, asset_fee.minimum),
-                                 asset_fee.maximum)
-        if omnipool.asset_fee(tkn) != pytest.approx(expected_asset_fee, rel=1e-15):
-            raise AssertionError('Asset fee is not correct.')
-
-        print ('everything checked out for', tkn)
-
-    for block in events:
-        omnipool = block.pools['omnipool1']
-        print(f"# block {block.time_step} oracle values:")
-        for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
-            print(f"#   {attr}:")
-            print('\n'.join([f"#     {tkn}: {getattr(omnipool.oracles['price'], attr)[tkn]}" for tkn in omnipool.asset_list]))
-
-    for block in events:
-        print(f"# block {block.time_step} asset fees:")
-        print('\n'.join([f"#     {tkn}: {omnipool.asset_fee(tkn)}" for tkn in omnipool.asset_list]))
-        print("# protocol:")
-        print('\n'.join([f"#     {tkn}: {omnipool.lrna_fee(tkn)}" for tkn in omnipool.asset_list]))
-
-    # block 1 oracle values:
-    #   liquidity:
-    #     HDX: 1000000.0
-    #     USD: 1000000.0
-    #     DOT: 1000000.0
-    #   price:
-    #     HDX: 1.0
-    #     USD: 1.0
-    #     DOT: 1.0
-    #   volume_in:
-    #     HDX: 0.0
-    #     USD: 0.0
-    #     DOT: 0.0
-    #   volume_out:
-    #     HDX: 0.0
-    #     USD: 0.0
-    #     DOT: 0.0
-    # block 2 oracle values:
-    #   liquidity:
-    #     HDX: 1000200.4409585835286444649257799827296562367656508
-    #     USD: 1000000.0
-    #     DOT: 999800.03992850497992854932602190371439567844278478
-    #   price:
-    #     HDX: 0.99959971992720556923488392039545357182167863144822
-    #     USD: 1.0000000600690839517254423605317011093768496032038
-    #     DOT: 1.0004005808813144024970789934636530639801929812492
-    #   volume_in:
-    #     HDX: 200.44095858352864446492577998272965623676565081776
-    #     USD: 200.0
-    #     DOT: 0.0
-    #   volume_out:
-    #     HDX: 0.0
-    #     USD: 200.0
-    #     DOT: 199.96007149502007145067397809628560432155721522102
-    # block 3 oracle values:
-    #   liquidity:
-    #     HDX: 1000200.4409585835286444649257799827296562367656508
-    #     USD: 1000000.0
-    #     DOT: 999800.03992850497992854932602190371439567844278478
-    #   price:
-    #     HDX: 0.99959971992720556923488392039545357182167863144822
-    #     USD: 1.0000000600690839517254423605317011093768496032038
-    #     DOT: 1.0004005808813144024970789934636530639801929812492
-    #   volume_in:
-    #     HDX: 200.44095858352864446492577998272965623676565081776
-    #     USD: 200.0
-    #     DOT: 0.0
-    #   volume_out:
-    #     HDX: 0.0
-    #     USD: 200.0
-    #     DOT: 199.96007149502007145067397809628560432155721522102
-    # block 4 oracle values:
-    #   liquidity:
-    #     HDX: 1000200.4409585835286444649257799827296562367656508
-    #     USD: 1000000.0
-    #     DOT: 999800.03992850497992854932602190371439567844278478
-    #   price:
-    #     HDX: 0.99959971992720556923488392039545357182167863144822
-    #     USD: 1.0000000600690839517254423605317011093768496032038
-    #     DOT: 1.0004005808813144024970789934636530639801929812492
-    #   volume_in:
-    #     HDX: 200.44095858352864446492577998272965623676565081776
-    #     USD: 200.0
-    #     DOT: 0.0
-    #   volume_out:
-    #     HDX: 0.0
-    #     USD: 200.0
-    #     DOT: 199.96007149502007145067397809628560432155721522102
-    # block 1 asset fees:
-    #     HDX: 0.00015
-    #     USD: 0.00015
-    #     DOT: 0.0010961252674999390359561201078140503791135100094563
-    # protocol:
-    #     HDX: 0.00052391522793662128092725255326967245233223629595342
-    #     USD: 0.00005
-    #     DOT: 0.00005
-    # block 2 asset fees:
-    #     HDX: 0.00015
-    #     USD: 0.00015
-    #     DOT: 0.0010961252674999390359561201078140503791135100094563
-    # protocol:
-    #     HDX: 0.00052391522793662128092725255326967245233223629595342
-    #     USD: 0.00005
-    #     DOT: 0.00005
-    # block 3 asset fees:
-    #     HDX: 0.00015
-    #     USD: 0.00015
-    #     DOT: 0.0010961252674999390359561201078140503791135100094563
-    # protocol:
-    #     HDX: 0.00052391522793662128092725255326967245233223629595342
-    #     USD: 0.00005
-    #     DOT: 0.00005
-    # block 4 asset fees:
-    #     HDX: 0.00015
-    #     USD: 0.00015
-    #     DOT: 0.0010961252674999390359561201078140503791135100094563
-    # protocol:
-    #     HDX: 0.00052391522793662128092725255326967245233223629595342
-    #     USD: 0.00005
-    #     DOT: 0.00005
