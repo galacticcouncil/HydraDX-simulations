@@ -197,9 +197,10 @@ def test_oracle_one_block_with_swaps(lrna: list[float], oracle_liquidity: list[f
             'price': copy.deepcopy(init_oracle)
         }
     )
+    initial_omnipool.update_function = OmnipoolState.update_oracles
 
     omnipool_0 = initial_omnipool.update()
-    omnipool_oracle_0 = omnipool_0.oracles['price'].update(omnipool_0.current_block)
+    omnipool_oracle_0 = omnipool_0.oracles['price']
 
     for tkn in ['HDX', 'USD', 'DOT']:
         # alpha_mod = alpha if vol_in[tkn] != 0 or vol_out[tkn] != 0 else 0
@@ -221,8 +222,6 @@ def test_oracle_one_block_with_swaps(lrna: list[float], oracle_liquidity: list[f
             raise AssertionError('Price is not correct.')
 
     trader = Agent(enforce_holdings=False)
-    if trade_sizes[0] != trade_sizes[1]:
-        er = 1
     omnipool_1 = omnipool_0.copy().swap(
         agent=trader,
         tkn_sell='DOT',
@@ -233,10 +232,12 @@ def test_oracle_one_block_with_swaps(lrna: list[float], oracle_liquidity: list[f
         tkn_sell='LRNA',
         tkn_buy='DOT',
         buy_quantity=trade_sizes[1]
-    ).update()
-    vol_in = omnipool_1.last_block.volume_in
-    vol_out = omnipool_1.last_block.volume_out
-    omnipool_oracle_1 = omnipool_1.oracles['price'].update(omnipool_1.current_block, ['HDX', 'USD'])
+    )
+    # save trade volumes before it gets wiped by the update
+    vol_in = {tkn: omnipool_1.current_block.volume_in[tkn] for tkn in omnipool_1.asset_list}
+    vol_out = {tkn: omnipool_1.current_block.volume_out[tkn] for tkn in omnipool_1.asset_list}
+    omnipool_1.update()
+    omnipool_oracle_1 = omnipool_1.oracles['price']
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = omnipool_oracle_0.liquidity[tkn] * (1 - alpha) + alpha * omnipool_1.liquidity[tkn]
         if omnipool_oracle_1.liquidity[tkn] != pytest.approx(expected_liquidity, 1e-12):
@@ -316,3 +317,80 @@ def test_oracle_multi_block():
         if omnipool_oracle.price[tkn] != pytest.approx(expected_price[tkn], rel=1e-12):
             raise AssertionError('Price is not correct.')
 
+
+@given(time_steps=st.integers(min_value=1, max_value=10))
+def test_dynamic_fee_test_case(time_steps: int):
+    omnipool = OmnipoolState(
+        tokens={
+            'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+            'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
+            'DOT': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)}
+        },
+        oracles={'price': mpf(9)},  # equivalent to a decay factor of 0.2
+        unique_id='omnipool1'
+    )
+    swaps = [
+        [
+            # block 1
+            {'tkn_sell': 'HDX', 'tkn_buy': 'USD', 'buy_quantity': mpf(1000)},
+            {'tkn_sell': 'USD', 'tkn_buy': 'DOT', 'sell_quantity': mpf(1000)}
+        ],
+        # no trades for the next 2 blocks
+        None, None,
+        [
+            # block 4
+            {'tkn_sell': 'DOT', 'tkn_buy': 'USD', 'buy_quantity': mpf(1000)},
+            {'tkn_sell': 'USD', 'tkn_buy': 'HDX', 'sell_quantity': mpf(1000)}
+        ]
+    ]
+    omnipool1 = omnipool.copy()
+    omnipool2 = omnipool.copy()
+    omnipool2.update_function = OmnipoolState.update_oracles  # update oracles every block
+    omnipool2.unique_id = 'omnipool2'  # ignore for now
+    initial_state = GlobalState(
+        pools=[omnipool1, omnipool2],
+        agents={
+            'trader1': Agent(
+                enforce_holdings=False,
+                trade_strategy=schedule_swaps(pool_id='omnipool1', swaps=swaps)
+            ),
+            'trader2': Agent(
+                enforce_holdings=False,
+                trade_strategy=schedule_swaps(pool_id='omnipool2', swaps=swaps)
+            )
+        }
+    )
+    events = run.run(initial_state, time_steps=time_steps, silent=True)
+    final_state = events[-1]
+    omnipool_final = final_state.pools['omnipool2']
+    print(f"LRNA fee for HDX: {omnipool.lrna_fee('HDX')} -> {omnipool_final.lrna_fee('HDX')}")
+    print(f"Asset fee for HDX: {omnipool.asset_fee('HDX')} -> {omnipool_final.asset_fee('HDX')}")
+    print(f"LRNA fee for USD: {omnipool.lrna_fee('USD')} -> {omnipool_final.lrna_fee('USD')}")
+    print(f"Asset fee for USD: {omnipool.asset_fee('USD')} -> {omnipool_final.asset_fee('USD')}")
+
+    for tkn in ['HDX', 'USD', 'DOT']:
+        omnipool1 = events[-1].pools['omnipool1']
+        omnipool2 = events[-1].pools['omnipool2']
+        # update both pools. One will have updated every step until now, while the other may be
+        # "catching up". They should be equivalent.
+        omnipool1.update_oracles()
+        omnipool2.update_oracles()
+        for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
+            if getattr(omnipool1.oracles['price'], attr)[tkn] != pytest.approx(
+                    getattr(omnipool2.oracles['price'], attr)[tkn], rel=1e-12):
+                raise AssertionError(f"Oracle {attr} for {tkn} not equal in omnipool1 and omnipool2.")
+
+    # for block in events:
+    #     omnipool = block.pools['omnipool2']
+    #     print(f"# block {block.time_step} oracle values:")
+    #     for attr in ['liquidity', 'price', 'volume_in', 'volume_out']:
+    #         print(f"#   {attr}:")
+    #         print('\n'.join(
+    #             [f"#     {tkn}: {getattr(omnipool.oracles['price'], attr)[tkn]}" for tkn in omnipool.asset_list]))
+    #
+    # for block in events:
+    #     omnipool = block.pools['omnipool2']
+    #     print(f"# block {block.time_step} asset fees:")
+    #     print('\n'.join([f"#     {tkn}: {omnipool.asset_fee(tkn)}" for tkn in omnipool.asset_list]))
+    #     print("# protocol:")
+    #     print('\n'.join([f"#     {tkn}: {omnipool.lrna_fee(tkn)}" for tkn in omnipool.asset_list]))
