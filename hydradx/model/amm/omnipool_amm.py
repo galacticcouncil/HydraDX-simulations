@@ -6,6 +6,7 @@ from .agents import Agent
 from .exchange import Exchange
 from .oracle import Oracle, Block, OracleArchiveState
 
+
 class AssetFeeCallable(Protocol):
     def __call__(self, tkn: str) -> float: ...
 
@@ -132,6 +133,7 @@ class OmnipoolState(Exchange):
                 protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
+        self.oracles = {}
 
         if oracles is None or 'price' not in oracles:
             if last_oracle_values is None or 'price' not in last_oracle_values:
@@ -143,7 +145,7 @@ class OmnipoolState(Exchange):
             self.oracles.update({
                 name: Oracle(
                     sma_equivalent_length=period,
-                    last_values=last_oracle_values[name] if name in last_oracle_values else None
+                    last_values=last_oracle_values[name] if name in last_oracle_values else None,
                 )
                 for name, period in oracles.items()
             })
@@ -152,6 +154,8 @@ class OmnipoolState(Exchange):
                 name: Oracle(sma_equivalent_length=period, first_block=Block(self))
                 for name, period in oracles.items()
             })
+        for oracle in self.oracles.values():
+            oracle.last_updated = {tkn: -1 for tkn in self.asset_list}
 
         # trades per block cannot exceed this fraction of the pool's liquidity
         self.trade_limit_per_block = trade_limit_per_block
@@ -168,18 +172,21 @@ class OmnipoolState(Exchange):
         self.dynamic_fee_precision = dynamic_fee_precision
 
         self.current_block = Block(self)
+        self.last_block = self.current_block.copy()
+        self.last_block.time_step = -1
         self.unique_id = unique_id
 
     def _create_dynamic_fee(self, value: DynamicFee or dict or float, fee_type: Literal['lrna', 'asset']) -> DynamicFee:
         raise_oracle = 'price'
+
         def get_last_volume():
-            return {
-                tkn: (self.oracles[raise_oracle].volume_in[tkn]
-                - self.oracles[raise_oracle].volume_out[tkn])
-                if fee_type == 'lrna' else
-                (self.oracles[raise_oracle].volume_out[tkn]
-                - self.oracles[raise_oracle].volume_in[tkn])
-                for tkn in self.asset_list
+            return {tkn: (
+                    self.oracles[raise_oracle].volume_in[tkn]
+                    - self.oracles[raise_oracle].volume_out[tkn]
+                ) if fee_type == 'lrna' else (
+                    self.oracles[raise_oracle].volume_out[tkn]
+                    - self.oracles[raise_oracle].volume_in[tkn]
+                ) for tkn in self.asset_list
             }
         if isinstance(value, DynamicFee):
             return_val = DynamicFee(
@@ -205,7 +212,8 @@ class OmnipoolState(Exchange):
                 minimum=min(current.values()),
                 maximum=max(current.values()),
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
-                net_volume=get_last_volume()
+                net_volume=get_last_volume(),
+                last_updated={tkn: self.time_step - 1 for tkn in self.asset_list},
             )
         else:  # value is a number
             return DynamicFee(
@@ -276,6 +284,8 @@ class OmnipoolState(Exchange):
         delta = x * (j_sum + w_term) - num_blocks * fee.decay
         fee_value = min(max(fee.current[tkn] + delta, fee.minimum), fee.maximum)
         fee.current[tkn] = fee_value
+        if tkn == 'HDX':
+            pass
         fee.last_updated[tkn] = self.time_step
         return fee_value
 
@@ -322,11 +332,21 @@ class OmnipoolState(Exchange):
         return self
 
     def update(self):
-        # update oracles
-        self.current_block.price['HDX'] = self.lrna['HDX'] / self.liquidity['HDX']
 
-        for name, oracle in self.oracles.items():
-            oracle.update(self.current_block)
+        # run update function if present
+        if self.update_function:
+            self.update_function(self)
+
+        # update oracles
+        oracle_update_assets = [tkn for tkn in self.asset_list if (
+            self.current_block.volume_in[tkn] != 0
+            or self.current_block.volume_out[tkn] != 0
+            or self.current_block.lps[tkn] != 0
+            or self.current_block.withdrawals[tkn] != 0
+        )]
+
+        if len(oracle_update_assets) > 0:
+            self.update_oracles(oracle_update_assets)
 
         # update fees
         self._lrna_fee.update(
@@ -347,14 +367,34 @@ class OmnipoolState(Exchange):
         )
 
         # update current block
+        self.last_block = self.current_block
+        self.last_block.volume_in = {tkn: 0 for tkn in self.asset_list}
+        self.last_block.volume_out = {tkn: 0 for tkn in self.asset_list}
         self.time_step += 1
         self.current_block = Block(self)
-
         self.fail = ''
-        if self.update_function:
-            self.update_function(self)
 
         return self
+
+    def update_oracles(self, assets: list[str] = None):
+        """
+        Update oracles for the current block.
+        If assets is None, update all oracles for all assets.
+        """
+        if assets is None:
+            assets = self.asset_list
+
+        for name, oracle in self.oracles.items():
+            if max(oracle.last_updated.values()) < self.last_block.time_step:
+                oracle.update(
+                    block=self.last_block,
+                    assets=assets
+                )
+            oracle.update(
+                block=self.current_block,
+                assets=assets
+            )
+
 
     @property
     def lrna_total(self):
@@ -580,14 +620,14 @@ class OmnipoolState(Exchange):
             # per-block trade limits
             if (
                     -delta_Rj - self.current_block.volume_in[tkn_buy] + self.current_block.volume_out[tkn_buy]
-                    > self.trade_limit_per_block * self.current_block.liquidity[tkn_buy]
+                    > self.trade_limit_per_block * self.last_block.liquidity[tkn_buy]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_buy}.'
                 )
             elif (
                     delta_Ri + self.current_block.volume_in[tkn_sell] - self.current_block.volume_out[tkn_sell]
-                    > self.trade_limit_per_block * self.current_block.liquidity[tkn_sell]
+                    > self.trade_limit_per_block * self.last_block.liquidity[tkn_sell]
             ):
                 return self.fail_transaction(
                     f'{self.trade_limit_per_block * 100}% per block trade limit exceeded in {tkn_sell}.'
@@ -608,10 +648,12 @@ class OmnipoolState(Exchange):
             buy_quantity = old_buy_liquidity - self.liquidity[tkn_buy]
             self.current_block.volume_out[tkn_buy] += buy_quantity
             self.current_block.price[tkn_buy] = self.lrna[tkn_buy] / self.liquidity[tkn_buy]
+            self.current_block.liquidity[tkn_buy] = self.liquidity[tkn_buy]
         if tkn_sell in self.asset_list:
             sell_quantity = self.liquidity[tkn_sell] - old_sell_liquidity
             self.current_block.volume_in[tkn_sell] += sell_quantity
             self.current_block.price[tkn_sell] = self.lrna[tkn_sell] / self.liquidity[tkn_sell]
+            self.current_block.liquidity[tkn_sell] = self.liquidity[tkn_sell]
         return return_val
 
     def _lrna_swap(
@@ -619,8 +661,7 @@ class OmnipoolState(Exchange):
             agent: Agent,
             delta_ra: float = 0,
             delta_qa: float = 0,
-            tkn: str = '',
-            modify_imbalance: bool = True
+            tkn: str = ''
     ):
         """
         Execute LRNA swap in place (modify and return)
@@ -879,6 +920,7 @@ class OmnipoolState(Exchange):
 
         # update block
         self.current_block.lps[tkn_add] += quantity
+        self.current_block.liquidity[tkn_add] += quantity
         # update fees
         self.asset_fee(tkn_add)
         self.lrna_fee(tkn_add)
@@ -978,6 +1020,7 @@ class OmnipoolState(Exchange):
                 del agent.nfts[nft_id]
 
         self.current_block.withdrawals[tkn_remove] += abs(delta_s)
+        self.current_block.liquidity[tkn_remove] += delta_r
         # update fees
         self.asset_fee(tkn_remove)
         self.lrna_fee(tkn_remove)

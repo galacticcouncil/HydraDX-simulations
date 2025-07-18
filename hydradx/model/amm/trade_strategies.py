@@ -123,7 +123,8 @@ def constant_swaps(
             agent_id=agent_id,
             tkn_sell=sell_asset,
             tkn_buy=buy_asset,
-            sell_quantity=sell_quantity
+            sell_quantity=sell_quantity if sell_quantity > 0 else 0,
+            buy_quantity=sell_quantity if sell_quantity < 0 else 0,
         )
 
     return TradeStrategy(strategy, name=f'constant swaps (${sell_quantity})')
@@ -1133,15 +1134,17 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
     return TradeStrategy(strategy, name='liquidate against omnipool')
 
 
-def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
+def schedule_swaps(pool_id: str, swaps: list[list[dict]] or list[dict]):
     """
     swaps should be in this format:
     [
         [
             {'tkn_sell': str, 'tkn_buy': str, <'sell_quantity' OR 'buy_quantity'>: float},
             ... for each trade at this time step
-        ],
-        for each time step
+        ]
+        or {tkn_sell: str, tkn_buy: str, <'sell_quantity' OR 'buy_quantity'>: float} for a single trade
+        or None for no trades at this time step
+        ... for each time step
     ]
     """
     class Strategy:
@@ -1151,7 +1154,15 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
             if self.initial_time_step == -1:
                 self.initial_time_step = state.time_step
             agent = state.agents[agent_id]
-            for trade in swaps [state.time_step - self.initial_time_step]:
+            step_swaps = (
+                swaps[state.time_step - self.initial_time_step]
+                if isinstance(swaps[state.time_step - self.initial_time_step], list)
+                else [swaps[state.time_step - self.initial_time_step]]
+            ) if len(swaps) > state.time_step - self.initial_time_step else []
+            if step_swaps == [None] or len(step_swaps) == 0:
+                # no trades this step
+                return state
+            for trade in step_swaps:
                 state.pools[pool_id].swap(
                     tkn_sell=trade['tkn_sell'],
                     tkn_buy=trade['tkn_buy'],
@@ -1159,7 +1170,6 @@ def schedule_swaps(pool_id: str, swaps: list[list[dict]]):
                     buy_quantity=trade['buy_quantity'] if 'buy_quantity' in trade else 0,
                     agent=agent
                 )
-
             return state
 
     return TradeStrategy(Strategy().execute, name="scheduled_swaps")
