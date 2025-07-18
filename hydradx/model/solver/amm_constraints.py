@@ -52,19 +52,24 @@ class AmmConstraints:
         else:
             delta_pct = 1  # to avoid causing any rounding
         if self.tkn_share in trading_tkns and abs(delta_pct) > 1e-11:
-            A_limits = np.zeros((2, self.k))
-            A_limits[0, self.amm_i.shares_out] = -1  # L0 >= 0
-            A_limits[1, self.amm_i.shares_net] = -1  # X_0 + L_0 >= 0
-            A_limits[1, self.amm_i.shares_out] = -1  # X_0 + L_0 >= 0
-            cones_limits.append(cb.NonnegativeConeT(2))
-            cones_sizes.append(2)
-            if len(amm_directions) > 0:
-                if (dir := amm_directions[0]) in ["buy", "sell"]:
-                    A_limits_dir = np.zeros((1, self.k))
-                    A_limits_dir[0, self.amm_i.shares_net] = -1 if dir == "buy" else 1
-                    A_limits = np.vstack([A_limits, A_limits_dir])
-                    cones_limits.append(cb.NonnegativeConeT(1))
-                    cones_sizes.append(1)
+            if len(amm_directions) > 0 and (dir := amm_directions[0]) in ["buy", "sell"]:
+                A_limits = np.zeros((2, self.k))
+                if dir == "buy":
+                    A_limits[0, self.amm_i.shares_net] = -1  # X_0 >= 0
+                    A_limits[1, self.amm_i.shares_out] = 1  # L_0 == 0
+                else:
+                    A_limits[0, self.amm_i.shares_net] = 1  # X_0 <= 0
+                    A_limits[1, self.amm_i.shares_net] = 1  # X_0 + L_0 == 0
+                    A_limits[1, self.amm_i.shares_out] = 1  # X_0 + L_0 == 0
+                cones_limits.extend([cb.NonnegativeConeT(1), cb.ZeroConeT(1)])
+                cones_sizes.extend([1, 1])
+            else:
+                A_limits = np.zeros((2, self.k))
+                A_limits[0, self.amm_i.shares_out] = -1  # L0 >= 0
+                A_limits[1, self.amm_i.shares_net] = -1  # X_0 + L_0 >= 0
+                A_limits[1, self.amm_i.shares_out] = -1  # X_0 + L_0 >= 0
+                cones_limits.append(cb.NonnegativeConeT(2))
+                cones_sizes.append(2)
         else:
             A_limits = np.zeros((2, self.k))  # TODO delete variables instead of forcing to zero
             A_limits[0, self.amm_i.shares_net] = 1
@@ -77,19 +82,24 @@ class AmmConstraints:
             else:
                 delta_pct = 1  # to avoid causing any rounding
             if tkn in trading_tkns and abs(delta_pct) > 1e-11:
-                A_limits_j = np.zeros((2, self.k))
-                A_limits_j[0, self.amm_i.asset_out[j]] = -1  # Lj >= 0
-                A_limits_j[1, self.amm_i.asset_net[j]] = -1  # Xj + Lj >= 0
-                A_limits_j[1, self.amm_i.asset_out[j]] = -1
-                cones_limits.append(cb.NonnegativeConeT(2))
-                cones_sizes.append(2)
-                if len(amm_directions) > 0:
-                    if (dir := amm_directions[j + 1]) in ["buy", "sell"]:
-                        A_limits_j_dir = np.zeros((1, self.k))
-                        A_limits_j_dir[0, self.amm_i.asset_net[j]] = -1 if dir == "buy" else 1
-                        A_limits_j = np.vstack([A_limits_j, A_limits_j_dir])
-                        cones_limits.append(cb.NonnegativeConeT(1))
-                        cones_sizes.append(1)
+                if len(amm_directions) > 0 and (dir := amm_directions[j + 1]) in ["buy", "sell"]:
+                    A_limits_j = np.zeros((2, self.k))
+                    if dir == "buy":
+                        A_limits_j[0, self.amm_i.asset_net[j]] = -1  # X_j >= 0
+                        A_limits_j[1, self.amm_i.asset_out[j]] = 1  # L_j == 0
+                    else:
+                        A_limits_j[0, self.amm_i.asset_net[j]] = 1  # X_j <= 0
+                        A_limits_j[1, self.amm_i.asset_net[j]] = 1  # X_j + L_j == 0
+                        A_limits_j[1, self.amm_i.asset_out[j]] = 1  # X_j + L_j == 0
+                    cones_limits.extend([cb.NonnegativeConeT(1), cb.ZeroConeT(1)])
+                    cones_sizes.extend([1, 1])
+                else:
+                    A_limits_j = np.zeros((2, self.k))
+                    A_limits_j[0, self.amm_i.asset_out[j]] = -1  # Lj >= 0
+                    A_limits_j[1, self.amm_i.asset_net[j]] = -1  # Xj + Lj >= 0
+                    A_limits_j[1, self.amm_i.asset_out[j]] = -1
+                    cones_limits.append(cb.NonnegativeConeT(2))
+                    cones_sizes.append(2)
             else:
                 A_limits_j = np.zeros((2, self.k))  # TODO delete variables instead of forcing to zero
                 A_limits_j[0, self.amm_i.asset_net[j]] = 1
