@@ -1445,14 +1445,33 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
     )
 
+    omnipool2 = copy.deepcopy(initial_omnipool)
+    omnipool2.update_function = None
+    omnipool2.unique_id = 'omnipool2'
+
     initial_state = GlobalState(
-        pools={'omnipool': initial_omnipool},
+        pools=[initial_omnipool, omnipool2],
         agents={}
     )
 
-    events = run.run(initial_state=initial_state, time_steps=2, silent=True)
+    events = run.run(initial_state=initial_state, time_steps=4, silent=True)
     omnipool = events[1].pools['omnipool']
-    omnipool_oracle = omnipool.oracles['price']
+    omnipool2 = events[1].pools['omnipool2']
+    lrna_fee_1, asset_fee_1 = {}, {}
+    lrna_fee_2, asset_fee_2 = {}, {}
+    # omnipool.update()
+    for tkn in omnipool.asset_list:
+        lrna_fee_1[tkn] = omnipool.lrna_fee(tkn)
+        asset_fee_1[tkn] = omnipool.asset_fee(tkn)
+        lrna_fee_2[tkn] = omnipool2.lrna_fee(tkn)
+        asset_fee_2[tkn] = omnipool2.asset_fee(tkn)
+        if lrna_fee_1[tkn] != pytest.approx(lrna_fee_2[tkn], rel=1e-15):
+            raise AssertionError('LRNA fee is not correct.')
+        if asset_fee_1[tkn] != pytest.approx(asset_fee_2[tkn], rel=1e-15):
+            raise AssertionError('Asset fee is not correct.')
+
+    omnipool_oracle = events[0].pools['omnipool'].oracles['price']
+    # fees should be updated using oracle values from the previous block
     prev_lrna_fees = {tkn: events[0].pools['omnipool'].lrna_fee(tkn) for tkn in omnipool.asset_list}
     prev_asset_fees = {tkn: events[0].pools['omnipool'].asset_fee(tkn) for tkn in omnipool.asset_list}
     for tkn in ['HDX', 'USD', 'DOT']:
@@ -1460,13 +1479,13 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
 
         df = -lrna_fee_params['amplification'] * x - lrna_fee_params['decay']
         expected_lrna_fee = min(max(prev_lrna_fees[tkn] + df, lrna_fee_params['minimum']), lrna_fee_params['fee_max'])
-        if omnipool.last_lrna_fee[tkn] != pytest.approx(expected_lrna_fee, rel=1e-15):
+        if omnipool.lrna_fee(tkn) != pytest.approx(expected_lrna_fee, rel=1e-15):
             raise AssertionError('LRNA fee is not correct.')
 
         df = asset_fee_params['amplification'] * x - asset_fee_params['decay']
         expected_asset_fee = min(max(prev_asset_fees[tkn] + df, asset_fee_params['minimum']),
                                  asset_fee_params['fee_max'])
-        if omnipool.last_fee[tkn] != pytest.approx(expected_asset_fee, rel=1e-15):
+        if omnipool.asset_fee(tkn) != pytest.approx(expected_asset_fee, rel=1e-15):
             raise AssertionError('Asset fee is not correct.')
 
 
@@ -1483,6 +1502,7 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
     amp=st.lists(st.floats(min_value=0.001, max_value=100), min_size=2, max_size=2),
     decay=st.lists(st.floats(min_value=0.000001, max_value=0.0001), min_size=2, max_size=2),
 )
+@reproduce_failure('6.131.3', b'AXic03CIZAADDUyGo15LAw4GHl1kMRy5NOw/QMXsN+BmXMDN+IDBEIAxBG/cE/riVQIAWe8dgQ==')
 def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_period, trade_size: float, lrna_fees: list[float],
@@ -1552,7 +1572,12 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         },
         lrna_fee_burn=0,
         unique_id='omnipool',
-        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
+        update_function=lambda self: ((
+                self.lrna_fee(tkn) + self.asset_fee(tkn),
+                self.oracles['price'].update(self.current_block)
+            )
+            for tkn in self.asset_list
+        )
     )
 
     initial_state = GlobalState(
