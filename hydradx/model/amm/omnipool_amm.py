@@ -155,7 +155,7 @@ class OmnipoolState(Exchange):
                 for name, period in oracles.items()
             })
         for oracle in self.oracles.values():
-            oracle.last_updated = {tkn: -1 for tkn in self.asset_list}
+            oracle.last_updated = {tkn: 0 for tkn in self.asset_list}
 
         # trades per block cannot exceed this fraction of the pool's liquidity
         self.trade_limit_per_block = trade_limit_per_block
@@ -170,6 +170,9 @@ class OmnipoolState(Exchange):
             lrna_fee_destination = Agent(holdings={'LRNA': 0})
         self.lrna_fee_destination = lrna_fee_destination
         self.dynamic_fee_precision = dynamic_fee_precision
+
+        # given provided oracle values, calculate initial fees
+        self.update_fees()
 
         self.current_block = Block(self)
         self.last_block = self.current_block.copy()
@@ -266,6 +269,8 @@ class OmnipoolState(Exchange):
         if fee.last_updated[tkn] == self.time_step:
             # return the last fee if it's already been computed for this tkn and block
             return fee.current[tkn]
+        if self.oracles['price'].last_updated[tkn] < self.time_step:
+            self.update_oracles([tkn])
 
         # use this approximation to catch up to where we think the fee should be,
         # knowing there have been no trades until now
@@ -348,6 +353,19 @@ class OmnipoolState(Exchange):
         if len(oracle_update_assets) > 0:
             self.update_oracles(oracle_update_assets)
 
+        self.update_fees()
+
+        # update current block
+        self.last_block = self.current_block
+        self.last_block.volume_in = {tkn: 0 for tkn in self.asset_list}
+        self.last_block.volume_out = {tkn: 0 for tkn in self.asset_list}
+        self.time_step += 1
+        self.current_block = Block(self)
+        self.fail = ''
+
+        return self
+
+    def update_fees(self):
         # update fees
         self._lrna_fee.update(
             time_step=self.time_step,
@@ -365,16 +383,6 @@ class OmnipoolState(Exchange):
             },
             liquidity=self.oracles['price'].liquidity
         )
-
-        # update current block
-        self.last_block = self.current_block
-        self.last_block.volume_in = {tkn: 0 for tkn in self.asset_list}
-        self.last_block.volume_out = {tkn: 0 for tkn in self.asset_list}
-        self.time_step += 1
-        self.current_block = Block(self)
-        self.fail = ''
-
-        return self
 
     def update_oracles(self, assets: list[str] = None):
         """
