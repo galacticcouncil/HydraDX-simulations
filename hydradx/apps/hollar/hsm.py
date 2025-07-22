@@ -10,8 +10,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule
 
 st.sidebar.text(
-    "Initial HSM liquidity is 1 million USDT. Initial stableswap pool is USDT/Hollar pool with 1 million total tokens"
-    " (USDT and Hollar combined). A is 100."
+    "Stableswap amplification is 100."
 )
 
 hsm_liquidity = {'USDT': 1000000}
