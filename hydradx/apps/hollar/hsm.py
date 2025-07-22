@@ -38,7 +38,11 @@ hours = st.sidebar.number_input(
     "Hours to simulate",
     min_value=1, max_value=1000, value=24, step=1, key="hours"
 )
-blocks = hours * 300
+blocks_per_hour = st.sidebar.number_input(
+    "Blocks per hour",
+    min_value=300, max_value=1800, value=300, step=1, key="blocks_per_hour"
+)
+blocks = hours * blocks_per_hour
 st.sidebar.markdown("---")
 buyback_speed = pool_ct * st.sidebar.number_input(  # adjusting for number of pools since we simulate with 1 pool
     "Buyback speed",
