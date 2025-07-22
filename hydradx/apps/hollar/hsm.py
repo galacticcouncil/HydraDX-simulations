@@ -47,10 +47,11 @@ st.sidebar.markdown("---")
 buy_fee = st.sidebar.number_input(
     "Buy fee", min_value=0.0001, max_value=0.01, value=0.0001, step=0.0001, key="buy_fee", format="%.4f"
 )
+st.sidebar.text("The buy fee is the fee spread left for arbitragers to profit from, between the stableswap price and the HSM price.")
 
 init_hollar = initial_tvl * hol_pct
 tokens = {'HOLLAR': init_hollar, 'USDT': initial_tvl * (1 - hol_pct)}
-pool = StableSwapPoolState(tokens=tokens, amplification=amp, trade_fee=0.0002)
+pool = StableSwapPoolState(tokens=tokens, amplification=amp, trade_fee=0.0004)
 hsm = StabilityModule(
     liquidity = hsm_liquidity,
     buyback_speed = buyback_speed,
