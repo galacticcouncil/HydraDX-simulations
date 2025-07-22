@@ -15,11 +15,16 @@ st.sidebar.text(
 )
 
 hsm_liquidity = {'USDT': 1000000}
-initial_tvl = 1000000
+# initial_tvl = 1000000
 sell_price_fee = 0.01  # dummy value, not used in this simulation
 amp = 100
 
 st.sidebar.header("Parameters")
+initial_tvl = st.sidebar.number_input(
+    "Initial stableswap TVL (USDT + Hollar)",
+    min_value=100000, max_value=10000000, value=2000000, step=100000, key="init_stableswap_tvl"
+)
+
 init_price = st.sidebar.number_input(
     "Initial price of Hollar in USDT",
     min_value=0.001, max_value=1.0, value=0.5, step=0.001, key="init_price", format="%.3f"
