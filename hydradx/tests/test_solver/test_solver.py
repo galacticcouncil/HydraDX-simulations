@@ -1,4 +1,5 @@
 import copy
+import math
 from pprint import pprint
 import random
 
@@ -8,13 +9,14 @@ from hypothesis import given, strategies as st, settings, Verbosity, Phase, repr
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from mpmath import mpf
-import numpy as np
+import numpy as np, clarabel as cb
 
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.solver.omnix_solver import find_solution_outer_approx, ICEProblem, _get_leftover_bounds, AmmIndexObject
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
+from hydradx.model.solver.omnix_solver import _reduce_convex_problem, check_cone_feasibility
 
 settings.register_profile("ci", deadline=None, print_blob=True)
 settings.load_profile("ci")
@@ -191,6 +193,148 @@ def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
     return True
 
 
+def is_cone_equal(cone1, cone2):
+    return type(cone1) == type(cone2) and repr(cone1) == repr(cone2)
+
+
+def test_reduce_convex_problem_specific():
+    # x + y == 0, z == 0
+    A = np.array([[1, 1, 0], [0, 0, 1]])
+    b = np.zeros(2)
+    cones = [cb.ZeroConeT(2)]
+    cone_sizes = [2]
+    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = _reduce_convex_problem(A, b, cones, cone_sizes)
+    assert np.array_equal(A_reduced, np.array([[1, 1]]))
+    assert np.array_equal(b_reduced, np.array([0]))
+    assert len(cones_reduced) == 1
+    assert is_cone_equal(cones_reduced[0], cb.ZeroConeT(1))
+    assert cone_sizes_reduced == [1]
+    assert zero_is == [2]
+    examples = [{'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': [([1, -1, 0], True)]}]
+
+    # x0 + x1 == 0, x2 == 0, x1 + x2 >= 0
+    # solutions include x = [-1, 1]
+    # incorrect solutions include x = [1, -1]
+    A = np.array([[1, 1, 0], [0, 0, -1], [0, -1, -1]])
+    b = np.zeros(3)
+    cones = [cb.ZeroConeT(1), cb.ZeroConeT(1), cb.NonnegativeConeT(1)]
+    cone_sizes = [1, 1, 1]
+    xs = [([-1, 1, 0], True), ([1, -1, 0], False)]
+    examples.append({'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': xs})
+
+    # x1 + x2 >= 0, x1 == 0, sqrt((1 + x0)(1 + x1)) >= 1
+    # solutions include x = [1, 0, 1]
+    # incorrect solutions include x = [-0.5, 0, 1]
+    A = np.array([[0, -1, -1], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, 0]])
+    b = np.array([0, 0, 1, 1, 1])
+    cones = [cb.NonnegativeConeT(1), cb.ZeroConeT(1), cb.PowerConeT(0.5)]
+    cone_sizes = [1, 1, 3]
+    xs = [([1, 0, 1], True), ([-0.5, 0, 1], False)]
+    examples.append({'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': xs})
+
+    # (1 + x0)e^(x1 / (1 + x0)) >= 1 + x2, x0 == 0, x0 + x2 >= 0
+    # solutions include x = [0, 1, 1]
+    # incorrect solutions include x = [0, -1, 1]
+    A = np.array([[0, -1, 0], [-1, 0, 0], [0, 0, -1], [1, 0, 0], [-1, 0, -1]])
+    b = np.array([0, 1, 1, 0, 0])
+    cones = [cb.ExponentialConeT(), cb.ZeroConeT(1), cb.NonnegativeConeT(1)]
+    cone_sizes = [3, 1, 1]
+    xs = [([0, 1, 1], True), ([0, -1, 1], False)]
+    examples.append({'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': xs})
+    examples = [examples[-1]]
+
+    for example in examples:
+        result = _reduce_convex_problem(example['A'], example['b'], example['cones'], example['cone_sizes'])
+        A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = result
+        for x in example['xs']:
+            x_reduced = [x[0][i] for i in range(len(x[0])) if i not in zero_is]
+            s = example['b'] - example['A'] @ x[0]
+            if check_all_cone_feasibility(s, example['cones'], example['cone_sizes'], 0) != x[1]:
+                raise AssertionError("Original problem failed to match expectation")
+            s_reduced = b_reduced - A_reduced @ x_reduced
+            if check_all_cone_feasibility(s_reduced, cones_reduced, cone_sizes_reduced, 0) != x[1]:
+                raise AssertionError("Reduced problem failed to match expectation")
+
+@reproduce_failure('6.127.0', b'AXicc2R0JAoyYAEA05AFKQ==')
+@given(
+    x_rand = st.lists(st.integers(min_value=1, max_value=5), min_size=20, max_size=20),  # 20 variables
+    x_sign = st.lists(st.booleans(), min_size=20, max_size=20)
+)
+def test_reduced_convex_problem(x_rand, x_sign):
+    n = len(x_rand)
+    zero_i = [2, 5, 6, 9, 11, 16]
+    x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) if i not in zero_i else 0 for i in range(len(x_rand))])
+
+    # generate zero constraints
+    zero_vars = [3,8,0,11]
+    A_zero = np.zeros((2, n))
+    b_zero = np.zeros(2)
+    A_zero[0, zero_vars[0]] = -1
+    A_zero[0, zero_vars[1]] = -1
+    b_zero[0] = -(x[zero_vars[0]] + x[zero_vars[1]])
+    A_zero[1, zero_vars[2]] = -2
+    A_zero[1, zero_vars[3]] = -3
+    b_zero[1] = -(2*x[zero_vars[2]] + 3*x[zero_vars[3]])
+
+    # generate nonnegative constraints
+    nonneg_vars = [9, 3, 15, 1]
+    A_nonneg = np.zeros((2, n))
+    b_nonneg = np.zeros(2)
+    A_nonneg[0, nonneg_vars[0]] = -1
+    A_nonneg[0, nonneg_vars[1]] = -1
+    b_nonneg[0] = -(x[nonneg_vars[0]] + x[nonneg_vars[1]])
+    A_nonneg[1, nonneg_vars[2]] = -2
+    A_nonneg[1, nonneg_vars[3]] = -3
+    b_nonneg[1] = -(2*x[nonneg_vars[2]] + 3*x[nonneg_vars[3]]) + 1
+
+    # generate power cone constraint
+    power_vars = [4, 7, 10]
+    A_power = np.zeros((3, n))
+    b_power = np.ones(3)
+    A_power[0, power_vars[0]] = -1
+    A_power[1, power_vars[1]] = -1
+    A_power[2, power_vars[1]] = -1
+    # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
+    b_power[2] = math.sqrt((1 + x[power_vars[0]]) * (1 + x[power_vars[1]])) - x[power_vars[2]]
+
+    # generate exponential cone constraint
+    exp_vars = [13, 14]
+    for i in range(n):  # first element of exponential cone cannot be zeroed out
+        if i not in zero_i + exp_vars:
+            exp_vars = [i] + exp_vars
+            break
+    A_exp = np.zeros((3, n))
+    b_exp = np.zeros(3)
+    A_exp[0, power_vars[0]] = -1
+    A_exp[1, power_vars[1]] = -1/(2*x[power_vars[1]])
+    b_exp[1] = 1
+    A_exp[2, power_vars[2]] = -1
+    a1, a2, a3 = x[power_vars[0]], x[power_vars[1]], x[power_vars[2]]
+    b_exp[2] = (1 + a2) * math.exp(a1 / (1 + a2)) - a3 + 1
+
+    A_zeroing = np.zeros((len(zero_i), n))
+    b_zeroing = np.zeros(len(zero_i))
+    for i, zi in enumerate(zero_i):
+        A_zeroing[i, zi] = 1
+
+    A = np.vstack([A_zero, A_nonneg, A_power, A_exp, A_zeroing])
+    b = np.concatenate([b_zero, b_nonneg, b_power, b_exp, b_zeroing])
+    cones = [cb.ZeroConeT(2), cb.NonnegativeConeT(2), cb.PowerConeT(0.5), cb.ExponentialConeT(), cb.ZeroConeT(len(zero_i))]
+    cone_sizes = [2, 2, 3, 3, len(zero_i)]
+
+    result = _reduce_convex_problem(A, b, cones, cone_sizes)
+    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = result
+    x_reduced = [x[i] for i in range(len(x)) if i not in zero_is]
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+        raise AssertionError("Original problem failed to match expectation")
+    s_reduced = b_reduced - A_reduced @ x_reduced
+    if not check_all_cone_feasibility(s_reduced, cones_reduced, cone_sizes_reduced, 0):
+        raise AssertionError("Reduced problem failed to match expectation")
+
+
+
+
 def test_no_intent_arbitrage():
 
     # test where stablepool shares have different values
@@ -271,7 +415,7 @@ def test_no_intent_arbitrage():
                                          copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
                                          copy.deepcopy(x['amm_deltas']),"HDX")
 
-
+@reproduce_failure('6.127.0', b'ACg/7H/TbyUcOw==')
 @given(st.floats(min_value=0.1, max_value=0.9))
 def test_no_intent_arbitrage_xyk(ratio):
     # test where xyk price is different from Omnipool

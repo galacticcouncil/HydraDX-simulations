@@ -687,6 +687,56 @@ def _expand_submatrix(A, k: int, start: int):
     return A_limits_i
 
 
+def copy_cone(cone, cone_size: int = None):
+    if isinstance(cone, cb.ZeroConeT):
+        return cb.ZeroConeT(cone_size)
+    elif isinstance(cone, cb.NonnegativeConeT):
+        return cb.NonnegativeConeT(cone_size)
+    elif isinstance(cone, cb.PowerConeT):
+        return cb.PowerConeT(0.5)
+    elif isinstance(cone, cb.ExponentialConeT):
+        return cb.ExponentialConeT()
+    else:
+        raise ValueError(f"Unknown cone type: {type(cone)}. Cannot copy.")
+
+
+def _reduce_convex_problem(A, b, cones, cone_sizes):
+    # condense the problem
+    # identify variables that are zero
+    zero_constraints = []
+    zero_is = []
+    rows_seen = 0
+
+    for i, cone in enumerate(cones):
+        if isinstance(cone, cb.ZeroConeT):
+            for j in range(cone_sizes[i]):
+                if np.count_nonzero(A[rows_seen + j, :]) == 1 and b[rows_seen + j] == 0:
+                    zero_constraints.append(rows_seen + j)
+                    zero_is.append(np.nonzero(A[rows_seen + j, :])[0][0])
+        rows_seen += cone_sizes[i]
+
+    # remove variables that are zero
+    A_reduced = np.delete(A, zero_constraints, axis=0)
+    A_reduced = np.delete(A_reduced, zero_is, axis=1)
+    b_reduced = np.delete(b, zero_constraints)
+    rows_seen = 0
+    zero_rows = []
+    new_cones = []
+    new_cone_sizes = []
+    for i in range(len(cones)):
+        cone_size = cone_sizes[i]
+        new_cones.append(copy_cone(cones[i], cone_sizes[i]))
+        if isinstance(cones[i], cb.ZeroConeT):
+            for j in range(cone_sizes[i]):
+                if rows_seen + j in zero_constraints:
+                    cone_size -= 1
+                    new_cones[i] = cb.ZeroConeT(cone_size)
+        rows_seen += cone_sizes[i]
+        new_cone_sizes.append(cone_size)
+
+    return A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is
+
+
 def _find_solution_unrounded(
         p: ICEProblem,
         allow_loss: bool = False
@@ -902,18 +952,30 @@ def _find_solution_unrounded(
         cone_sizes_amms.extend(cones_sizes_amm_i)
 
     A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A6_trimmed, A_amms])
-    A_sparse = sparse.csc_matrix(A)
     b = np.concatenate([b1, b2, b3, b4, b6, b_amms])
     cones = cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
     cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
 
+    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, removed_is = _reduce_convex_problem(A, b, cones, cone_sizes)
+
+    A_sparse = sparse.csc_matrix(A_reduced)
+
+
     # solve
     settings = clarabel.DefaultSettings()
     settings.max_step_fraction = 0.95
-    solver = clarabel.DefaultSolver(P_trimmed, q_trimmed, A_sparse, b, cones, settings)
+    solver = clarabel.DefaultSolver(P_trimmed, q_trimmed, A_sparse, b_reduced, cones_reduced, settings)
     solution = solver.solve()
     x = solution.x
     z = solution.z
+
+    x_expanded = []
+    j = 0
+    for i in range(len(x)):
+        while i + j in removed_is:
+            x_expanded.append(0)
+            j += 1
+        x_expanded.append(x[i])
 
     new_omnipool_deltas = {}
     exec_intent_deltas = [None] * len(partial_intents)
@@ -962,6 +1024,12 @@ def check_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
             x, y, z = si
             ok = True
             if not (x >= 0 and y >= 0 and math.sqrt(x * y) >= z):
+                ok = False
+
+        elif isinstance(cone, cb.ExponentialConeT):
+            x, y, z = si
+            ok = True
+            if not (y > 0 and y * math.exp(x / y) >= abs(z)):
                 ok = False
 
         else:
