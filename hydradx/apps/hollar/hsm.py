@@ -39,7 +39,7 @@ hours = st.sidebar.number_input(
 )
 blocks_per_hour = st.sidebar.number_input(
     "Blocks per hour",
-    min_value=300, max_value=1800, value=300, step=1, key="blocks_per_hour"
+    min_value=300, max_value=1800, value=600, step=1, key="blocks_per_hour"
 )
 blocks = hours * blocks_per_hour
 st.sidebar.markdown("---")
