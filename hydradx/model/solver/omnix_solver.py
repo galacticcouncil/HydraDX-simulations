@@ -1023,13 +1023,13 @@ def check_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
         elif isinstance(cone, cb.PowerConeT):
             x, y, z = si
             ok = True
-            if not (x >= 0 and y >= 0 and math.sqrt(x * y) >= z):
+            if not (x >= 0 and y >= 0 and math.sqrt(x * y) >= abs(z) - tol):
                 ok = False
 
         elif isinstance(cone, cb.ExponentialConeT):
             x, y, z = si
             ok = True
-            if not (y > 0 and y * math.exp(x / y) >= abs(z)):
+            if not (y > 0 and y * math.exp(x / y) <= z + tol):
                 ok = False
 
         else:

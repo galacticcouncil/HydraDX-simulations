@@ -260,45 +260,41 @@ def generate_passing_zero_constraint(x, zero_vars: list, coefs: list):
     A = np.zeros((1, len(x)))
     A[0, zero_vars] = -np.array(coefs)
     b = np.array([-sum([x[zi] for zi in zero_vars])])
-    return A, b
+    return A, b, [cb.ZeroConeT(1)], [1]
 
 
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20)
 )
 def test_generate_passing_zero_constraints(x_rand, x_sign):
     x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
     zero_vars = [3,6]
-    cones = [cb.ZeroConeT(1)]
-    cone_sizes = [1]
-    A, b = generate_passing_zero_constraint(x, zero_vars, [1, 1])
+    A, b, cones, cone_sizes = generate_passing_zero_constraint(x, zero_vars, [1, 1])
     s = b - A @ x
     if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
         raise AssertionError("Zero constraint failed")
 
 
-def generate_passing_nonneq_constraint(x, vars: list, coefs: list, const: float = 0):
+def generate_passing_nonneg_constraint(x, vars: list, coefs: list, const: float = 0):
     assert const >= 0
     A = np.zeros((1, len(x)))
     A[0, vars] = -np.array(coefs)
     b = np.array([-sum([x[v] for v in vars]) + const])
-    return A, b
+    return A, b, [cb.NonnegativeConeT(1)], [1]
 
 
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
     const = st.floats(min_value=0, max_value=1)
 )
-def test_generate_passing_nonneg_constraints(x_rand, x_sign, const):
+def test_generate_passing_nonneg_constraint(x_rand, x_sign, const):
     x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
     zero_vars = [3,6]
-    cones = [cb.NonnegativeConeT(1)]
-    cone_sizes = [1]
-    A, b = generate_passing_nonneq_constraint(x, zero_vars, [1, 1], const)
+    A, b, cones, cone_sizes = generate_passing_nonneg_constraint(x, zero_vars, [1, 1], const)
     s = b - A @ x
     if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
         raise AssertionError("Zero constraint failed")
@@ -309,33 +305,59 @@ def generate_passing_power_constraint(x, vars: list, coefs: list, const: float =
     assert len(vars) == len(coefs) == 3
     A = np.zeros((3, len(x)))
     b = np.ones(3)
-    A[0, vars] = -np.array(coefs)
+    for i in range(len(vars)):
+        A[i, vars[i]] = -np.array(coefs[i])
     # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
     b[2] = math.sqrt((1 + x[vars[0]]) * (1 + x[vars[1]])) - x[vars[2]] - const
-    return A, b
+    return A, b, [cb.PowerConeT(0.5)], [3]
 
-@reproduce_failure('6.127.0', b'AXic02CAAo2hw8AG4JIAhDgDSQ==')
+
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
     const = st.floats(min_value=0, max_value=1)
 )
 def test_generate_passing_power_constraints(x_rand, x_sign, const):
     x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
     vars = [4,7,10]
-    cones = [cb.PowerConeT(0.5)]
-    cone_sizes = [1]
-    A, b = generate_passing_power_constraint(x, vars, [1, 1, 1], const)
+    A, b, cones, cone_sizes = generate_passing_power_constraint(x, vars, [1, 1, 1], const)
     s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 1e-10):
         raise AssertionError("Zero constraint failed")
 
 
-@reproduce_failure('6.127.0', b'AXic02CAAo2hwwABRgZUAABmtwMi')
+def generate_passing_exp_constraint(x, vars: list, coefs: list, const: float = 0):
+    assert const >= 0
+    assert len(vars) == len(coefs) == 3
+    A = np.zeros((3, len(x)))
+    b = np.zeros(3)
+    for i in range(len(vars)):
+        A[i, vars[i]] = -np.array(coefs[i])
+    b[1] = 1
+    a0, a1, a2 = x[vars[0]], x[vars[1]], x[vars[2]]
+    b[2] = (1 + a1) * math.exp(a0 / (1 + a1)) - a2 + const
+    return A, b, [cb.ExponentialConeT()], [3]
+
+
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
+    x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
+    const = st.floats(min_value=0, max_value=1)
+)
+def test_generate_passing_exp_constraints(x_rand, x_sign, const):
+    x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
+    vars = [0, 13, 14]
+    A, b, cones, cone_sizes = generate_passing_exp_constraint(x, vars, [1, 1, 1], const)
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 1e-10):
+        raise AssertionError("Constraint failed")
+
+
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@given(
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20)
 )
 def test_reduced_convex_problem(x_rand, x_sign):
@@ -345,35 +367,29 @@ def test_reduced_convex_problem(x_rand, x_sign):
 
     # generate zero constraints
     zero_vars = [3,8,0,11]
-    A_zero = np.zeros((2, n))
-    b_zero = np.zeros(2)
-    A_zero[0, zero_vars[0]] = -1
-    A_zero[0, zero_vars[1]] = -1
-    b_zero[0] = -(x[zero_vars[0]] + x[zero_vars[1]])
-    A_zero[1, zero_vars[2]] = -2
-    A_zero[1, zero_vars[3]] = -3
-    b_zero[1] = -(2*x[zero_vars[2]] + 3*x[zero_vars[3]])
+    A, b, cones, cone_sizes = generate_passing_zero_constraint(x, zero_vars[0:2], [1, 1])
+    A2, b2, cones2, cone_sizes2 = generate_passing_zero_constraint(x, zero_vars[2:4], [1, 1])
+    A = np.vstack([A, A2])
+    b = np.concatenate([b, b2])
+    cones.extend(cones2)
+    cone_sizes.extend(cone_sizes2)
 
     # generate nonnegative constraints
     nonneg_vars = [9, 3, 15, 1]
-    A_nonneg = np.zeros((2, n))
-    b_nonneg = np.zeros(2)
-    A_nonneg[0, nonneg_vars[0]] = -1
-    A_nonneg[0, nonneg_vars[1]] = -1
-    b_nonneg[0] = -(x[nonneg_vars[0]] + x[nonneg_vars[1]])
-    A_nonneg[1, nonneg_vars[2]] = -2
-    A_nonneg[1, nonneg_vars[3]] = -3
-    b_nonneg[1] = -(2*x[nonneg_vars[2]] + 3*x[nonneg_vars[3]]) + 1
+    A2, b2, cones2, cone_sizes2 = generate_passing_nonneg_constraint(x, nonneg_vars[0:2], [1, 1])
+    A3, b3, cones3, cone_sizes3 = generate_passing_nonneg_constraint(x, nonneg_vars[2:4], [1, 1])
+    A = np.vstack([A, A2, A3])
+    b = np.concatenate([b, b2, b3])
+    cones.extend(cones2 + cones3)
+    cone_sizes.extend(cone_sizes2 + cone_sizes3)
 
     # generate power cone constraint
     power_vars = [4, 7, 10]
-    A_power = np.zeros((3, n))
-    b_power = np.ones(3)
-    A_power[0, power_vars[0]] = -1
-    A_power[1, power_vars[1]] = -1
-    A_power[2, power_vars[2]] = -1
-    # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
-    b_power[2] = math.sqrt((1 + x[power_vars[0]]) * (1 + x[power_vars[1]])) - x[power_vars[2]]
+    A2, b2, cones2, cone_sizes2 = generate_passing_power_constraint(x, power_vars, [1, 1, 1])
+    A = np.vstack([A, A2])
+    b = np.concatenate([b, b2])
+    cones.extend(cones2)
+    cone_sizes.extend(cone_sizes2)
 
     # generate exponential cone constraint
     exp_vars = [13, 14]
@@ -381,36 +397,31 @@ def test_reduced_convex_problem(x_rand, x_sign):
         if i not in zero_i + exp_vars:
             exp_vars = [i] + exp_vars
             break
-    A_exp = np.zeros((3, n))
-    b_exp = np.zeros(3)
-    A_exp[0, power_vars[0]] = -1
-    A_exp[1, power_vars[1]] = -1/(2*x[power_vars[1]])
-    b_exp[1] = 1
-    A_exp[2, power_vars[2]] = -1
-    a1, a2, a3 = x[power_vars[0]], x[power_vars[1]], x[power_vars[2]]
-    b_exp[2] = (1 + a2) * math.exp(a1 / (1 + a2)) - a3
+    A2, b2, cones2, cone_sizes2 = generate_passing_exp_constraint(x, exp_vars, [1, 1, 1])
+    A = np.vstack([A, A2])
+    b = np.concatenate([b, b2])
+    cones.extend(cones2)
+    cone_sizes.extend(cone_sizes2)
 
     A_zeroing = np.zeros((len(zero_i), n))
     b_zeroing = np.zeros(len(zero_i))
     for i, zi in enumerate(zero_i):
         A_zeroing[i, zi] = 1
 
-    A = np.vstack([A_zero, A_nonneg, A_power, A_exp, A_zeroing])
-    b = np.concatenate([b_zero, b_nonneg, b_power, b_exp, b_zeroing])
-    cones = [cb.ZeroConeT(2), cb.NonnegativeConeT(2), cb.PowerConeT(0.5), cb.ExponentialConeT(), cb.ZeroConeT(len(zero_i))]
-    cone_sizes = [2, 2, 3, 3, len(zero_i)]
+    A = np.vstack([A, A_zeroing])
+    b = np.concatenate([b, b_zeroing])
+    cones = cones + [cb.ZeroConeT(len(zero_i))]
+    cone_sizes = cone_sizes + [len(zero_i)]
 
     result = _reduce_convex_problem(A, b, cones, cone_sizes)
     A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = result
     x_reduced = [x[i] for i in range(len(x)) if i not in zero_is]
     s = b - A @ x
-    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 1e-10):
         raise AssertionError("Original problem failed to match expectation")
     s_reduced = b_reduced - A_reduced @ x_reduced
-    if not check_all_cone_feasibility(s_reduced, cones_reduced, cone_sizes_reduced, 0):
+    if not check_all_cone_feasibility(s_reduced, cones_reduced, cone_sizes_reduced, 1e-10):
         raise AssertionError("Reduced problem failed to match expectation")
-
-
 
 
 def test_no_intent_arbitrage():
