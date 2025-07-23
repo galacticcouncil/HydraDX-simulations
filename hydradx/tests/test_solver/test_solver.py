@@ -255,9 +255,87 @@ def test_reduce_convex_problem_specific():
             if check_all_cone_feasibility(s_reduced, cones_reduced, cone_sizes_reduced, 0) != x[1]:
                 raise AssertionError("Reduced problem failed to match expectation")
 
-@reproduce_failure('6.127.0', b'AXicc2R0JAoyYAEA05AFKQ==')
+
+def generate_passing_zero_constraint(x, zero_vars: list, coefs: list):
+    A = np.zeros((1, len(x)))
+    A[0, zero_vars] = -np.array(coefs)
+    b = np.array([-sum([x[zi] for zi in zero_vars])])
+    return A, b
+
+
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.integers(min_value=1, max_value=5), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_sign = st.lists(st.booleans(), min_size=20, max_size=20)
+)
+def test_generate_passing_zero_constraints(x_rand, x_sign):
+    x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
+    zero_vars = [3,6]
+    cones = [cb.ZeroConeT(1)]
+    cone_sizes = [1]
+    A, b = generate_passing_zero_constraint(x, zero_vars, [1, 1])
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+        raise AssertionError("Zero constraint failed")
+
+
+def generate_passing_nonneq_constraint(x, vars: list, coefs: list, const: float = 0):
+    assert const >= 0
+    A = np.zeros((1, len(x)))
+    A[0, vars] = -np.array(coefs)
+    b = np.array([-sum([x[v] for v in vars]) + const])
+    return A, b
+
+
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@given(
+    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
+    const = st.floats(min_value=0, max_value=1)
+)
+def test_generate_passing_nonneg_constraints(x_rand, x_sign, const):
+    x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
+    zero_vars = [3,6]
+    cones = [cb.NonnegativeConeT(1)]
+    cone_sizes = [1]
+    A, b = generate_passing_nonneq_constraint(x, zero_vars, [1, 1], const)
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+        raise AssertionError("Zero constraint failed")
+
+
+def generate_passing_power_constraint(x, vars: list, coefs: list, const: float = 0):
+    assert const >= 0
+    assert len(vars) == len(coefs) == 3
+    A = np.zeros((3, len(x)))
+    b = np.ones(3)
+    A[0, vars] = -np.array(coefs)
+    # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
+    b[2] = math.sqrt((1 + x[vars[0]]) * (1 + x[vars[1]])) - x[vars[2]] - const
+    return A, b
+
+@reproduce_failure('6.127.0', b'AXic02CAAo2hw8AG4JIAhDgDSQ==')
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@given(
+    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
+    x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
+    const = st.floats(min_value=0, max_value=1)
+)
+def test_generate_passing_power_constraints(x_rand, x_sign, const):
+    x = np.array([x_rand[i] * (-1 if not x_sign[i] else 1) for i in range(len(x_rand))])
+    vars = [4,7,10]
+    cones = [cb.PowerConeT(0.5)]
+    cone_sizes = [1]
+    A, b = generate_passing_power_constraint(x, vars, [1, 1, 1], const)
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, 0):
+        raise AssertionError("Zero constraint failed")
+
+
+@reproduce_failure('6.127.0', b'AXic02CAAo2hwwABRgZUAABmtwMi')
+@settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
+@given(
+    x_rand = st.lists(st.floats(min_value=-1, max_value=5, exclude_min=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20)
 )
 def test_reduced_convex_problem(x_rand, x_sign):
@@ -293,7 +371,7 @@ def test_reduced_convex_problem(x_rand, x_sign):
     b_power = np.ones(3)
     A_power[0, power_vars[0]] = -1
     A_power[1, power_vars[1]] = -1
-    A_power[2, power_vars[1]] = -1
+    A_power[2, power_vars[2]] = -1
     # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
     b_power[2] = math.sqrt((1 + x[power_vars[0]]) * (1 + x[power_vars[1]])) - x[power_vars[2]]
 
@@ -310,7 +388,7 @@ def test_reduced_convex_problem(x_rand, x_sign):
     b_exp[1] = 1
     A_exp[2, power_vars[2]] = -1
     a1, a2, a3 = x[power_vars[0]], x[power_vars[1]], x[power_vars[2]]
-    b_exp[2] = (1 + a2) * math.exp(a1 / (1 + a2)) - a3 + 1
+    b_exp[2] = (1 + a2) * math.exp(a1 / (1 + a2)) - a3
 
     A_zeroing = np.zeros((len(zero_i), n))
     b_zeroing = np.zeros(len(zero_i))
