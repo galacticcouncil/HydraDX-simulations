@@ -700,7 +700,7 @@ def copy_cone(cone, cone_size: int = None):
         raise ValueError(f"Unknown cone type: {type(cone)}. Cannot copy.")
 
 
-def _reduce_convex_problem(A, b, cones, cone_sizes):
+def _reduce_convex_constraints(A, b, cones, cone_sizes):
     # condense the problem
     # identify variables that are zero
     zero_constraints = []
@@ -735,6 +735,13 @@ def _reduce_convex_problem(A, b, cones, cone_sizes):
         new_cone_sizes.append(cone_size)
 
     return A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is
+
+
+def _reduce_convex_problem(A, b, cones, cone_sizes, q):
+    A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is = _reduce_convex_constraints(A, b, cones, cone_sizes)
+    # remove variables that are zero from q
+    q_reduced = np.delete(q, zero_is)
+    return A_reduced, b_reduced, new_cones, new_cone_sizes, q_reduced, zero_is
 
 
 def _find_solution_unrounded(
@@ -776,7 +783,6 @@ def _find_solution_unrounded(
     #----------------------------#
 
     k_real = len(indices_to_keep)
-    P_trimmed = sparse.csc_matrix((k_real, k_real))
     q_all = p.get_q()
     objective_I_coefs = -q_all[k:]
     q = -q_all[:k]
@@ -956,15 +962,15 @@ def _find_solution_unrounded(
     cones = cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
     cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
 
-    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, removed_is = _reduce_convex_problem(A, b, cones, cone_sizes)
+    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, q_reduced, removed_is = _reduce_convex_problem(A, b, cones, cone_sizes, q)
 
     A_sparse = sparse.csc_matrix(A_reduced)
-
+    P_reduced = sparse.csc_matrix((A_reduced.shape[1], A_reduced.shape[1]))
 
     # solve
     settings = clarabel.DefaultSettings()
     settings.max_step_fraction = 0.95
-    solver = clarabel.DefaultSolver(P_trimmed, q_trimmed, A_sparse, b_reduced, cones_reduced, settings)
+    solver = clarabel.DefaultSolver(P_reduced, q_reduced, A_sparse, b_reduced, cones_reduced, settings)
     solution = solver.solve()
     x = solution.x
     z = solution.z
@@ -976,13 +982,12 @@ def _find_solution_unrounded(
             x_expanded.append(0)
             j += 1
         x_expanded.append(x[i])
+    while len(x_expanded) < A.shape[1]:
+        x_expanded.append(len(x_expanded))
 
     new_omnipool_deltas = {}
     exec_intent_deltas = [None] * len(partial_intents)
-    x_expanded = [0] * k
-    for i in range(k):
-        if i in indices_to_keep:
-            x_expanded[i] = x[indices_to_keep.index(i)]
+
     x_scaled = p.get_real_x(x_expanded)
     # new_omnipool_deltas["LRNA"] = 0
     for i in range(n):

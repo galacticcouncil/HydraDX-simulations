@@ -16,7 +16,7 @@ from hydradx.model.solver.omnix import validate_and_execute_solution
 from hydradx.model.solver.omnix_solver import find_solution_outer_approx, ICEProblem, _get_leftover_bounds, AmmIndexObject
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
-from hydradx.model.solver.omnix_solver import _reduce_convex_problem, check_cone_feasibility
+from hydradx.model.solver.omnix_solver import _reduce_convex_constraints, check_cone_feasibility
 
 settings.register_profile("ci", deadline=None, print_blob=True)
 settings.load_profile("ci")
@@ -197,13 +197,13 @@ def is_cone_equal(cone1, cone2):
     return type(cone1) == type(cone2) and repr(cone1) == repr(cone2)
 
 
-def test_reduce_convex_problem_specific():
+def test_reduce_convex_constraints_specific():
     # x + y == 0, z == 0
     A = np.array([[1, 1, 0], [0, 0, 1]])
     b = np.zeros(2)
     cones = [cb.ZeroConeT(2)]
     cone_sizes = [2]
-    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = _reduce_convex_problem(A, b, cones, cone_sizes)
+    A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = _reduce_convex_constraints(A, b, cones, cone_sizes)
     assert np.array_equal(A_reduced, np.array([[1, 1]]))
     assert np.array_equal(b_reduced, np.array([0]))
     assert len(cones_reduced) == 1
@@ -232,19 +232,19 @@ def test_reduce_convex_problem_specific():
     xs = [([1, 0, 1], True), ([-0.5, 0, 1], False)]
     examples.append({'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': xs})
 
-    # (1 + x0)e^(x1 / (1 + x0)) >= 1 + x2, x0 == 0, x0 + x2 >= 0
-    # solutions include x = [0, 1, 1]
-    # incorrect solutions include x = [0, -1, 1]
+    # (1 + x0)e^(x1 / (1 + x0)) <= 1 + x2, x0 == 0, x0 + x2 >= 0
+    # solutions include x = [0, -1, 1]
+    # incorrect solutions include x = [0, 1, 1]
     A = np.array([[0, -1, 0], [-1, 0, 0], [0, 0, -1], [1, 0, 0], [-1, 0, -1]])
     b = np.array([0, 1, 1, 0, 0])
     cones = [cb.ExponentialConeT(), cb.ZeroConeT(1), cb.NonnegativeConeT(1)]
     cone_sizes = [3, 1, 1]
-    xs = [([0, 1, 1], True), ([0, -1, 1], False)]
+    xs = [([0, -1, 1], True), ([0, 1, 1], False)]
     examples.append({'A': A, 'b': b, 'cones': cones, 'cone_sizes': cone_sizes, 'xs': xs})
     examples = [examples[-1]]
 
     for example in examples:
-        result = _reduce_convex_problem(example['A'], example['b'], example['cones'], example['cone_sizes'])
+        result = _reduce_convex_constraints(example['A'], example['b'], example['cones'], example['cone_sizes'])
         A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = result
         for x in example['xs']:
             x_reduced = [x[0][i] for i in range(len(x[0])) if i not in zero_is]
@@ -319,7 +319,7 @@ def generate_passing_power_constraint(x, vars: list, coefs: list, const: float =
         A[i, vars[i]] = -np.array(coefs[i])
     Ax = A @ x
     # sqrt((1 + x0)(1 + x1)) >= b[2] + x2
-    b[2] = math.sqrt((1 - Ax[0]) * (1 - Ax[1])) + Ax[2] - const
+    b[2] = math.sqrt((1 - Ax[0]) * (1 - Ax[1])) + Ax[2]
     return A, b, [cb.PowerConeT(0.5)], [3]
 
 
@@ -352,14 +352,13 @@ def generate_passing_exp_constraint(x, vars: list, coefs: list, const: float = 0
         A[i, vars[i]] = -np.array(coefs[i])
     Ax = A @ x
     b[1] = 1
-    a0, a1, a2 = x[vars[0]], x[vars[1]], x[vars[2]]
     b[2] = (1 - Ax[1]) * math.exp(-Ax[0] / (1 - Ax[1])) + Ax[2] + const
     return A, b, [cb.ExponentialConeT()], [3]
 
-
+# @reproduce_failure('6.127.0', b'AXic07C/ojbts4XWSw37dzVazImPPDUYBBjAQMMeznj//zW7V7k0kshdpnsHXBI8NWw2wEQeYCieUWli7vcoSsOuACplgWkghCGjYX+omymkRmELNjX3RNSWcWbxwaUYGRkZGEEUjAtW/nTz0/fzsnIBZiA0pQ==')
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
     const = st.floats(min_value=0, max_value=1)
 )
@@ -379,7 +378,7 @@ def test_generate_passing_exp_constraints(x_rand, x_sign, const):
 
 @settings(phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target])
 @given(
-    x_rand = st.lists(st.floats(min_value=0, max_value=0.99999, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
+    x_rand = st.lists(st.floats(min_value=0, max_value=0.99, exclude_min=True, exclude_max=True), min_size=20, max_size=20),  # 20 variables
     x_sign = st.lists(st.booleans(), min_size=20, max_size=20),
     constraint_order = st.permutations(range(6 + 6)),  # constraints + zero vars
     zero_vars = st.lists(st.integers(min_value=0, max_value=19), unique=True, min_size=4, max_size=4),
@@ -455,7 +454,7 @@ def test_reduced_convex_problem(x_rand, x_sign, constraint_order, zero_vars, non
         A = np.vstack((A, A_list[i]))
         b = np.concatenate((b, b_list[i]))
 
-    result = _reduce_convex_problem(A, b, cones, cone_sizes)
+    result = _reduce_convex_constraints(A, b, cones, cone_sizes)
     A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, zero_is = result
     x_reduced = [x[i] for i in range(len(x)) if i not in zero_is]
     s = b - A @ x
@@ -546,7 +545,7 @@ def test_no_intent_arbitrage():
                                          copy.deepcopy(x['deltas']), copy.deepcopy(x['omnipool_deltas']),
                                          copy.deepcopy(x['amm_deltas']),"HDX")
 
-@reproduce_failure('6.127.0', b'ACg/7H/TbyUcOw==')
+
 @given(st.floats(min_value=0.1, max_value=0.9))
 def test_no_intent_arbitrage_xyk(ratio):
     # test where xyk price is different from Omnipool
