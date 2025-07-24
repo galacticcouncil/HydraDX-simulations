@@ -429,6 +429,55 @@ class ICEProblem:
         self._C_list = [rho.T @ self._S for rho in self._amm_rhos]
         self._B_list = [psi.T @ self._S for psi in self._amm_psis]
 
+    def _eliminate_asset(self, tkn_i: int):
+        # calculate zero constraints for all variables in tkn
+        k = 4 * self.n + self.amm_vars + self.m
+        idxs = []
+        # omnipool variables
+        i_ls = np.where(self._o[tkn_i] == 1)[0]
+        if len(i_ls) > 0:
+            i = i_ls[0]
+            n = len(self.omnipool.asset_list)
+            idxs = idxs + [i, n + i, 2 * n + i, 3 * n + i]  # y_i, x_i, lrna_lambda_i, lambda_i
+        # AMM variables
+        for j, amm in enumerate(self.amm_list):
+            i_ls = np.where(self._amm_rhos[j][tkn_i] != 0)[0] + np.where(self._amm_psis[j][tkn_i] != 0)[0]
+            if len(i_ls) > 0:
+                i = i_ls[0]
+                amm_i = self.amm_i[j]
+                idxs = idxs + [amm_i.shares_net + i, amm_i.shares_out + i]
+        # partial intents
+        for j in range(self.m):
+            if self._tau[tkn_i + 1, j] != 0 or self._phi[tkn_i + 1, j] != 0:
+                idxs.append(4 * self.n + self.amm_vars + j)
+
+        A = np.zeros((len(idxs), k))
+        for j in range(len(idxs)):
+            A[j, idxs[j]] = 1
+        return A
+
+    def _set_lone_asset_A(self):
+        k = 4 * self.n + self.amm_vars + self.m
+        A = np.zeros((0, k))
+        tau_agg = np.any(self._tau != 0, axis=1)  # indicates which assets are being sold by intents
+        phi_agg = np.any(self._phi != 0, axis=1)  # indicates which assets are being bought by intents
+        amm_agg_list = [
+            np.any(self._amm_rhos[j] != 0, axis=1) + np.any(self._amm_psis[j] != 0, axis=1) for j in range(len(self.amm_list))
+        ]
+        for i, tkn in enumerate(self.asset_list):
+            if tkn != self.tkn_profit:  # we never exclude the profit token
+                tkn_ct = (1 if tau_agg[i + 1] else 0) + (1 if phi_agg[i + 1] else 0)
+                if tkn in self.omnipool.asset_list:
+                    tkn_ct += 1
+                for amm_agg in amm_agg_list:
+                    if amm_agg[i]:
+                        tkn_ct += 1
+                        if tkn_ct >= 2:  # we have at least two intents in the asset, can't eliminate
+                            continue
+                if tkn_ct < 2:  # we can eliminate the asset
+                    A = np.vstack([A, self._eliminate_asset(i)])
+        self.lone_asset_A = A
+
     def _recalculate(self, rescale: bool = True):
         self._set_known_flow()
         self._set_max_in_out()
@@ -438,6 +487,7 @@ class ICEProblem:
             self._set_omnipool_coefs()
         self._set_directions()
         self._set_tau_phi()
+        self._set_lone_asset_A()
         self._set_coefficients()
 
     def set_up_problem(
@@ -779,7 +829,10 @@ def _find_solution_unrounded(
     #----------------------------#
     #        CONSTRAINTS         #
     #----------------------------#
-
+    A_elim = p.lone_asset_A
+    b_elim = np.zeros(A_elim.shape[0])
+    cones_elim = [cb.ZeroConeT(A_elim.shape[0])]
+    cone_sizes_elim = [A_elim.shape[0]]
 
     A1 = np.zeros((0, k))
     cones1 = []
@@ -940,10 +993,10 @@ def _find_solution_unrounded(
         cones_amms.extend(cones_amm_i)
         cone_sizes_amms.extend(cones_sizes_amm_i)
 
-    A = np.vstack([A1, A2, A3, A4, A6, A_amms])
-    b = np.concatenate([b1, b2, b3, b4, b6, b_amms])
-    cones = cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
-    cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
+    A = np.vstack([A_elim, A1, A2, A3, A4, A6, A_amms])
+    b = np.concatenate([b_elim, b1, b2, b3, b4, b6, b_amms])
+    cones = cones_elim + cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
+    cone_sizes = cone_sizes_elim + cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
 
     A_reduced, b_reduced, cones_reduced, cone_sizes_reduced, q_reduced, removed_is = _reduce_convex_problem(A, b, cones, cone_sizes, q)
 
