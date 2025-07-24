@@ -1190,7 +1190,6 @@ def _find_good_solution(
     # once solution is found, re-run with directional flags
     if do_directional_run:
         omnipool_flags, amm_flags = get_directional_flags(omnipool_deltas, amm_deltas)
-        # TODO implement directional logic
         p.set_up_problem(omnipool_flags=omnipool_flags, clear_I=False, clear_sell_maxes=False,
                          clear_omnipool_approx=False, clear_amm_approx=False, omnipool_deltas=omnipool_deltas,
                          amm_deltas=amm_deltas, amm_flags=amm_flags)
@@ -1198,8 +1197,6 @@ def _find_good_solution(
         dir_output = _find_solution_unrounded(p, allow_loss=allow_loss)
         dir_status = dir_output[5]
         if dir_status in ['Solved', 'AlmostSolved']:
-        #     TODO replace with better directional run logic
-        #     in particular, we should entirely eliminate variables we expect to be zero
             omnipool_deltas, intent_deltas, x, obj, dual_obj, status, amm_deltas = dir_output
 
     if status in ['PrimalInfeasible', 'DualInfeasible']:
