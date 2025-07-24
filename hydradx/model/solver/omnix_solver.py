@@ -663,7 +663,7 @@ def scale_down_partial_intents(p, trade_pcts: list, scale: float):
     return intent_sell_maxs, zero_ct
 
 
-def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
+def _get_leftover_bounds(p, allow_loss):
     k = 4 * p.n + p.amm_vars + p.m
     profit_A = p.get_profit_A()
     A3 = -profit_A[:, :k]
@@ -673,12 +673,11 @@ def _get_leftover_bounds(p, allow_loss, indices_to_keep=None):
         profit_i = p.asset_list.index(p.tkn_profit)
         A3 = np.delete(A3, profit_i+1, axis=0)
         I_coefs = np.delete(I_coefs, profit_i+1, axis=0)
-    A3_trimmed = A3[:, indices_to_keep] if indices_to_keep is not None else A3
     if p.r == 0:
-        b3 = np.zeros(A3_trimmed.shape[0])
+        b3 = np.zeros(A3.shape[0])
     else:
         b3 = -I_coefs @ p.I
-    return A3_trimmed, b3
+    return A3, b3
 
 
 def _expand_submatrix(A, k: int, start: int):
@@ -768,25 +767,14 @@ def _find_solution_unrounded(
     # directions = {}
     k = 4 * n + p.amm_vars + m
 
-    indices_to_keep = list(range(k))
-    # for tkn in directions:
-    #     if directions[tkn] in ["sell", "neither"]:
-    #         indices_to_keep.remove(2 * n + asset_list.index(tkn))  # lrna_lambda_i is zero
-    #     if directions[tkn] in ["buy", "neither"]:
-    #         indices_to_keep.remove(3 * n + asset_list.index(tkn))  # lambda_i is zero
-    #     if directions[tkn] == "neither":
-    #         indices_to_keep.remove(asset_list.index(tkn))  # y_i is zero
-    #         indices_to_keep.remove(n + asset_list.index(tkn))  # x_i is zero
 
     #----------------------------#
     #          OBJECTIVE         #
     #----------------------------#
 
-    k_real = len(indices_to_keep)
     q_all = p.get_q()
     objective_I_coefs = -q_all[k:]
     q = -q_all[:k]
-    q_trimmed = np.array([q[i] for i in indices_to_keep])
 
     #----------------------------#
     #        CONSTRAINTS         #
@@ -840,21 +828,19 @@ def _find_solution_unrounded(
         cones1.append(cone1i)
         cone_sizes1.append(cone_size1i)
 
-    A1_trimmed = A1[:, indices_to_keep]
-    b1 = np.zeros(A1_trimmed.shape[0])
+    b1 = np.zeros(A1.shape[0])
 
     # intent variables are constrained from above, and from below by 0
     amm_coefs = np.zeros((2 * m, k - m))
     d_coefs = np.vstack([np.eye(m), -np.eye(m)])
     A2 = np.hstack([amm_coefs, d_coefs])
     b2 = np.concatenate([np.array(p.get_partial_sell_maxs_scaled()), np.zeros(m)])
-    A2_trimmed = A2[:, indices_to_keep]
-    cone2 = cb.NonnegativeConeT(A2_trimmed.shape[0])
-    cone_sizes2 = [A2_trimmed.shape[0]]
+    cone2 = cb.NonnegativeConeT(A2.shape[0])
+    cone_sizes2 = [A2.shape[0]]
 
-    A3_trimmed, b3 = _get_leftover_bounds(p, allow_loss, indices_to_keep)
-    cone3 = cb.NonnegativeConeT(A3_trimmed.shape[0])
-    cone_sizes3 = [A3_trimmed.shape[0]]
+    A3, b3 = _get_leftover_bounds(p, allow_loss)
+    cone3 = cb.NonnegativeConeT(A3.shape[0])
+    cone_sizes3 = [A3.shape[0]]
 
     # Omnipool invariants must not go down
     omnipool_lrna_coefs = p.get_omnipool_lrna_coefs()
@@ -921,7 +907,6 @@ def _find_solution_unrounded(
             cone_sizes4.append(3)
         A4 = np.vstack([A4, A4i])
         b4 = np.append(b4, b4i)
-    A4_trimmed = A4[:, indices_to_keep]
 
     # inequality constraints on comparison of lrna_lambda to yi, lambda to xi
     A6 = np.zeros((0, k))
@@ -932,8 +917,6 @@ def _find_solution_unrounded(
         A6i[1, n+i] = -1  # lambda + xi >= 0
         A6i[1, 3*n+i] = -1  # lambda + xi >= 0
         A6 = np.vstack([A6, A6i])
-
-    A6_trimmed = A6[:, indices_to_keep]
 
     b6 = np.zeros(A6.shape[0])
     cone6 = cb.NonnegativeConeT(A6.shape[0])
@@ -957,7 +940,7 @@ def _find_solution_unrounded(
         cones_amms.extend(cones_amm_i)
         cone_sizes_amms.extend(cones_sizes_amm_i)
 
-    A = np.vstack([A1_trimmed, A2_trimmed, A3_trimmed, A4_trimmed, A6_trimmed, A_amms])
+    A = np.vstack([A1, A2, A3, A4, A6, A_amms])
     b = np.concatenate([b1, b2, b3, b4, b6, b_amms])
     cones = cones1 + [cone2, cone3] + cones4 + [cone6] + cones_amms
     cone_sizes = cone_sizes1 + cone_sizes2 + cone_sizes3 + cone_sizes4 + cone_sizes6 + cone_sizes_amms
