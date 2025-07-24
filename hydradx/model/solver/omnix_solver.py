@@ -750,47 +750,59 @@ def copy_cone(cone, cone_size: int = None):
 
 
 def _reduce_convex_constraints(A, b, cones, cone_sizes):
-    # condense the problem
-    # identify variables that are zero
-    zero_constraints = []
     zero_is = []
     rows_seen = 0
-
-    for i, cone in enumerate(cones):
+    for i, cone in enumerate(cones):  # identify variables that are zero
         if isinstance(cone, cb.ZeroConeT):
             for j in range(cone_sizes[i]):
                 if np.count_nonzero(A[rows_seen + j, :]) == 1 and b[rows_seen + j] == 0:
-                    zero_constraints.append(rows_seen + j)
                     zero_is.append(np.nonzero(A[rows_seen + j, :])[0][0])
         rows_seen += cone_sizes[i]
+    A_reduced = np.delete(A, zero_is, axis=1)  # delete columns that are zero
 
-    # remove variables that are zero
-    A_reduced = np.delete(A, zero_constraints, axis=0)
-    A_reduced = np.delete(A_reduced, zero_is, axis=1)
-    b_reduced = np.delete(b, zero_constraints)
-    rows_seen = 0
-    zero_rows = []
+    constraints_to_delete = []
     new_cones = []
     new_cone_sizes = []
-    for i in range(len(cones)):
-        cone_size = cone_sizes[i]
-        new_cones.append(copy_cone(cones[i], cone_sizes[i]))
-        if isinstance(cones[i], cb.ZeroConeT):
+    rows_seen = 0
+    for i, cone in enumerate(cones):  # identify rows that are zero in linear cones
+        new_cone_size = cone_sizes[i]
+        new_cone = copy_cone(cone, cone_sizes[i])
+        if isinstance(cone, cb.ZeroConeT):
             for j in range(cone_sizes[i]):
-                if rows_seen + j in zero_constraints:
-                    cone_size -= 1
-                    new_cones[i] = cb.ZeroConeT(cone_size)
+                if np.count_nonzero(A_reduced[rows_seen + j, :]) == 0 and b[rows_seen + j] == 0:
+                    constraints_to_delete.append(rows_seen + j)
+                    new_cone_size -= 1
+                    new_cone = cb.ZeroConeT(new_cone_size)
+        elif isinstance(cone, cb.NonnegativeConeT):
+            for j in range(cone_sizes[i]):
+                if np.count_nonzero(A_reduced[rows_seen + j, :]) == 0 and b[rows_seen + j] == 0:
+                    constraints_to_delete.append(rows_seen + j)
+                    new_cone_size -= 1
+                    new_cone = cb.NonnegativeConeT(new_cone_size)
+        new_cones.append(new_cone)
+        new_cone_sizes.append(new_cone_size)
         rows_seen += cone_sizes[i]
-        new_cone_sizes.append(cone_size)
+    A_reduced = np.delete(A_reduced, constraints_to_delete, axis=0)  # delete rows that are zero
+    b_reduced = np.delete(b, constraints_to_delete)
+
+    assert A.shape[0] >= A_reduced.shape[0], "Reduced A has more rows than original A"
 
     return A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is
 
 
 def _reduce_convex_problem(A, b, cones, cone_sizes, q):
+    orig_var_ct = A.shape[1]
     A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is = _reduce_convex_constraints(A, b, cones, cone_sizes)
+    vars_kept = [i for i in range(orig_var_ct) if i not in zero_is]
+    while A_reduced.shape[0] < A.shape[0]:  # keep reducing until no more constraints can be removed
+        A, b, cones, cone_sizes = A_reduced, b_reduced, new_cones, new_cone_sizes
+        A_reduced, b_reduced, new_cones, new_cone_sizes, zero_is = _reduce_convex_constraints(A, b, cones, cone_sizes)
+        vars_kept = [x for i, x in enumerate(vars_kept) if i not in zero_is]
+
+    vars_removed = [i for i in range(orig_var_ct) if i not in vars_kept]
     # remove variables that are zero from q
-    q_reduced = np.delete(q, zero_is)
-    return A_reduced, b_reduced, new_cones, new_cone_sizes, q_reduced, zero_is
+    q_reduced = np.delete(q, vars_removed)
+    return A_reduced, b_reduced, new_cones, new_cone_sizes, q_reduced, vars_removed
 
 
 def _find_solution_unrounded(
