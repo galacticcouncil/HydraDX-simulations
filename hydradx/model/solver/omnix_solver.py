@@ -859,7 +859,7 @@ def _find_solution_unrounded(
             delta_pct = p._last_omnipool_deltas[tkn] / p.omnipool.liquidity[tkn]  # possibly round to zero
         else:
             delta_pct = 1  # to avoid causing any rounding
-        if i in op_tradeable_indices and abs(delta_pct) > 1e-11:  # we need lambda_i >= 0, lrna_lambda_i >= 0
+        if abs(delta_pct) > 1e-11:  # we need lambda_i >= 0, lrna_lambda_i >= 0
             A1i = np.zeros((2, k))
             A1i[0, 3 * n + i] = -1  # lambda_i
             A1i[1, 2 * n + i] = -1  # lrna_lambda_i
@@ -996,7 +996,7 @@ def _find_solution_unrounded(
         approx = p.get_amm_approx(i)
         directions = [] if len(amm_directions) <= i else amm_directions[i]
         last_amm_deltas = [] if p._last_amm_deltas is None else p._last_amm_deltas[i]
-        x = amm_constraints.get_amm_constraint_matrix(approx, p._scaling, directions, last_amm_deltas, p.trading_tkns)
+        x = amm_constraints.get_amm_constraint_matrix(approx, p._scaling, directions, last_amm_deltas)
         A_amm_i_small, b_amm_i, cones_amm_i, cones_sizes_amm_i = x
         A_amm_i = _expand_submatrix(A_amm_i_small, k, p.amm_i[i].shares_net)
 
