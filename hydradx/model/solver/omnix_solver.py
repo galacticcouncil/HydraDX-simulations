@@ -1031,7 +1031,7 @@ def _find_solution_unrounded(
             j += 1
         x_expanded.append(x[i])
     while len(x_expanded) < A.shape[1]:
-        x_expanded.append(len(x_expanded))
+        x_expanded.append(0)
 
     new_omnipool_deltas = {}
     exec_intent_deltas = [None] * len(partial_intents)
