@@ -1264,7 +1264,7 @@ def test_dynamic_fees(hdx_price: float):
         holdings={tkn: initial_state.liquidity[tkn] / 100 for tkn in initial_state.asset_list}
     )
     test_state = initial_state.copy().update()
-    test_state.update_function = OmnipoolState.update_oracles
+    test_state.update_function = lambda self: self.update_oracles().update_fees()
     test_state.swap(
         agent=test_agent,
         tkn_sell='USD',
@@ -1420,7 +1420,7 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         'fee_max': 0.1,
     }
 
-    initial_omnipool = oamm.OmnipoolState(
+    omnipool1 = oamm.OmnipoolState(
         tokens=copy.deepcopy(init_liquidity),
         oracles={
             'price': n
@@ -1442,20 +1442,21 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
         },
-        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list]
+        update_function=lambda self: [self.lrna_fee(tkn) + self.asset_fee(tkn) for tkn in self.asset_list],
+        unique_id='omnipool1'
     )
 
-    omnipool2 = copy.deepcopy(initial_omnipool)
+    omnipool2 = copy.deepcopy(omnipool1)
     omnipool2.update_function = None
     omnipool2.unique_id = 'omnipool2'
 
     initial_state = GlobalState(
-        pools=[initial_omnipool, omnipool2],
+        pools=[omnipool1, omnipool2],
         agents={}
     )
 
     events = run.run(initial_state=initial_state, time_steps=4, silent=True)
-    omnipool = events[1].pools['omnipool']
+    omnipool = events[1].pools['omnipool1']
     omnipool2 = events[1].pools['omnipool2']
     lrna_fee_1, asset_fee_1 = {}, {}
     lrna_fee_2, asset_fee_2 = {}, {}
@@ -1502,7 +1503,6 @@ def test_dynamic_fees_empty_block(liquidity: list[float], lrna: list[float], ora
     amp=st.lists(st.floats(min_value=0.001, max_value=100), min_size=2, max_size=2),
     decay=st.lists(st.floats(min_value=0.000001, max_value=0.0001), min_size=2, max_size=2),
 )
-@reproduce_failure('6.131.3', b'AXic03CIZAADDUyGo15LAw4GHl1kMRy5NOw/QMXsN+BmXMDN+IDBEIAxBG/cE/riVQIAWe8dgQ==')
 def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], oracle_liquidity: list[float],
                                  oracle_volume_in: list[float], oracle_volume_out: list[float],
                                  oracle_period, trade_size: float, lrna_fees: list[float],
