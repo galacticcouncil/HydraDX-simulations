@@ -117,21 +117,21 @@ class OmnipoolState(Exchange):
 
         self.oracles = {}
 
-        for token, pool in tokens.items():
-            assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
-            if 'LRNA' in pool:
-                lrna = pool['LRNA']
-            elif 'LRNA_price' in pool:
-                lrna = pool['liquidity'] * pool['LRNA_price']
+        for token, attrs in tokens.items():
+            assert attrs['liquidity'], f'token {token} missing required parameter: liquidity'
+            if 'LRNA' in attrs:
+                lrna = attrs['LRNA']
+            elif 'LRNA_price' in attrs:
+                lrna = attrs['liquidity'] * attrs['LRNA_price']
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
             self.add_token(
                 token,
-                liquidity=pool['liquidity'],
+                liquidity=attrs['liquidity'],
                 lrna=lrna,
-                shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
-                protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
-                weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
+                shares=attrs['shares'] if 'shares' in attrs else attrs['liquidity'],
+                protocol_shares=attrs['shares'] if 'shares' in attrs else attrs['liquidity'],
+                weight_cap=attrs['weight_cap'] if 'weight_cap' in attrs else 1
             )
         self.oracles = {}
 
@@ -155,7 +155,7 @@ class OmnipoolState(Exchange):
                 for name, period in oracles.items()
             })
         for oracle in self.oracles.values():
-            oracle.last_updated = {tkn: 0 for tkn in self.asset_list}
+            oracle.last_updated = {tkn: -1 for tkn in self.asset_list}
 
         # trades per block cannot exceed this fraction of the pool's liquidity
         self.trade_limit_per_block = trade_limit_per_block
@@ -172,7 +172,8 @@ class OmnipoolState(Exchange):
         self.dynamic_fee_precision = dynamic_fee_precision
 
         # given provided oracle values, calculate initial fees
-        self.update_fees()
+        if last_oracle_values:
+            self.update_fees()
 
         self.current_block = Block(self)
         self.last_block = self.current_block.copy()
@@ -269,8 +270,6 @@ class OmnipoolState(Exchange):
         if fee.last_updated[tkn] == self.time_step:
             # return the last fee if it's already been computed for this tkn and block
             return fee.current[tkn]
-        if self.oracles['price'].last_updated[tkn] < self.time_step:
-            self.update_oracles([tkn])
 
         # use this approximation to catch up to where we think the fee should be,
         # knowing there have been no trades until now
@@ -289,8 +288,6 @@ class OmnipoolState(Exchange):
         delta = x * (j_sum + w_term) - num_blocks * fee.decay
         fee_value = min(max(fee.current[tkn] + delta, fee.minimum), fee.maximum)
         fee.current[tkn] = fee_value
-        if tkn == 'HDX':
-            pass
         fee.last_updated[tkn] = self.time_step
         return fee_value
 
@@ -383,6 +380,7 @@ class OmnipoolState(Exchange):
             },
             liquidity=self.oracles['price'].liquidity
         )
+        return self
 
     def update_oracles(self, assets: list[str] = None):
         """
@@ -402,6 +400,7 @@ class OmnipoolState(Exchange):
                 block=self.current_block,
                 assets=assets
             )
+        return self
 
 
     @property
