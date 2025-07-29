@@ -218,10 +218,22 @@ class OmnipoolConstraints(AmmConstraints):
         cone_sizes = []
         for j in range(1, len(self.asset_list)):  # skip j = 0 which is LRNA
             tkn = self.asset_list[j]
-            Aj, bj, conesj, cone_sizesj = self.xyk_constraints[tkn].get_amm_limits_A(
-                amm_directions = amm_directions[2 * j - 2: 2 * j],
-                last_amm_deltas = last_amm_deltas[2 * j - 2: 2 * j]
-            )
+            xyk_directions = amm_directions[2 * j - 2: 2 * j]
+            if (xyk_directions[0] == xyk_directions[1]) and (xyk_directions[0] in ['buy', 'sell']):  # impossible, zero out variables
+                Aj = np.zeros((4, 4))
+                for i in range(4):
+                    Aj[i, i] = 1
+                bj = np.zeros(4)
+                conesj = [cb.ZeroConeT(4)]
+                cone_sizesj = [4]
+            else:
+                for i in [0, 1]:
+                    if (xyk_directions[i] in ['buy', 'sell']) and xyk_directions[1-i] == "none":
+                        xyk_directions[1-i] = 'buy' if xyk_directions[i] == 'sell' else 'sell'
+                Aj, bj, conesj, cone_sizesj = self.xyk_constraints[tkn].get_amm_limits_A(
+                    amm_directions = xyk_directions,
+                    last_amm_deltas = last_amm_deltas[2 * j - 2: 2 * j]
+                )
             Aj_big = np.zeros((Aj.shape[0], self.k))
             Aj_big[:, (j-1)*4 : j*4] = Aj  # place the AMM constraints in the right place
             A_limits = np.vstack([A_limits, Aj_big])

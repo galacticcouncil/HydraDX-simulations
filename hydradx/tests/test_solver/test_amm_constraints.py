@@ -137,64 +137,6 @@ def test_get_amm_limits_A_specific():
             raise AssertionError(f"Cone feasibility check failed with x={ex['sol']}, expected {ex['result']}, got {feas}")
 
 
-@given(st.lists(st.integers(min_value=-1, max_value=1), min_size=5, max_size=5),
-       st.lists(st.integers(min_value=-1, max_value=1), min_size=3, max_size=3),
-       st.lists(st.integers(min_value=-2, max_value=2), min_size=10, max_size=10))
-def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, x_raw):
-    ss_tkn_ct = 4
-    liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
-    stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
-    xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
-    xyk = ConstantProductPoolState(tokens=xyk_liquidity)
-    xyk_directions = []
-    for i in xyk_dirs:
-        if i == 1:
-            xyk_directions.append('buy')
-        elif i == -1:
-            xyk_directions.append('sell')
-        else:
-            xyk_directions.append('none')
-    ss_directions = []
-    for i in ss_dirs:
-        if i == 1:
-            ss_directions.append('buy')
-        elif i == -1:
-            ss_directions.append('sell')
-        else:
-            ss_directions.append('none')
-    x_xyk = [x_raw[i] for i in range(6)]
-    x_ss = [x for x in x_raw] + [0] * 5
-    last_amm_deltas = []
-
-    for amm, directions, x in [[stablepool4, ss_directions, x_ss], [xyk, xyk_directions, x_xyk]]:
-        if isinstance(amm, ConstantProductPoolState):
-            amm_constraints = XykConstraints(amm)
-        elif isinstance(amm, StableSwapPoolState):
-            amm_constraints = StableswapConstraints(amm)
-        amm_i = amm_constraints.amm_i
-
-        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(directions, last_amm_deltas)
-        assert A_limits.shape[1] == amm_constraints.k
-        expected_result = True
-        for i in range(len(amm.asset_list) + 1):
-            if directions[i] == 'buy':  # expect that Xi >= 0, Li = 0
-                if x[amm_i.shares_out + i] != 0 or x[amm_i.shares_net + i] < 0:
-                    expected_result = False
-                    break
-            elif directions[i] == 'sell':  # expect that Xi <= 0, Xi + Li == 0
-                if x[amm_i.shares_net + i] > 0 or x[amm_i.shares_net + i] + x[amm_i.shares_out + i] != 0:
-                    expected_result = False
-                    break
-            else:  # expect that Xi + Li >= 0, Li >= 0 without direction info
-                if x[amm_i.shares_out + i] < 0 or x[amm_i.shares_net + i] + x[amm_i.shares_out + i] < 0:
-                    expected_result = False
-                    break
-        s = b_limits - A_limits @ x
-        feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
-        if feas != expected_result:
-            raise AssertionError(f"Cone feasibility check failed with x={x}, expected {expected_result}, got {feas}")
-
-
 def test_get_limits_A_omnipool_specific():
     tkn_ct = 2
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(tkn_ct-1)}
@@ -222,6 +164,26 @@ def test_get_limits_A_omnipool_specific():
     for x, result in l:
         examples.append({'directions': directions, 'sol': x, 'result': result})
 
+    directions = ['buy', 'sell', 'sell', 'buy']
+    # when direction is 'buy', we expect Xi >= 0, Li = 0
+    # when direction is 'sell', we expect Xi <= 0, Xi + Li = 0
+    # note that for Omnipool, structure is [X0, X1, L0, L1, X2, X3, L2, L3, ...]
+    l = [
+         ([1, 0, 0, 0, 0, 0, 0, 0], True),  # AMM buying LRNA in first asset
+        ([-1, 0, 1, 0, 0, 0, 0, 0], False),  # AMM selling LRNA in first asset
+        ([0, 0, 0, 0, 0, 1, 0, 0], True),  # AMM buying asset in second asset
+        ([0, 0, 0, 0, 0, -1, 0, 1], False),  # AMM selling asset in second asset
+        ([0, 0, 0, 0, -1, 0, 1, 0], True),  # AMM selling LRNA in second asset
+        ([0, 0, 0, 0, 1, 0, 0, 0], False),  # AMM buying LRNA in second asset
+        ([1, -1, 0, 1, 0, 0, 0, 0], True),  # AMM trading in first asset, realistic
+        ([1, -1, 0, 1, -1, 1, 1, 0], True),  # AMM trading in correct direction in all assets
+        ([1, -1, 0, 1, -1, -1, 1, 1], False),
+         ([0, 0, 0, 0, 0, 0, 0, 0], True)
+    ]
+
+    for x, result in l:
+        examples.append({'directions': directions, 'sol': x, 'result': result})
+
     for ex in examples:
         amm_constraints = OmnipoolConstraints(pool)
         A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(ex['directions'], last_omnipool_deltas)
@@ -230,6 +192,50 @@ def test_get_limits_A_omnipool_specific():
         feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
         if feas != ex['result']:
             raise AssertionError(f"Cone feasibility check failed with x={ex['sol']}, expected {ex['result']}, got {feas}")
+
+
+@given(st.lists(st.integers(min_value=-1, max_value=1), min_size=4, max_size=4),
+       st.lists(st.integers(min_value=-2, max_value=2), min_size=8, max_size=8))
+def test_get_amm_limits_A_random_omnipool(op_dirs, x_raw):
+    liquidity = {"tkn": 1_000_000, "HDX": 1_000_000}
+    pool = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': 100_000} for tkn in liquidity}
+    )
+    op_directions = []
+    for i in op_dirs:
+        if i == 1:
+            op_directions.append('buy')
+        elif i == -1:
+            op_directions.append('sell')
+        else:
+            op_directions.append('none')
+    x = [x_raw[i] for i in range(8)]
+    last_amm_deltas = []
+    # l = [[pool, op_directions, x_op]]
+
+    amm_constraints = OmnipoolConstraints(pool)
+
+    A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(op_directions, last_amm_deltas)
+    assert A_limits.shape[1] == amm_constraints.k
+    expected_result = True
+    for i in range(len(pool.asset_list)):
+        for j in range(2):
+            if op_directions[2*i + j] == 'buy':  # expect that Xi >= 0, Li = 0
+                if x[4*i + j + 2] != 0 or x[4*i + j] < 0:
+                    expected_result = False
+                    break
+            elif op_directions[2*i + j] == 'sell':  # expect that Xi <= 0, Xi + Li == 0
+                if x[4*i + j] > 0 or x[4*i + j] + x[4*i + j + 2] != 0:
+                    expected_result = False
+                    break
+            else:  # expect that Xi + Li >= 0, Li >= 0 without direction info
+                if x[4*i + j + 2] < 0 or x[4*i + j] + x[4*i + j] < 0:
+                    expected_result = False
+                    break
+        s = b_limits - A_limits @ x
+    feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+    if feas != expected_result:
+        raise AssertionError(f"Cone feasibility check failed with x={x}, expected {expected_result}, got {feas}")
 
 
 def test_get_xyk_bounds():
