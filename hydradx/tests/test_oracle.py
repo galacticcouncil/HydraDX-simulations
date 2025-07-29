@@ -7,7 +7,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model import run
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, strategies as st, settings, assume
 from hydradx.tests.strategies_omnipool import asset_price_strategy, asset_quantity_strategy, \
     asset_quantity_bounded_strategy
 from mpmath import mpf, mp
@@ -49,7 +49,8 @@ def test_oracle_multi_block_update():
                 raise AssertionError(f"Oracle mismatch in {attr} for token {tkn}")
 
 
-def test_update_every_block():
+@given(time_steps=st.integers(min_value=1, max_value=10))
+def test_update_every_block(time_steps):
     omnipool1 = OmnipoolState(
         tokens={
             'HDX': {'liquidity': 100000, 'LRNA': 100},
@@ -58,7 +59,7 @@ def test_update_every_block():
         unique_id='omnipool1'
     )
     omnipool2 = omnipool1.copy()
-    omnipool2.update_function = lambda self: self.oracles['price'].update(self.current_block)
+    omnipool2.update_function = OmnipoolState.update_oracles
     omnipool2.unique_id = 'omnipool2'
     swaps = [
         *[None] * 4,
@@ -77,9 +78,9 @@ def test_update_every_block():
         pools={'omnipool1': omnipool1, 'omnipool2': omnipool2},
         agents={'trader1': trader1, 'trader2': trader2},
     )
-    events = run.run(initial_state, time_steps=10, silent=True)
+    events = run.run(initial_state, time_steps=time_steps, silent=True)
     for pool in events[-1].pools.values():
-        pool.oracles['price'].update(pool.current_block)
+        pool.update_oracles()
 
     final_oracles = [pool.oracles['price'] for pool in events[-1].pools.values()]
     for tkn in initial_state.asset_list:
@@ -257,6 +258,7 @@ def test_oracle_one_block_with_swaps(lrna: list[float], oracle_liquidity: list[f
 
 
 def test_oracle_multi_block():
+    time_steps = 10
     init_liquidity = {
         'HDX': {'liquidity': 100000, 'LRNA': 100000},
         'USD': {'liquidity': 100000, 'LRNA': 100000},
@@ -297,7 +299,7 @@ def test_oracle_multi_block():
         )}
     )
 
-    events = run.run(initial_state=initial_state, time_steps=10, silent=True)
+    events = run.run(initial_state=initial_state, time_steps=time_steps, silent=True)
     final_omnipool = events[-1].pools['omnipool'].update()
     omnipool_oracle = final_omnipool.oracles['price']
     expected_vol_in = {'DOT': 66.66324219149098, 'HDX': 178.8008316214096, 'USD': 0}
