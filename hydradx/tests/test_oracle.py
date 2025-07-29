@@ -51,6 +51,9 @@ def test_oracle_multi_block_update():
 
 @given(time_steps=st.integers(min_value=1, max_value=10))
 def test_update_every_block(time_steps):
+    """
+    test one pool that updates every block vs. another that updates only once at the end.
+    """
     omnipool1 = OmnipoolState(
         tokens={
             'HDX': {'liquidity': 100000, 'LRNA': 100},
