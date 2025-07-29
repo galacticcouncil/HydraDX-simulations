@@ -74,19 +74,15 @@ def test_get_amm_limits_A():
     last_amm_deltas = []
 
     for amm, trading_pairs in [[stablepool4, [list(range(ss_tkn_ct + 1)), [0, 2], [1, 3]]], [xyk, [[1, 2]]]]:
-        all_trading_tkns = [amm.unique_id] + list(amm.liquidity.keys())
         if isinstance(amm, ConstantProductPoolState):
             amm_constraints = XykConstraints(amm)
         elif isinstance(amm, StableSwapPoolState):
             amm_constraints = StableswapConstraints(amm)
         amm_i = amm_constraints.amm_i
         for trading_is in trading_pairs:
-            trading_tkns = [all_trading_tkns[i] for i in trading_is]
-            A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(amm_directions, last_amm_deltas,
-                                                                                     trading_tkns)
+            A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(amm_directions, last_amm_deltas)
 
             assert A_limits.shape[1] == amm_constraints.k
-            # assert A_limits.shape[0] == 2 * len(trading_tkns) + 2 * (tkn_ct + 1 - len(trading_tkns))
             # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
             # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
             x = np.zeros(amm_constraints.k)
@@ -110,16 +106,6 @@ def test_get_amm_limits_A():
                 s = b_limits - A_limits @ x_copy
                 if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
                     raise AssertionError("Cone feasibility check should fail for negative Li")
-            # next we check what happens if we make one of the other Xs or Ls non-zero
-            non_trading_is = [i for i in range(len(amm.asset_list) + 1) if i not in trading_is]
-            for i in non_trading_is:
-                for val in [-1, 1]:
-                    for offset in [amm_i.shares_net, amm_i.shares_out]:
-                        x_copy = copy.deepcopy(x)
-                        x_copy[offset + i] = val  # make variable nonzero
-                        s = b_limits - A_limits @ x_copy
-                        if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-                            raise AssertionError("Cone feasibility check should fail for non-trading variables")
             # next we check what happens if we make Xj + Lj < 0
             for i in trading_is:
                 x_copy = copy.deepcopy(x)
@@ -152,32 +138,29 @@ def test_get_amm_limits_A_specific():
          ([0, 0, 0, 0, 0, 0], True)
     ]
     for x, result in l:
-        examples.append({'amm': xyk, 'directions': directions, 'trading_is': [0, 1, 2], 'sol': x, 'result': result})
+        examples.append({'amm': xyk, 'directions': directions, 'sol': x, 'result': result})
 
     # unknown directions, subset of trading tokens in stableswap pool
     directions = ['none', 'none', 'none', 'none', 'none']
-    trading_is = [0, 2, 3]
-    # For trading tokens we expect Xi + Li >= 0, Li >= 0. For non-trading tokens we expect Xi == 0, Li == 0
+    # we expect Xi + Li >= 0, Li >= 0
     l  = [
         ([-1, 0, 0, 0, 0, 1, 0, 0, 0, 0], True),
-        ([0, 0, 0, 0, 0, 0, 1, 0, 0, 0], False),  # trading token with nonzero vars
-        ([0, -1, 0, 0, 0, 0, 1, 0, 0, 0], False),  # trading token with nonzero vars
-        ([0, -1, 0, 0, 0, 1, 1, 0, 0, 0], False),  # trading token with nonzero vars
+        ([1, 0, 0, 0, 0, -1, 0, 0, 0, 0], False),  # Li <= 0
+        ([-1, 0, 0, 0, 0, 0, 0, 0, 0, 0], False),  # Xi + Li <= 0
+        ([0, -1, 0, 0, 0, 0, 1, 0, 0, 0], True),
         ([-1, 0, 1, -1, 0, 1, 0, 1, 1, 0], True),
         ([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], True)
         ]
 
     for x, result in l:
-        examples.append({'amm': stablepool4, 'directions': directions, 'trading_is': trading_is, 'sol': x + [0, 0, 0, 0, 0], 'result': result})
+        examples.append({'amm': stablepool4, 'directions': directions, 'sol': x + [0, 0, 0, 0, 0], 'result': result})
 
     # some directions known, some tokens trading, some not in stableswap pool
     directions = ['buy', 'buy', 'sell', 'none', 'buy']
-    trading_is = [0, 2, 3, 4]
-    # For trading tokens we expect Xi + Li >= 0, Li >= 0. For non-trading tokens we expect Xi == 0, Li == 0
+    # we expect Xi + Li >= 0, Li >= 0. For non-trading tokens we expect Xi == 0, Li == 0
     l  = [
         ([1, 0, -1, 1, 1, 0, 0, 1, 1, 0], True),
-        ([0, 0, -1, 1, 1, 0, 0, 1, 1, 0], True),  # tradeable asset doesn't trade
-        ([1, 1, -1, 1, 1, 0, 0, 1, 1, 0], False),  # non-tradeable asset trades
+        ([0, 0, -1, 1, 1, 0, 0, 1, 1, 0], True),  # asset doesn't trade
         ([1, 0, -1, 1, 1, 0, 0, 1, 1, 1], False),  # buy asset with Li > 0
         ([1, 0, -1, 1, -1, 0, 0, 1, 1, 1], False),  # buy asset with Xi < 0
         ([1, 0, 0, 1, 1, 0, 0, 1, 1, 0], False),  # sell asset with Xi + Li > 0
@@ -186,18 +169,15 @@ def test_get_amm_limits_A_specific():
     ]
 
     for x, result in l:
-        examples.append({'amm': stablepool4, 'directions': directions, 'trading_is': trading_is, 'sol': x + [0, 0, 0, 0, 0], 'result': result})
+        examples.append({'amm': stablepool4, 'directions': directions, 'sol': x + [0, 0, 0, 0, 0], 'result': result})
 
     for ex in examples:
         amm = ex['amm']
-        all_trading_tkns = [amm.unique_id] + list(amm.liquidity.keys())
-        trading_tkns = [all_trading_tkns[i] for i in ex['trading_is']]
         if isinstance(amm, ConstantProductPoolState):
             amm_constraints = XykConstraints(amm)
         elif isinstance(amm, StableSwapPoolState):
             amm_constraints = StableswapConstraints(amm)
-        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(ex['directions'], last_amm_deltas,
-                                                                                  trading_tkns)
+        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(ex['directions'], last_amm_deltas)
         s = b_limits - A_limits @ ex['sol']
         assert A_limits.shape[1] == amm_constraints.k
         feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
@@ -207,10 +187,8 @@ def test_get_amm_limits_A_specific():
 
 @given(st.lists(st.integers(min_value=-1, max_value=1), min_size=5, max_size=5),
        st.lists(st.integers(min_value=-1, max_value=1), min_size=3, max_size=3),
-       st.lists(st.integers(min_value=0, max_value=4), min_size=2, max_size=5, unique=True),
-       st.lists(st.integers(min_value=0, max_value=2), min_size=2, max_size=3, unique=True),
        st.lists(st.integers(min_value=-2, max_value=2), min_size=10, max_size=10))
-def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, ss_trading_indices, xyk_trading_indices, x_raw):
+def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, x_raw):
     ss_tkn_ct = 4
     liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
     stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
@@ -236,26 +214,18 @@ def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, ss_trading_indices, xyk_trad
     x_ss = [x for x in x_raw] + [0] * 5
     last_amm_deltas = []
 
-    for amm, directions, trading_is, x in [[stablepool4, ss_directions, ss_trading_indices, x_ss],
-                                           [xyk, xyk_directions, xyk_trading_indices, x_xyk]]:
-        all_trading_tkns = [amm.unique_id] + list(amm.liquidity.keys())
-        trading_tkns = [all_trading_tkns[i] for i in trading_is]
+    for amm, directions, x in [[stablepool4, ss_directions, x_ss], [xyk, xyk_directions, x_xyk]]:
         if isinstance(amm, ConstantProductPoolState):
             amm_constraints = XykConstraints(amm)
         elif isinstance(amm, StableSwapPoolState):
             amm_constraints = StableswapConstraints(amm)
         amm_i = amm_constraints.amm_i
 
-        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(directions, last_amm_deltas,
-                                                                                  trading_tkns)
+        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(directions, last_amm_deltas)
         assert A_limits.shape[1] == amm_constraints.k
         expected_result = True
         for i in range(len(amm.asset_list) + 1):
-            if i not in trading_is:  # expect that Xi == 0 and Li == 0 for non-trading tokens
-                if x[amm_i.shares_out + i] != 0 or x[amm_i.shares_net + i] != 0:
-                    expected_result = False
-                    break
-            elif directions[i] == 'buy':  # expect that Xi >= 0, Li = 0
+            if directions[i] == 'buy':  # expect that Xi >= 0, Li = 0
                 if x[amm_i.shares_out + i] != 0 or x[amm_i.shares_net + i] < 0:
                     expected_result = False
                     break
@@ -263,7 +233,7 @@ def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, ss_trading_indices, xyk_trad
                 if x[amm_i.shares_net + i] > 0 or x[amm_i.shares_net + i] + x[amm_i.shares_out + i] != 0:
                     expected_result = False
                     break
-            else:  # expect that Xi + Li >= 0, Li >= 0 for trading tokens without direction info
+            else:  # expect that Xi + Li >= 0, Li >= 0 without direction info
                 if x[amm_i.shares_out + i] < 0 or x[amm_i.shares_net + i] + x[amm_i.shares_out + i] < 0:
                     expected_result = False
                     break

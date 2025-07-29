@@ -55,7 +55,7 @@ class AmmConstraints:
                 delta_pct = last_amm_deltas[0] / self.shares  # possibly round to zero
             else:
                 delta_pct = 1  # to avoid causing any rounding
-            if self.tkn_share and abs(delta_pct) > 1e-11:
+            if abs(delta_pct) > 1e-11:
                 if len(amm_directions) > 0 and (dir := amm_directions[0]) in ["buy", "sell"]:
                     A_limits = np.zeros((2, self.k))
                     if dir == "buy":
