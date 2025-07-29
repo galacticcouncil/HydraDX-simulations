@@ -217,7 +217,7 @@ class OmnipoolState(Exchange):
                 maximum=max(current.values()),
                 liquidity={tkn: self.liquidity[tkn] for tkn in self.liquidity},
                 net_volume=get_last_volume(),
-                last_updated={tkn: self.time_step - 1 for tkn in self.asset_list},
+                last_updated={tkn: self.time_step for tkn in self.asset_list},
             )
         else:  # value is a number
             return DynamicFee(
@@ -345,6 +345,8 @@ class OmnipoolState(Exchange):
             or self.current_block.volume_out[tkn] != 0
             or self.current_block.lps[tkn] != 0
             or self.current_block.withdrawals[tkn] != 0
+            or self._asset_fee.last_updated[tkn] == self.time_step
+            or self._lrna_fee.last_updated[tkn] == self.time_step
         )]
 
         if len(oracle_update_assets) > 0:
