@@ -1,8 +1,10 @@
 import pytest, copy, numpy as np
 from hypothesis import given, strategies as st, assume, settings, reproduce_failure
 
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints, AmmIndexObject
+from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints, AmmIndexObject, \
+    OmnipoolConstraints
 from hydradx.model.amm.xyk_amm import ConstantProductPoolState
 
 settings.register_profile("ci", deadline=None, print_blob=True)
@@ -62,56 +64,6 @@ def check_all_cone_feasibility(s, cones, cone_sizes, tol=2e-5):
         if not cone_feas:
             return False
     return True
-
-
-def test_get_amm_limits_A():
-    ss_tkn_ct = 4
-    liquidity = {f"tkn_{i}": 1_000_000 for i in range(ss_tkn_ct)}
-    stablepool4 = StableSwapPoolState(tokens=liquidity, amplification=1000)
-    xyk_liquidity = {"xyk1": 1_000_000, "xyk2": 1_000_000}
-    xyk = ConstantProductPoolState(tokens=xyk_liquidity)
-    amm_directions = []
-    last_amm_deltas = []
-
-    for amm, trading_pairs in [[stablepool4, [list(range(ss_tkn_ct + 1)), [0, 2], [1, 3]]], [xyk, [[1, 2]]]]:
-        if isinstance(amm, ConstantProductPoolState):
-            amm_constraints = XykConstraints(amm)
-        elif isinstance(amm, StableSwapPoolState):
-            amm_constraints = StableswapConstraints(amm)
-        amm_i = amm_constraints.amm_i
-        for trading_is in trading_pairs:
-            A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(amm_directions, last_amm_deltas)
-
-            assert A_limits.shape[1] == amm_constraints.k
-            # in this case, A_limits should be enforcing that Li >= 0 for the restricted trading tokens
-            # it should be enforcing that Xi == 0 and Li == 0 for the other tokens
-            x = np.zeros(amm_constraints.k)
-            for i in trading_is:
-                x[amm_i.shares_out + i] = 1  # set correct Lis to 1
-            s = b_limits - A_limits @ x
-            if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-                raise AssertionError("Cone feasibility check failed for Li >= 0")
-            # check if appropriate Xis != 0
-            for val in [1, -1]:
-                x_copy = copy.deepcopy(x)
-                for i in trading_is:
-                    x_copy[amm_i.shares_net + i] = val  # set correct Xis to 1
-                s = b_limits - A_limits @ x_copy
-                if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-                    raise AssertionError("Cone feasibility check failed for Xis != 0")
-            # next we check what happens if we make one of the restricted Lis negative
-            for i in trading_is:
-                x_copy = copy.deepcopy(x)
-                x_copy[amm_i.shares_out + i] = -1  # make one of the Ls negative
-                s = b_limits - A_limits @ x_copy
-                if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-                    raise AssertionError("Cone feasibility check should fail for negative Li")
-            # next we check what happens if we make Xj + Lj < 0
-            for i in trading_is:
-                x_copy = copy.deepcopy(x)
-                x_copy[amm_i.shares_net + i] = -2  # Xj + Lj = -1
-                s = b_limits - A_limits @ x_copy
-                assert not check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
 
 
 def test_get_amm_limits_A_specific():
@@ -241,6 +193,43 @@ def test_get_amm_limits_A_random(ss_dirs, xyk_dirs, x_raw):
         feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
         if feas != expected_result:
             raise AssertionError(f"Cone feasibility check failed with x={x}, expected {expected_result}, got {feas}")
+
+
+def test_get_limits_A_omnipool_specific():
+    tkn_ct = 2
+    liquidity = {f"tkn_{i}": 1_000_000 for i in range(tkn_ct-1)}
+    liquidity['HDX'] = 1_000_000
+    pool = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': 100_000} for tkn in liquidity}
+    )
+    last_omnipool_deltas = []
+
+    examples = []
+    # unknown directions
+    directions = ['none'] * 2 * tkn_ct
+    # For all of these we expect Xi + Li >= 0, Li >= 0 for all tokens
+    # note that for Omnipool, structure is [X0, X1, L0, L1, X2, X3, L2, L3, ...]
+    l = [
+         ([-1, 0, 1, 0, 0, 0, 0, 0], True),  # LRNA variable works
+        ([0, -1, 0, 1, 0, 0, 0, 0], True),  # non-LRNA variable works
+         ([1, 0, -1, 0, 0, 0, 0, 0], False),
+        ([0, 1, 0, -1, 0, 0, 0, 0], False),
+        ([-1, 0, 1, 0, -1, 0, 1, 0], True),  # mix different tkns
+        ([0, -1, 0, 1, 1, 0, -1, 0], False),
+        ([-1, -1, 1, 1, 0, 0, 0, 0], True),  # this satisfies the Xi, Li constraints but would fail AMM invariant
+         ([0, 0, 0, 0, 0, 0, 0, 0], True)
+    ]
+    for x, result in l:
+        examples.append({'directions': directions, 'sol': x, 'result': result})
+
+    for ex in examples:
+        amm_constraints = OmnipoolConstraints(pool)
+        A_limits, b_limits, cones, cones_sizes = amm_constraints.get_amm_limits_A(ex['directions'], last_omnipool_deltas)
+        s = b_limits - A_limits @ ex['sol']
+        assert A_limits.shape[1] == amm_constraints.k
+        feas = check_all_cone_feasibility(s, cones, cones_sizes, tol=0)
+        if feas != ex['result']:
+            raise AssertionError(f"Cone feasibility check failed with x={ex['sol']}, expected {ex['result']}, got {feas}")
 
 
 def test_get_xyk_bounds():

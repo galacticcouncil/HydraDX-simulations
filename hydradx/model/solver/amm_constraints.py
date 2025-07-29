@@ -80,6 +80,10 @@ class AmmConstraints:
                 A_limits[1, self.amm_i.shares_out] = 1
                 cones_limits.append(cb.ZeroConeT(2))
                 cones_sizes.append(2)
+        else:
+            A_limits = np.zeros((0, self.k))
+            cones_limits = []
+            cones_sizes = []
         for j, tkn in enumerate(self.asset_list):
             if len(amm_directions) > 0 and len(last_amm_deltas) > 0:
                 delta_pct = last_amm_deltas[j + self.shares_tradeable_i] / self.liquidity[tkn]  # possibly round to zero
@@ -187,13 +191,14 @@ class OmnipoolConstraints(AmmConstraints):
     def __init__(self, amm: OmnipoolState):
         self.asset_list = ["LRNA"] + [tkn for tkn in amm.asset_list]
         # self.amm_i = AmmIndexObject(amm, 0, False)
-        self.trade_fee = amm.trade_fee(amm.asset_list[0], 0)  # assuming fixed uniform fee
+        self.asset_fees = {tkn: amm.asset_fee(tkn) for tkn in amm.asset_list}
+        self.lrna_fees = {tkn: amm.lrna_fee(tkn) for tkn in amm.asset_list}
         self.auxiliary_ct = 0
         self.xyk_constraints = {}
         for tkn in amm.asset_list:
             xyk_amm = ConstantProductPoolState(
                 {"LRNA": amm.lrna[tkn], tkn: amm.liquidity[tkn]},
-                trade_fee=self.trade_fee,
+                trade_fee=self.asset_fees[tkn],
                 unique_id=f"omnipool_{tkn}"
             )
             xyk_constraint = XykConstraints(xyk_amm, shares_tradeable=False)
@@ -217,7 +222,9 @@ class OmnipoolConstraints(AmmConstraints):
                 amm_directions = amm_directions[2 * j - 2: 2 * j],
                 last_amm_deltas = last_amm_deltas[2 * j - 2: 2 * j]
             )
-            A_limits = np.vstack([A_limits, Aj])
+            Aj_big = np.zeros((Aj.shape[0], self.k))
+            Aj_big[:, (j-1)*4 : j*4] = Aj  # place the AMM constraints in the right place
+            A_limits = np.vstack([A_limits, Aj_big])
             b_limits = np.concatenate([b_limits, bj])
             cones_limits.extend(conesj)
             cone_sizes.extend(cone_sizesj)
