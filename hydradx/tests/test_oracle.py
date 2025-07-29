@@ -125,7 +125,8 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
         lrna_fee=0.0005,
         last_oracle_values={
             'price': copy.deepcopy(init_oracle)
-        }
+        },
+        update_function=OmnipoolState.update_oracles
     )
 
     initial_state = GlobalState(
@@ -135,8 +136,7 @@ def test_oracle_one_empty_block(liquidity: list[float], lrna: list[float], oracl
 
     events = run.run(initial_state=initial_state, time_steps=1, silent=True)
     omnipool_oracle = events[0].pools['omnipool'].oracles['price']
-    # manually update oracle - it won't automatically update tokens that weren't used this block
-    omnipool_oracle.update(events[-1].pools['omnipool'].current_block)
+
     for tkn in ['HDX', 'USD', 'DOT']:
         expected_liquidity = init_oracle['liquidity'][tkn] * (1 - alpha) + alpha * init_liquidity[tkn]['liquidity']
         if omnipool_oracle.liquidity[tkn] != pytest.approx(expected_liquidity, rel=1e-12):
@@ -199,7 +199,7 @@ def test_oracle_one_block_with_swaps(lrna: list[float], oracle_liquidity: list[f
     )
     initial_omnipool.update_function = OmnipoolState.update_oracles
 
-    omnipool_0 = initial_omnipool.update()
+    omnipool_0 = initial_omnipool.copy().update()
     omnipool_oracle_0 = omnipool_0.oracles['price']
 
     for tkn in ['HDX', 'USD', 'DOT']:
