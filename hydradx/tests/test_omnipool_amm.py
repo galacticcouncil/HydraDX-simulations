@@ -1571,12 +1571,6 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
         },
         lrna_fee_burn=0,
         unique_id='omnipool',
-        update_function=lambda self: ((
-                self.lrna_fee(tkn) + self.asset_fee(tkn),
-                self.oracles['price'].update(self.current_block)
-            )
-            for tkn in self.asset_list
-        )
     )
 
     initial_state = GlobalState(
@@ -1595,10 +1589,11 @@ def test_dynamic_fees_with_trade(liquidity: list[float], lrna: list[float], orac
     )
     events = run.run(initial_state=initial_state, time_steps=2, silent=True)
 
-    omnipool = events[1].pools['omnipool']
-    prev_lrna_fees = events[0].pools['omnipool'].last_lrna_fee
-    prev_asset_fees = events[0].pools['omnipool'].last_fee
+    omnipool = events[-1].pools['omnipool']
+    prev_lrna_fees = {tkn: events[-2].pools['omnipool'].lrna_fee(tkn) for tkn in omnipool.asset_list}
+    prev_asset_fees = {tkn: events[-2].pools['omnipool'].asset_fee(tkn) for tkn in omnipool.asset_list}
     omnipool_oracle = omnipool.oracles['price']
+    omnipool_oracle.update(omnipool.last_block, ['HDX'])
     for tkn in ['HDX', 'USD', 'DOT']:
         x = (omnipool_oracle.volume_out[tkn] - omnipool_oracle.volume_in[tkn]) / omnipool_oracle.liquidity[tkn]
 
