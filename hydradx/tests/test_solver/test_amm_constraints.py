@@ -1,6 +1,7 @@
 import pytest, copy, numpy as np
 from hypothesis import given, strategies as st, assume, settings, reproduce_failure
 
+from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.solver.amm_constraints import XykConstraints, StableswapConstraints, AmmIndexObject, \
@@ -229,7 +230,7 @@ def test_get_amm_limits_A_random_omnipool(op_dirs, x_raw):
                     expected_result = False
                     break
             else:  # expect that Xi + Li >= 0, Li >= 0 without direction info
-                if x[4*i + j + 2] < 0 or x[4*i + j] + x[4*i + j] < 0:
+                if x[4*i + j + 2] < 0 or x[4*i + j] + x[4*i + j + 2] < 0:
                     expected_result = False
                     break
         s = b_limits - A_limits @ x
@@ -279,6 +280,45 @@ def test_get_xyk_bounds():
         s = b - A @ x
         if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
             raise AssertionError("Cone feasibility check should fail")
+
+
+@given(
+    st.floats(min_value=1e-5, max_value=1e-2),
+    st.floats(min_value=1e-8, max_value=1e-7)
+)
+def test_get_omnipool_bounds(buy_mult_big, buy_mult_small):
+    from hydradx.model.amm.omnipool_amm import simulate_swap
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': 1_000_000, 'LRNA': 100_000},
+            "TKN": {'liquidity': 2_000_000, 'LRNA': 100_000}
+        }
+    )
+    constraints = OmnipoolConstraints(omnipool)
+    scaling = {tkn: 1 for tkn in constraints.asset_list}
+    A, b, cones, cone_sizes = constraints.get_amm_bounds("none", scaling)
+
+    buy_amt_big = buy_mult_big * omnipool.liquidity['HDX']
+    buy_amt_small = buy_mult_small * omnipool.liquidity['HDX']
+
+    for approx, buy_amt in [["none", buy_amt_big], ["linear", buy_amt_small]]:
+        agent = Agent(enforce_holdings=False)
+        new_omnipool, new_agent = simulate_swap(omnipool, agent, 'HDX', 'TKN', buy_quantity = buy_amt)
+        sell_amt = -new_agent.holdings['TKN']
+        lrna_delta = omnipool.lrna['TKN'] - new_omnipool.lrna['TKN']
+        for m in [0.9, 1.1]:
+            X_1 = -buy_amt
+            X_3 = sell_amt * m
+            X_0 = lrna_delta
+            X_2 = -lrna_delta
+            x = np.zeros(8)
+            x[0], x[1], x[4], x[5] = X_0, X_1, X_2, X_3  # LRNA HDX
+            for i in [2, 3, 6, 7]:
+                x[i] = max([x[i-2], 0])  # L_i = max(X_i, 0)
+
+            s = b - A @ x
+            if (m >= 1) != check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-10):
+                raise AssertionError("Cone feasibility check failed for valid XYK bounds")
 
 
 def test_xyk_upgrade_approx():

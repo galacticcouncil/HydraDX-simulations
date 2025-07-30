@@ -251,7 +251,9 @@ class OmnipoolConstraints(AmmConstraints):
         for j in range(1, len(self.asset_list)):
             tkn = self.asset_list[j]
             Aj, bj, conesj, cone_sizesj = self.xyk_constraints[tkn].get_amm_bounds(approx[j-1], scaling)
-            A = np.vstack([A, Aj])
+            Aj_big = np.zeros((Aj.shape[0], self.k))
+            Aj_big[:, (j-1)*4 : j*4] = Aj  # place the AMM constraints in the right place
+            A = np.vstack([A, Aj_big])
             b = np.concatenate([b, bj])
             cones.extend(conesj)
             cone_sizes.extend(cone_sizesj)
