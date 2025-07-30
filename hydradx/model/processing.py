@@ -946,7 +946,7 @@ def get_current_money_market():
     RPC_URL = "wss://rpc.hydradx.cloud"
     POOL_ADDRESS_PROVIDER_ADDRESS = "0xf3Ba4D1b50f78301BDD7EAEa9B67822A15FCA691"
     BORROWERS_API_ENDPOINT = "https://omniwatch.play.hydration.cloud/api/borrowers/by-health"
-
+    emode_labels = ['None', 'Stablecoins', 'DOT', 'ETH']
     class CustomPoaMiddleware:
         def __init__(self, w3):
             self.w3 = w3
@@ -1123,7 +1123,7 @@ def get_current_money_market():
             },
             liquidation_threshold=position['currentLiquidationThreshold'],
             health_factor=position['healthFactor'],
-            e_mode=['None', 'Stablecoins', 'DOT'][position['config']['e-mode']]
+            e_mode=emode_labels[position['config']['e-mode']]
         ) for position in borrowers]
     )
     return mm
