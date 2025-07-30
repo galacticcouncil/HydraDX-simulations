@@ -1,5 +1,5 @@
 from .amm.agents import Agent
-from .amm.stableswap_amm import StableSwapPoolState
+from .amm.stableswap_amm import StableSwapPoolState, simulate_swap
 
 
 class StabilityModule:
@@ -177,12 +177,23 @@ class StabilityModule:
         if tkn not in self.asset_list:
             raise ValueError("Token not supported by stability module")
         max_buy_amt, buy_price = self.get_buy_params(tkn)
-        if max_buy_amt == 0:
-            return
-        agent.add(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
-        self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
-        self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
-        agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+        if max_buy_amt > 0:  # Hollar can be sold to HSM
+            agent.add(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
+            self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
+            self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
+            agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+        else:  # Hollar cannot be sold to HSM
+            peg = self.get_peg(tkn)
+            sell_price = (1 + self.sell_price_fee[tkn]) / peg  # HSM will sell Hollar at this price
+            # this is simply reasonable value chosen for arb amount, it is not ideal arb amount
+            max_sell = self.get_peg(tkn) * self._pool_states[tkn].liquidity[tkn] * self.buyback_speed[tkn]
+            test_state, test_agent = simulate_swap(self.pools[tkn], agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_sell)
+            after_spot = 1 / test_state.buy_spot(tkn_buy=tkn, tkn_sell=self.native_stable)
+            if after_spot > sell_price:  # this arb is profitable, so execute it
+                agent.add(self.native_stable, max_sell)  # flash mint Hollar for arb
+                self.pools[tkn].swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_sell)
+                self.swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_sell)
+                agent.remove(self.native_stable, max_sell)
 
 
 def fast_hollar_arb_and_dump(
