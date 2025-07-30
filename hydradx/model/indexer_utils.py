@@ -437,7 +437,7 @@ def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
 
 def get_current_omnipool():
     asset_info = get_asset_info_by_ids()
-    asset_ids = [int(i) for i in list(filter(lambda x: x != '1', asset_info.keys()))]  # Remove hub asset ID
+    asset_ids = get_current_omnipool_assets()  # Remove hub asset ID
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
@@ -448,7 +448,7 @@ def get_current_omnipool():
     current_block = max_block
     while asset_ids_remaining:
         omnipool_data = get_omnipool_asset_data(
-            min_block_id=current_block - 1000,
+            min_block_id=current_block - 100,
             max_block_id=current_block,
             asset_ids=asset_ids_remaining
         )
@@ -461,6 +461,7 @@ def get_current_omnipool():
                             10 ** asset_info[1].decimals)
                 asset_ids_remaining.remove(asset.id)
         current_block -= 100
+        print(asset_ids_remaining, current_block)
 
     asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
     for tkn in liquidity:
