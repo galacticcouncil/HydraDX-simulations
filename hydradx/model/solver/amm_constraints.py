@@ -137,7 +137,7 @@ class AmmConstraints:
         return np.hstack((X_coefs, L_coefs, a_coefs))
 
     @abstractmethod
-    def get_amm_bounds(self, approx: str, scaling: dict) -> tuple:
+    def get_amm_bounds(self, approx, scaling: dict) -> tuple:
         pass
 
     def get_amm_constraint_matrix(self, approx: str, scaling: dict, amm_directions: list, last_amm_deltas: list):
@@ -338,7 +338,7 @@ class XykConstraints(AmmConstraints):
                     A[row, amm_i.asset_net[0]] = asset_c[0]
                     A[row, amm_i.asset_net[1]] = asset_c[1]
                     row += 1
-        else:  # full constraint
+        elif approx == "none":  # full constraint
             A = np.zeros((3, self.k))
             b = np.ones(3)
             A[0, amm_i.asset_net[0]] = -asset_coefs[0]
@@ -347,6 +347,8 @@ class XykConstraints(AmmConstraints):
                 A[2, amm_i.shares_net] = -share_coef
             cones = [cb.PowerConeT(0.5)]
             cone_sizes = [3]
+        else:
+            raise ValueError(f"Unknown approximation type: {approx}")
 
         return A, b, cones, cone_sizes
 
@@ -416,7 +418,7 @@ class StableswapConstraints(AmmConstraints):
         self.ann = amm.ann
         self.d = amm.d
 
-    def get_amm_bounds(self, approx: str, scaling: dict):
+    def get_amm_bounds(self, approx: list, scaling: dict):
         B = [0] + [scaling[tkn] for tkn in self.asset_list]
         C = [scaling[self.tkn_share]]
         ann = self.ann
@@ -438,7 +440,7 @@ class StableswapConstraints(AmmConstraints):
             b = np.array([0])
             cones = [cb.ZeroConeT(1)]
             cone_sizes = [1]
-        else:
+        elif approx[0] == "none":
             A = np.zeros((3, self.k))
             b = np.array([0, 0, 0])
             # x = a_0
@@ -453,6 +455,8 @@ class StableswapConstraints(AmmConstraints):
             b[2] = 1
             cones = [cb.ExponentialConeT()]
             cone_sizes = [3]
+        else:
+            raise ValueError(f"Unknown approximation type: {approx[0]}")
 
         for t in range(1, n_amm):
             x0 = self.liquidity[self.asset_list[t - 1]]
@@ -464,7 +468,7 @@ class StableswapConstraints(AmmConstraints):
                 b_t = np.array([0])
                 cone_t = cb.ZeroConeT(1)
                 cone_size_t = 1
-            else:
+            elif approx[t] == "none":
                 A_t = np.zeros((3, self.k))
                 b_t = np.zeros(3)
                 # x = a_t
@@ -477,6 +481,8 @@ class StableswapConstraints(AmmConstraints):
                 b_t[2] = 1
                 cone_t = cb.ExponentialConeT()
                 cone_size_t = 3
+            else:
+                raise ValueError(f"Unknown approximation type: {approx[t]}")
             cones.append(cone_t)
             cone_sizes.append(cone_size_t)
             A = np.vstack([A, A_t])

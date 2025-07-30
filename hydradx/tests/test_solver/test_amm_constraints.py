@@ -1,4 +1,5 @@
 import pytest, copy, numpy as np
+import math
 from hypothesis import given, strategies as st, assume, settings, reproduce_failure
 
 from hydradx.model.amm.agents import Agent
@@ -296,12 +297,11 @@ def test_get_omnipool_bounds(buy_mult_big, buy_mult_small):
     )
     constraints = OmnipoolConstraints(omnipool)
     scaling = {tkn: 1 for tkn in constraints.asset_list}
-    A, b, cones, cone_sizes = constraints.get_amm_bounds("none", scaling)
-
     buy_amt_big = buy_mult_big * omnipool.liquidity['HDX']
     buy_amt_small = buy_mult_small * omnipool.liquidity['HDX']
 
     for approx, buy_amt in [["none", buy_amt_big], ["linear", buy_amt_small]]:
+        A, b, cones, cone_sizes = constraints.get_amm_bounds([approx, approx], scaling)
         agent = Agent(enforce_holdings=False)
         new_omnipool, new_agent = simulate_swap(omnipool, agent, 'HDX', 'TKN', buy_quantity = buy_amt)
         sell_amt = -new_agent.holdings['TKN']
@@ -318,7 +318,7 @@ def test_get_omnipool_bounds(buy_mult_big, buy_mult_small):
 
             s = b - A @ x
             if (m >= 1) != check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-10):
-                raise AssertionError("Cone feasibility check failed for valid XYK bounds")
+                raise AssertionError("Cone feasibility check failed for valid Omnipool bounds")
 
 
 def test_xyk_upgrade_approx():
@@ -389,45 +389,157 @@ def test_stableswap_upgrade_approx():
                 raise AssertionError(f"Expected {expected_approx[i]} for {amm.asset_list[i]} but got {approx}")
 
 
-# TODO test with auxiliary variable calculation
-# def test_get_stableswap_bounds():
-#     amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)
-#     constraints = StableswapConstraints(amm)
-#     scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
-#     amm_i = constraints.amm_i
-#
-#     for approx in ["Linear", "None"]:
-#         A, b, cones, cones_sizes = constraints.get_amm_bounds(approx, scaling)
-#         x = np.zeros(constraints.k)
-#         # selling 5 B for 1 A should work
-#         b_sell_amt, a_buy_amt = 5, 1
-#         x[amm_i.asset_net[0]] = -a_buy_amt
-#         x[amm_i.asset_net[1]] = b_sell_amt
-#         x[amm_i.asset_out[0]] = a_buy_amt
-#         s = b - A @ x
-#         if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-#             raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
-#         # selling 1 A for 1 5 should not work
-#         a_sell_amt, b_buy_amt = 1, 5
-#         x[amm_i.asset_net[1]] = -b_buy_amt
-#         x[amm_i.asset_net[0]] = a_sell_amt
-#         x[amm_i.asset_out[1]] = b_buy_amt
-#         s = b - A @ x
-#         if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-#             raise AssertionError("Cone feasibility check should fail")
-#         # selling 5 A for 1 B should work
-#         a_sell_amt, b_buy_amt = 5, 1
-#         x[amm_i.asset_net[1]] = -b_buy_amt
-#         x[amm_i.asset_net[0]] = a_sell_amt
-#         x[amm_i.asset_out[1]] = b_buy_amt
-#         s = b - A @ x
-#         if not check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-#             raise AssertionError("Cone feasibility check should succeed")
-#         # selling 1 B for 5 A should not work
-#         b_sell_amt, a_buy_amt = 1, 5
-#         x[amm_i.asset_net[0]] = -a_buy_amt
-#         x[amm_i.asset_net[1]] = b_sell_amt
-#         x[amm_i.asset_out[0]] = a_buy_amt
-#         s = b - A @ x
-#         if check_all_cone_feasibility(s, cones, cones_sizes, tol=0):
-#             raise AssertionError("Cone feasibility check should fail")
+def test_omnipool_upgrade_approx():
+    liquidity = {"tkn": 1_000_000, "HDX": 1_000_000}
+    pool = OmnipoolState(
+        tokens={tkn: {'liquidity': liquidity[tkn], 'LRNA': 100_000} for tkn in liquidity}
+    )
+    constraints = OmnipoolConstraints(pool)
+
+    # current_approx is linear in both, we need to upgrade both
+    current_approx = ["linear", "linear"]
+    deltas = [pool.lrna['tkn'] / 100000, pool.liquidity["tkn"] / 100000, pool.lrna['HDX'] / 100000, pool.liquidity["HDX"] / 100000]
+    if constraints.upgrade_approx(deltas, current_approx) != ["full", "full"]:
+        raise AssertionError("Incorrect approximation")
+    # current_approx is linear, we need to upgrade only HDX
+    deltas = [pool.lrna['tkn'] / 10000000, pool.liquidity["tkn"] / 10000000, pool.lrna['HDX'] / 100000, pool.liquidity["HDX"] / 100000]
+    if constraints.upgrade_approx(deltas, current_approx) != ["linear", "full"]:
+        raise AssertionError("Incorrect approximation")
+    # current_approx is linear, we do not need to upgrade
+    deltas = [pool.lrna['tkn'] / 10000000, pool.liquidity["tkn"] / 10000000, pool.lrna['HDX'] / 10000000, pool.liquidity["HDX"] / 10000000]
+    if constraints.upgrade_approx(deltas, current_approx) != ["linear", "linear"]:
+        raise AssertionError("Incorrect approximation")
+    current_approx = ["full", "linear"]
+    # upgrade 2nd asset to full
+    deltas = [pool.lrna['tkn'] / 100000, pool.liquidity["tkn"] / 100000, pool.lrna['HDX'] / 100000, pool.liquidity["HDX"] / 100000]
+    if constraints.upgrade_approx(deltas, current_approx) != ["full", "full"]:
+        raise AssertionError("Incorrect approximation")
+    # do not upgrade anything
+    deltas = [pool.lrna['tkn'] / 10000000, pool.liquidity["tkn"] / 10000000, pool.lrna['HDX'] / 10000000, pool.liquidity["HDX"] / 10000000]
+    if constraints.upgrade_approx(deltas, current_approx) != ["full", "linear"]:
+        raise AssertionError("Incorrect approximation")
+
+
+@given(
+    st.floats(min_value=1e-5, max_value=1e-2),
+    st.floats(min_value=1e-8, max_value=1e-7)
+)
+def test_get_stableswap_bounds_swap(buy_mult_big, buy_mult_small):
+    from hydradx.model.amm.stableswap_amm import simulate_swap
+    amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)
+    constraints = StableswapConstraints(amm)
+    scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
+    buy_amt_big = buy_mult_big * amm.liquidity['A']
+    buy_amt_small = buy_mult_small * amm.liquidity['A']
+
+    # for approx, buy_amt in [["none", buy_amt_big], ["linear", buy_amt_small]]:
+    for approx, buy_amt in [["none", buy_amt_big]]:
+        A, b, cones, cone_sizes = constraints.get_amm_bounds([approx, approx, approx], scaling)
+        agent = Agent(enforce_holdings=False)
+        new_omnipool, new_agent = simulate_swap(amm, agent, 'B', 'A', buy_quantity = buy_amt)
+        sell_amt = -new_agent.holdings['B']
+        for m in [0.9, 1.1]:
+            X_1 = -buy_amt
+            X_2 = sell_amt * m
+            x = np.zeros(9)
+            x[1], x[2] = X_1, X_2
+            for i in [4, 5]:
+                x[i] = max([x[i-2], 0])  # L_i = max(X_i, 0)
+            # need to set auxiliary variables too
+            term0 = 1  # delta shares is zero for swap
+            term1 = 1 + scaling[amm.asset_list[0]] / amm.liquidity[amm.asset_list[0]] * X_1
+            a1 = term0 * math.log(term1 / term0)
+            term2 = 1 + scaling[amm.asset_list[1]] / amm.liquidity[amm.asset_list[1]] * X_2
+            a2 = term0 * math.log(term2 / term0)
+            a0 = -a1 - a2
+            x[6], x[7], x[8] = a0, a1, a2
+            d_prime = amm.d * (1 - 1/amm.ann)
+            denom = amm.liquidity["A"] + amm.liquidity["B"] - d_prime
+
+            s = b - A @ x
+            if (m >= 1) != check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-6):
+                raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
+
+    # for approx, buy_amt in [["none", buy_amt_big], ["linear", buy_amt_small]]:
+    for approx, buy_amt in [["linear", buy_amt_small]]:
+        A, b, cones, cone_sizes = constraints.get_amm_bounds([approx, approx, approx], scaling)
+        agent = Agent(enforce_holdings=False)
+        new_omnipool, new_agent = simulate_swap(amm, agent, 'B', 'A', buy_quantity = buy_amt)
+        sell_amt = -new_agent.holdings['B']
+
+        X_1 = -buy_amt
+        X_2 = sell_amt
+        x = np.zeros(9)
+        x[1], x[2] = X_1, X_2
+        for i in [4, 5]:
+            x[i] = max([x[i-2], 0])  # L_i = max(X_i, 0)
+        # need to set auxiliary variables too
+        a1 = scaling[amm.asset_list[0]] / amm.liquidity[amm.asset_list[0]] * X_1
+        a2 = scaling[amm.asset_list[1]] / amm.liquidity[amm.asset_list[1]] * X_2
+        a0 = -a1 - a2
+        x[6], x[7], x[8] = a0, a1, a2
+        d_prime = amm.d * (1 - 1/amm.ann)
+        denom = amm.liquidity["A"] + amm.liquidity["B"] - d_prime
+
+        s = b - A @ x
+        if not check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-10):
+            raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
+
+@reproduce_failure('6.127.0', b'ACg/gAAAAAAAACg+cAAAAAAAAA==')
+@given(
+    st.floats(min_value=1e-5, max_value=1e-2),
+    st.floats(min_value=1e-8, max_value=1e-7)
+)
+def test_get_stableswap_bounds_liquidity(add_mult_big, add_mult_small):
+    from hydradx.model.amm.stableswap_amm import simulate_add_liquidity, simulate_remove_liquidity
+    amm = StableSwapPoolState(tokens={"A": 1_000_000, "B": 2_000_000}, amplification=100)
+    constraints = StableswapConstraints(amm)
+    scaling = {tkn: 1 for tkn in (amm.asset_list + [amm.unique_id])}
+    add_amt_big = add_mult_big * amm.liquidity['A']
+    add_amt_small = add_mult_small * amm.liquidity['A']
+
+
+    A, b, cones, cone_sizes = constraints.get_amm_bounds(["none", "none", "none"], scaling)
+    agent = Agent(enforce_holdings=False)
+    new_omnipool, new_agent = simulate_add_liquidity(amm, agent, add_amt_big, 'A')
+    shares_amt = new_agent.holdings[amm.unique_id]
+    X_0 = shares_amt
+    X_1 = add_amt_big
+    x = np.zeros(9)
+    x[0], x[1] = X_0, X_1
+    for i in [3, 4, 5]:
+        x[i] = max([x[i-2], 0])  # L_i = max(X_i, 0)
+    # need to set auxiliary variables too
+    term0 = 1 + scaling[amm.unique_id] / amm.shares * X_0
+    term1 = 1 + scaling[amm.asset_list[0]] / amm.liquidity[amm.asset_list[0]] * X_1
+    term2 = 1
+    a1 = term0 * math.log(term1 / term0)
+    a2 = term0 * math.log(term2 / term0)
+    a0 = -a1 - a2
+    x[6], x[7], x[8] = a0, a1, a2
+
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-10):
+        raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
+
+    # for approx, buy_amt in [["none", buy_amt_big], ["linear", buy_amt_small]]:
+    # for approx, buy_amt in [["linear", buy_amt_small]]:
+    A, b, cones, cone_sizes = constraints.get_amm_bounds(["linear", "linear", "linear"], scaling)
+    agent = Agent(enforce_holdings=False)
+    new_omnipool, new_agent = simulate_add_liquidity(amm, agent, add_amt_small, 'A')
+    shares_amt = new_agent.holdings[amm.unique_id]
+    X_0 = shares_amt
+    X_1 = add_amt_big
+    x = np.zeros(9)
+    x[0], x[1] = X_0, X_1
+    for i in [3, 4, 5]:
+        x[i] = max([x[i - 2], 0])  # L_i = max(X_i, 0)
+    # need to set auxiliary variables too
+    a1 = scaling[amm.asset_list[0]] / amm.liquidity[amm.asset_list[0]] * X_1 - scaling[amm.unique_id] / amm.shares * X_0
+    a2 = -scaling[amm.unique_id] / amm.shares * X_0
+    a0 = -a1 - a2
+    x[6], x[7], x[8] = a0, a1, a2
+
+    s = b - A @ x
+    if not check_all_cone_feasibility(s, cones, cone_sizes, tol=1e-10):
+        raise AssertionError("Cone feasibility check failed for valid Stableswap bounds")
