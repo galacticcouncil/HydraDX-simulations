@@ -30,7 +30,7 @@ def test_get_current_stableswap_pools():
 
 
 def test_get_omnipool_data():
-    current_block = 6000000
+    current_block = 8000000
     ids = get_current_omnipool_assets()
     ids_int = [int(x) for x in ids if x != "1"]
     omnipool_liquidity = get_omnipool_liquidity(
@@ -51,30 +51,30 @@ def test_get_omnipool_router():
 
 def test_get_fee_history():
     asset_id = 0
-    min_block_id = 7400000
-    max_block_id = 7400100
+    min_block_id = 8400000
+    max_block_id = 8400100
     data = get_fee_history(asset_id, min_block_id, max_block_id)
     x = get_fee_pcts(data, asset_id)
-    assert x[0][0] == 7400000
-    assert 0.0015 < x[0][1] < 0.0020
+    assert x[0][0] == 8400001
+    assert 0.0015 < x[0][1] < 0.0016
 
 
 def test_get_executed_trades():
     asset_ids = [5, 10]
-    min_block_id = 7400000
-    max_block_id = 7401000
+    min_block_id = 8400000
+    max_block_id = 8401000
     data = get_executed_trades(asset_ids, min_block_id, max_block_id)
-    assert data[0]['block_number'] == 7400003
-    assert 340 < data[0]['input_amount'] < 350
+    assert data[0]['block_number'] == 8400025
+    assert 1920 < data[0]['input_amount'] < 1930
 
 
 def test_get_stableswap_liquidity_events():
     pool_id = 102
-    min_block_id = 7400000
-    max_block_id = 7401000
+    min_block_id = 8400000
+    max_block_id = 8401000
     data = get_stableswap_liquidity_events(pool_id, min_block_id, max_block_id)
-    assert data[0]['paraBlockHeight'] == 7400000
-    assert data[0]['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['assetId'] == '10'
+    assert data[0]['paraBlockHeight'] == 8400001
+    assert data[0]['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['assetId'] == '22'
 
 
 def test_download_stableswap_exec_prices():
@@ -112,8 +112,8 @@ def test_download_omnipool_spot_prices():
 def test_get_omnipool_swap_fees():
     from hydradx.model.indexer_utils import get_omnipool_swap_fees
     tkn_id = 5
-    min_block_id = 7000000
-    max_block_id = 7001000
+    min_block_id = 8000000
+    max_block_id = 8001000
 
     asset_fee_data, hub_fee_data = get_omnipool_swap_fees(tkn_id, min_block_id, max_block_id)
     assert len(asset_fee_data) > 0, "Asset fee data should not be empty"
