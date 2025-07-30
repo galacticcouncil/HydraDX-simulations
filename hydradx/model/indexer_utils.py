@@ -9,7 +9,7 @@ from hydradx.model.processing import get_stableswap_data
 
 URL_UNIFIED_PROD = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
 URL_OMNIPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool-v2/api/graphql'
-URL_STABLEPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+URL_STABLESWAP_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool-v2/api/graphql'
 
 class AssetInfo:
     def __init__(
@@ -216,14 +216,14 @@ def get_stableswap_asset_data(
 
     stableswap_query = """
     query MyQuery($pool_id: Int!, $min_block: Int!, $max_block: Int!) {
-      stablepools(
+      stableswaps(
         orderBy: PARA_BLOCK_HEIGHT_ASC,
         filter: {poolId: {equalTo: $pool_id}, paraBlockHeight: {greaterThanOrEqualTo: $min_block, lessThanOrEqualTo: $max_block}}
       ) {
         nodes {
           id
           poolId
-          stablepoolAssetDataByPoolId {
+          stableswapAssetDataByPoolId {
             nodes {
               assetId
               balances
@@ -240,8 +240,8 @@ def get_stableswap_asset_data(
     }
     """
     variables = {"pool_id": pool_id, "min_block": min_block_id, "max_block": max_block_id}
-    data = query_indexer(URL_STABLEPOOL_STORAGE, stableswap_query, variables)
-    return data['data']['stablepools']['nodes']
+    data = query_indexer(URL_STABLESWAP_STORAGE, stableswap_query, variables)
+    return data['data']['stableswaps']['nodes']
 
 
 def get_stableswap_data_by_block(
@@ -257,7 +257,7 @@ def get_latest_stableswap_data(
 
     latest_block_query = """
     query MaxHeightQuery {
-      maxHeightResult: stablepools(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
+      maxHeightResult: stableswaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
         nodes {
           paraBlockHeight
         }
@@ -265,7 +265,7 @@ def get_latest_stableswap_data(
     }
     """
 
-    data = query_indexer(URL_STABLEPOOL_STORAGE, latest_block_query)
+    data = query_indexer(URL_STABLESWAP_STORAGE, latest_block_query)
 
     latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
     pool_data = get_stableswap_data_by_block(pool_id, latest_block)
@@ -280,12 +280,12 @@ def get_latest_stableswap_data(
         'liquidity': {}
     }
 
-    asset_id_list = [asset['assetId'] for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']]
+    asset_id_list = [asset['assetId'] for asset in pool_data['stableswapAssetDataByPoolId']['nodes']]
     asset_dict = get_asset_info_by_ids(asset_id_list)
 
-    for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']:
+    for asset in pool_data['stableswapAssetDataByPoolId']['nodes']:
         asset_id = asset['assetId']
-        balance = int(asset['balances']['free']) / (10 ** asset_dict[asset_id].decimals)
+        balance = int(asset['balances']['d'][0]) / (10 ** asset_dict[asset_id].decimals)
         pool_data_formatted['liquidity'][asset_id] = balance
     return pool_data_formatted
 
@@ -310,11 +310,11 @@ def get_current_omnipool_assets():
     return ids
 
 
-def get_stablepool_ids():
+def get_stableswap_ids():
 
-    stablepool_query = """
+    stableswap_query = """
     query MyQuery {
-      stablepools {
+      stableswaps {
         groupedAggregates(groupBy: POOL_ID) {
           keys
         }
@@ -322,8 +322,8 @@ def get_stablepool_ids():
     }
     """
 
-    data = query_indexer(URL_STABLEPOOL_STORAGE, stablepool_query)
-    pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
+    data = query_indexer(URL_STABLESWAP_STORAGE, stableswap_query)
+    pool_ids = [int(pool['keys'][0]) for pool in data['data']['stableswaps']['groupedAggregates']]
     return pool_ids
 
 
@@ -418,7 +418,7 @@ def get_fee_pcts(data, asset_id):
 def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
     stableswap_data = {
         pool: get_latest_stableswap_data(pool)
-        for pool in get_stablepool_ids()
+        for pool in get_stableswap_ids()
     }
     if asset_info is None:
         asset_info = get_asset_info_by_ids()

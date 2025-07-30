@@ -7,7 +7,7 @@ from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
 import os
 os.chdir('../..')
 
-from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
+from hydradx.model.indexer_utils import get_latest_stableswap_data, get_omnipool_liquidity, \
     get_current_block_height, get_current_omnipool, get_current_omnipool_assets, \
     get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts
 
