@@ -40,8 +40,10 @@ def test_get_omnipool_data():
 
 
 def test_get_omnipool_state():
-    omnipool = get_current_omnipool()
+    omnipool = get_current_omnipool(8400000)
     assert isinstance(omnipool, OmnipoolState)
+    assert isinstance([omnipool.asset_fee(tkn) for tkn in omnipool.asset_list], list)
+    assert isinstance([omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list], list)
 
 
 def test_get_omnipool_router():
