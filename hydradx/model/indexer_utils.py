@@ -290,7 +290,7 @@ def get_latest_stableswap_data(
     return pool_data_formatted
 
 
-def get_current_omnipool_assets():
+def get_current_omnipool_assets() -> list[str]:
     query = """
     query assetInfoByAssetIds {
       omnipoolAssets(filter: {isRemoved: {equalTo: false}}) {
@@ -307,6 +307,8 @@ def get_current_omnipool_assets():
             int(i)
         except ValueError:
             ids.remove(i)
+    # hub token doesn't count
+    ids.remove('1')
     return ids
 
 
@@ -435,20 +437,24 @@ def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
             )
     return stableswap_pools
 
-def get_current_omnipool():
+
+def get_current_omnipool(block_number = None):
     asset_info = get_asset_info_by_ids()
-    asset_ids = get_current_omnipool_assets()  # Remove hub asset ID
+    asset_ids = get_current_omnipool_assets()
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
-    max_block = get_current_block_height()
+    max_block = get_current_block_height() if block_number is None else block_number
     asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
     current_block = max_block
-    while asset_ids_remaining:
+    blocks_per_query = 100
+    max_queries = 10
+    queries = 0
+    while asset_ids_remaining and queries < max_queries:
         omnipool_data = get_omnipool_asset_data(
-            min_block_id=current_block - 100,
+            min_block_id=current_block - blocks_per_query,
             max_block_id=current_block,
             asset_ids=asset_ids_remaining
         )
@@ -460,16 +466,18 @@ def get_current_omnipool():
                 lrna[asset.symbol] = int(item['assetState']['d'][1]) / (
                             10 ** asset_info[1].decimals)
                 asset_ids_remaining.remove(asset.id)
-        current_block -= 100
+        current_block -= blocks_per_query
+        queries += 1
 
-    asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
-    for tkn in liquidity:
-        if tkn not in asset_fee.current:
-            asset_fee.current[tkn] = asset_fee.minimum
-            asset_fee.last_updated[tkn] = current_block
-        if tkn not in lrna_fee.current:
-            lrna_fee.current[tkn] = asset_fee.minimum
-            lrna_fee.last_updated[tkn] = current_block
+    for tkn in asset_ids_remaining:
+        print(f"{asset_info[int(tkn)].name} not found in {blocks_per_query * max_queries} blocks.")
+        asset_ids.remove(tkn)
+
+    asset_fee, lrna_fee = get_current_omnipool_fees(
+        asset_info={int(tkn): asset_info[int(tkn)] for tkn in asset_ids},
+        block_number=block_number
+    )
+
     omnipool = OmnipoolState(
         tokens={
             tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in liquidity
@@ -482,29 +490,18 @@ def get_current_omnipool():
 
 
 def get_current_omnipool_fees(
-        asset_info: dict[int: AssetInfo] = None
+    asset_info: dict[int: AssetInfo] = None,
+    block_number: int = None
 ) -> tuple[DynamicFee, DynamicFee]:
 
+    if asset_info and isinstance(list(asset_info.keys())[0], str):
+        raise TypeError("Asset info keys must be ints.")
+
+    if block_number is None:
+        block_number = get_current_block_height()
     if asset_info is None:
-        asset_info = get_asset_info_by_ids()
-    url = URL_UNIFIED_PROD
-    query = """
-        query MyQuery {
-            events(
-                first: 10000
-                orderBy: PARA_BLOCK_HEIGHT_DESC
-                filter: {name: {includes: "Omnipool"}}
-            ) {
-                nodes {
-                  name
-                  args
-                  id
-                  paraBlockHeight
-                }
-            }
-        }
-    """
-    transaction_data = query_indexer(url, query)['data']['events']['nodes']
+        asset_info = get_asset_info_by_ids(get_current_omnipool_assets())
+
     asset_fee = DynamicFee(
         minimum=0.0015,
         maximum=0.05,
@@ -517,20 +514,76 @@ def get_current_omnipool_fees(
         amplification=1,
         decay=0.005
     )
-    for trade in transaction_data:
-        args = {
-            arg[:arg.index(':')].strip('"'): arg[arg.index(':') + 1:].strip('"')
-            for arg in trade['args'].strip('}').strip('{').split(',')
-        }
-        block = trade['paraBlockHeight']
-        tkn_sell = asset_info[int(args['assetIn'])].symbol
-        tkn_buy = asset_info[int(args['assetOut'])].symbol
-        if tkn_sell not in lrna_fee.current and float(args['hubAmountOut']) > 0:
-            lrna_fee.current[tkn_sell] = float(args['protocolFeeAmount']) / float(args['hubAmountOut'])
-            lrna_fee.last_updated[tkn_sell] = block
-        if tkn_buy not in asset_fee.current and float(args['amountIn']) > 0:
-            asset_fee.current[tkn_buy] = float(args['assetFeeAmount']) / (float(args['amountOut']) + float(args['assetFeeAmount']))
-            asset_fee.last_updated[tkn_buy] = block
+    blocks_per_query = 100
+    max_queries = int(max(
+        (lrna_fee.maximum - lrna_fee.minimum) / lrna_fee.decay,
+        (asset_fee.maximum - asset_fee.minimum) / asset_fee.decay
+    ) / 100) + 1  # beyond that, fees will have decayed to minimum anyway
+    queries = 0
+    current_block = block_number
+    asset_ids_remaining = list(asset_info.keys())
+
+    url = URL_UNIFIED_PROD
+    while len(asset_ids_remaining) > 0 and queries < max_queries:
+        query = f"""
+            query MyQuery {{
+                events(
+                    first: 100
+                    orderBy: PARA_BLOCK_HEIGHT_DESC
+                    filter: {{
+                        name: {{includes: "Omnipool"}}, 
+                        paraBlockHeight: {{
+                            greaterThanOrEqualTo: {current_block - blocks_per_query}, 
+                            lessThanOrEqualTo: {current_block}
+                        }}
+                    }}
+                ) {{
+                    nodes {{
+                      name
+                      args
+                      id
+                      paraBlockHeight
+                    }}
+                }}
+            }}
+        """
+        transaction_data = query_indexer(url, query)['data']['events']['nodes']
+        for trade in transaction_data:
+            args = {
+                arg[:arg.index(':')].strip('"'): arg[arg.index(':') + 1:].strip('"')
+                for arg in trade['args'].strip('}').strip('{').split(',')
+            }
+            block = trade['paraBlockHeight']
+            sell_id = int(args['assetIn'])
+            buy_id = int(args['assetOut'])
+            tkn_sell = asset_info[sell_id] if sell_id in asset_info else None
+            tkn_buy = asset_info[buy_id] if buy_id in asset_info else None
+            if tkn_sell and int(tkn_sell.id) in asset_ids_remaining:
+                if tkn_sell.symbol not in lrna_fee.current and float(args['hubAmountOut']) > 0:
+                    lrna_fee.current[tkn_sell.symbol] = float(args['protocolFeeAmount']) / float(args['hubAmountOut'])
+                    lrna_fee.last_updated[tkn_sell.symbol] = block
+                    if tkn_sell.symbol in asset_fee.current:
+                        asset_ids_remaining.remove(int(args['assetIn']))
+            if tkn_buy and int(tkn_buy.id) in asset_ids_remaining:
+                if tkn_buy.symbol not in asset_fee.current and float(args['amountIn']) > 0:
+                    asset_fee.current[tkn_buy.symbol] = float(args['assetFeeAmount']) / (float(args['amountOut']) + float(args['assetFeeAmount']))
+                    asset_fee.last_updated[tkn_buy.symbol] = block
+                    if tkn_buy.symbol in lrna_fee.current:
+                        asset_ids_remaining.remove(int(args['assetOut']))
+
+        queries += 1
+        current_block -= blocks_per_query
+
+    for tkn in asset_ids_remaining:
+        symbol = asset_info[tkn].symbol
+        # print(f"{asset_info[tkn].name} fee not found in {blocks_per_query * max_queries} blocks.")
+        if symbol not in lrna_fee.current:
+            lrna_fee.current[symbol] = lrna_fee.minimum
+            lrna_fee.last_updated[symbol] = current_block
+        if symbol not in asset_fee.current:
+            asset_fee.current[symbol] = asset_fee.minimum
+            asset_fee.last_updated[symbol] = current_block
+
     return asset_fee, lrna_fee
 
 
