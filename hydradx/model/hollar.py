@@ -18,7 +18,7 @@ class StabilityModule:
         self.liquidity = {k: v for k, v in liquidity.items()}
         self.asset_list = list(liquidity.keys())
         self.time_step = 0
-        self.native_stable_bought = 0
+        self.native_stable_bought = {tkn: 0 for tkn in liquidity}
 
         if isinstance(buyback_speed, list):
             if len(buyback_speed) != len(self.asset_list):
@@ -88,7 +88,7 @@ class StabilityModule:
         self.time_step += 1
         for tkn, pool in self.pools.items():
             self._pool_states[tkn] = pool.copy()
-        self.native_stable_bought = 0
+        self.native_stable_bought = {tkn: 0 for tkn in self.liquidity}
 
     def get_peg(self, tkn: str) -> float:
         pool = self._pool_states[tkn]
@@ -114,7 +114,7 @@ class StabilityModule:
         if buy_price > self.max_buy_price_coef[tkn] / peg or buy_price == 0:
             return 0, 0
         max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
-        return max(max_buy_amt - self.native_stable_bought, 0), buy_price
+        return max(max_buy_amt - self.native_stable_bought[tkn], 0), buy_price
 
     def swap(
             self,
@@ -165,7 +165,7 @@ class StabilityModule:
             return self.fail_transaction("Agent does not have enough tokens to sell")
         # checks passed, proceed with swap
         if tkn_sell == self.native_stable:  # trader selling HOLLAR to HSM
-            self.native_stable_bought += sell_quantity
+            self.native_stable_bought[tkn_buy] += sell_quantity
         agent.remove(tkn_sell, sell_quantity)
         agent.add(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
