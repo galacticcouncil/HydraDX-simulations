@@ -61,6 +61,7 @@ class MoneyMarketAsset:
             emode_ltv: float = None,
             emode_label: str = '',
             liquidity: float = float('inf'),
+            supply_cap: float = float('inf')
     ):
         self.name = name
         self.price = price
@@ -72,6 +73,7 @@ class MoneyMarketAsset:
         self.emode_liquidation_threshold = emode_liquidation_threshold or liquidation_threshold
         self.emode_ltv = emode_ltv or ltv
         self.emode_label = emode_label
+        self.supply_cap = supply_cap
 
 
 class MoneyMarket(Exchange):
