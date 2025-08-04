@@ -14,7 +14,8 @@ from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps, TradeStrategy, general_arbitrage
-from hydradx.model.processing import get_current_money_market, get_stableswap_data, Pool
+from hydradx.model.processing import get_current_money_market, get_stableswap_data, Pool, save_money_market, \
+    load_money_market
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.model.run import run
@@ -38,23 +39,52 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     print(f"Cache miss! Loading omnipool at {cache_time}")
     load_router = get_current_omnipool_router(block_number)
     load_omnipool = load_router.exchanges['omnipool']
-    stableswap_pools = [pool for pool in load_router.exchanges if isinstance(pool, StableSwapPoolState)]
+    stableswap_pools = [pool for pool in load_router.exchanges.values() if isinstance(pool, StableSwapPoolState)]
+    pool_102 = load_router.exchanges['2-Pool-Stbl']
+    usd_price_lrna = (
+        1 / load_omnipool.lrna_price('2-Pool-Stbl') / load_omnipool.liquidity['2-Pool-Stbl']
+        * sum(pool_102.liquidity.values())
+    )  # this approximation assumes that the price of both assets in the 2-Pool-Stbl is 1 USD
+    load_omnipool.add_token(
+        'USD', liquidity = usd_price_lrna, lrna=1
+    ).stablecoin = 'USD'
 
     print("Loading money market data...")
-    mm = get_current_money_market()
+    mm = None
+    try:
+        mm = load_money_market(filename=f"money_market_at_{block_number}")
+    except FileNotFoundError:
+        mm = get_current_money_market()
+
+    if mm is None:
+        print('Money market could not be loaded - check internet connection.')
+        quit()
 
     # update risk parameters
     mm.assets['ETH'].liquidation_threshold = 0.85
-    mm.assets['2-Pool-GETH'] = 0.75
-    mm.assets['DOT'] = 0.85
+    mm.assets['2-Pool-GETH'].liquidation_threshold = 0.75
+    mm.assets['DOT'].liquidation_threshold = 0.85
     mm.assets['DOT'].supply_cap = 22_222_222
     mm.assets['ETH'].supply_cap = 4_444
-    mm.assets['2-Pool-GETH'] = 2_222
+    mm.assets['2-Pool-GETH'].supply_cap = 2_222
 
-    # assume worst-case scenario, supply cap is maxed and one huge position is on the verge of liquidation
+    try:
+        save_money_market(mm, filename=f"money_market_at_{block_number}")
+    except FileNotFoundError:
+        pass
+
     for tkn in ['ETH', 'DOT', '2-Pool-GETH']:
-        supply_available = sum([cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in mm.cdps])
-
+        supply_available = mm.assets[tkn].supply_cap - sum(
+            [cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in mm.cdps]
+        )
+        if supply_available > 0:
+            # assume worst-case scenario, supply cap is maxed and one huge position is on the verge of liquidation
+            new_cdp = CDP(
+                collateral={tkn: supply_available},
+                debt={'USDT': mm.assets[tkn].liquidation_threshold * supply_available * mm.assets[tkn].price - 1}
+            )
+            mm.cdps.append(new_cdp)
+            mm.borrowed[tkn] += supply_available
 
     print("Finished downloading data.")
     return OmnipoolRouter(exchanges=[load_omnipool, mm, *stableswap_pools], unique_id='router'), cache_time
