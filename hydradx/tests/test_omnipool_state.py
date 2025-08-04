@@ -297,7 +297,7 @@ def test_cash_out_accuracy(omnipool: oamm.OmnipoolState, share_price_ratio, lp_i
 
 def test_save_load():
     path = find_test_directory()
-    omnipool_router = get_current_omnipool_router()
+    omnipool_router = get_current_omnipool_router(block_number=8450000)
     save_omnipool(omnipool_router, path=path)
     omnipool_router2 = load_omnipool(path=path)
     for exchange_id in omnipool_router2.exchanges:
