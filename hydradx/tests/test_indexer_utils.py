@@ -28,7 +28,7 @@ def test_get_latest_stableswap_data():
 
 def test_get_current_stableswap_pools():
     from hydradx.model.indexer_utils import get_current_stableswap_pools
-    pools = get_current_stableswap_pools()
+    pools = get_current_stableswap_pools(block_number=8450000)
     assert len(pools) > 0
 
 
