@@ -149,10 +149,6 @@ def test_hollar_init_distro():
     run_script()
 
 
-def test_toxic_debt():
-    from hydradx.apps.money_market import toxic_debt
-
-
 def test_changing_amp():
     from hydradx.apps.gigadot_modeling import changing_amp
 
@@ -176,6 +172,7 @@ def test_oracle_comparison():
 
 def test_arb_oracle_comp():
     from hydradx.apps.fees import arb_oracle_comp
+
 
 def test_eth_params():
     from hydradx.apps.money_market import eth_params
