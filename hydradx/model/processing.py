@@ -1225,3 +1225,80 @@ def get_omnipool_price_history(asset_name: str):
 
     print(f"Total records fetched: {len(all_data)}")
 
+
+def save_money_market(mm: MoneyMarket, path: str = './archive', filename: str = None):
+    if filename is None:
+        filename = f"money_market_savefile_{time.time()}.json"
+    elif not filename.endswith('.json'):
+        filename += '.json'
+
+    json_state = {
+        'unique_id': mm.unique_id,
+        'close_factor': mm.partial_liquidation_pct,
+        'full_liquidation_threshold': mm.full_liquidation_threshold,
+        'time_step': mm.time_step,
+        'assets': [
+            {
+                'name': asset.name,
+                'emode_label': asset.emode_label,
+                'liquidity': asset.liquidity,
+                'price': asset.price,
+                'supply_cap': asset.supply_cap,
+                'liquidation_threshold': asset.liquidation_threshold,
+                'liquidation_bonus': asset.liquidation_bonus,
+                'ltv': asset.ltv,
+                'emode_liquidation_threshold': asset.emode_liquidation_threshold,
+                'emode_liquidation_bonus': asset.emode_liquidation_bonus,
+                'emode_ltv': asset.emode_ltv
+            } for asset in mm.assets.values()
+        ],
+        'cdps': [
+            {
+                'debt': {tkn: cdp.debt[tkn] for tkn in cdp.debt},
+                'collateral': {tkn: cdp.collateral[tkn] for tkn in cdp.collateral}
+            } for cdp in mm.cdps
+        ]
+    }
+    with open(os.path.join(path, filename), 'w') as savefile:
+        json.dump(json_state, savefile)
+
+
+def load_money_market(path: str = './archive', filename: str = None):
+    if filename is None:
+        file_ls = os.listdir(path)
+        for name in file_ls:
+            # return with the first likely-looking file
+            if name.startswith('money_market_savefile') and name.endswith('.json'):
+                filename = name
+    elif not(filename.endswith('.json')):
+        filename += '.json'
+    with open(os.path.join(path, filename), 'r') as loadfile:
+        json_data = json.load(loadfile)
+    mm = MoneyMarket(
+        unique_id=json_data['unique_id'],
+        close_factor=json_data['close_factor'],
+        full_liquidation_threshold=json_data['full_liquidation_threshold'],
+        assets=[
+            MoneyMarketAsset(
+                name=asset['name'],
+                liquidity=asset['liquidity'],
+                supply_cap=asset['supply_cap'],
+                price=asset['price'],
+                emode_label=asset['emode_label'],
+                liquidation_threshold=asset['liquidation_threshold'],
+                liquidation_bonus=asset['liquidation_bonus'],
+                ltv=asset['ltv'],
+                emode_liquidation_threshold=asset['emode_liquidation_threshold'],
+                emode_liquidation_bonus=asset['emode_liquidation_bonus'],
+                emode_ltv=asset['emode_ltv']
+            ) for asset in json_data['assets']
+        ],
+        cdps=[
+            CDP(
+                debt={tkn: quantity for tkn, quantity in cdp['debt'].items()},
+                collateral={tkn: quantity for tkn, quantity in cdp['collateral'].items()}
+            ) for cdp in json_data['cdps']
+        ]
+    )
+    mm.time_step = json_data['time_step']
+    return mm
