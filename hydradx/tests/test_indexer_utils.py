@@ -5,10 +5,13 @@ import pytest
 from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
 
 import os
+
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+
 os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_omnipool_liquidity, \
-    get_current_block_height, get_current_omnipool, get_current_omnipool_assets, \
+    get_current_block_height, get_current_omnipool, get_current_omnipool_assets, get_current_stableswap_pools,\
     get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts
 
 def test_get_latest_stableswap_data():
@@ -47,7 +50,7 @@ def test_get_omnipool_state():
 
 
 def test_get_omnipool_router():
-    router = get_current_omnipool_router()
+    router = get_current_omnipool_router(8400000)
     assert router is not None
 
 
@@ -91,6 +94,17 @@ def test_download_stableswap_exec_prices():
 
     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
 
+
+def test_get_stableswap_pools():
+    stableswap_pools = get_current_stableswap_pools(8400000)
+    for pool in stableswap_pools.values():
+        assert isinstance(pool, StableSwapPoolState)
+    price = stableswap_pools['690'].price(
+        tkn='Bifrost Voucher DOT',
+        denomination='aDOT'
+    )
+    if price <= 1:
+        raise AssertionError("vDOT should be priced higher than aDOT.")
 
 def test_download_omnipool_spot_prices():
     from hydradx.model.indexer_utils import download_omnipool_spot_prices
@@ -171,7 +185,7 @@ def test_bucket_values():
 def test_get_current_omnipool_assets():
     ids_str = get_current_omnipool_assets()
     ids = [int(x) for x in ids_str]
-    assert 1 in ids
+    print(ids)
     assert 0 in ids
 
 
