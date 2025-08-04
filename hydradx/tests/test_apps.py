@@ -176,3 +176,6 @@ def test_oracle_comparison():
 
 def test_arb_oracle_comp():
     from hydradx.apps.fees import arb_oracle_comp
+
+def test_eth_params():
+    from hydradx.apps.money_market import eth_params
