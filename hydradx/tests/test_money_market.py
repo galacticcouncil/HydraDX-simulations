@@ -8,6 +8,7 @@ from hydradx.model.amm.money_market import CDP, MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps
 from hydradx.model.processing import save_money_market, load_money_market
+from hydradx.tests.utils import find_test_directory
 
 mp.dps = 50
 
@@ -1137,8 +1138,9 @@ def test_save_load():
             )
         ]
     )
-    save_money_market(mm, filename='money_market_save_test')
-    load_mm = load_money_market(filename='money_market_save_test')
+    filepath = find_test_directory()
+    save_money_market(mm, path=filepath, filename='money_market_save_test')
+    load_mm = load_money_market(path=filepath, filename='money_market_save_test')
     if (
         mm.asset_list != load_mm.asset_list
         or mm.full_liquidation_threshold != load_mm.full_liquidation_threshold
