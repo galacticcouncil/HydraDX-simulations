@@ -7,6 +7,7 @@ from hydradx.model.amm.global_state import GlobalState, value_assets, historical
 from hydradx.model.amm.money_market import CDP, MoneyMarket, MoneyMarketAsset
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.trade_strategies import liquidate_cdps
+from hydradx.model.processing import save_money_market, load_money_market
 
 mp.dps = 50
 
@@ -1090,3 +1091,81 @@ def test_calculate_health_factor():
         raise AssertionError("CDP 2 wrong health factor")
     print (f"CDP1: {cdp1.health_factor}")
     print(f"CDP2: {cdp2.liquidation_threshold}")
+
+
+def test_save_load():
+    mm = MoneyMarket(
+        close_factor=0.55,
+        full_liquidation_threshold=0.95,
+        unique_id='test_mm',
+        assets=[
+            MoneyMarketAsset(
+                name='ETH',
+                liquidity=112,
+                supply_cap=11,
+                price=1000,
+                ltv=.8,
+                liquidation_bonus=0.1,
+                liquidation_threshold=0.88,
+                emode_label='ETH',
+                emode_liquidation_bonus=0.05,
+                emode_liquidation_threshold=0.91,
+                emode_ltv=0.85
+            ),
+            MoneyMarketAsset(
+                name='USD',
+                liquidity=1122,
+                supply_cap=115,
+                price=1,
+                ltv=.85,
+                liquidation_bonus=0.04,
+                liquidation_threshold=0.92,
+                emode_label='stablecoin',
+                emode_liquidation_bonus=0.02,
+                emode_liquidation_threshold=0.95,
+                emode_ltv=0.9
+            )
+        ],
+        cdps=[
+            CDP(
+                collateral={'USD': 1000},
+                debt={'ETH': 100}
+            ),
+            CDP(
+                collateral={'ETH': 2000},
+                debt={'USD': 150}
+            )
+        ]
+    )
+    save_money_market(mm, filename='money_market_save_test')
+    load_mm = load_money_market(filename='money_market_save_test')
+    if (
+        mm.asset_list != load_mm.asset_list
+        or mm.full_liquidation_threshold != load_mm.full_liquidation_threshold
+        or mm.partial_liquidation_pct != load_mm.partial_liquidation_pct
+        or mm.time_step != load_mm.time_step
+        or mm.unique_id != load_mm.unique_id
+        or mm.borrowed != load_mm.borrowed
+        or sum([
+            1 if (mm.cdps[i].debt != load_mm.cdps[i].debt or mm.cdps[i].collateral != load_mm.cdps[i].collateral) else 0
+            for i in range(len(mm.cdps))
+        ]) != 0
+    ):
+        raise AssertionError('objects should be identical.')
+
+    for name, asset in mm.assets.items():
+        load_asset = load_mm.assets[name]
+        if (
+            asset.name != load_asset.name
+            or asset.liquidity != load_asset.liquidity
+            or asset.price != load_asset.price
+            or asset.emode_label != load_asset.emode_label
+            or asset.supply_cap != load_asset.supply_cap
+            or asset.liquidation_threshold != load_asset.liquidation_threshold
+            or asset.liquidation_bonus != load_asset.liquidation_bonus
+            or asset.ltv != load_asset.ltv
+            or asset.emode_ltv != load_asset.emode_ltv
+            or asset.emode_liquidation_threshold != load_asset.emode_liquidation_threshold
+            or asset.emode_liquidation_bonus != load_asset.emode_liquidation_bonus
+        ):
+            raise AssertionError('assets should be identical')
