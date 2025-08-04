@@ -15,7 +15,7 @@ class StableSwapPoolState(Exchange):
             trade_fee: float = 0,
             unique_id: str = '',
             spot_price_precision: float = 1e-07,
-            shares: float = 0,
+            shares: float = None,
             peg: float or list = None,
             peg_target: float or list = None,
             max_peg_update: float = float('inf')
@@ -56,7 +56,7 @@ class StableSwapPoolState(Exchange):
         self.set_peg_target(peg_target)
         self.max_peg_update = max_peg_update
 
-        self.shares = shares or self.calculate_d()
+        self.shares = self.calculate_d() if shares is None else shares
         self.conversion_metrics = {}
 
     @property
