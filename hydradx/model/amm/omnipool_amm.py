@@ -822,7 +822,7 @@ class OmnipoolState(Exchange):
 
         delta_Q = self.lrna_price(tkn_add) * quantity
 
-        if nft_id is None and (self.unique_id, tkn_add) in agent.holdings:
+        if nft_id is None and agent.get_holdings((self.unique_id, tkn_add)) > 0:
             return self.fail_transaction(
                 'Agent already has liquidity in this pool. Try using nft_id input.'
             )
@@ -1055,12 +1055,16 @@ class OmnipoolState(Exchange):
             value += tkn_value
         return value
 
-    def cash_out(self, agent: Agent, prices) -> float:
+    def cash_out(self, agent: Agent, prices: dict[str: float] = None) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
-
+        if prices is None:
+            if self.stablecoin:
+                prices = {tkn: self.usd_price(tkn) for tkn in self.asset_list}
+            else:
+                raise ValueError('Prices not given and default stablecoin not set.')
         delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
         nft_ids = []
 
@@ -1251,7 +1255,6 @@ def trade_to_price(pool: OmnipoolState, tkn_sell: str, target_price: float):
     if tkn_sell not in pool.liquidity:
         return 0
     k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
-    print(target_price)
     target_x = math.sqrt(k / target_price)
     dx = target_x - pool.liquidity[tkn_sell]
     return dx
