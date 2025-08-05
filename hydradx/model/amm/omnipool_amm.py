@@ -1062,7 +1062,7 @@ class OmnipoolState(Exchange):
         """
         if prices is None:
             if self.stablecoin:
-                prices = {tkn: self.usd_price(tkn) for tkn in self.asset_list}
+                prices = {tkn: self.lrna_price(tkn) for tkn in self.asset_list}
             else:
                 raise ValueError('Prices not given and default stablecoin not set.')
         delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
