@@ -1,6 +1,6 @@
 import pytest
 from hypothesis import given, strategies as st, assume
-from hydradx.model.amm import basilisk_amm as bamm
+from hydradx.model.amm import xyk_amm as bamm
 from hydradx.model.amm.agents import Agent
 from mpmath import mp, mpf
 mp.dps = 50

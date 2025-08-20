@@ -435,6 +435,8 @@ class OmnipoolState(Exchange):
             return float('inf')
         delta_Qj = self.lrna[tkn_buy] * buy_quantity / (
                 self.liquidity[tkn_buy] * (1 - asset_fee) - buy_quantity)
+        if tkn_sell == "LRNA":
+            return delta_Qj
         lrna_fee = self.lrna_fee(tkn_sell)
         # lrna_fee = self.last_lrna_fee[tkn_sell]
         delta_Qi = -delta_Qj / (1 - lrna_fee)
@@ -452,11 +454,16 @@ class OmnipoolState(Exchange):
         """
         Given a sell quantity, calculate the effective price, so we can execute it as a buy
         """
-        delta_Ri = sell_quantity
-        delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
+        if tkn_sell == "LRNA":
+            delta_Qt = sell_quantity
+        else:
+            delta_Ri = sell_quantity
+            delta_Qi = self.lrna[tkn_sell] * -delta_Ri / (self.liquidity[tkn_sell] + delta_Ri)
+            lrna_fee = self.lrna_fee(tkn_sell)
+            delta_Qt = -delta_Qi * (1 - lrna_fee)
+        if tkn_buy == "LRNA":
+            return delta_Qt
         asset_fee = self.asset_fee(tkn_buy)
-        lrna_fee = self.lrna_fee(tkn_sell)
-        delta_Qt = -delta_Qi * (1 - lrna_fee)
         delta_Rj = self.liquidity[tkn_buy] * -delta_Qt / (self.lrna[tkn_buy] + delta_Qt) * (1 - asset_fee)
         return -delta_Rj
 
@@ -532,7 +539,7 @@ class OmnipoolState(Exchange):
         elif buy_quantity and not sell_quantity:
             # back into correct delta_Ri, then execute sell
             delta_Ri = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-            if delta_Ri < 0:
+            if delta_Ri <= 0:
                 return self.fail_transaction(f'insufficient LRNA in {tkn_sell}')
             if delta_Ri == float('inf'):
                 return self.fail_transaction('not enough liquidity in sell pool to buy that much')
@@ -646,6 +653,8 @@ class OmnipoolState(Exchange):
                 return self.fail_transaction('insufficient assets in pool')
             denom = (self.liquidity[tkn] * (1 - asset_fee) - delta_ra)
             delta_qa = -self.lrna[tkn] * delta_ra / denom
+            if "LRNA" not in agent.holdings or delta_qa + agent.holdings["LRNA"] < 0:
+                return self.fail_transaction('Agent has insufficient LRNA')
             delta_qm = -asset_fee * (1 - asset_fee) * (self.liquidity[tkn] / denom) * delta_qa * self.lrna_mint_pct
             delta_q = -delta_qa + delta_qm
 

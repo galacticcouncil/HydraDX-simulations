@@ -11,7 +11,8 @@ class ConstantProductPoolState(Exchange):
             self,
             tokens: dict[str: float],
             trade_fee: float = 0,
-            unique_id=''
+            unique_id='',
+            shares: float = 0
     ):
         """
         Tokens should be in the form of:
@@ -25,12 +26,13 @@ class ConstantProductPoolState(Exchange):
         self.trade_fee = trade_fee
         self.liquidity = dict()
         self.asset_list: list[str] = []
+        self.time_step = 0
 
         for token, quantity in tokens.items():
             self.asset_list.append(token)
             self.liquidity[token] = quantity
 
-        self.shares = self.liquidity[self.asset_list[0]]
+        self.shares = shares or self.liquidity[self.asset_list[0]]
 
         self.unique_id = unique_id
 
@@ -53,6 +55,16 @@ class ConstantProductPoolState(Exchange):
     @property
     def invariant(self):
         return math.prod(self.liquidity.values())
+
+    def calculate_k(self):
+        math.sqrt(self.invariant)
+
+    def fail_transaction(self, error: str, **kwargs):
+        self.fail = error
+        return self
+
+    def update(self):
+        self.time_step += 1
 
     def __repr__(self):
         precision = 12
@@ -90,6 +102,8 @@ class ConstantProductPoolState(Exchange):
     
         if not (tkn_buy in self.asset_list and tkn_sell in self.asset_list):
             return self.fail_transaction('Invalid token name.')
+
+        # assert buy_quantity >= 0 and sell_quantity >= 0  # TODO enforce this
     
         # turn a negative buy into a sell and vice versa
         if buy_quantity < 0:
@@ -129,14 +143,24 @@ class ConstantProductPoolState(Exchange):
     
         if self.liquidity[tkn_sell] + sell_quantity <= 0 or self.liquidity[tkn_buy] - buy_quantity <= 0:
             return self.fail_transaction('Not enough liquidity in the pool.')
-    
-        if agent.holdings[tkn_sell] - sell_quantity < 0 or agent.holdings[tkn_buy] + buy_quantity < 0:
+
+        if not agent.validate_holdings(tkn_sell, sell_quantity):
             return self.fail_transaction('Agent has insufficient holdings.')
-    
+        if agent.get_holdings(tkn_buy) + buy_quantity < 0 and agent.enforce_holdings:  # TODO: remove
+            return self.fail_transaction('Agent has insufficient holdings.')
+
+        # TODO: switch to new API
+        # agent.add(tkn_buy, buy_quantity)
+        # agent.remove(tkn_sell, sell_quantity)
+        if tkn_buy not in agent.holdings:
+            agent.holdings[tkn_buy] = 0
         agent.holdings[tkn_buy] += buy_quantity
+        if tkn_sell not in agent.holdings:
+            agent.holdings[tkn_sell] = 0
         agent.holdings[tkn_sell] -= sell_quantity
         self.liquidity[tkn_sell] += sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
+
     
         return self, agent
     
