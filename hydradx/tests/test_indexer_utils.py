@@ -12,7 +12,8 @@ os.chdir('../..')
 
 from hydradx.model.indexer_utils import get_latest_stableswap_data, get_omnipool_liquidity, \
     get_current_block_height, get_current_omnipool, get_current_omnipool_assets, get_current_stableswap_pools,\
-    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts
+    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts, \
+    get_omnipool_asset_data
 
 def test_get_latest_stableswap_data():
     """
@@ -195,3 +196,7 @@ def test_get_current_omnipool_fees():
     assert isinstance(asset_fees, DynamicFee) and isinstance(hub_fees, DynamicFee)
     assert 'HDX' in asset_fees.current
     assert 'HDX' in hub_fees.current
+
+
+def test_get_omnipool_asset_data():
+    data = get_omnipool_asset_data(min_block_id=8400000, max_block_id=8401000)
