@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
-from hydradx.model.amm.omnipool_router import OmnipoolRouter
+from hydradx.model.amm.omnipool_router import OmnipoolRouter, Trade, price_route
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.tests.strategies_omnipool import fee_strategy
 
@@ -49,35 +49,65 @@ def test_price_route(assets: list[float]):
     }
     router = OmnipoolRouter(exchanges)
 
-    op_price_hdx = omnipool.price("HDX", "USDT")
-    op_price_lp = omnipool.price("stablepool", "USDT")
-    sp_price = stablepool.price("stable1", "stable3")
-    share_price = stablepool.share_price("stable1")
+    op_sell_price_hdx = omnipool.sell_spot("HDX", "USDT")
+    op_sell_price_lp = omnipool.sell_spot("stablepool", "USDT")
+    sp_sell_price = stablepool.sell_spot("stable1", "stable3")
+    op_buy_price_hdx = omnipool.buy_spot("HDX", "USDT")
+    op_buy_price_lp = omnipool.buy_spot("stablepool", "USDT")
+    sp_buy_price = stablepool.buy_spot("stable1", "stable3")
+    share_sell_price = stablepool.share_price("stable1")
 
-    router_price_hdx = router.price_route("HDX", "USDT", "omnipool", "omnipool")
-    if router_price_hdx != op_price_hdx:
-        raise ValueError(f"router price {router_price_hdx} != omnipool price {op_price_hdx}")
+    router_sell_price_hdx = price_route([
+        Trade(omnipool, tkn_sell="HDX", tkn_buy="USDT", trade_type="sell")
+    ])
+    if router_sell_price_hdx != op_sell_price_hdx:
+        raise ValueError(f"router price {router_sell_price_hdx} != omnipool price {op_sell_price_hdx}")
 
-    router_price_lp = router.price_route("stablepool", "USDT", "omnipool", "omnipool")
-    if router_price_lp != op_price_lp:
-        raise ValueError(f"router price {router_price_lp} != omnipool price {op_price_lp}")
+    router_sell_price_lp = price_route([
+        Trade(omnipool, tkn_sell="stablepool", tkn_buy="USDT", trade_type="sell")
+    ])
+    if router_sell_price_lp != op_sell_price_lp:
+        raise ValueError(f"router price {router_sell_price_lp} != omnipool price {op_sell_price_lp}")
 
-    router_price_inside_stablepool = router.price_route("stable1", "stable3", "stablepool", "stablepool")
-    if router_price_inside_stablepool != pytest.approx(sp_price, rel=1e-15):
-        raise ValueError(f"router price {router_price_inside_stablepool} != stablepool price {sp_price}")
+    router_sell_price_inside_stablepool = price_route([
+        Trade(exchange=stablepool, tkn_sell="stable1", tkn_buy="stable3", trade_type="sell")
+    ])
+    if router_sell_price_inside_stablepool != pytest.approx(sp_sell_price, rel=1e-15):
+        raise ValueError(f"router price {router_sell_price_inside_stablepool} != stablepool price {sp_sell_price}")
 
-    router_price_outside_stablepool = router.price_route("stable1", "USDT", "stablepool", "omnipool")
-    if router_price_outside_stablepool != op_price_lp / share_price:
+    router_buy_price_hdx = price_route([
+        Trade(omnipool, tkn_sell="HDX", tkn_buy="USDT", trade_type="buy")
+    ])
+    if router_buy_price_hdx != op_buy_price_hdx:
+        raise ValueError(f"router price {router_buy_price_hdx} != omnipool price {op_buy_price_hdx}")
+
+    router_buy_price_lp = price_route([
+        Trade(omnipool, tkn_sell="stablepool", tkn_buy="USDT", trade_type="buy")
+    ])
+    if router_buy_price_lp != op_buy_price_lp:
+        raise ValueError(f"router price {router_buy_price_lp} != omnipool price {op_buy_price_lp}")
+
+    router_buy_price_inside_stablepool = price_route([
+        Trade(exchange=stablepool, tkn_sell="stable1", tkn_buy="stable3", trade_type="buy")
+    ])
+    if router_buy_price_inside_stablepool != pytest.approx(sp_buy_price, rel=1e-15):
+        raise ValueError(f"router price {router_buy_price_inside_stablepool} != stablepool price {sp_buy_price}")
+
+    router_price_outside_stablepool = price_route([
+        Trade(stablepool, tkn_sell="stable1", tkn_buy="stablepool", trade_type="sell"),
+        Trade(omnipool, tkn_sell="stablepool", tkn_buy="USDT", trade_type="sell")
+    ])
+    if router_price_outside_stablepool != op_sell_price_lp / share_sell_price:
         raise ValueError(
-            f"router price {router_price_outside_stablepool} != stablepool price {op_price_lp / share_price}")
+            f"router price {router_price_outside_stablepool} != stablepool price {op_sell_price_lp / share_sell_price}")
 
-    router_price_lp_share = router.price_route("stablepool", "stable1", "omnipool", "stablepool")
-    if router_price_lp_share != share_price:
-        raise ValueError(f"router price {router_price_lp_share} != stablepool price {share_price}")
+    router_price_lp_share = price_route("stablepool", "stable1", "omnipool", "stablepool", "stablepool")
+    if router_price_lp_share != share_sell_price:
+        raise ValueError(f"router price {router_price_lp_share} != stablepool price {share_sell_price}")
 
-    router_price_lp_share_reverse = router.price_route("stable1", "stablepool", "stablepool", "omnipool")
-    if router_price_lp_share_reverse != pytest.approx(1 / share_price, rel=1e-12):
-        raise ValueError(f"router price {router_price_lp_share_reverse} != stablepool price {1 / share_price}")
+    router_price_lp_share_reverse = price_route("stable1", "stablepool", "stablepool", "omnipool", "stablepool")
+    if router_price_lp_share_reverse != pytest.approx(1 / share_sell_price, rel=1e-12):
+        raise ValueError(f"router price {router_price_lp_share_reverse} != stablepool price {1 / share_sell_price}")
 
 
 def test_price_route_example():
@@ -91,8 +121,8 @@ def test_price_route_example():
     omnipool = OmnipoolState(
         tokens=tokens,
         preferred_stablecoin="USDT",
-        asset_fee=0.0025,
-        lrna_fee=0.0005,
+        asset_fee=0,
+        lrna_fee=0,
     )
     sp_tokens = {
         "stable1": 320000,
@@ -102,7 +132,7 @@ def test_price_route_example():
     stablepool = StableSwapPoolState(
         tokens=sp_tokens,
         amplification=1000,
-        trade_fee=0.0004,
+        trade_fee=0,
         unique_id="stablepool"
     )
     exchanges = {
@@ -111,7 +141,14 @@ def test_price_route_example():
     }
     router = OmnipoolRouter(exchanges)
 
-    router_price_outside_stablepool = router.price_route("DOT", "stable1", "omnipool", "stablepool")
+    router_price_outside_stablepool = price_route([
+        Trade(omnipool, tkn_sell="stablepool", tkn_buy="USDT", trade_type="buy"),
+        Trade(stablepool, tkn_sell="stable1", tkn_buy="stablepool", trade_type="buy")
+    ])
+    router_price_outside_stablepool_2 = price_route([
+        Trade(stablepool, tkn_sell="stable1", tkn_buy="stablepool", trade_type="sell"),
+        Trade(omnipool, tkn_sell="stablepool", tkn_buy="USDT", trade_type="sell"),
+    ])
     # if we have the math right, the DOT price denominated in stable1 should be in the ballpark of 10.
     if router_price_outside_stablepool != pytest.approx(10, rel=1e-3):
         raise ValueError(f"router price {router_price_outside_stablepool} is not correct")
@@ -192,7 +229,7 @@ def test_swap_stableswap(assets: list[float], trade_size_mult: float):
     router.swap_route(agent1, tkn_sell="DOT", tkn_buy="USDT", buy_quantity=buy_quantity, buy_pool_id="stablepool2",
                       sell_pool_id="omnipool")
     # calculate how many shares to buy
-    delta_shares = stablepool2_copy.calculate_withdrawal_shares("USDT", buy_quantity)
+    delta_shares = stablepool2_copy.calculate_withdraw_asset("USDT", buy_quantity)
     # buy shares
     omnipool2.swap(agent2, tkn_buy="stablepool2", tkn_sell="DOT", buy_quantity=delta_shares)
     # withdraw USDT
