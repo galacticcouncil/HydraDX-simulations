@@ -176,3 +176,11 @@ def test_arb_oracle_comp():
 
 def test_eth_params():
     from hydradx.apps.money_market import eth_params
+
+
+def test_add_withdraw():
+    from hydradx.apps.Misc import add_withdraw_losses
+
+
+def test_toxic_debt():
+    from hydradx.apps.money_market import toxic_debt
