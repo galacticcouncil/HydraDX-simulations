@@ -464,7 +464,7 @@ def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter
 
 def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
     ts = time.time()
-    omnipool = omnipool_router.omnipool
+    omnipool = omnipool_router.exchanges.get('omnipool', None)
     stableswap_pools = []
     for exchange_id in omnipool_router.exchanges:
         if isinstance(omnipool_router.exchanges[exchange_id], StableSwapPoolState):
