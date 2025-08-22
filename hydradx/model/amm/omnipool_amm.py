@@ -129,7 +129,11 @@ class OmnipoolState(Exchange):
                 liquidity=pool['liquidity'],
                 lrna=lrna,
                 shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
-                protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
+                protocol_shares=(
+                    pool['protocol_shares'] if 'protocol_shares' in pool else (
+                        pool['shares'] if 'shares' in pool else pool['liquidity']
+                    )
+                ),
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 

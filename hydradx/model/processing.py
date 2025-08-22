@@ -474,6 +474,8 @@ def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
             {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
+                'shares': omnipool.shares,
+                'protocol_shares': omnipool.protocol_shares,
                 'asset_fee': {tkn: omnipool.asset_fee(tkn) for tkn in omnipool.asset_list},
                 'lrna_fee': {tkn: omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list},
                 'stableswap_pools': [
@@ -504,7 +506,9 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolRouter
             tokens={
                 tkn: {
                     'liquidity': json_state['liquidity'][tkn],
-                    'LRNA': json_state['LRNA'][tkn]
+                    'LRNA': json_state['LRNA'][tkn],
+                    'shares': json_state['shares'][tkn] if 'shares' in json_state else None,
+                    'protocol_shares': json_state['protocol_shares'][tkn] if 'protocol_shares' in json_state else None
                 }
                 for tkn in json_state['liquidity']
             },

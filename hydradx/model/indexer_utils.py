@@ -545,6 +545,7 @@ def get_current_omnipool(block_number = None):
     liquidity = {}
     lrna = {}
     shares = {}
+    protocol_shares = {}
     current_block = max_block
     blocks_per_query = 100
     max_queries = 10
@@ -561,6 +562,7 @@ def get_current_omnipool(block_number = None):
                 liquidity[asset.symbol] = int(item['balances']['d'][0]) / 10 ** asset.decimals
                 lrna[asset.symbol] = int(item['assetState']['d'][0]) / 10 ** asset_info[1].decimals
                 shares[asset.symbol] = int(item['assetState']['d'][1]) / 10 ** asset.decimals
+                protocol_shares[asset.symbol] = int(item['assetState']['d'][2]) / 10 ** asset.decimals
                 asset_ids_remaining.remove(asset.id)
         current_block -= blocks_per_query
         queries += 1
@@ -576,7 +578,12 @@ def get_current_omnipool(block_number = None):
 
     omnipool = OmnipoolState(
         tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn], 'shares': shares[tkn]} for tkn in liquidity
+            tkn: {
+                'liquidity': liquidity[tkn],
+                'LRNA': lrna[tkn],
+                'shares': shares[tkn],
+                'protocol_shares': protocol_shares[tkn],
+            } for tkn in liquidity
         },
         asset_fee=asset_fee,
         lrna_fee=lrna_fee
