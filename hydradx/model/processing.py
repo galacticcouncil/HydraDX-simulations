@@ -482,7 +482,7 @@ def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
                     {
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
-                        'trade_fee': pool.trade_fee,
+                        'trade_fee': float(pool.trade_fee),
                         'unique_id': pool.unique_id,
                         'shares': pool.shares,
                         'peg': pool.peg[1:]

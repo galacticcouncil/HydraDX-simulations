@@ -13,7 +13,7 @@ class StableSwapPoolState(Exchange):
             tokens: dict,
             amplification: float,
             precision: float = 0.0001,
-            trade_fee: float = 0,
+            trade_fee: float = 0.0,
             unique_id: str = '',
             spot_price_precision: float = 1e-07,
             shares: float = None,

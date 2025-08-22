@@ -504,7 +504,7 @@ def get_current_stableswap_pools(block_number):
             pool = stableswap_pools[pool_id]
             pool.liquidity[asset_name] = int(node['balances']['d'][0]) / 10 ** stableswap_asset_data[asset_id]['decimals']
             if block > pool.time_step:
-                pool.trade_fee = node['pool']['fee'] / 1000000
+                pool.trade_fee = float(node['pool']['fee'] / 1000000)
                 pool.amplification = node['pool']['finalAmplification']
                 pegs = [
                     int(node['pool']['pegs'][i][0]) / int(node['pool']['pegs'][i][1])
