@@ -968,3 +968,93 @@ def test_price_route():
                 raise ValueError(
                     f"Agent holdings {agent.get_holdings(tkn)} for token {tkn} are not zero after trade {route} in direction {direction}"
                 )
+
+
+def test_calculate_swap():
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': mpf(10001910), 'LRNA': mpf(1000900)},
+            "USDT": {'liquidity': mpf(1003000), 'LRNA': mpf(1000060)},
+            "DOT": {'liquidity': mpf(100000), 'LRNA': mpf(1020600)},
+            "stablepool1": {'liquidity': mpf(1500000), 'LRNA': mpf(1567000)},
+            "stablepool2": {'liquidity': mpf(1054000), 'LRNA': mpf(1045675)},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=0.0025,
+        lrna_fee=0.0005
+    )
+    stablepool1 = StableSwapPoolState(
+        tokens={"stable1": mpf(1230000), "stable2": mpf(1320000)},
+        amplification=1002,
+        trade_fee=0.0100, unique_id="stablepool1",
+        precision=1e-12,
+        spot_price_precision=1e-12
+    )
+    stablepool2 = StableSwapPoolState(
+        tokens={"stable2": mpf(330000), "stable3": mpf(345000)},
+        amplification=101,
+        trade_fee=0.0001, unique_id="stablepool2",
+        precision=1e-12,
+        spot_price_precision=1e-12
+    )
+    router = OmnipoolRouter(
+        exchanges=[omnipool, stablepool1, stablepool2],
+    )
+    routes = [
+        [
+            Trade(exchange="omnipool", tkn_sell="DOT", tkn_buy="stablepool1"),
+            Trade(exchange="stablepool1", tkn_sell="stablepool1", tkn_buy="stable1")
+        ], [
+            Trade(exchange="stablepool2", tkn_sell="stable2", tkn_buy="stablepool2"),
+            Trade(exchange="omnipool", tkn_sell="stablepool2", tkn_buy="DOT")
+        ], [
+            Trade(exchange="stablepool1", tkn_sell="stable1", tkn_buy="stablepool1"),
+            Trade(exchange="omnipool", tkn_sell="stablepool1", tkn_buy="stablepool2"),
+            Trade(exchange="stablepool2", tkn_sell="stablepool2", tkn_buy="stable3")
+        ], [
+            Trade(exchange="stablepool1", tkn_sell="stable1", tkn_buy="stable2"),
+            Trade(exchange="stablepool2", tkn_sell="stable2", tkn_buy="stable3"),
+        ]
+    ]
+    for route in routes:
+        direction: Literal['buy', 'sell']
+        for direction in ['sell', 'buy']:
+            agent = Agent(enforce_holdings=False)
+            tkn_buy = route[-1].tkn_buy
+            tkn_sell = route[0].tkn_sell
+            if direction == 'buy':
+                route.reverse()
+            trade_size = mpf(100)
+            router_copy = router.copy()
+            router_copy.swap_route(
+                agent=agent, route=route,
+                buy_quantity=trade_size if direction == 'buy' else None,
+                sell_quantity=trade_size if direction == 'sell' else None
+            )
+            actual = (-agent.get_holdings(tkn_sell) if direction == 'buy' else agent.get_holdings(
+                tkn_buy))
+            if direction == 'buy':
+                expected = router.calculate_sell_from_buy(
+                    tkn_sell=tkn_sell, tkn_buy=tkn_buy, buy_quantity=trade_size, route=route
+                )
+            else:
+                expected = router.calculate_buy_from_sell(
+                    tkn_buy=tkn_buy, tkn_sell=tkn_sell, sell_quantity=trade_size, route=route
+                )
+            if actual != pytest.approx(expected, rel=1e-12):
+                raise ValueError(
+                    f"Actual {round(actual, 12)} does not match expected {round(expected, 12)} for tkn_buy={tkn_buy}, tkn_sell={tkn_sell} in direction {direction}"
+                )
+            if direction == 'buy' and agent.get_holdings(tkn_buy) != trade_size:
+                raise ValueError(
+                    f"Agent holdings {round(agent.get_holdings(tkn_buy), 12)} do not match expected buy quantity {trade_size} for tkn_buy={tkn_buy}, tkn_sell={tkn_sell} in direction {direction}"
+                )
+            if direction == 'sell' and agent.get_holdings(tkn_sell) != -trade_size:
+                raise ValueError(
+                    f"Agent holdings {round(agent.get_holdings(tkn_sell), 12)} do not match expected sell quantity {-trade_size} for tkn_buy={tkn_buy}, tkn_sell={tkn_sell} in direction {direction}"
+                )
+            for tkn in set(agent.holdings) - {tkn_buy, tkn_sell}:
+                if agent.get_holdings(tkn) != 0:
+                    raise ValueError(
+                        f"Agent holdings {agent.get_holdings(tkn)} for token {tkn} are not zero after trade {route} in direction {direction}"
+                    )
