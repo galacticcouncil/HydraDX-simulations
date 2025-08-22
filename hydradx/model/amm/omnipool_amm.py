@@ -512,13 +512,17 @@ class OmnipoolState(Exchange):
             self,
             agent: Agent,
             tkn_buy: str, tkn_sell: str,
-            buy_quantity: float = 0,
-            sell_quantity: float = 0
+            buy_quantity: float = None,
+            sell_quantity: float = None
     ):
         """
         execute swap in place (modify and return self and agent)
         all swaps, LRNA, sub-pool, and asset swaps, are executed through this function
         """
+        if buy_quantity is None:
+            buy_quantity = 0
+        if sell_quantity is None:
+            sell_quantity = 0
         old_buy_liquidity = self.liquidity[tkn_buy] if tkn_buy in self.liquidity else 0
         old_sell_liquidity = self.liquidity[tkn_sell] if tkn_sell in self.liquidity else 0
 
