@@ -823,7 +823,7 @@ def test_stableswap_router_arbitrage():
     # save_omnipool(omnipool)
     archive_path = os.path.join(find_test_directory(), 'archive')
     router = load_omnipool(archive_path)
-    omnipool = router.omnipool
+    omnipool = router.exchanges['omnipool']
     fourpool = router.exchanges['4-Pool']
     input_path = os.path.join(find_test_directory(), 'data')
     if not os.path.exists(input_path):
