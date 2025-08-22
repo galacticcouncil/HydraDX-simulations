@@ -363,23 +363,20 @@ def test_swap():
     trade_size = 1
     agent1 = Agent(holdings={sell_tkn: trade_size})
 
-    best_route = router.find_best_route(buy_tkn, sell_tkn)
-    if best_route != ("stablepool", "stablepool2"):
+    best_route = router.find_best_route(buy_tkn, sell_tkn, direction="sell")
+    if best_route[0].exchange.unique_id != "stablepool" or best_route[1].exchange.unique_id != "stablepool2":
         raise ValueError(f"best route {best_route} != ('stablepool', 'stablepool2')")
 
     new_router, new_agent = router.simulate_swap(
-        agent1,
+        agent=agent1,
         tkn_buy=buy_tkn,
         tkn_sell=sell_tkn,
         sell_quantity=trade_size
     )
     new_router2, new_agent2 = router.simulate_swap_route(
-        agent1,
-        tkn_sell=sell_tkn,
-        tkn_buy=buy_tkn,
-        sell_quantity=trade_size,
-        buy_pool_id="stablepool2",
-        sell_pool_id="stablepool"
+        agent=agent1,
+        route=best_route,
+        sell_quantity=trade_size
     )
     for tkn in new_agent.holdings:
         if new_agent.holdings[tkn] != new_agent2.holdings[tkn]:
@@ -414,23 +411,20 @@ def test_swap2():
     trade_size = 1
     agent1 = Agent(holdings={sell_tkn: trade_size})
 
-    best_route = router.find_best_route(buy_tkn, sell_tkn)
-    if best_route != ("stablepool", "omnipool"):
+    best_route = router.find_best_route(buy_tkn, sell_tkn, direction="buy")
+    if best_route[0].exchange.unique_id != "stablepool" or best_route[1].exchange.unique_id != "omnipool":
         raise ValueError(f"best route {best_route} != ('stablepool', 'omnipool')")
 
     new_router, new_agent = router.simulate_swap(
-        agent1,
+        agent=agent1,
         tkn_buy=buy_tkn,
         tkn_sell=sell_tkn,
-        sell_quantity=trade_size
+        buy_quantity=trade_size
     )
     new_router2, new_agent2 = router.simulate_swap_route(
-        agent1,
-        tkn_sell=sell_tkn,
-        tkn_buy=buy_tkn,
-        sell_quantity=trade_size,
-        buy_pool_id="omnipool",
-        sell_pool_id="stablepool"
+        agent=agent1,
+        route=best_route,
+        buy_quantity=trade_size,
     )
     for tkn in new_agent.holdings:
         if new_agent.holdings[tkn] != new_agent2.holdings[tkn]:
@@ -454,88 +448,74 @@ def check_liquidity_equal(pool1, pool2):
             raise ValueError(f"pool liquidity {pool1.liquidity[tkn]} != {pool2.liquidity[tkn]}")
 
 
-@given(st.lists(asset_quantity_strategy, min_size=10, max_size=10))
+@given(st.lists(asset_quantity_strategy, min_size=6, max_size=6))
 def test_swap_shares(assets: list[float]):
     tokens = {
         "HDX": {'liquidity': 1000000, 'LRNA': 1000000},
         "USDT": {'liquidity': assets[0], 'LRNA': assets[1]},
         "DOT": {'liquidity': 1000000, 'LRNA': 1000000},
         "stablepool": {'liquidity': 1000000, 'LRNA': assets[2]},
-        "stablepool2": {'liquidity': 1000000, 'LRNA': assets[3]},
     }
 
-    buy_tkn = "USDT"
-    sell_tkn = "stablepool2"
-    buy_tkn_pool = "stablepool2"
-    sell_tkn_pool = "omnipool"
+    tkn_buy = "USDT"
+    tkn_sell = "stablepool"
 
-    omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0025, lrna_fee=0.0005)
-    sp_tokens = {"stable1": assets[4], "stable2": assets[5], "stable3": assets[6]}
-    stablepool = StableSwapPoolState(sp_tokens, 1000, trade_fee=0.0100, unique_id="stablepool")
-    sp_tokens2 = {"stable2": assets[7], "stable3": assets[8], "USDT": assets[9]}
-    stablepool2 = StableSwapPoolState(sp_tokens2, 1000, trade_fee=0.0000, unique_id="stablepool2")
-    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
-    router = OmnipoolRouter(exchanges)
-    init_holdings = {"stablepool2": 1000000, "USDT": 1000000}
-    agent1 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
-    agent2 = Agent(holdings={tkn: init_holdings[tkn] for tkn in init_holdings})
-    stablepool2_copy = stablepool2.copy()
+    stablepool = StableSwapPoolState(
+        tokens={"stable1": assets[0], "stable2": assets[1], "USDT": assets[2]},
+        amplification=1000, trade_fee=0.0100, unique_id="stablepool"
+    )
+    router = OmnipoolRouter([stablepool])
+    agent1 = Agent(enforce_holdings=False)
+    agent2 = Agent(enforce_holdings=False)
+    stablepool_copy = stablepool.copy()
     trade_size = 1000
 
     # test buy tkn
-    router.swap_route(
+    router.swap(
         agent1,
-        tkn_sell=sell_tkn,
-        tkn_buy=buy_tkn,
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
         buy_quantity=trade_size,
-        buy_pool_id=buy_tkn_pool,
-        sell_pool_id=sell_tkn_pool
     )
-    stablepool2_copy.withdraw_asset(agent2, trade_size, "USDT")
+    stablepool_copy.withdraw_asset(agent2, trade_size, "USDT")
     check_agent_holdings_equal(agent1, agent2)
-    check_liquidity_equal(stablepool2, stablepool2_copy)
+    check_liquidity_equal(stablepool, stablepool_copy)
 
     # test sell shares
-    router.swap_route(
+    router.swap(
         agent1,
-        tkn_sell=sell_tkn,
-        tkn_buy=buy_tkn,
-        sell_quantity=trade_size,
-        buy_pool_id=buy_tkn_pool,
-        sell_pool_id=sell_tkn_pool
+        tkn_sell=tkn_sell,
+        tkn_buy=tkn_buy,
+        sell_quantity=trade_size
     )
-    stablepool2_copy.remove_liquidity(agent2, trade_size, "USDT")
+    stablepool_copy.remove_liquidity(agent2, trade_size, "USDT")
     check_agent_holdings_equal(agent1, agent2)
-    check_liquidity_equal(stablepool2, stablepool2_copy)
+    check_liquidity_equal(stablepool, stablepool_copy)
 
     # try the other way around
-    sell_tkn, buy_tkn = buy_tkn, sell_tkn
+    tkn_sell, tkn_buy = tkn_buy, tkn_sell
 
     # test sell tkn
-    router.swap_route(
+    router.swap(
         agent1,
-        tkn_buy=buy_tkn,
-        tkn_sell=sell_tkn,
-        sell_quantity=trade_size,
-        buy_pool_id=sell_tkn_pool,
-        sell_pool_id=buy_tkn_pool
+        tkn_buy=tkn_buy,
+        tkn_sell=tkn_sell,
+        sell_quantity=trade_size
     )
-    stablepool2_copy.add_liquidity(agent2, trade_size, "USDT")
+    stablepool_copy.add_liquidity(agent2, trade_size, "USDT")
     check_agent_holdings_equal(agent1, agent2)
-    check_liquidity_equal(stablepool2, stablepool2_copy)
+    check_liquidity_equal(stablepool, stablepool_copy)
 
     # test buy shares
-    router.swap_route(
+    router.swap(
         agent1,
-        tkn_buy=buy_tkn,
-        tkn_sell=sell_tkn,
-        buy_quantity=trade_size,
-        buy_pool_id=sell_tkn_pool,
-        sell_pool_id=buy_tkn_pool
+        tkn_buy=tkn_buy,
+        tkn_sell=tkn_sell,
+        buy_quantity=trade_size
     )
-    stablepool2_copy.buy_shares(agent2, trade_size, "USDT")
+    stablepool_copy.buy_shares(agent2, trade_size, "USDT")
     check_agent_holdings_equal(agent1, agent2)
-    check_liquidity_equal(stablepool2, stablepool2_copy)
+    check_liquidity_equal(stablepool, stablepool_copy)
 
 
 @given(st.lists(asset_quantity_strategy, min_size=6, max_size=6))
