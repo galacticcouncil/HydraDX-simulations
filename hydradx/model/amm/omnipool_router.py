@@ -118,16 +118,6 @@ class OmnipoolRouter(Exchange):
     def __init__(self, exchanges: dict or list, unique_id: str = 'omnipool_router'):
         super().__init__()
         self.exchanges = exchanges if type(exchanges) == dict else {ex.unique_id: ex for ex in exchanges}
-        self.omnipool_id = None
-        for exchange_id in self.exchanges:
-            if isinstance(self.exchanges[exchange_id], OmnipoolState):
-                if self.omnipool_id is not None:
-                    raise ValueError('Multiple Omnipools in exchange list')
-                else:
-                    self.omnipool_id = exchange_id
-        if self.omnipool_id is None:
-            raise ValueError('No Omnipool in exchange list')
-        self.omnipool: OmnipoolState = self.exchanges[self.omnipool_id]
         self.asset_list = list(set([tkn for exchange in self.exchanges.values() for tkn in exchange.asset_list]))
         self.fail = ''
         self.unique_id = unique_id
@@ -198,6 +188,12 @@ class OmnipoolRouter(Exchange):
     ):
         """Does swap along specified route"""
         for swap in route:
+            if swap.exchange not in self.exchanges.values():
+                # this allows for calculating routes and then executing them on a copy of the router rather than the original
+                if swap.exchange.unique_id in self.exchanges:
+                    swap.exchange = self.exchanges[swap.exchange.unique_id]
+                else:
+                    raise ValueError(f'Exchange {swap.exchange.unique_id} not in router exchanges')
             if buy_quantity:
                 buy_quantity = swap.execute(
                     agent,
@@ -229,7 +225,12 @@ class OmnipoolRouter(Exchange):
                 tkn_sell=tkn_sell,
                 tkn_buy=tkn_buy
             )])
-        for sell_pool, buy_pool in [(tkn_sell_pool, tkn_buy_pool) for tkn_buy_pool in tkn_buy_pools for tkn_sell_pool in tkn_sell_pools]:
+        # options for two pool routes
+        for sell_pool, buy_pool in [
+            (sell_pool, buy_pool)
+            for buy_pool in tkn_buy_pools for sell_pool in tkn_sell_pools
+            if sell_pool != buy_pool
+        ]:
             if sell_pool.unique_id in buy_pool.asset_list:
                 routes.append([
                     Trade(
@@ -282,7 +283,12 @@ class OmnipoolRouter(Exchange):
         Returns tuple in the order of (sell_pool_id, buy_pool_id)
         """
         routes = self.find_routes(tkn_buy, tkn_sell, direction)
-        return min(routes, key=lambda x: price_route(x, direction))
+        if len(routes) == 0:
+            raise ValueError(f'No route found for {tkn_buy} to {tkn_sell}')
+        if direction == 'buy':
+            return max(routes, key=lambda x: price_route(x, direction))
+        else:
+            return min(routes, key=lambda x: price_route(x, direction))
 
     def swap(self, agent, tkn_buy, tkn_sell, buy_quantity: float = None, sell_quantity: float = None):
         """Does swap along whatever route has best spot price"""
@@ -303,7 +309,7 @@ class OmnipoolRouter(Exchange):
         """Does swap along specified route, returning new router and agent"""
         new_state = self.copy()
         new_agent = agent.copy()
-        new_state.swap_route(agent, route, buy_quantity, sell_quantity)
+        new_state.swap_route(new_agent, route, buy_quantity, sell_quantity)
         return new_state, new_agent
 
     def simulate_swap(self, agent, tkn_buy, tkn_sell, buy_quantity=0, sell_quantity=0):
