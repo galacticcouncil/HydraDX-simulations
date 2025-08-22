@@ -237,9 +237,11 @@ class OmnipoolRouter(Exchange):
         if len(routes) == 0:
             raise ValueError(f'No route found for {tkn_buy} to {tkn_sell}')
         if direction == 'buy':
-            return max(routes, key=lambda x: self.price_route(x, direction))
-        else:
+            # pay the least
             return min(routes, key=lambda x: self.price_route(x, direction))
+        else:
+            # receive the most
+            return max(routes, key=lambda x: self.price_route(x, direction))
 
     def swap(self, agent, tkn_buy, tkn_sell, buy_quantity: float = None, sell_quantity: float = None):
         """Does swap along whatever route has best spot price"""
