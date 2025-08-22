@@ -237,7 +237,7 @@ with st.spinner(f"Running {time_steps} simulation steps..."):
     events = []
     for time_step in range(time_steps):
         events.extend(run(initial_state, time_steps, silent=True))
-        for cdp in mm.cpds:
+        for cdp in mm.cdps:
             if cdp.health_factor < 1:
                 print(f"CDP {cdp.unique_id} is not liquidated at time step {time_step + 1}")
                 # mm_sim.liquidate(cdp, agent=initial_state.agents['liquidator'])
