@@ -248,13 +248,12 @@ def test_swap():
     sell_tkn = "stable1"
 
     omnipool = OmnipoolState(tokens, preferred_stablecoin="USDT", asset_fee=0.0000, lrna_fee=0.0000)
-    exchanges = {"omnipool": omnipool, "stablepool": stablepool, "stablepool2": stablepool2}
-    router = OmnipoolRouter(exchanges)
+    router = OmnipoolRouter([omnipool, stablepool, stablepool2])
     trade_size = 1
     agent1 = Agent(holdings={sell_tkn: trade_size})
 
     best_route = router.find_best_route(buy_tkn, sell_tkn, direction="sell")
-    if best_route[0].exchange != "stablepool" or best_route[1].exchange != "stablepool2":
+    if best_route[0].exchange != "stablepool" or best_route[-1].exchange != "stablepool2":
         raise ValueError(f"best route {best_route} != ('stablepool', 'stablepool2')")
 
     new_router, new_agent = router.simulate_swap(
@@ -302,7 +301,7 @@ def test_swap2():
     agent1 = Agent(holdings={sell_tkn: trade_size})
 
     best_route = router.find_best_route(buy_tkn, sell_tkn, direction="buy")
-    if best_route[0].exchange != "stablepool" or best_route[1].exchange != "omnipool":
+    if best_route[0].exchange != "omnipool" or best_route[-1].exchange != "stablepool":
         raise ValueError(f"best route {best_route} != ('stablepool', 'omnipool')")
 
     new_router, new_agent = router.simulate_swap(
@@ -492,7 +491,6 @@ def test_spot_prices_stableswap_to_self(assets, lrna_fee, asset_fee, trade_fee):
     asset_fee=fee_strategy,
     trade_fee=fee_strategy
 )
-@reproduce_failure('6.136.4', b'AXic03D4kcUAAhokMew3MOBgAACVzg4C')
 def test_buy_spot_buy_stableswap_sell_stableswap(assets, lrna_fee, asset_fee, trade_fee):
     omnipool = OmnipoolState(
         tokens={
@@ -661,16 +659,14 @@ def test_buy_spot_buy_stableswap_sell_omnipool(assets, lrna_fee, asset_fee, trad
     tkn_sell = "DOT"
     tkn_buy = "stable1"
     trade_size = 1e-08
-    initial_agent = Agent(
-        holdings={"DOT": mpf(1), "stable1": mpf(0)}
-    )
+    initial_agent = Agent(enforce_holdings=False)
     test_router, test_agent = router.simulate_swap(
         initial_agent, tkn_buy, tkn_sell, buy_quantity=trade_size
     )
 
     buy_spot = router.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
-    buy_quantity = test_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]
-    sell_quantity = initial_agent.holdings[tkn_sell] - test_agent.holdings[tkn_sell]
+    buy_quantity = test_agent.get_holdings(tkn_buy) - initial_agent.get_holdings(tkn_buy)
+    sell_quantity = initial_agent.get_holdings(tkn_sell) - test_agent.get_holdings(tkn_sell)
     buy_ex = sell_quantity / buy_quantity
 
     if buy_quantity != trade_size:
@@ -813,16 +809,14 @@ def test_buy_spot_sell_stableswap_buy_omnipool(
     tkn_sell = "stable1"
     tkn_buy = "DOT"
     trade_size = 1e-08
-    initial_agent = Agent(
-        holdings={"DOT": mpf(0), "stable1": mpf(1)}
-    )
+    initial_agent = Agent(enforce_holdings=False)
     test_router, test_agent = router.simulate_swap(
         initial_agent, tkn_buy=tkn_buy, tkn_sell=tkn_sell, buy_quantity=trade_size
     )
 
     buy_spot = router.buy_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
-    sell_quantity = initial_agent.holdings[tkn_sell] - test_agent.holdings[tkn_sell]
-    buy_quantity = test_agent.holdings[tkn_buy] - initial_agent.holdings[tkn_buy]
+    sell_quantity = initial_agent.get_holdings(tkn_sell) - test_agent.get_holdings(tkn_sell)
+    buy_quantity = test_agent.get_holdings(tkn_buy) - initial_agent.get_holdings(tkn_buy)
     buy_ex = sell_quantity / buy_quantity
 
     if buy_quantity != trade_size:
@@ -861,10 +855,18 @@ def test_calculate_buy_from_sell():
     router = OmnipoolRouter(
         [stable1, stable2, omnipool]
     )
-    if router.find_best_route('ETH', 'BTC') != ('btc pool', 'eth pool'):
+    agent = Agent(enforce_holdings=False)
+    routes = router.find_routes(tkn_buy='ETH', tkn_sell='BTC', direction='sell')
+    eth_btc_route = router.find_best_route(tkn_buy='ETH', tkn_sell='BTC')
+    print("route prices:", {", ".join([swap.exchange for swap in route]): router.price_route(route=route, direction="sell") for route in routes})
+    print("route calcs:", {", ".join([swap.exchange for swap in route]): router.calculate_buy_from_sell(
+        tkn_sell="BTC", tkn_buy="ETH", route=route, sell_quantity=1
+    ) for route in routes})
+    if eth_btc_route[0].exchange != 'btc pool' or eth_btc_route[-1].exchange != 'eth pool':
         # this is to make sure we test the case where one of the assets exists in two different pools.
         raise AssertionError('ETH -> BTC trade should go through both subpools.')
-    elif router.find_best_route('BTC', 'ETH') != ('omnipool', 'btc pool'):
+    btc_eth_route = router.find_best_route(tkn_buy='BTC', tkn_sell='ETH')
+    if btc_eth_route[0].exchange != 'omnipool' or btc_eth_route[-1].exchange != 'btc pool':
         # this is to test the case where buy route and sell route are different.
         raise AssertionError('BTC -> ETH trade should go through omnipool -> btc pool.')
 
