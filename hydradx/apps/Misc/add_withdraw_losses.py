@@ -30,8 +30,8 @@ def run_app():
         withdrawal_fee=False,
         lrna_fee_burn=0.5,
         lrna_mint_pct=1.0,
-        asset_fee=0.5,
-        lrna_fee=0.5,
+        asset_fee=0.0025,
+        lrna_fee=0.0005,
         preferred_stablecoin='USD'
     )
     print(f"asset fee: {initial_omnipool.asset_fee('HDX') * 100}%, lrna fee: {initial_omnipool.lrna_fee('HDX') * 100}%")
@@ -83,7 +83,7 @@ def run_app():
         # swap back
         trade_to_price(omnipool, trade_agent,'HDX', initial_hdx_price)
 
-        remove_readd(omnipool, pool_agent)
+        # remove_readd(omnipool, pool_agent)
         trade_to_price(omnipool, trade_agent, 'HDX', initial_hdx_price)
         final_value = omnipool.cash_out(pool_agent)
         loss = (final_value - initial_value) / initial_value
