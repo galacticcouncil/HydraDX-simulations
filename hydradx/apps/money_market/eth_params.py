@@ -62,6 +62,10 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     load_mm.assets['ETH'].supply_cap = 4_444
     load_mm.assets['2-Pool-GETH'].supply_cap = 2_222
 
+    # toss out any CDPs that should have been liquidated by now
+    load_mm.cdps = [cdp for cdp in load_mm.cdps if cdp.health_factor >= 1]
+    load_mm.borrowed = {tkn: sum([cdp.debt[tkn] for cdp in load_mm.cdps if tkn in cdp.debt]) for tkn in load_mm.borrowed}
+
     try:
         save_money_market(load_mm, filename=f"money_market_at_{block_number}")
     except FileNotFoundError:
@@ -75,8 +79,13 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
             # assume worst-case scenario, supply cap is maxed and one huge position is on the verge of liquidation
             new_cdp = CDP(
                 collateral={tkn: supply_available},
-                debt={'USDT': load_mm.assets[tkn].liquidation_threshold * supply_available * load_mm.assets[tkn].price - 1}
+                debt={
+                    'USDT': load_mm.assets[tkn].liquidation_threshold * supply_available
+                            * load_mm.assets[tkn].price / load_mm.assets['USDT'].price - 1
+                }
             )
+            new_cdp.health_factor = load_mm.get_health_factor(new_cdp)
+            new_cdp.liquidation_threshold = load_mm.cdp_liquidation_threshold(new_cdp)
             load_mm.cdps.append(new_cdp)
             load_mm.borrowed[tkn] += supply_available
 
@@ -90,7 +99,7 @@ def trade_to_price(pool, tkn_sell, target_price):
     # this is the target price in USD - convert to LRNA
     target_price_lrna = target_price * pool.lrna_price('USD')
     k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
-    print(target_price_lrna)
+    # print(target_price_lrna)
     target_x = math.sqrt(k / target_price_lrna)
     dx = target_x - pool.liquidity[tkn_sell]
     return dx
@@ -143,9 +152,13 @@ price_change_defaults.update({
 start_price = {
     tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list
     else mm.price(tkn) if tkn in mm.asset_list
-    else 0  # default price for USD
+    else (
+        omnipool.usd_price(equivalency_map[tkn]) if equivalency_map[tkn] in omnipool.asset_list
+        else mm.price(equivalency_map[tkn]) if equivalency_map[tkn] in mm.asset_list else 0
+    ) if tkn in equivalency_map else 0  # we'll find it in the next step
     for tkn in sorted(router.asset_list, key=lambda x: x in mm.asset_list)
 }
+
 for exchange in stableswaps:
     priced_tokens = [tkn for tkn in exchange.asset_list if start_price[tkn] != 0]
     if priced_tokens == []:
@@ -155,6 +168,9 @@ for exchange in stableswaps:
         for tkn in exchange.asset_list:
             if tkn not in priced_tokens:
                 start_price[tkn] = exchange.price(tkn, start_price[priced_tokens[0]]) * start_price[priced_tokens[0]]
+
+for exchange in stableswaps:
+    exchange.shares = sum([start_price[tkn] * exchange.liquidity[tkn] for tkn in exchange.asset_list])
 
 with st.sidebar:
     time_steps = st.number_input(
@@ -198,10 +214,11 @@ trade_sequence = [
         } for tkn in omnipool_sell_assets
     ] for i in range(1, time_steps + 1)
 ]
-trade_sequence.extend([[
+# add a final step with no trades to allow for liquidation
+trade_sequence.append([
     {'tkn_sell': tkn, 'tkn_buy': 'LRNA', 'sell_quantity': 0}
     for tkn in omnipool_sell_assets
-]])
+])
 time_steps = len(trade_sequence)
 omnipool_sim = copy.deepcopy(omnipool)
 mm_sim = mm.copy()
@@ -214,7 +231,7 @@ mm_sim = mm.copy()
 initial_state = GlobalState(
     pools=[router, mm_sim, omnipool_sim, *stableswaps],
     agents={
-        'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('omnipool')),
+        'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('router')),
         'panic seller': Agent(
             enforce_holdings=False,
             trade_strategy=schedule_swaps('omnipool', trade_sequence)
@@ -237,14 +254,16 @@ with st.spinner(f"Running {time_steps} simulation steps..."):
     events = []
     for time_step in range(time_steps):
         events.extend(run(initial_state, time_steps, silent=True))
-        for cdp in mm.cdps:
-            if cdp.health_factor < 1:
-                print(f"CDP {cdp.unique_id} is not liquidated at time step {time_step + 1}")
-                # mm_sim.liquidate(cdp, agent=initial_state.agents['liquidator'])
+
         for tkn in list(set(prices.keys()) & set(mm_sim.asset_list)):
-            mm_sim.prices[tkn] = prices[tkn][time_step]
+            events[-1].pools['money_market'].prices[tkn] = prices[tkn][time_step]
+
     sim_time = time.time() - sim_start
     st.sidebar.info(f"Simulation completed in {sim_time:.2f} seconds")
+
+final_mm = events[-1].pools['money_market']
+for cdp in final_mm.cdps:
+    cdp.health_factor = final_mm.get_health_factor(cdp)
 
 fig1, ax1 = plt.subplots()
 ax1.set_xlabel("Time Steps")
