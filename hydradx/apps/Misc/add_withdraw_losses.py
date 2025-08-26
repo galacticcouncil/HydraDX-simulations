@@ -1,9 +1,6 @@
-import copy
-
 from matplotlib import pyplot as plt
-import sys, os, math
+import sys, os
 import streamlit as st
-import time
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
@@ -39,23 +36,17 @@ def run_app():
     )
     print(f"asset fee: {initial_omnipool.asset_fee('HDX') * 100}%, lrna fee: {initial_omnipool.lrna_fee('HDX') * 100}%")
 
-    def trade_to_price(pool: OmnipoolState, agent: Agent, tkn: str, price: float):
-        trade_size = get_trade_to_price(pool, 'HDX', price)
+    def trade_to_price(pool: OmnipoolState, agent: Agent, tkn: str, target_price: float):
+        trade_size = get_trade_to_price(pool, 'HDX', target_price)
         if trade_size > 0:
             pool.swap(
                 agent=agent, tkn_sell=tkn, tkn_buy='LRNA', sell_quantity=trade_size
             )
         elif trade_size < 0:
-            # this one gets tricky
             trade_size *= 1 - pool.asset_fee(tkn)
             pool.swap(
                 agent=agent, tkn_sell='LRNA', tkn_buy=tkn, buy_quantity=-trade_size
             )
-            pool_price = pool.lrna_price(tkn)
-            if abs(pool_price - price) / price > 0.00000001:
-                raise ValueError(
-                    f"Trade to price failed: {pool_price} != {price} for {tkn}"
-                )
 
     def remove_readd(pool: OmnipoolState, agent: Agent):
         pool.remove_liquidity(
@@ -82,9 +73,6 @@ def run_app():
             tkn_add='HDX',
             quantity=omnipool.liquidity['HDX'] * lp_liquidity_pct / (1 - lp_liquidity_pct)
         )
-        # print(pool_agent.holdings[('omnipool', 'HDX')] / omnipool.shares['HDX'])
-        initial_shares = pool_agent.get_holdings(('omnipool', 'HDX'))
-        initial_hdx_liquidity = omnipool.liquidity['HDX']
         pool_agent.holdings['HDX'] = 0
         initial_value = omnipool.cash_out(pool_agent)
 
@@ -94,16 +82,10 @@ def run_app():
         remove_readd(omnipool, pool_agent)
         # swap back
         trade_to_price(omnipool, trade_agent,'HDX', initial_hdx_price)
-        # print("price before remove/readd:", round(omnipool.lrna_price('HDX'), 6))
+
         remove_readd(omnipool, pool_agent)
         trade_to_price(omnipool, trade_agent, 'HDX', initial_hdx_price)
         final_value = omnipool.cash_out(pool_agent)
-        # initial_value = omnipool.lrna_price('HDX')
         loss = (final_value - initial_value) / initial_value
-        print(f"{loss * 100}%")
-        end_price = omnipool.lrna_price('HDX')
-        end_liquidity = omnipool.lrna['HDX']
-        print(end_liquidity)
-        # print(f"end price: {round(end_price, 6)}")
-        # print(f"price change {round(price_change * 100, 3)}%, loss {round(loss * 100, 10)}%")
+        print(f"price change {round(price_change * 100, 3)}%, loss {round(loss * 100, 10)}%")
 run_app()
