@@ -1063,16 +1063,16 @@ class OmnipoolState(Exchange):
             value += tkn_value
         return value
 
-    def cash_out(self, agent: Agent, prices: dict[str: float] = None) -> float:
+    def cash_out(self, agent: Agent, prices: dict[str: float] = None, denomination: str = None) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        if denomination is None:
+            denomination = 'LRNA'
         if prices is None:
-            if self.stablecoin:
-                prices = {tkn: self.lrna_price(tkn) for tkn in self.asset_list}
-            else:
-                raise ValueError('Prices not given and default stablecoin not set.')
+            prices = {tkn: self.price(tkn, denomination) for tkn in self.asset_list}
+
         delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
         nft_ids = []
 
