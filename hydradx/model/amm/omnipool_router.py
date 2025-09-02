@@ -146,7 +146,7 @@ class OmnipoolRouter(Exchange):
             for buy_pool in tkn_buy_pools for sell_pool in tkn_sell_pools
             if sell_pool != buy_pool
         ]:
-            if sell_pool.unique_id in buy_pool.asset_list:
+            if sell_pool.unique_id in buy_pool.asset_list and tkn_sell != sell_pool.unique_id:
                 routes.append([
                     Trade(
                         exchange=sell_pool.unique_id,
@@ -158,7 +158,7 @@ class OmnipoolRouter(Exchange):
                         tkn_buy=tkn_buy
                     )
                 ])
-            elif buy_pool.unique_id in sell_pool.asset_list:
+            elif buy_pool.unique_id in sell_pool.asset_list and tkn_buy != buy_pool.unique_id:
                 routes.append([
                     Trade(
                         exchange=sell_pool.unique_id,
