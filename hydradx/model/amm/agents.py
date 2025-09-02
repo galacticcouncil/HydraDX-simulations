@@ -70,6 +70,9 @@ class Agent:
             return 0
         return self.holdings[tkn]
 
+    def all_holdings(self) -> dict[str, float]:
+        return {k: v for k, v in self.holdings.items() if v != 0}
+
     def validate_holdings(self, tkn, amt=None) -> bool:
         if not self.enforce_holdings:
             return True
