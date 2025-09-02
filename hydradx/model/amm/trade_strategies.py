@@ -1062,6 +1062,7 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
                 for debt_tkn, collateral_tkn in [
                     (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
                     for collateral_tkn in cdp.collateral.keys()
+                    if debt_tkn != collateral_tkn
                 ]:
                     for pool in pools:
                         if collateral_tkn not in pool.asset_list or debt_tkn not in pool.asset_list:
