@@ -1276,6 +1276,8 @@ def load_money_market(path: str = './archive', filename: str = None):
                 filename = name
     elif not(filename.endswith('.json')):
         filename += '.json'
+    if filename is None or not os.path.exists(os.path.join(path, filename)):
+        raise FileNotFoundError(f'Money market file not found in {path}.')
     with open(os.path.join(path, filename), 'r') as loadfile:
         json_data = json.load(loadfile)
     mm = MoneyMarket(
@@ -1305,4 +1307,5 @@ def load_money_market(path: str = './archive', filename: str = None):
         ]
     )
     mm.time_step = json_data['time_step']
+    print(f"loaded {os.path.join(path, filename)}")
     return mm
