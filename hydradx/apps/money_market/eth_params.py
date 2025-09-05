@@ -18,6 +18,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.run import run
 from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model.indexer_utils import get_current_omnipool_router
+from hydradx.apps.display_utils import get_distribution
 
 st.markdown("""
     <style>
@@ -36,6 +37,8 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
     print(f"Cache miss! Loading omnipool at {cache_time}")
     load_router = get_current_omnipool_router(block_number)
     load_omnipool = load_router.exchanges['omnipool']
+    if block_number is None:
+        block_number = load_omnipool.time_step
     stableswap_pools = [pool for pool in load_router.exchanges.values() if isinstance(pool, StableSwapPoolState)]
     usd_price_lrna = (
         1 / load_omnipool.lrna_price('2-Pool-Stbl') / 1.01  # fudging this because I can't get the stableswap pool shares
@@ -46,48 +49,27 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
 
     print("Loading money market data...")
     try:
-        load_mm = load_money_market(filename=f"money_market_at_{block_number}")
+        if '/' in __file__:
+            os.chdir(__file__[:__file__.rfind('/')])
+        print(f"attempting to load money market from: {os.getcwd()}")
+        load_mm = load_money_market()
     except FileNotFoundError:
+        print('No local money market save file found - downloading from chain...')
         load_mm = get_current_money_market()
+        load_mm.time_step = block_number
 
     if load_mm is None:
         print('Money market could not be loaded - check internet connection.')
         quit()
 
-    # update risk parameters
-    load_mm.assets['ETH'].liquidation_threshold = 0.85
-    load_mm.assets['2-Pool-GETH'].liquidation_threshold = 0.75
-    load_mm.assets['DOT'].liquidation_threshold = 0.85
-    load_mm.assets['DOT'].supply_cap = 22_222_222
-    load_mm.assets['ETH'].supply_cap = 4_444
-    load_mm.assets['2-Pool-GETH'].supply_cap = 2_222
-
-    # toss out any CDPs that should have been liquidated by now
+    # toss out any existing toxic CDPs
     load_mm.cdps = [cdp for cdp in load_mm.cdps if cdp.health_factor >= 1]
     load_mm.borrowed = {tkn: sum([cdp.debt[tkn] for cdp in load_mm.cdps if tkn in cdp.debt]) for tkn in load_mm.borrowed}
 
     try:
-        save_money_market(load_mm, filename=f"money_market_at_{block_number}")
+        save_money_market(load_mm, filename=f"money_market_savefile_{load_mm.time_step}")
     except FileNotFoundError:
         pass
-
-    for tkn in ['ETH', 'DOT', '2-Pool-GETH']:
-        supply_available = load_mm.assets[tkn].supply_cap - sum(
-            [cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in load_mm.cdps]
-        )
-        if supply_available > 0:
-            # assume worst-case scenario, supply cap is maxed and one huge position is on the verge of liquidation
-            new_cdp = CDP(
-                collateral={tkn: supply_available},
-                debt={
-                    'USDT': load_mm.assets[tkn].liquidation_threshold * supply_available
-                            * load_mm.assets[tkn].price / load_mm.assets['USDT'].price - 1
-                }
-            )
-            new_cdp.health_factor = load_mm.get_health_factor(new_cdp)
-            new_cdp.liquidation_threshold = load_mm.cdp_liquidation_threshold(new_cdp)
-            load_mm.cdps.append(new_cdp)
-            load_mm.borrowed[tkn] += supply_available
 
     print("Finished downloading data.")
     return OmnipoolRouter(exchanges=[load_omnipool, load_mm, *stableswap_pools], unique_id='router'), cache_time
@@ -111,9 +93,77 @@ def update_prices(state: GlobalState):
         state.external_market[tkn] = prices[tkn][state.time_step - 1]
         # state.pools['binance'].prices[tkn] = prices[tkn][state.time_step - 1]
 
+
 router, cache_timestamp = load_omnipool_router()
 omnipool = router.exchanges['omnipool']
 mm = router.exchanges['money_market']
+
+initial_cdps = [cdp.copy() for cdp in mm.cdps]
+initial_cdps = sorted(initial_cdps, key=lambda cdp: mm.value_assets(cdp.collateral))[::-1]
+mm.cdps = initial_cdps
+
+
+@st.fragment
+def plot_health_factor_distribution(money_market: MoneyMarket):
+    with st.expander("Initial CDP Health Factor Distribution"):
+        cdps = money_market.cdps
+        resolution = st.session_state.get("resolution", 500)
+        smoothing = st.session_state.get("smoothing", 3.0)
+        bins, dist = get_distribution(
+            [cdp.health_factor for cdp in cdps],
+            [money_market.value_assets(cdp.collateral) for cdp in cdps],
+            resolution=resolution,
+            minimum=1,
+            maximum=2,
+            smoothing=smoothing
+        )
+
+        # Plot
+        fig, ax = plt.subplots()
+        ax.plot(bins, dist, label="Health Factor Distribution")
+        ax.set_xlabel("Health Factor")
+        ax.set_ylabel("Collateral-weighted density")
+        st.pyplot(fig)
+
+        resolution = st.number_input(
+            label="Resolution", min_value=10, max_value=500, value=resolution, step=1, key="resolution"
+        )
+        smoothing = st.slider(
+            label="Smoothing", min_value=0.1, max_value=10.0, value=smoothing, step=0.1, key="smoothing"
+        )
+
+plot_health_factor_distribution(mm)
+
+# create copies of mm and omnipool to run the simulation on so we don't overwrite the cached data
+mm_sim = mm.copy()
+omnipool_sim = copy.deepcopy(omnipool)
+
+# update risk parameters
+mm_sim.assets['ETH'].liquidation_threshold = 0.85
+mm_sim.assets['2-Pool-GETH'].liquidation_threshold = 0.75
+mm_sim.assets['DOT'].liquidation_threshold = 0.85
+mm_sim.assets['DOT'].supply_cap = 22_222_222
+mm_sim.assets['ETH'].supply_cap = 4_444
+mm_sim.assets['2-Pool-GETH'].supply_cap = 2_222
+
+for tkn in ['ETH', 'DOT', '2-Pool-GETH']:
+    supply_available = mm_sim.assets[tkn].supply_cap - sum(
+        [cdp.collateral[tkn] if tkn in cdp.collateral else 0 for cdp in mm_sim.cdps]
+    )
+    if supply_available > 0:
+        # assume worst-case scenario, supply cap is maxed and one huge position is on the verge of liquidation
+        new_cdp = CDP(
+            collateral={tkn: supply_available},
+            debt={
+                'USDT': mm_sim.assets[tkn].liquidation_threshold * supply_available
+                        * mm_sim.assets[tkn].price / mm_sim.assets['USDT'].price - 1
+            }
+        )
+        new_cdp.health_factor = mm_sim.get_health_factor(new_cdp)
+        new_cdp.liquidation_threshold = mm_sim.cdp_liquidation_threshold(new_cdp)
+        mm_sim.cdps.append(new_cdp)
+        mm_sim.borrowed[tkn] += supply_available
+
 stableswaps = [exchange for exchange in router.exchanges.values() if isinstance(exchange, StableSwapPoolState)]
 st.sidebar.info(f"Data loaded at: {cache_timestamp}")
 
@@ -124,7 +174,6 @@ price_change_defaults.update({
     'ETH': -75
 })
 equivalency_map = {
-    'interBTC': 'tBTC',
     'Wrapped staked ETH': 'ETH',
     'Wrapped ETH (Moonbeam Wormhole)': 'ETH',
     'aETH': 'ETH',
@@ -139,7 +188,6 @@ equivalency_map = {
     'aUSDT': 'USD',
     'USDC': 'USD',
     'USDT': 'USD',
-    'aUSDT': 'USD',
     'WBTC': 'tBTC',
     'interBTC': 'tBTC',
     'Wrapped BTC (Moonbeam Wormhole)': 'tBTC',
@@ -151,12 +199,12 @@ price_change_defaults.update({
 })
 start_price = {
     tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list
-    else mm.price(tkn) if tkn in mm.asset_list
+    else mm_sim.price(tkn) if tkn in mm.asset_list
     else (
         omnipool.usd_price(equivalency_map[tkn]) if equivalency_map[tkn] in omnipool.asset_list
-        else mm.price(equivalency_map[tkn]) if equivalency_map[tkn] in mm.asset_list else 0
+        else mm_sim.price(equivalency_map[tkn]) if equivalency_map[tkn] in mm_sim.asset_list else 0
     ) if tkn in equivalency_map else 0  # we'll find it in the next step
-    for tkn in sorted(router.asset_list, key=lambda x: x in mm.asset_list)
+    for tkn in sorted(router.asset_list, key=lambda x: x in mm_sim.asset_list)
 }
 
 for exchange in stableswaps:
@@ -220,8 +268,7 @@ trade_sequence.append([
     for tkn in omnipool_sell_assets
 ])
 time_steps = len(trade_sequence)
-omnipool_sim = copy.deepcopy(omnipool)
-mm_sim = mm.copy()
+
 
 # config_list = [
 #     {'exchanges': {'omnipool': ['DOT', 'vDOT'], '2-Pool-GDOT': ['aDOT', 'vDOT']}, 'buffer': 0.001},
@@ -249,11 +296,12 @@ initial_state = GlobalState(
     external_market=start_price
 )
 
+st.header("Running simulation...")
 with st.spinner(f"Running {time_steps} simulation steps..."):
     sim_start = time.time()
     events = []
     for time_step in range(time_steps):
-        events.extend(run(initial_state, time_steps, silent=True))
+        events.extend(run(initial_state, time_steps=1, silent=True))
 
         for tkn in list(set(prices.keys()) & set(mm_sim.asset_list)):
             events[-1].pools['money_market'].prices[tkn] = prices[tkn][time_step]
@@ -264,6 +312,26 @@ with st.spinner(f"Running {time_steps} simulation steps..."):
 final_mm = events[-1].pools['money_market']
 for cdp in final_mm.cdps:
     cdp.health_factor = final_mm.get_health_factor(cdp)
+
+with st.expander(f"Prices over {time_steps} steps"):
+    for tkn in start_price:
+        fig, ax = plt.subplots()
+        ax.set_xlabel("Time Steps")
+        ax.set_ylabel(f"{tkn} price (USD)")
+        tkn_price_path = [
+            event.pools['omnipool'].usd_price(tkn)
+            if tkn in event.pools['omnipool'].asset_list
+            else event.pools['money_market'].price(tkn)
+            for event in events
+        ]
+        if max(tkn_price_path) == 0:
+            continue
+        if abs(min(tkn_price_path) / max(tkn_price_path) - 1) < 0.01:
+            continue
+        # if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
+        #     st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
+        ax.plot(tkn_price_path, label=f"{tkn} price")
+        st.pyplot(fig)
 
 fig1, ax1 = plt.subplots()
 ax1.set_xlabel("Time Steps")
@@ -280,18 +348,3 @@ ax1.plot([
 ])
 ax1.set_title("Toxic debt as a percentage of total debt")
 st.pyplot(fig1)
-
-for tkn in start_price:
-    fig, ax = plt.subplots()
-    ax.set_xlabel("Time Steps")
-    ax.set_ylabel(f"{tkn} price (USD)")
-    tkn_price_path = [
-        event.pools['omnipool'].usd_price(tkn)
-        if tkn in event.pools['omnipool'].asset_list
-        else event.pools['money_market'].price(tkn)
-        for event in events
-    ]
-    if abs(1 - tkn_price_path[-1] / final_price[tkn]) > 0.01:
-        st.warning(f"{tkn} price did not reach expected final price of {final_price[tkn]} USD")
-    ax.plot(tkn_price_path, label=f"{tkn} price")
-    st.pyplot(fig)
