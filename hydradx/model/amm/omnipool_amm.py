@@ -1154,7 +1154,7 @@ class OmnipoolLiquidityPosition:
 
 class OmnipoolArchiveState:
     def __init__(self, state: OmnipoolState):
-        self.asset_list = [tkn for tkn in state.asset_list]
+        self.asset_list = [tkn for tkn in state.asset_list] + ['LRNA']
         self.liquidity = {k: v for (k, v) in state.liquidity.items()}
         self.lrna = {k: v for (k, v) in state.lrna.items()}
         self.lrna_total = sum(state.lrna.values())
