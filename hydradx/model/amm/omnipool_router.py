@@ -43,10 +43,10 @@ class OmnipoolRouter(Exchange):
         }
 
     def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
-        return self.price_route(self.find_best_route(tkn_buy, tkn_sell, direction='buy'), direction='buy')
+        return self.price_route(self.find_best_route(tkn_buy, tkn_sell, direction='buy'), direction='buy', fee=fee)
 
     def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
-        return self.price_route(self.find_best_route(tkn_buy, tkn_sell, direction='sell'), direction='sell')
+        return self.price_route(self.find_best_route(tkn_buy, tkn_sell, direction='sell'), direction='sell', fee=fee)
 
     def calculate_buy_from_sell(self, tkn_sell: str, tkn_buy: str, sell_quantity: float, route: list[Trade] = None):
         if route is None:
@@ -88,11 +88,12 @@ class OmnipoolRouter(Exchange):
     def price_route(
             self,
             route: list[Trade],
-            direction: Literal['buy', 'sell']
+            direction: Literal['buy', 'sell'],
+            fee: float = None
     ) -> float:
         price = 1.0
         for trade in route:
-            price *= self.price_trade(trade, direction)
+            price *= self.price_trade(trade, direction, fee=fee)
         return price
 
     def swap_route(
@@ -278,25 +279,25 @@ class OmnipoolRouter(Exchange):
         )
         return new_state, new_agent
 
-    def price_trade(self, trade: Trade, direction: Literal['buy', 'sell']) -> float:
+    def price_trade(self, trade: Trade, direction: Literal['buy', 'sell'], fee: float = None) -> float:
         exchange = self.exchanges[trade.exchange]
         tkn_buy = trade.tkn_buy
         tkn_sell = trade.tkn_sell
         if tkn_sell == exchange.unique_id and isinstance(exchange, StableSwapPoolState):
             if direction == "buy":
-                return 1 / exchange.withdraw_asset_spot(tkn_remove=tkn_buy)
+                return 1 / exchange.withdraw_asset_spot(tkn_remove=tkn_buy, fee=fee)
             else:
-                return exchange.remove_liquidity_spot(tkn_remove=tkn_buy)
+                return exchange.remove_liquidity_spot(tkn_remove=tkn_buy, fee=fee)
         elif tkn_buy == exchange.unique_id and isinstance(exchange, StableSwapPoolState):
             if direction == "buy":
                 return exchange.buy_shares_spot(tkn_add=tkn_sell)
             else:
-                return 1 / exchange.add_liquidity_spot(tkn_add=tkn_sell)
+                return 1 / exchange.add_liquidity_spot(tkn_add=tkn_sell, fee=fee)
         else:
             if direction == "buy":
-                return exchange.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell)
+                return exchange.buy_spot(tkn_buy=tkn_buy, tkn_sell=tkn_sell, fee=fee)
             else:
-                return exchange.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+                return exchange.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy, fee=fee)
 
     def execute_trade(self, agent: Agent, trade: Trade, buy_quantity: float=None, sell_quantity: float=None) -> float:
         trade_type = "buy" if buy_quantity is not None else "sell"
@@ -353,7 +354,7 @@ class OmnipoolRouter(Exchange):
             if trade_type == "buy":
                 return exchange.calculate_withdraw_asset(tkn_remove=tkn_buy, quantity=quantity)
             else:
-                return exchange.calculate_remove_liquidity(tkn_remove=tkn_buy, shares_removed=quantity)
+                return exchange.calculate_remove_liquidity(tkn_remove=tkn_buy, quantity=quantity)
         elif tkn_buy == exchange.unique_id and isinstance(exchange, StableSwapPoolState):
             if trade_type == "buy":
                 return exchange.calculate_buy_shares(tkn_add=tkn_sell, quantity=quantity)
