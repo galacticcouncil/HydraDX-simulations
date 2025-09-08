@@ -9,6 +9,7 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 URL_UNIFIED_PROD = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
 URL_OMNIPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool-v2/api/graphql'
 URL_STABLESWAP_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool-v2/api/graphql'
+URL_GENERIC_DATA = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:generic-data-v2/api/graphql'
 
 class AssetInfo:
     def __init__(
@@ -492,7 +493,7 @@ def get_current_stableswap_pools(block_number):
             }}
         """
 
-        variables = {'assetIds': asset_ids_remaining}
+        # variables = {'assetIds': asset_ids_remaining}
         data = query_indexer(URL_STABLESWAP_STORAGE, query)
         for node in data['data']['stableswapAssetData']['nodes']:
             asset_id = str(node['assetId'])
@@ -530,6 +531,28 @@ def get_current_stableswap_pools(block_number):
                         for i, t in enumerate(pool.asset_list) if t != tkn
                     ]
                 ) / (len(pool.asset_list) - 1)
+
+    # get total issuance of shares
+    stableswap_share_assets = {tkn: all_assets[tkn] for tkn in all_assets if all_assets[tkn].id in stableswap_ids}
+    for pool_id in stableswap_ids:
+        query = f"""
+            query GetTotalIssuance {{
+              assetHistoricalData(
+                first: 1
+                orderBy: PARA_BLOCK_HEIGHT_DESC
+                filter: {{assetId: {{equalTo: "{pool_id}"}}}}
+              ) {{
+                nodes {{
+                  assetId
+                  totalIssuance
+                  paraBlockHeight
+                }}
+              }}
+            }}
+        """
+        shares = int(query_indexer(URL_GENERIC_DATA, query)['data']['assetHistoricalData']['nodes'][0]['totalIssuance'])
+        shares /= 10 ** stableswap_share_assets[int(pool_id)].decimals
+        stableswap_pools[pool_id].shares = shares
 
     return stableswap_pools
 
