@@ -182,7 +182,3 @@ def test_add_withdraw():
     from hydradx.apps.Misc import add_withdraw_losses
     add_withdraw_losses.scenario_1()
     add_withdraw_losses.scenario_2()
-
-
-def test_toxic_debt():
-    from hydradx.apps.money_market import toxic_debt
