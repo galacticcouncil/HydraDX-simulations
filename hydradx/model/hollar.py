@@ -1,5 +1,5 @@
 from .amm.agents import Agent
-from .amm.stableswap_amm import StableSwapPoolState
+from .amm.stableswap_amm import StableSwapPoolState, simulate_swap
 
 
 class StabilityModule:
@@ -18,7 +18,7 @@ class StabilityModule:
         self.liquidity = {k: v for k, v in liquidity.items()}
         self.asset_list = list(liquidity.keys())
         self.time_step = 0
-        self.native_stable_bought = 0
+        self.native_stable_bought = {tkn: 0 for tkn in liquidity}
 
         if isinstance(buyback_speed, list):
             if len(buyback_speed) != len(self.asset_list):
@@ -88,7 +88,7 @@ class StabilityModule:
         self.time_step += 1
         for tkn, pool in self.pools.items():
             self._pool_states[tkn] = pool.copy()
-        self.native_stable_bought = 0
+        self.native_stable_bought = {tkn: 0 for tkn in self.liquidity}
 
     def get_peg(self, tkn: str) -> float:
         pool = self._pool_states[tkn]
@@ -114,7 +114,7 @@ class StabilityModule:
         if buy_price > self.max_buy_price_coef[tkn] / peg or buy_price == 0:
             return 0, 0
         max_buy_amt = min(max_buy_amt, self.liquidity[tkn] / buy_price)
-        return max(max_buy_amt - self.native_stable_bought, 0), buy_price
+        return max(max_buy_amt - self.native_stable_bought[tkn], 0), buy_price
 
     def swap(
             self,
@@ -165,7 +165,7 @@ class StabilityModule:
             return self.fail_transaction("Agent does not have enough tokens to sell")
         # checks passed, proceed with swap
         if tkn_sell == self.native_stable:  # trader selling HOLLAR to HSM
-            self.native_stable_bought += sell_quantity
+            self.native_stable_bought[tkn_buy] += sell_quantity
         agent.remove(tkn_sell, sell_quantity)
         agent.add(tkn_buy, buy_quantity)
         if tkn_buy != self.native_stable:
@@ -173,16 +173,27 @@ class StabilityModule:
         else:
             self.liquidity[tkn_sell] += sell_quantity
 
-    def arb(self, agent: Agent, tkn: str) -> None:
+    def arb(self, agent: Agent, tkn: str, sell_amount = None) -> None:
         if tkn not in self.asset_list:
             raise ValueError("Token not supported by stability module")
         max_buy_amt, buy_price = self.get_buy_params(tkn)
-        if max_buy_amt == 0:
-            return
-        agent.add(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
-        self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
-        self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
-        agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+        if max_buy_amt > 0:  # Hollar can be sold to HSM
+            agent.add(self.native_stable, max_buy_amt)  # flash mint Hollar for arb
+            self.swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=max_buy_amt)
+            self.pools[tkn].swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=max_buy_amt)
+            agent.remove(self.native_stable, max_buy_amt)  # burn Hollar that was minted
+        else:  # Hollar cannot be sold to HSM
+            peg = self.get_peg(tkn)
+            sell_price = (1 + self.sell_price_fee[tkn]) / peg  # HSM will sell Hollar at this price
+            if sell_amount is None:  # this is simply reasonable value chosen for arb amount, it is not ideal arb amount
+                sell_amount = peg * self._pool_states[tkn].liquidity[tkn] * self.buyback_speed[tkn]
+            test_state, test_agent = simulate_swap(self.pools[tkn], agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=sell_amount)
+            after_spot = 1 / test_state.buy_spot(tkn_buy=tkn, tkn_sell=self.native_stable)
+            if after_spot > sell_price:  # this arb is profitable, so execute it
+                agent.add(self.native_stable, sell_amount)  # flash mint Hollar for arb
+                self.pools[tkn].swap(agent, tkn_buy=tkn, tkn_sell=self.native_stable, sell_quantity=sell_amount)
+                self.swap(agent, tkn_buy=self.native_stable, tkn_sell=tkn, buy_quantity=sell_amount)
+                agent.remove(self.native_stable, sell_amount)
 
 
 def fast_hollar_arb_and_dump(
@@ -214,3 +225,24 @@ def fast_hollar_arb_and_dump(
         ss.swap(agent, tkn_buy=tkn_buy, tkn_sell=hsm.native_stable, sell_quantity=-hollar_buy_amt)
     agent.remove(hsm.native_stable, max_buy_amt)  # burn Hollar that was minted
     return data
+
+
+def get_hollar_sell_amount(hsm, tkn, n=10) -> float:
+    imbalance = (hsm._pool_states[tkn].liquidity[hsm.native_stable]
+                 - hsm.get_peg(tkn) * hsm._pool_states[tkn].liquidity[tkn]) / 2
+    sell_amount_max = max([-imbalance, 0])
+    sell_amount_min = 0
+    sell_amount = sell_amount_max / 2
+    for i in range(n):
+        agent = Agent(enforce_holdings=False)
+        peg = hsm.get_peg(tkn)
+        sell_price = (1 + hsm.sell_price_fee[tkn]) / peg  # HSM will sell Hollar at this price
+        test_state, test_agent = simulate_swap(hsm.pools[tkn], agent, tkn_buy=tkn, tkn_sell=hsm.native_stable,
+                                               sell_quantity=sell_amount)
+        after_spot = 1 / test_state.buy_spot(tkn_buy=tkn, tkn_sell=hsm.native_stable)
+        if after_spot > sell_price:  # this arb is profitable, so sell_amt_min can go up
+            sell_amount_min = sell_amount
+        else:
+            sell_amount_max = sell_amount
+        sell_amount = (sell_amount_max - sell_amount_min)/2 + sell_amount_min
+    return sell_amount_min

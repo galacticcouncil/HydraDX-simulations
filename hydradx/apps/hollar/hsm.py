@@ -10,16 +10,23 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.hollar import StabilityModule
 
 st.sidebar.text(
-    "Initial HSM liquidity is 1 million USDT. Initial stableswap pool is USDT/Hollar pool with 1 million total tokens"
-    " (USDT and Hollar combined). A is 100."
+    "Stableswap amplification is 100."
 )
 
 hsm_liquidity = {'USDT': 1000000}
-initial_tvl = 1000000
+# initial_tvl = 1000000
 sell_price_fee = 0.01  # dummy value, not used in this simulation
 amp = 100
 
 st.sidebar.header("Parameters")
+initial_tvl = st.sidebar.number_input(
+    "Initial stableswap TVL (USDT + Hollar)",
+    min_value=100000, max_value=10000000, value=2000000, step=100000, key="init_stableswap_tvl"
+)
+pool_ct = st.sidebar.number_input(
+    "Number of stableswap pools",
+    min_value=1, max_value=10, value=4, step=1, key="pool_ct"
+)
 init_price = st.sidebar.number_input(
     "Initial price of Hollar in USDT",
     min_value=0.001, max_value=1.0, value=0.5, step=0.001, key="init_price", format="%.3f"
@@ -28,11 +35,15 @@ hol_pct = balance_ratio_at_price(amp, init_price)
 st.sidebar.markdown("---")
 hours = st.sidebar.number_input(
     "Hours to simulate",
-    min_value=1, max_value=10000, value=100, step=1, key="hours"
+    min_value=1, max_value=1000, value=24, step=1, key="hours"
 )
-blocks = hours * 300
+blocks_per_hour = st.sidebar.number_input(
+    "Blocks per hour",
+    min_value=300, max_value=1800, value=600, step=1, key="blocks_per_hour"
+)
+blocks = hours * blocks_per_hour
 st.sidebar.markdown("---")
-buyback_speed = st.sidebar.number_input(
+buyback_speed = pool_ct * st.sidebar.number_input(  # adjusting for number of pools since we simulate with 1 pool
     "Buyback speed",
     min_value=0.00001, max_value=0.001, value=0.0001, step = 0.00001, key="buyback_speed", format="%.5f"
 )
@@ -47,10 +58,11 @@ st.sidebar.markdown("---")
 buy_fee = st.sidebar.number_input(
     "Buy fee", min_value=0.0001, max_value=0.01, value=0.0001, step=0.0001, key="buy_fee", format="%.4f"
 )
+st.sidebar.text("The buy fee is the fee spread left for arbitragers to profit from, between the stableswap price and the HSM price.")
 
 init_hollar = initial_tvl * hol_pct
 tokens = {'HOLLAR': init_hollar, 'USDT': initial_tvl * (1 - hol_pct)}
-pool = StableSwapPoolState(tokens=tokens, amplification=amp, trade_fee=0.0002)
+pool = StableSwapPoolState(tokens=tokens, amplification=amp, trade_fee=0.0004)
 hsm = StabilityModule(
     liquidity = hsm_liquidity,
     buyback_speed = buyback_speed,

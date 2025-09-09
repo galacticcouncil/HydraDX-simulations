@@ -8,7 +8,7 @@ from mpmath import mp, mpf
 import os
 os.chdir('../..')
 
-from hydradx.model.hollar import StabilityModule, fast_hollar_arb_and_dump
+from hydradx.model.hollar import StabilityModule, fast_hollar_arb_and_dump, get_hollar_sell_amount
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 
@@ -555,3 +555,49 @@ def test_fast_hollar_arb_and_dump(liq_ratio, sell_amt):
         raise ValueError("Pool should have same liquidity as simulated pool")
     if full_hsm.pools['USDT'].peg[1] != simulated_hsm.pools['USDT'].peg[1]:
         raise ValueError("Pool peg should have same value as simulated pool")
+
+
+@given(st.floats(min_value=0.5, max_value=1.5))
+def test_arb_high_hollar(liq_ratio):
+    liquidity = {'USDT': mpf(1_000_000)}
+    buyback_speed = 0.0002
+    hollar_liq = mpf(1_000_000)
+    stable_tokens = {'USDT': liq_ratio * hollar_liq, 'HOLLAR': hollar_liq}
+    amp = 100
+    swap_fee = 0.001
+    peg = 1
+    ss = StableSwapPoolState(stable_tokens, amp, trade_fee=swap_fee, peg=peg, precision=0.00000001)
+    pools_list = [ss]
+    hsm = StabilityModule(liquidity, buyback_speed, pools_list)
+    agent = Agent(enforce_holdings=False)
+    hsm.arb(agent, 'USDT')
+    if agent.get_holdings("HOLLAR") != 0:
+        raise ValueError("Agent should have 0 HOLLAR holdings after arb")
+    if agent.get_holdings("USDT") < 0:
+        raise ValueError("Agent should have positive USDT holdings after arb")
+    if agent.get_holdings("UDST") > 0 and liq_ratio < 1:
+        raise ValueError("Arb should not have been completed")
+    if agent.get_holdings("UDST") > 0 and 1/ss.buy_spot(tkn_buy="USDT", tkn_sell="HOLLAR") < 1 + hsm.sell_price_fee["USDT"]:
+        raise ValueError("arb should not be eliminated entirely")
+
+
+@given(st.floats(min_value=0.5, max_value=1.5), st.floats(min_value=0.9, max_value=1.1))
+def test_get_hollar_sell_amount(liq_ratio, peg):
+    liquidity = {'USDT': mpf(1_000_000)}
+    buyback_speed = 0.0002
+    hollar_liq = mpf(1_000_000)
+    stable_tokens = {'USDT': liq_ratio * hollar_liq, 'HOLLAR': hollar_liq}
+    amp = 100
+    swap_fee = 0.001
+    ss = StableSwapPoolState(stable_tokens, amp, trade_fee=swap_fee, peg=peg, precision=0.00000001)
+    pools_list = [ss]
+    hsm = StabilityModule(liquidity, buyback_speed, pools_list)
+    agent = Agent(enforce_holdings=False)
+    sell_amount = get_hollar_sell_amount(hsm, 'USDT', 50)
+    hsm.arb(agent, 'USDT', sell_amount)
+    if agent.get_holdings("HOLLAR") != 0:
+        raise ValueError("Agent should have 0 HOLLAR holdings after arb")
+    if agent.get_holdings("USDT") < 0:
+        raise ValueError("Agent should have positive USDT holdings after arb")
+    if (sell_amount > 0) and ((1 + hsm.sell_price_fee["USDT"]) * peg != pytest.approx(1 / ss.buy_spot(tkn_buy="USDT", tkn_sell="HOLLAR"), rel=1e-15)):
+        raise ValueError("arb should make price converge")
