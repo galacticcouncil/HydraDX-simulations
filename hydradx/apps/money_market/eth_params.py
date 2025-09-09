@@ -13,11 +13,10 @@ from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset, CDP
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.amm.trade_strategies import liquidate_cdps, general_arbitrage
+from hydradx.model.amm.trade_strategies import liquidate_cdps
 from hydradx.model.processing import get_current_money_market, save_money_market, load_money_market
 from hydradx.model.amm.agents import Agent
 from hydradx.model.run import run
-# from hydradx.model.amm.trade_strategies import schedule_swaps
 from hydradx.model.indexer_utils import get_current_omnipool_router
 from hydradx.apps.display_utils import get_distribution, one_line_markdown
 from hydradx.model.amm. fixed_price import FixedPriceExchange
@@ -52,8 +51,8 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
 
     print("Loading money market data...")
     try:
-        if '/' in __file__:
-            os.chdir(__file__[:__file__.rfind('/')])
+        # if '/' in __file__:
+        #     os.chdir(__file__[:__file__.rfind('/')])
         print(f"attempting to load money market from: {os.getcwd()}")
         load_mm = load_money_market()
     except FileNotFoundError:
