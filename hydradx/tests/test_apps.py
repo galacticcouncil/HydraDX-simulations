@@ -5,6 +5,8 @@ from hydradx.model.amm.agents import Agent
 from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
 import os
 
+from hydradx.tests.utils import find_test_directory
+
 
 def test_liquidity():
     import hydradx.apps.gigadot_modeling.liquidity  # throws error if liquidity.py has error
@@ -176,6 +178,7 @@ def test_arb_oracle_comp():
 
 
 def test_eth_params():
+    os.chdir(find_test_directory())
     os.chdir('../apps/money_market')
     from hydradx.apps.money_market import eth_params
 
