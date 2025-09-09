@@ -251,26 +251,27 @@ def get_stableswap_data_by_block(
 
 
 def get_latest_stableswap_data(
-        pool_id: int
+        pool_id: int,
+        block_number: int = None
 ):
-
-    latest_block_query = """
-    query MaxHeightQuery {
-      maxHeightResult: stableswaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
-        nodes {
-          paraBlockHeight
+    if block_number is None:
+        latest_block_query = """
+        query MaxHeightQuery {
+          maxHeightResult: stableswaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
+            nodes {
+              paraBlockHeight
+            }
+          }
         }
-      }
-    }
-    """
+        """
 
-    data = query_indexer(URL_STABLESWAP_STORAGE, latest_block_query)
+        data = query_indexer(URL_STABLESWAP_STORAGE, latest_block_query)
 
-    latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
-    pool_data = get_stableswap_data_by_block(pool_id, latest_block)
+        block_number = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
+    pool_data = get_stableswap_data_by_block(pool_id, block_number)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
-        "block": latest_block,
+        "block": block_number,
         'fee': pool_data['fee'] / 1000000,
         'finalAmplification': pool_data['finalAmplification'],
         'finalBlock': pool_data['finalBlock'],
