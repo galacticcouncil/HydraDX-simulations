@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
+import streamlit as st
 
 # Custom function to display actual values instead of percentages
 def actual_value_labels(pct, all_values):
@@ -75,4 +76,20 @@ def get_distribution(number_list, weights, resolution, minimum, maximum, smoothi
             dist[idx]     += w * (1 - t)
             dist[idx + 1] += w * t
 
-    return bins, gaussian_filter1d(dist, sigma=smoothing)
+    return bins, gaussian_filter1d(dist, sigma=smoothing) if smoothing > 0 else dist
+
+
+def one_line_markdown(text, align="left"):
+    return st.markdown(f"""
+        <div style="
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            height: 1.4em;           /* lock to one line */
+            line-height: 1.4em;       /* align text vertically */
+            margin: 0; 
+            text-align: {align};
+        ">{text}</div>
+        """,
+        unsafe_allow_html=True
+    )
