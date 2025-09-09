@@ -1092,20 +1092,21 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
                     for collateral_tkn in cdp.collateral.keys()
                     if debt_tkn != collateral_tkn
                 ]:
+                    collateral_max, debt_max = mm.calculate_liquidation(
+                        cdp,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn
+                    )
+                    if collateral_max == 0:
+                        # not liquidatable
+                        continue
+
                     for pool in pools:
                         if collateral_tkn not in pool.asset_list or debt_tkn not in pool.asset_list:
                             continue
                         if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
                             or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
                                 continue
-                        collateral_max, debt_max = mm.calculate_liquidation(
-                            cdp,
-                            collateral_asset=collateral_tkn,
-                            debt_asset=debt_tkn
-                        )
-                        if collateral_max == 0:
-                            # not liquidatable
-                            break
                         if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
                             # no profitable liquidation possible
                             continue
