@@ -1,8 +1,9 @@
 from hydradx.apps.gigadot_modeling.utils import simulate_route, get_omnipool_minus_vDOT, get_slippage_dict
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.amm.omnipool_amm import OmnipoolState, trade_to_price as get_trade_to_price
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
+import os
 
 
 def test_liquidity():
@@ -175,6 +176,7 @@ def test_arb_oracle_comp():
 
 
 def test_eth_params():
+    os.chdir('../apps/money_market')
     from hydradx.apps.money_market import eth_params
 
 
