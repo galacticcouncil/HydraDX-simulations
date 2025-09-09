@@ -638,7 +638,7 @@ def test_liquidate_against_omnipool_no_liquidation(ratio1: float):
     debt_amt2 = 0.7 * collateral_amt2 * price_mult * omnipool.price("WETH", "USDT")
     cdp2 = CDP(debt={'USDT': debt_amt2}, collateral={'WETH': collateral_amt2})
 
-    liq_agent = Agent(enforce_holdings=False, trade_strategy=liquidate_cdps())
+    liq_agent = Agent(enforce_holdings=False, trade_strategy=liquidate_cdps(pool_id='omnipool'))
     mm = MoneyMarket(
         assets=[
             MoneyMarketAsset(
