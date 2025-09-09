@@ -8,7 +8,7 @@ import pytest
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
-from hydradx.model.amm.omnipool_amm import OmnipoolState, trade_to_price as get_trade_to_price
+from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 
 st.markdown("""
@@ -22,7 +22,7 @@ st.set_page_config(layout="wide")  # Put this at the very top of your script
 
 
 def trade_to_price(pool: OmnipoolState, agent: Agent, tkn: str, target_price: float) -> float:
-    trade_size = get_trade_to_price(pool, 'HDX', target_price)
+    trade_size = pool.calculate_trade_to_price('HDX', target_price)
     if trade_size > 0:
         tkn_sell = tkn
         tkn_buy = 'LRNA'
