@@ -129,7 +129,11 @@ class OmnipoolState(Exchange):
                 liquidity=pool['liquidity'],
                 lrna=lrna,
                 shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
-                protocol_shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
+                protocol_shares=(
+                    pool['protocol_shares'] if 'protocol_shares' in pool else (
+                        pool['shares'] if 'shares' in pool else pool['liquidity']
+                    )
+                ),
                 weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
             )
 
@@ -512,13 +516,17 @@ class OmnipoolState(Exchange):
             self,
             agent: Agent,
             tkn_buy: str, tkn_sell: str,
-            buy_quantity: float = 0,
-            sell_quantity: float = 0
+            buy_quantity: float = None,
+            sell_quantity: float = None
     ):
         """
         execute swap in place (modify and return self and agent)
         all swaps, LRNA, sub-pool, and asset swaps, are executed through this function
         """
+        if buy_quantity is None:
+            buy_quantity = 0
+        if sell_quantity is None:
+            sell_quantity = 0
         old_buy_liquidity = self.liquidity[tkn_buy] if tkn_buy in self.liquidity else 0
         old_sell_liquidity = self.liquidity[tkn_sell] if tkn_sell in self.liquidity else 0
 
@@ -822,7 +830,7 @@ class OmnipoolState(Exchange):
 
         delta_Q = self.lrna_price(tkn_add) * quantity
 
-        if nft_id is None and (self.unique_id, tkn_add) in agent.holdings:
+        if nft_id is None and agent.get_holdings((self.unique_id, tkn_add)) > 0:
             return self.fail_transaction(
                 'Agent already has liquidity in this pool. Try using nft_id input.'
             )
@@ -1055,11 +1063,15 @@ class OmnipoolState(Exchange):
             value += tkn_value
         return value
 
-    def cash_out(self, agent: Agent, prices) -> float:
+    def cash_out(self, agent: Agent, prices: dict[str: float] = None, denomination: str = None) -> float:
         """
         return the value of the agent's holdings if they withdraw all liquidity
         and then sell at current spot prices
         """
+        if denomination is None:
+            denomination = 'LRNA'
+        if prices is None:
+            prices = {tkn: self.price(tkn, denomination) for tkn in self.asset_list}
 
         delta_qa, delta_r, delta_q, delta_s, delta_b, delta_l = 0, {}, {}, {}, {}, 0
         nft_ids = []
@@ -1127,6 +1139,32 @@ class OmnipoolState(Exchange):
 
         return value_assets(prices, new_holdings)
 
+    def calculate_trade_to_price(self, tkn: str, target_price: float):
+        """
+        target_price should be the price in LRNA
+        """
+        if tkn not in self.liquidity:
+            return 0
+        k = self.lrna[tkn] * self.liquidity[tkn]
+        target_x = math.sqrt(k / target_price)
+        dx = target_x - self.liquidity[tkn]
+        if dx < 0:
+            dx *= (1 - self.asset_fee(tkn))
+        return dx
+
+    def trade_to_price(self, agent: Agent, tkn: str, target_price: float, other_tkn: str = None):
+        """
+        trade with agent to move price of tkn to target_price (in LRNA)
+        """
+        if other_tkn is None:
+            other_tkn = 'LRNA'
+        dx = self.calculate_trade_to_price(tkn, target_price)
+        if dx > 0:
+            self.swap(agent=agent, tkn_sell=tkn, tkn_buy=other_tkn, sell_quantity=dx)
+        elif dx < 0:
+            self.swap(agent=agent, tkn_buy=tkn, tkn_sell=other_tkn, buy_quantity=-dx)
+        return self
+
 
 class OmnipoolLiquidityPosition:
     def __init__(self, tkn: str, price: float, shares: float, delta_r: float, pool_id: str = None):
@@ -1142,7 +1180,7 @@ class OmnipoolLiquidityPosition:
 
 class OmnipoolArchiveState:
     def __init__(self, state: OmnipoolState):
-        self.asset_list = [tkn for tkn in state.asset_list]
+        self.asset_list = [tkn for tkn in state.asset_list] + ['LRNA']
         self.liquidity = {k: v for (k, v) in state.liquidity.items()}
         self.lrna = {k: v for (k, v) in state.lrna.items()}
         self.lrna_total = sum(state.lrna.values())
@@ -1243,15 +1281,3 @@ def value_assets(prices: dict, assets: dict) -> float:
         for i in assets.keys()
     ])
 
-
-def trade_to_price(pool: OmnipoolState, tkn_sell: str, target_price: float):
-    """
-    target_price should be the price in LRNA
-    """
-    if tkn_sell not in pool.liquidity:
-        return 0
-    k = pool.lrna[tkn_sell] * pool.liquidity[tkn_sell]
-    print(target_price)
-    target_x = math.sqrt(k / target_price)
-    dx = target_x - pool.liquidity[tkn_sell]
-    return dx

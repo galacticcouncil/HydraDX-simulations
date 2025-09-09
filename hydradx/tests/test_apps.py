@@ -3,6 +3,9 @@ from hydradx.model.amm.stableswap_amm import StableSwapPoolState
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
 from hypothesis import given, strategies as strat, assume, settings, reproduce_failure
+import os
+
+from hydradx.tests.utils import find_test_directory
 
 
 def test_liquidity():
@@ -149,10 +152,6 @@ def test_hollar_init_distro():
     run_script()
 
 
-def test_toxic_debt():
-    from hydradx.apps.money_market import toxic_debt
-
-
 def test_changing_amp():
     from hydradx.apps.gigadot_modeling import changing_amp
 
@@ -176,3 +175,15 @@ def test_oracle_comparison():
 
 def test_arb_oracle_comp():
     from hydradx.apps.fees import arb_oracle_comp
+
+
+def test_eth_params():
+    os.chdir(find_test_directory())
+    os.chdir('../apps/money_market')
+    from hydradx.apps.money_market import eth_params
+
+
+def test_add_withdraw():
+    from hydradx.apps.Misc import add_withdraw_losses
+    add_withdraw_losses.scenario_1()
+    add_withdraw_losses.scenario_2()

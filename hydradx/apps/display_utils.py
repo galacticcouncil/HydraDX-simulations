@@ -1,4 +1,7 @@
 from matplotlib import pyplot as plt
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
+import streamlit as st
 
 # Custom function to display actual values instead of percentages
 def actual_value_labels(pct, all_values):
@@ -51,3 +54,42 @@ def display_ss(ss_liquidity, prices, title):
     fig.suptitle(title, fontsize=16, fontweight="bold")
     display_liquidity_usd(ax1, stableswap_usd, "gigaDOT")
     return fig
+
+
+
+def get_distribution(number_list, weights, resolution, minimum, maximum, smoothing=3.0):
+    bins = np.linspace(minimum, maximum, resolution)  # sample points (x)
+    dist = np.zeros_like(bins, dtype=float)
+
+    step = (maximum - minimum) / (resolution - 1)
+
+    for h, w in zip(number_list, weights):
+        idx = np.searchsorted(bins, h, side="right") - 1
+
+        if idx < 0:
+            dist[0] += w
+        elif idx >= len(bins) - 1:
+            dist[-1] += w
+        else:
+            left = bins[idx]
+            t = (h - left) / step   # in [0,1)
+            dist[idx]     += w * (1 - t)
+            dist[idx + 1] += w * t
+
+    return bins, gaussian_filter1d(dist, sigma=smoothing) if smoothing > 0 else dist
+
+
+def one_line_markdown(text, align="left"):
+    return st.markdown(f"""
+        <div style="
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            height: 1.4em;           /* lock to one line */
+            line-height: 1.4em;       /* align text vertically */
+            margin: 0; 
+            text-align: {align};
+        ">{text}</div>
+        """,
+        unsafe_allow_html=True
+    )

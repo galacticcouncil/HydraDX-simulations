@@ -12,7 +12,7 @@ from hydradx.model import run, processing
 from hydradx.model.amm import omnipool_amm as oamm
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.global_state import GlobalState
-from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, OmnipoolLiquidityPosition, trade_to_price
+from hydradx.model.amm.omnipool_amm import DynamicFee, OmnipoolState, OmnipoolLiquidityPosition
 from hydradx.model.amm.trade_strategies import constant_swaps, omnipool_arbitrage
 from hydradx.tests.strategies_omnipool import omnipool_reasonable_config, omnipool_config, assets_config
 
@@ -357,13 +357,13 @@ def test_remove_liquidity_specified_quantity_unspecified_nft(price_mult: float):
     new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, quantity, tkn)
     comp_state, comp_agent = oamm.simulate_remove_liquidity(initial_state, base_agent, quantity, tkn, 'position')
     if new_state.liquidity[tkn] != pytest.approx(comp_state.liquidity[tkn], rel=1e-20):
-        raise AssertionError(f'Remaining liquidity doesn\'t match.')
+        raise AssertionError(f"Remaining liquidity doesn't match.")
     if new_state.shares[tkn] != pytest.approx(comp_state.shares[tkn], rel=1e-20):
-        raise AssertionError(f'Remaining shares doesn\'t match.')
+        raise AssertionError(f"Remaining shares doesn't match.")
     if new_state.lrna[tkn] != pytest.approx(comp_state.lrna[tkn], rel=1e-20):
-        raise AssertionError(f'Remaining LRNA doesn\'t match.')
+        raise AssertionError(f"Remaining LRNA doesn't match.")
     if new_state.protocol_shares[tkn] != pytest.approx(comp_state.protocol_shares[tkn], rel=1e-20):
-        raise AssertionError(f'Remaining protocol shares doesn\'t match.')
+        raise AssertionError(f"Remaining protocol shares doesn't match.")
 
     quantity = s / 2
     new_state, new_agent = oamm.simulate_remove_liquidity(initial_state, init_agent, quantity, tkn)
@@ -2860,21 +2860,12 @@ def test_trade_to_price():
             'HDX': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)},
             'USD': {'liquidity': mpf(1000000), 'LRNA': mpf(1000000)}
         },
-        asset_fee=0.0,
-        lrna_fee=0.0
+        asset_fee=0.0025,
+        lrna_fee=0.0005
     )
     agent = Agent(enforce_holdings=False)
 
-    expected_price = 0.9
-    sell_quantity = trade_to_price(omnipool, 'USD', target_price=expected_price)
-    omnipool.swap(agent, tkn_sell='USD', tkn_buy='HDX', sell_quantity=sell_quantity)
-    price = omnipool.lrna_price('USD')
-
-    assert price == pytest.approx(expected_price, rel=1e-15)
-
-    expected_price = 1.1
-    buy_quantity = -trade_to_price(omnipool, 'USD', target_price=expected_price)
-    omnipool.swap(agent, tkn_buy='USD', tkn_sell='HDX', buy_quantity=buy_quantity)
-    price = omnipool.lrna_price('USD')
-
-    assert price == pytest.approx(expected_price, rel=1e-15)
+    for expected_price in [0.9, 1.0, 1.1]:
+        omnipool.trade_to_price(agent, tkn='USD', other_tkn='HDX', target_price=expected_price)
+        price = omnipool.lrna_price('USD')
+        assert price == pytest.approx(expected_price, rel=1e-15)

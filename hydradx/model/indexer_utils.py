@@ -4,12 +4,12 @@ import requests
 from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
 from hydradx.model.amm.omnipool_router import OmnipoolRouter
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
-from hydradx.model.processing import get_stableswap_data
 
 
 URL_UNIFIED_PROD = 'https://galacticcouncil.squids.live/hydration-pools:unified-prod/api/graphql'
-URL_OMNIPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool/api/graphql'
-URL_STABLEPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool/api/graphql'
+URL_OMNIPOOL_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:omnipool-v2/api/graphql'
+URL_STABLESWAP_STORAGE = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:stablepool-v2/api/graphql'
+URL_GENERIC_DATA = 'https://galacticcouncil.squids.live/hydration-storage-dictionary:generic-data-v2/api/graphql'
 
 class AssetInfo:
     def __init__(
@@ -56,7 +56,6 @@ def get_asset_info_by_ids(asset_ids: list = None) -> dict:
         nodes {{
           assetType
           decimals
-          existentialDeposit
           id
           isSufficient
           name
@@ -76,7 +75,6 @@ def get_asset_info_by_ids(asset_ids: list = None) -> dict:
         asset_info = AssetInfo(
             asset_type=asset['assetType'],
             decimals=int(asset['decimals'] if asset['decimals'] else 0),
-            existential_deposit=int(asset['existentialDeposit']),
             id=asset['id'],
             is_sufficient=asset['isSufficient'],
             name=asset['name'],
@@ -104,15 +102,15 @@ def get_omnipool_asset_data(
       omnipoolAssetData(
         first: $first,
         after: $after,
-        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
+        orderBy: PARA_BLOCK_HEIGHT_ASC,
         filter: {{
-          paraChainBlockHeight: {{ greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }} {
+          paraBlockHeight: {{ greaterThanOrEqualTo: $minBlock, lessThanOrEqualTo: $maxBlock }} {
             'assetId: { in: $assetIds }' if asset_ids else ''
           }
         }}
       ) {{
         nodes {{
-          paraChainBlockHeight
+          paraBlockHeight
           assetId
           balances
           assetState
@@ -125,14 +123,13 @@ def get_omnipool_asset_data(
     }}
     """
 
-    if asset_ids is not None:
-        variables["assetIds"] = [int(asset_id) for asset_id in asset_ids]
-
     data_all = []
     has_next_page = True
     after_cursor = None
     page_size = 2000
     variables["first"] = page_size
+    if asset_ids:
+        variables['assetIds'] = asset_ids
 
     i = 0
     while has_next_page:
@@ -161,8 +158,8 @@ def get_omnipool_data_by_asset(
         if item['assetId'] not in data_by_asset:
             data_by_asset[item['assetId']] = []
         elif validate:
-            last_block_id = data_by_asset[item['assetId']][-1]['paraChainBlockHeight']
-            next_block_id = item['paraChainBlockHeight']
+            last_block_id = data_by_asset[item['assetId']][-1]['paraBlockHeight']
+            next_block_id = item['paraBlockHeight']
             assert last_block_id + 1 == next_block_id
         data_by_asset[item['assetId']].append(item)
     return data_by_asset
@@ -185,8 +182,8 @@ def get_omnipool_liquidity(
     liquidity = {}
     hub_liquidity = {}
     for asset_id in data.keys():
-        tkn_balances = [int(block['balances']['free']) / (10 ** asset_dict[asset_id].decimals) for block in data[asset_id]]
-        hub_balances = [int(block['assetState']['hubReserve']) / (10 ** asset_dict[1].decimals) for block in data[asset_id]]
+        tkn_balances = [int(block['balances']['d'][0]) / (10 ** asset_dict[asset_id].decimals) for block in data[asset_id]]
+        hub_balances = [int(block['assetState']['d'][1]) / (10 ** asset_dict[1].decimals) for block in data[asset_id]]
         liquidity[asset_id] = tkn_balances
         hub_liquidity[asset_id] = hub_balances
     return liquidity, hub_liquidity
@@ -218,14 +215,14 @@ def get_stableswap_asset_data(
 
     stableswap_query = """
     query MyQuery($pool_id: Int!, $min_block: Int!, $max_block: Int!) {
-      stablepools(
-        orderBy: PARA_CHAIN_BLOCK_HEIGHT_ASC,
-        filter: {poolId: {equalTo: $pool_id}, paraChainBlockHeight: {greaterThanOrEqualTo: $min_block, lessThanOrEqualTo: $max_block}}
+      stableswaps(
+        orderBy: PARA_BLOCK_HEIGHT_ASC,
+        filter: {poolId: {equalTo: $pool_id}, paraBlockHeight: {greaterThanOrEqualTo: $min_block, lessThanOrEqualTo: $max_block}}
       ) {
         nodes {
           id
           poolId
-          stablepoolAssetDataByPoolId {
+          stableswapAssetDataByPoolId {
             nodes {
               assetId
               balances
@@ -242,8 +239,8 @@ def get_stableswap_asset_data(
     }
     """
     variables = {"pool_id": pool_id, "min_block": min_block_id, "max_block": max_block_id}
-    data = query_indexer(URL_STABLEPOOL_STORAGE, stableswap_query, variables)
-    return data['data']['stablepools']['nodes']
+    data = query_indexer(URL_STABLESWAP_STORAGE, stableswap_query, variables)
+    return data['data']['stableswaps']['nodes']
 
 
 def get_stableswap_data_by_block(
@@ -254,26 +251,27 @@ def get_stableswap_data_by_block(
 
 
 def get_latest_stableswap_data(
-        pool_id: int
+        pool_id: int,
+        block_number: int = None
 ):
-
-    latest_block_query = """
-    query MaxHeightQuery {
-      maxHeightResult: stablepools(first: 1, orderBy: PARA_CHAIN_BLOCK_HEIGHT_DESC) {
-        nodes {
-          paraChainBlockHeight
+    if block_number is None:
+        latest_block_query = """
+        query MaxHeightQuery {
+          maxHeightResult: stableswaps(first: 1, orderBy: PARA_BLOCK_HEIGHT_DESC) {
+            nodes {
+              paraBlockHeight
+            }
+          }
         }
-      }
-    }
-    """
+        """
 
-    data = query_indexer(URL_STABLEPOOL_STORAGE, latest_block_query)
+        data = query_indexer(URL_STABLESWAP_STORAGE, latest_block_query)
 
-    latest_block = int(data['data']['maxHeightResult']['nodes'][0]['paraChainBlockHeight'])
-    pool_data = get_stableswap_data_by_block(pool_id, latest_block)
+        block_number = int(data['data']['maxHeightResult']['nodes'][0]['paraBlockHeight'])
+    pool_data = get_stableswap_data_by_block(pool_id, block_number)
     pool_data_formatted = {
         "pool_id": pool_data['poolId'],
-        "block": latest_block,
+        "block": block_number,
         'fee': pool_data['fee'] / 1000000,
         'finalAmplification': pool_data['finalAmplification'],
         'finalBlock': pool_data['finalBlock'],
@@ -282,17 +280,17 @@ def get_latest_stableswap_data(
         'liquidity': {}
     }
 
-    asset_id_list = [asset['assetId'] for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']]
+    asset_id_list = [asset['assetId'] for asset in pool_data['stableswapAssetDataByPoolId']['nodes']]
     asset_dict = get_asset_info_by_ids(asset_id_list)
 
-    for asset in pool_data['stablepoolAssetDataByPoolId']['nodes']:
+    for asset in pool_data['stableswapAssetDataByPoolId']['nodes']:
         asset_id = asset['assetId']
-        balance = int(asset['balances']['free']) / (10 ** asset_dict[asset_id].decimals)
+        balance = int(asset['balances']['d'][0]) / (10 ** asset_dict[asset_id].decimals)
         pool_data_formatted['liquidity'][asset_id] = balance
     return pool_data_formatted
 
 
-def get_current_omnipool_assets():
+def get_current_omnipool_assets() -> list[str]:
     query = """
     query assetInfoByAssetIds {
       omnipoolAssets(filter: {isRemoved: {equalTo: false}}) {
@@ -303,14 +301,22 @@ def get_current_omnipool_assets():
     }
     """
     data = query_indexer(URL_UNIFIED_PROD, query)
-    return [node['assetId'] for node in data['data']['omnipoolAssets']['nodes']]
+    ids = [node['assetId'] for node in data['data']['omnipoolAssets']['nodes']]
+    for i in ids:
+        try:
+            int(i)
+        except ValueError:
+            ids.remove(i)
+    # hub token doesn't count
+    ids.remove('1')
+    return ids
 
 
-def get_stablepool_ids():
+def get_stableswap_ids():
 
-    stablepool_query = """
+    stableswap_query = """
     query MyQuery {
-      stablepools {
+      stableswaps {
         groupedAggregates(groupBy: POOL_ID) {
           keys
         }
@@ -318,8 +324,8 @@ def get_stablepool_ids():
     }
     """
 
-    data = query_indexer(URL_STABLEPOOL_STORAGE, stablepool_query)
-    pool_ids = [int(pool['keys'][0]) for pool in data['data']['stablepools']['groupedAggregates']]
+    data = query_indexer(URL_STABLESWAP_STORAGE, stableswap_query)
+    pool_ids = [int(pool['keys'][0]) for pool in data['data']['stableswaps']['groupedAggregates']]
     return pool_ids
 
 
@@ -411,65 +417,197 @@ def get_fee_pcts(data, asset_id):
     return fee_pcts
 
 
-def get_current_stableswap_pools(asset_info: dict[int: AssetInfo] = None):
-    stableswap_data = {
-        pool: get_latest_stableswap_data(pool)
-        for pool in get_stablepool_ids()
+def get_current_stableswap_pools(block_number):
+    all_assets = get_asset_info_by_ids()
+    stableswap_ids = [asset.id for asset in all_assets.values() if asset.asset_type == 'StableSwap']
+    stableswap_asset_query = """
+        query assetInfoByAssetIds {
+            stableswapAssets {
+                nodes {
+                    pool {
+                        id
+                    }
+                    asset {
+                        name
+                        symbol
+                        id
+                        decimals
+                    }
+                }
+            }
+        }
+    """
+    stableswap_query_data = query_indexer(URL_UNIFIED_PROD, stableswap_asset_query)['data']['stableswapAssets']['nodes']
+    stableswap_asset_data = {}
+    for node in sorted(
+        stableswap_query_data,
+        key=lambda n: n['asset']['id']
+    ):
+        asset_id = str(node['asset']['id'])
+        if asset_id not in stableswap_asset_data:
+            stableswap_asset_data[asset_id] = {
+                'pool_id': [node['pool']['id']],
+                'decimals': node['asset']['decimals'],
+                'symbol': node['asset']['symbol'],
+                'name': node['asset']['name']
+            }
+        else:
+            # same asset can be in more than one pool
+            stableswap_asset_data[asset_id]['pool_id'].append(node['pool']['id'])
+
+    stableswap_pools = {
+        str(asset.id): StableSwapPoolState(
+            unique_id=asset.name,
+            tokens={node['name']: 0 for node in stableswap_asset_data.values() if asset.id in node['pool_id']},
+            amplification=0
+        ) for asset in get_asset_info_by_ids(stableswap_ids).values()
     }
-    if asset_info is None:
-        asset_info = get_asset_info_by_ids()
-    stableswap_pools = []
-    for pool in stableswap_data.values():
-        if min(pool['liquidity'].values()) > 0:
-            stableswap_pools.append(
-                StableSwapPoolState(
-                    tokens={asset_info[tkn_id].symbol: pool['liquidity'][tkn_id] for tkn_id in pool['liquidity']},
-                    amplification=pool['finalAmplification'],
-                    trade_fee=pool['fee'],
-                    unique_id=asset_info[pool['pool_id']].name,
-                )
-            )
+
+    current_block = block_number
+    max_queries = 20
+    blocks_per_query = 100
+    queries = 0
+    asset_ids_remaining = list(stableswap_asset_data.keys())
+    while len(asset_ids_remaining) > 0 and queries < max_queries:
+        query = f"""
+            query StableSwapPoolData {{
+                stableswapAssetData(
+                    filter: {{
+                        paraBlockHeight: {{
+                            lessThanOrEqualTo: {current_block}, 
+                            greaterThan: {current_block - blocks_per_query}
+                        }}
+                    }}, orderBy: PARA_BLOCK_HEIGHT_DESC
+                ) {{
+                    nodes {{
+                        balances
+                        assetId
+                        pool {{
+                            poolId
+                            paraBlockHeight
+                            pegs
+                            fee
+                            finalAmplification
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        # variables = {'assetIds': asset_ids_remaining}
+        data = query_indexer(URL_STABLESWAP_STORAGE, query)
+        for node in data['data']['stableswapAssetData']['nodes']:
+            asset_id = str(node['assetId'])
+            if asset_id not in asset_ids_remaining:
+                continue
+            asset_name = stableswap_asset_data[asset_id]['name']
+            pool_id = str(node['pool']['poolId'])
+            block = node['pool']['paraBlockHeight']
+            pool = stableswap_pools[pool_id]
+            pool.liquidity[asset_name] = int(node['balances']['d'][0]) / 10 ** stableswap_asset_data[asset_id]['decimals']
+            if block > pool.time_step:
+                pool.trade_fee = float(node['pool']['fee'] / 1000000)
+                pool.amplification = node['pool']['finalAmplification']
+                pegs = [
+                    int(node['pool']['pegs'][i][0]) / int(node['pool']['pegs'][i][1])
+                    for i in range(len(node['pool']['pegs']) - 1)
+                ]
+                if len(pegs) != len(pool.asset_list) - 1:
+                    pass
+                pool.set_peg_target(pegs)
+                pool.set_peg(pegs)
+                pool.time_step = block
+            asset_ids_remaining.remove(asset_id)
+
+        queries += 1
+        current_block -= blocks_per_query
+
+    # there may be some tokens we can't get liquidity values for... in that case, guesstimate
+    for pool in stableswap_pools.values():
+        for tkn in pool.liquidity:
+            if pool.liquidity[tkn] == 0:
+                pool.liquidity[tkn] = sum(
+                    [
+                        pool.liquidity[t] * (1 if i == 0 else pool.peg[i])
+                        for i, t in enumerate(pool.asset_list) if t != tkn
+                    ]
+                ) / (len(pool.asset_list) - 1)
+
+    # get total issuance of shares
+    stableswap_share_assets = {tkn: all_assets[tkn] for tkn in all_assets if all_assets[tkn].id in stableswap_ids}
+    for pool_id in stableswap_ids:
+        query = f"""
+            query GetTotalIssuance {{
+              assetHistoricalData(
+                first: 1
+                orderBy: PARA_BLOCK_HEIGHT_DESC
+                filter: {{assetId: {{equalTo: "{pool_id}"}}}}
+              ) {{
+                nodes {{
+                  assetId
+                  totalIssuance
+                  paraBlockHeight
+                }}
+              }}
+            }}
+        """
+        shares = int(query_indexer(URL_GENERIC_DATA, query)['data']['assetHistoricalData']['nodes'][0]['totalIssuance'])
+        shares /= 10 ** stableswap_share_assets[int(pool_id)].decimals
+        stableswap_pools[pool_id].shares = shares
+
     return stableswap_pools
 
-def get_current_omnipool():
+
+def get_current_omnipool(block_number = None):
+    asset_info = get_asset_info_by_ids()
     asset_ids = get_current_omnipool_assets()
-    asset_info = get_asset_info_by_ids(asset_ids)
-    asset_ids.remove('1')  # Remove hub asset ID
     for asset in asset_info.values():
         if asset.asset_type == 'StableSwap':
             asset.symbol = asset.name
-    max_block = get_current_block_height()
+    max_block = get_current_block_height() if block_number is None else block_number
     asset_ids_remaining = asset_ids.copy()
     liquidity = {}
     lrna = {}
+    shares = {}
+    protocol_shares = {}
     current_block = max_block
-    while asset_ids_remaining:
+    blocks_per_query = 100
+    max_queries = 10
+    queries = 0
+    while asset_ids_remaining and queries < max_queries:
         omnipool_data = get_omnipool_asset_data(
-            min_block_id=current_block - 100,
+            min_block_id=current_block - blocks_per_query,
             max_block_id=current_block,
-            asset_ids=asset_ids_remaining
+            asset_ids=[int(asset_id) for asset_id in asset_ids_remaining]
         )
         for item in reversed(omnipool_data):
             asset = asset_info[item['assetId']]
             if asset.symbol not in liquidity:
-                liquidity[asset.symbol] = int(item['balances']['free']) / (
-                            10 ** asset.decimals)
-                lrna[asset.symbol] = int(item['assetState']['hubReserve']) / (
-                            10 ** asset_info[1].decimals)
+                liquidity[asset.symbol] = int(item['balances']['d'][0]) / 10 ** asset.decimals
+                lrna[asset.symbol] = int(item['assetState']['d'][0]) / 10 ** asset_info[1].decimals
+                shares[asset.symbol] = int(item['assetState']['d'][1]) / 10 ** asset.decimals
+                protocol_shares[asset.symbol] = int(item['assetState']['d'][2]) / 10 ** asset.decimals
                 asset_ids_remaining.remove(asset.id)
-        current_block -= 100
+        current_block -= blocks_per_query
+        queries += 1
 
-    asset_fee, lrna_fee = get_current_omnipool_fees(asset_info)
-    for tkn in liquidity:
-        if tkn not in asset_fee.current:
-            asset_fee.current[tkn] = asset_fee.minimum
-            asset_fee.last_updated[tkn] = current_block
-        if tkn not in lrna_fee.current:
-            lrna_fee.current[tkn] = asset_fee.minimum
-            lrna_fee.last_updated[tkn] = current_block
+    for tkn in asset_ids_remaining:
+        print(f"{asset_info[int(tkn)].name} not found in {blocks_per_query * max_queries} blocks.")
+        asset_ids.remove(tkn)
+
+    asset_fee, lrna_fee = get_current_omnipool_fees(
+        asset_info={int(tkn): asset_info[int(tkn)] for tkn in asset_ids},
+        block_number=block_number
+    )
+
     omnipool = OmnipoolState(
         tokens={
-            tkn: {'liquidity': liquidity[tkn], 'LRNA': lrna[tkn]} for tkn in liquidity
+            tkn: {
+                'liquidity': liquidity[tkn],
+                'LRNA': lrna[tkn],
+                'shares': shares[tkn],
+                'protocol_shares': protocol_shares[tkn],
+            } for tkn in liquidity
         },
         asset_fee=asset_fee,
         lrna_fee=lrna_fee
@@ -479,29 +617,18 @@ def get_current_omnipool():
 
 
 def get_current_omnipool_fees(
-        asset_info: dict[int: AssetInfo] = None
+    asset_info: dict[int: AssetInfo] = None,
+    block_number: int = None
 ) -> tuple[DynamicFee, DynamicFee]:
 
+    if asset_info and isinstance(list(asset_info.keys())[0], str):
+        raise TypeError("Asset info keys must be ints.")
+
+    if block_number is None:
+        block_number = get_current_block_height()
     if asset_info is None:
-        asset_info = get_asset_info_by_ids()
-    url = URL_UNIFIED_PROD
-    query = """
-        query MyQuery {
-            events(
-                first: 10000
-                orderBy: PARA_BLOCK_HEIGHT_DESC
-                filter: {name: {includes: "Omnipool"}}
-            ) {
-                nodes {
-                  name
-                  args
-                  id
-                  paraBlockHeight
-                }
-            }
-        }
-    """
-    transaction_data = query_indexer(url, query)['data']['events']['nodes']
+        asset_info = get_asset_info_by_ids(get_current_omnipool_assets())
+
     asset_fee = DynamicFee(
         minimum=0.0015,
         maximum=0.05,
@@ -514,54 +641,83 @@ def get_current_omnipool_fees(
         amplification=1,
         decay=0.005
     )
-    for trade in transaction_data:
-        args = {
-            arg[:arg.index(':')].strip('"'): arg[arg.index(':') + 1:].strip('"')
-            for arg in trade['args'].strip('}').strip('{').split(',')
-        }
-        block = trade['paraBlockHeight']
-        tkn_sell = asset_info[int(args['assetIn'])].symbol
-        tkn_buy = asset_info[int(args['assetOut'])].symbol
-        if tkn_sell not in lrna_fee.current and float(args['hubAmountOut']) > 0:
-            lrna_fee.current[tkn_sell] = float(args['protocolFeeAmount']) / float(args['hubAmountOut'])
-            lrna_fee.last_updated[tkn_sell] = block
-        if tkn_buy not in asset_fee.current and float(args['amountIn']) > 0:
-            asset_fee.current[tkn_buy] = float(args['assetFeeAmount']) / (float(args['amountOut']) + float(args['assetFeeAmount']))
-            asset_fee.last_updated[tkn_buy] = block
+    blocks_per_query = 100
+    max_queries = int(max(
+        (lrna_fee.maximum - lrna_fee.minimum) / lrna_fee.decay,
+        (asset_fee.maximum - asset_fee.minimum) / asset_fee.decay
+    ) / 100) + 1  # beyond that, fees will have decayed to minimum anyway
+    queries = 0
+    current_block = block_number
+    asset_ids_remaining = list(asset_info.keys())
+
+    url = URL_UNIFIED_PROD
+    while len(asset_ids_remaining) > 0 and queries < max_queries:
+        query = f"""
+            query MyQuery {{
+                events(
+                    orderBy: PARA_BLOCK_HEIGHT_DESC
+                    filter: {{
+                        name: {{includes: "Omnipool"}}, 
+                        paraBlockHeight: {{
+                            greaterThan: {current_block - blocks_per_query}, 
+                            lessThanOrEqualTo: {current_block}
+                        }}
+                    }}
+                ) {{
+                    nodes {{
+                      name
+                      args
+                      id
+                      paraBlockHeight
+                    }}
+                }}
+            }}
+        """
+        transaction_data = query_indexer(url, query)['data']['events']['nodes']
+        for trade in transaction_data:
+            args = {
+                arg[:arg.index(':')].strip('"'): arg[arg.index(':') + 1:].strip('"')
+                for arg in trade['args'].strip('}').strip('{').split(',')
+            }
+            block = trade['paraBlockHeight']
+            sell_id = int(args['assetIn'])
+            buy_id = int(args['assetOut'])
+            tkn_sell = asset_info[sell_id] if sell_id in asset_info else None
+            tkn_buy = asset_info[buy_id] if buy_id in asset_info else None
+            if tkn_sell and int(tkn_sell.id) in asset_ids_remaining:
+                if tkn_sell.symbol not in lrna_fee.current and float(args['hubAmountOut']) > 0:
+                    lrna_fee.current[tkn_sell.symbol] = float(args['protocolFeeAmount']) / float(args['hubAmountOut'])
+                    lrna_fee.last_updated[tkn_sell.symbol] = block
+                    if tkn_sell.symbol in asset_fee.current:
+                        asset_ids_remaining.remove(int(args['assetIn']))
+            if tkn_buy and int(tkn_buy.id) in asset_ids_remaining:
+                if tkn_buy.symbol not in asset_fee.current and float(args['amountIn']) > 0:
+                    asset_fee.current[tkn_buy.symbol] = float(args['assetFeeAmount']) / (float(args['amountOut']) + float(args['assetFeeAmount']))
+                    asset_fee.last_updated[tkn_buy.symbol] = block
+                    if tkn_buy.symbol in lrna_fee.current:
+                        asset_ids_remaining.remove(int(args['assetOut']))
+
+        queries += 1
+        current_block -= blocks_per_query
+
+    for tkn in asset_ids_remaining:
+        symbol = asset_info[tkn].symbol
+        # print(f"{asset_info[tkn].name} fee not found in {blocks_per_query * max_queries} blocks.")
+        if symbol not in lrna_fee.current:
+            lrna_fee.current[symbol] = lrna_fee.minimum
+            lrna_fee.last_updated[symbol] = current_block
+        if symbol not in asset_fee.current:
+            asset_fee.current[symbol] = asset_fee.minimum
+            asset_fee.last_updated[symbol] = current_block
+
     return asset_fee, lrna_fee
 
 
-def get_current_omnipool_router():
-    omnipool = get_current_omnipool()
-    asset_info = get_asset_info_by_ids()
-    stable_swap_data = get_stableswap_data()
-    stableswap_pools = []
-    for pool in stable_swap_data.values():
-        pool_name = asset_info[pool.pool_id].name
-        if pool.pool_id == 690:
-            peg = omnipool.lrna_price('vDOT') / omnipool.lrna_price('DOT')
-            shares = pool.shares / 10 ** 18
-            tokens = {
-                'DOT': shares * peg / (1 + peg),
-                'vDOT': shares / (1 + peg),
-            }
-        else:
-            tokens={
-                asset_info[tkn_id].symbol:
-                    int(pool.reserves[tkn_id]) / 10 ** asset_info[tkn_id].decimals
-                for tkn_id in pool.reserves
-            }
-            peg = None
-        stableswap_pools.append(
-            StableSwapPoolState(
-                tokens=tokens,
-                peg=peg,
-                amplification=pool.final_amplification,
-                trade_fee=pool.fee,
-                unique_id=pool_name,
-            )
-        )
-    # money_market = get_current_money_market()
+def get_current_omnipool_router(block_number: int = None):
+    if block_number is None:
+        block_number = get_current_block_height()
+    omnipool = get_current_omnipool(block_number)
+    stableswap_pools = get_current_stableswap_pools(block_number).values()
 
     return OmnipoolRouter(
         exchanges=[
@@ -737,11 +893,11 @@ def download_omnipool_spot_prices(tkn_id: int, denom_id: int, min_block: int, ma
         denom_i = 2 * i + (0 if data[2 * i]['assetId'] == denom_id else 1)
         data_tkn = data[tkn_i]
         data_denom = data[denom_i]
-        assert data_tkn['paraChainBlockHeight'] == data_denom['paraChainBlockHeight'], "Block number must match"
-        block_no = int(data_tkn['paraChainBlockHeight'])
+        assert data_tkn['paraBlockHeight'] == data_denom['paraBlockHeight'], "Block number must match"
+        block_no = int(data_tkn['paraBlockHeight'])
         assert block_no == min_block + i, "Block number must be sequential"
-        hub_price_of_tkn = int(data_tkn['assetState']['hubReserve']) / int(data_tkn['balances']['free'])
-        hub_price_of_denom = int(data_denom['assetState']['hubReserve']) / int(data_denom['balances']['free'])
+        hub_price_of_tkn = int(data_tkn['assetState']['d'][1]) / int(data_tkn['balances']['d'][0])
+        hub_price_of_denom = int(data_denom['assetState']['d'][1]) / int(data_denom['balances']['d'][0])
         price = hub_price_of_tkn / hub_price_of_denom * 10 ** (tkn_decimals - denom_decimals)
         if prev_block is not None and prices[prev_block] == price:
             continue

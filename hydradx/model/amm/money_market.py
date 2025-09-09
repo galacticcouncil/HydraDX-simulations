@@ -61,6 +61,7 @@ class MoneyMarketAsset:
             emode_ltv: float = None,
             emode_label: str = '',
             liquidity: float = float('inf'),
+            supply_cap: float = float('inf')
     ):
         self.name = name
         self.price = price
@@ -72,6 +73,7 @@ class MoneyMarketAsset:
         self.emode_liquidation_threshold = emode_liquidation_threshold or liquidation_threshold
         self.emode_ltv = emode_ltv or ltv
         self.emode_label = emode_label
+        self.supply_cap = supply_cap
 
 
 class MoneyMarket(Exchange):
@@ -82,6 +84,7 @@ class MoneyMarket(Exchange):
             full_liquidation_threshold: float = 0.95,
             close_factor: float = 0.5,
             oracle_source: Callable[[str], float] = None,
+            trade_fee: float = 0.0,
             unique_id: str = 'money_market',
     ):
         super().__init__()
@@ -109,6 +112,7 @@ class MoneyMarket(Exchange):
 
         self.partial_liquidation_pct = close_factor
         self.full_liquidation_threshold = full_liquidation_threshold
+        self.trade_fee = trade_fee
         if not self.validate():
             raise ValueError("money_market initialization failed.")
         self.fail = ''
@@ -381,7 +385,7 @@ class MoneyMarket(Exchange):
         """
         assert tkn_sell in self.liquidity
         assert tkn_buy in self.liquidity
-        return sell_quantity * self.price(tkn_sell, tkn_buy)
+        return sell_quantity * self.sell_spot(tkn_sell, tkn_buy)
 
 
     def calculate_sell_from_buy(self, tkn_buy: str, tkn_sell: str, buy_quantity: float) -> float:
@@ -390,11 +394,11 @@ class MoneyMarket(Exchange):
         """
         assert tkn_buy in self.liquidity
         assert tkn_sell in self.liquidity
-        return buy_quantity / self.price(tkn_buy, tkn_sell)
+        return buy_quantity * self.buy_spot(tkn_buy, tkn_sell)
 
 
-    def swap(self, agent: Agent, tkn_sell: str, tkn_buy: str, buy_quantity: float = 0,
-             sell_quantity: float = 0):
+    def swap(self, agent: Agent, tkn_sell: str, tkn_buy: str, buy_quantity: float = None,
+             sell_quantity: float = None):
         """
         Swap tkn_sell for tkn_buy.
         """
@@ -402,9 +406,9 @@ class MoneyMarket(Exchange):
         assert tkn_sell in self.liquidity
         assert tkn_buy in self.liquidity
         assert agent.validate_holdings(tkn_sell, sell_quantity)
-        if buy_quantity > 0:
+        if buy_quantity is not None and buy_quantity > 0:
             sell_quantity = self.calculate_sell_from_buy(tkn_buy, tkn_sell, buy_quantity)
-        elif sell_quantity > 0:
+        elif sell_quantity is not None and sell_quantity > 0:
             buy_quantity = self.calculate_buy_from_sell(tkn_sell, tkn_buy, sell_quantity)
         else:
             raise ValueError("Either buy_quantity or sell_quantity must be greater than 0.")
@@ -419,11 +423,17 @@ class MoneyMarket(Exchange):
         agent.remove(tkn_sell, sell_quantity)
         self.liquidity[tkn_sell] += sell_quantity
         self.liquidity[tkn_buy] -= buy_quantity
+        return self
 
-    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = 0):
+
+    def buy_spot(self, tkn_buy: str, tkn_sell: str, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
         return self.price(tkn_buy, tkn_sell) / (1 - fee)
 
-    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = 0):
+    def sell_spot(self, tkn_sell: str, tkn_buy: str, fee: float = None):
+        if fee is None:
+            fee = self.trade_fee
         return self.price(tkn_sell, tkn_buy) * (1 - fee)
 
     def buy_limit(self, tkn_buy: str, tkn_sell: str):

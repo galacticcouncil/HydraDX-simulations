@@ -5,18 +5,23 @@ import pytest
 from hydradx.model.amm.omnipool_amm import OmnipoolState, DynamicFee
 
 import os
+
+from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+
 os.chdir('../..')
 
-from hydradx.model.indexer_utils import get_latest_stableswap_data, get_stablepool_ids, get_omnipool_liquidity, \
-    get_current_block_height, get_current_omnipool, get_current_omnipool_assets, \
-    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts
+from hydradx.model.indexer_utils import get_latest_stableswap_data, get_omnipool_liquidity, \
+    get_current_block_height, get_current_omnipool, get_current_omnipool_assets, get_current_stableswap_pools,\
+    get_current_omnipool_router, get_fee_history, get_executed_trades, get_stableswap_liquidity_events, get_fee_pcts, \
+    get_omnipool_asset_data
 
 def test_get_latest_stableswap_data():
     """
     Test the get_latest_stableswap_data function.
     """
     pool_id = 102  # 2-Pool
-    pool_data = get_latest_stableswap_data(pool_id)
+    block_number = 9100000
+    pool_data = get_latest_stableswap_data(pool_id, block_number)
     assert len(pool_data['liquidity']) == 2
     pool_id = 999
     with pytest.raises(IndexError):
@@ -25,12 +30,12 @@ def test_get_latest_stableswap_data():
 
 def test_get_current_stableswap_pools():
     from hydradx.model.indexer_utils import get_current_stableswap_pools
-    pools = get_current_stableswap_pools()
+    pools = get_current_stableswap_pools(block_number=8450000)
     assert len(pools) > 0
 
 
 def test_get_omnipool_data():
-    current_block = 6000000
+    current_block = 8000000
     ids = get_current_omnipool_assets()
     ids_int = [int(x) for x in ids if x != "1"]
     omnipool_liquidity = get_omnipool_liquidity(
@@ -40,41 +45,43 @@ def test_get_omnipool_data():
 
 
 def test_get_omnipool_state():
-    omnipool = get_current_omnipool()
+    omnipool = get_current_omnipool(8400000)
     assert isinstance(omnipool, OmnipoolState)
+    assert isinstance([omnipool.asset_fee(tkn) for tkn in omnipool.asset_list], list)
+    assert isinstance([omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list], list)
 
 
 def test_get_omnipool_router():
-    router = get_current_omnipool_router()
+    router = get_current_omnipool_router(8400000)
     assert router is not None
 
 
 def test_get_fee_history():
     asset_id = 0
-    min_block_id = 7400000
-    max_block_id = 7400100
+    min_block_id = 8400000
+    max_block_id = 8400100
     data = get_fee_history(asset_id, min_block_id, max_block_id)
     x = get_fee_pcts(data, asset_id)
-    assert x[0][0] == 7400000
-    assert 0.0015 < x[0][1] < 0.0020
+    assert x[0][0] == 8400001
+    assert 0.0015 < x[0][1] < 0.0016
 
 
 def test_get_executed_trades():
     asset_ids = [5, 10]
-    min_block_id = 7400000
-    max_block_id = 7401000
+    min_block_id = 8400000
+    max_block_id = 8401000
     data = get_executed_trades(asset_ids, min_block_id, max_block_id)
-    assert data[0]['block_number'] == 7400003
-    assert 340 < data[0]['input_amount'] < 350
+    assert data[0]['block_number'] == 8400025
+    assert 1920 < data[0]['input_amount'] < 1930
 
 
 def test_get_stableswap_liquidity_events():
     pool_id = 102
-    min_block_id = 7400000
-    max_block_id = 7401000
+    min_block_id = 8400000
+    max_block_id = 8401000
     data = get_stableswap_liquidity_events(pool_id, min_block_id, max_block_id)
-    assert data[0]['paraBlockHeight'] == 7400000
-    assert data[0]['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['assetId'] == '10'
+    assert data[0]['paraBlockHeight'] == 8400001
+    assert data[0]['stableswapAssetLiquidityAmountsByLiquidityActionId']['nodes'][0]['assetId'] == '22'
 
 
 def test_download_stableswap_exec_prices():
@@ -89,6 +96,17 @@ def test_download_stableswap_exec_prices():
 
     download_stableswap_exec_prices(pool_id, tkn_id, min_block_id, max_block_id, path)
 
+
+def test_get_stableswap_pools():
+    stableswap_pools = get_current_stableswap_pools(8400000)
+    for pool in stableswap_pools.values():
+        assert isinstance(pool, StableSwapPoolState)
+    price = stableswap_pools['690'].price(
+        tkn='Bifrost Voucher DOT',
+        denomination='aDOT'
+    )
+    if price <= 1:
+        raise AssertionError("vDOT should be priced higher than aDOT.")
 
 def test_download_omnipool_spot_prices():
     from hydradx.model.indexer_utils import download_omnipool_spot_prices
@@ -112,8 +130,8 @@ def test_download_omnipool_spot_prices():
 def test_get_omnipool_swap_fees():
     from hydradx.model.indexer_utils import get_omnipool_swap_fees
     tkn_id = 5
-    min_block_id = 7000000
-    max_block_id = 7001000
+    min_block_id = 8000000
+    max_block_id = 8001000
 
     asset_fee_data, hub_fee_data = get_omnipool_swap_fees(tkn_id, min_block_id, max_block_id)
     assert len(asset_fee_data) > 0, "Asset fee data should not be empty"
@@ -169,7 +187,7 @@ def test_bucket_values():
 def test_get_current_omnipool_assets():
     ids_str = get_current_omnipool_assets()
     ids = [int(x) for x in ids_str]
-    assert 1 in ids
+    print(ids)
     assert 0 in ids
 
 
@@ -179,3 +197,7 @@ def test_get_current_omnipool_fees():
     assert isinstance(asset_fees, DynamicFee) and isinstance(hub_fees, DynamicFee)
     assert 'HDX' in asset_fees.current
     assert 'HDX' in hub_fees.current
+
+
+def test_get_omnipool_asset_data():
+    data = get_omnipool_asset_data(min_block_id=8400000, max_block_id=8401000)

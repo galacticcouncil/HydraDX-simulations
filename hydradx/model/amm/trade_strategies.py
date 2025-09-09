@@ -995,6 +995,32 @@ def dca_with_lping(
 
 
 def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, config: list[dict] = None, trade_frequency: float = 1) -> TradeStrategy:
+    """
+    A general arbitrage strategy that looks for arbitrage opportunities between multiple exchanges.
+    :param exchanges: List of Exchange objects to consider for arbitrage.
+    :param equivalency_map: A dictionary mapping asset names to their equivalent names across different exchanges.
+    :param config: A list of dictionaries specifying arbitrage configurations. If None, a default configuration is generated. It will seek to match equivalent assets across different exchanges.
+    1. Each config item should have an 'exchanges' key, which is a dictionary mapping exchange unique IDs to asset pairs (tuples).
+
+    2. Each config item should have a 'buffer' key, which is a float representing the minimum profit margin required to execute the arbitrage.
+
+    3. Example config item:
+       {
+           'exchanges': {
+               'exchange1_id': ('ASSET_A1', 'ASSET_A2'),
+               'exchange2_id': ('ASSET_B1', 'ASSET_B2'),
+           },
+           'buffer': 0.001
+       }
+    If config is None, the function will automatically generate a configuration by finding all pairs of equivalent assets across the provided exchanges.
+
+    4. The equivalency_map is used to identify which assets are considered equivalent across different exchanges.
+
+    5. The generated config will include all possible arbitrage opportunities based on the equivalency_map. This could be a lot, and this may need to be filtered down for practical use.
+
+    :param trade_frequency: Frequency of trades (in time steps).
+    :return: A TradeStrategy object implementing the general arbitrage strategy. Also has a 'config' attribute which describes the auto-generated config, if applicable.
+    """
     # Create reverse equivalency map
     reverse_map = {}
     if equivalency_map is None:
@@ -1047,7 +1073,9 @@ def general_arbitrage(exchanges: list[Exchange], equivalency_map: dict = None, c
         execute_arb(state.pools, agent, swaps)
         return state
 
-    return TradeStrategy(strategy, name='general arbitrage')
+    return_strat = TradeStrategy(strategy, name='general arbitrage')
+    return_strat.config = config
+    return return_strat
 
 
 def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
@@ -1062,21 +1090,23 @@ def liquidate_cdps(pool_id: str = None, iters: int = 16) -> TradeStrategy:
                 for debt_tkn, collateral_tkn in [
                     (debt_tkn, collateral_tkn) for debt_tkn in cdp.debt.keys()
                     for collateral_tkn in cdp.collateral.keys()
+                    if debt_tkn != collateral_tkn
                 ]:
+                    collateral_max, debt_max = mm.calculate_liquidation(
+                        cdp,
+                        collateral_asset=collateral_tkn,
+                        debt_asset=debt_tkn
+                    )
+                    if collateral_max == 0:
+                        # not liquidatable
+                        continue
+
                     for pool in pools:
                         if collateral_tkn not in pool.asset_list or debt_tkn not in pool.asset_list:
                             continue
                         if debt_tkn not in cdp.debt or collateral_tkn not in cdp.collateral \
                             or cdp.debt[debt_tkn] == 0 or cdp.collateral[collateral_tkn] == 0:
                                 continue
-                        collateral_max, debt_max = mm.calculate_liquidation(
-                            cdp,
-                            collateral_asset=collateral_tkn,
-                            debt_asset=debt_tkn
-                        )
-                        if collateral_max == 0:
-                            # not liquidatable
-                            break
                         if pool.buy_spot(debt_tkn, collateral_tkn) > collateral_max / debt_max:
                             # no profitable liquidation possible
                             continue

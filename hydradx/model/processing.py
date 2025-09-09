@@ -464,7 +464,7 @@ def get_current_omnipool_router(rpc='wss://rpc.hydradx.cloud') -> OmnipoolRouter
 
 def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
     ts = time.time()
-    omnipool = omnipool_router.omnipool
+    omnipool = omnipool_router.exchanges.get('omnipool', None)
     stableswap_pools = []
     for exchange_id in omnipool_router.exchanges:
         if isinstance(omnipool_router.exchanges[exchange_id], StableSwapPoolState):
@@ -474,13 +474,15 @@ def save_omnipool(omnipool_router: OmnipoolRouter, path: str = './archive'):
             {
                 'liquidity': omnipool.liquidity,
                 'LRNA': omnipool.lrna,
+                'shares': omnipool.shares,
+                'protocol_shares': omnipool.protocol_shares,
                 'asset_fee': {tkn: omnipool.asset_fee(tkn) for tkn in omnipool.asset_list},
                 'lrna_fee': {tkn: omnipool.lrna_fee(tkn) for tkn in omnipool.asset_list},
                 'stableswap_pools': [
                     {
                         'tokens': pool.liquidity,
                         'amplification': pool.amplification,
-                        'trade_fee': pool.trade_fee,
+                        'trade_fee': float(pool.trade_fee),
                         'unique_id': pool.unique_id,
                         'shares': pool.shares,
                         'peg': pool.peg[1:]
@@ -504,7 +506,9 @@ def load_omnipool(path: str = './archive', filename: str = '') -> OmnipoolRouter
             tokens={
                 tkn: {
                     'liquidity': json_state['liquidity'][tkn],
-                    'LRNA': json_state['LRNA'][tkn]
+                    'LRNA': json_state['LRNA'][tkn],
+                    'shares': json_state['shares'][tkn] if 'shares' in json_state else None,
+                    'protocol_shares': json_state['protocol_shares'][tkn] if 'protocol_shares' in json_state else None
                 }
                 for tkn in json_state['liquidity']
             },
@@ -946,7 +950,7 @@ def get_current_money_market():
     RPC_URL = "wss://rpc.hydradx.cloud"
     POOL_ADDRESS_PROVIDER_ADDRESS = "0xf3Ba4D1b50f78301BDD7EAEa9B67822A15FCA691"
     BORROWERS_API_ENDPOINT = "https://omniwatch.play.hydration.cloud/api/borrowers/by-health"
-
+    emode_labels = ['None', 'Stablecoins', 'DOT', 'ETH']
     class CustomPoaMiddleware:
         def __init__(self, w3):
             self.w3 = w3
@@ -1123,7 +1127,7 @@ def get_current_money_market():
             },
             liquidation_threshold=position['currentLiquidationThreshold'],
             health_factor=position['healthFactor'],
-            e_mode=['None', 'Stablecoins', 'DOT'][position['config']['e-mode']]
+            e_mode=emode_labels[position['config']['e-mode']]
         ) for position in borrowers]
     )
     return mm
@@ -1225,3 +1229,83 @@ def get_omnipool_price_history(asset_name: str):
 
     print(f"Total records fetched: {len(all_data)}")
 
+
+def save_money_market(mm: MoneyMarket, path: str = './archive', filename: str = None):
+    if filename is None:
+        filename = f"money_market_savefile_{time.time()}.json"
+    elif not filename.endswith('.json'):
+        filename += '.json'
+
+    json_state = {
+        'unique_id': mm.unique_id,
+        'close_factor': mm.partial_liquidation_pct,
+        'full_liquidation_threshold': mm.full_liquidation_threshold,
+        'time_step': mm.time_step,
+        'assets': [
+            {
+                'name': asset.name,
+                'emode_label': asset.emode_label,
+                'liquidity': asset.liquidity,
+                'price': asset.price,
+                'supply_cap': asset.supply_cap,
+                'liquidation_threshold': asset.liquidation_threshold,
+                'liquidation_bonus': asset.liquidation_bonus,
+                'ltv': asset.ltv,
+                'emode_liquidation_threshold': asset.emode_liquidation_threshold,
+                'emode_liquidation_bonus': asset.emode_liquidation_bonus,
+                'emode_ltv': asset.emode_ltv
+            } for asset in mm.assets.values()
+        ],
+        'cdps': [
+            {
+                'debt': {tkn: cdp.debt[tkn] for tkn in cdp.debt},
+                'collateral': {tkn: cdp.collateral[tkn] for tkn in cdp.collateral}
+            } for cdp in mm.cdps
+        ]
+    }
+    with open(os.path.join(path, filename), 'w') as savefile:
+        json.dump(json_state, savefile)
+
+
+def load_money_market(path: str = './archive', filename: str = None):
+    if filename is None:
+        file_ls = os.listdir(path)
+        for name in file_ls:
+            # return with the first likely-looking file
+            if name.startswith('money_market_savefile') and name.endswith('.json'):
+                filename = name
+    elif not(filename.endswith('.json')):
+        filename += '.json'
+    if filename is None or not os.path.exists(os.path.join(path, filename)):
+        raise FileNotFoundError(f'Money market file not found in {path}.')
+    with open(os.path.join(path, filename), 'r') as loadfile:
+        json_data = json.load(loadfile)
+    mm = MoneyMarket(
+        unique_id=json_data['unique_id'],
+        close_factor=json_data['close_factor'],
+        full_liquidation_threshold=json_data['full_liquidation_threshold'],
+        assets=[
+            MoneyMarketAsset(
+                name=asset['name'],
+                liquidity=asset['liquidity'],
+                supply_cap=asset['supply_cap'],
+                price=asset['price'],
+                emode_label=asset['emode_label'],
+                liquidation_threshold=asset['liquidation_threshold'],
+                liquidation_bonus=asset['liquidation_bonus'],
+                ltv=asset['ltv'],
+                emode_liquidation_threshold=asset['emode_liquidation_threshold'],
+                emode_liquidation_bonus=asset['emode_liquidation_bonus'],
+                emode_ltv=asset['emode_ltv']
+            ) for asset in json_data['assets']
+        ],
+        cdps=[
+            CDP(
+                debt={tkn: quantity for tkn, quantity in cdp['debt'].items()},
+                collateral={tkn: quantity for tkn, quantity in cdp['collateral'].items()}
+            ) for cdp in json_data['cdps']
+        ]
+    )
+    mm.time_step = json_data['time_step']
+    print(f"loaded {os.path.join(path, filename)}")
+    return mm
