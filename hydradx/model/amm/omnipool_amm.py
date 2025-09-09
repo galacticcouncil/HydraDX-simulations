@@ -1139,6 +1139,32 @@ class OmnipoolState(Exchange):
 
         return value_assets(prices, new_holdings)
 
+    def calculate_trade_to_price(self, tkn: str, target_price: float):
+        """
+        target_price should be the price in LRNA
+        """
+        if tkn not in self.liquidity:
+            return 0
+        k = self.lrna[tkn] * self.liquidity[tkn]
+        target_x = math.sqrt(k / target_price)
+        dx = target_x - self.liquidity[tkn]
+        if dx < 0:
+            dx *= (1 - self.asset_fee(tkn))
+        return dx
+
+    def trade_to_price(self, agent: Agent, tkn: str, target_price: float, other_tkn: str = None):
+        """
+        trade with agent to move price of tkn to target_price (in LRNA)
+        """
+        if other_tkn is None:
+            other_tkn = 'LRNA'
+        dx = self.calculate_trade_to_price(tkn, target_price)
+        if dx > 0:
+            self.swap(agent=agent, tkn_sell=tkn, tkn_buy=other_tkn, sell_quantity=dx)
+        elif dx < 0:
+            self.swap(agent=agent, tkn_buy=tkn, tkn_sell=other_tkn, buy_quantity=-dx)
+        return self
+
 
 class OmnipoolLiquidityPosition:
     def __init__(self, tkn: str, price: float, shares: float, delta_r: float, pool_id: str = None):
@@ -1255,14 +1281,3 @@ def value_assets(prices: dict, assets: dict) -> float:
         for i in assets.keys()
     ])
 
-
-def trade_to_price(pool: OmnipoolState, tkn: str, target_price: float):
-    """
-    target_price should be the price in LRNA
-    """
-    if tkn not in pool.liquidity:
-        return 0
-    k = pool.lrna[tkn] * pool.liquidity[tkn]
-    target_x = math.sqrt(k / target_price)
-    dx = target_x - pool.liquidity[tkn]
-    return dx
