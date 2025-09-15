@@ -19,7 +19,7 @@ from hydradx.model.amm.agents import Agent
 from hydradx.model.run import run
 from hydradx.model.indexer_utils import get_current_omnipool_router
 from hydradx.apps.display_utils import get_distribution, one_line_markdown
-from hydradx.model.amm. fixed_price import FixedPriceExchange
+from hydradx.model.amm.fixed_price import FixedPriceExchange
 
 st.markdown("""
     <style>
@@ -235,10 +235,9 @@ print(f"Main tokens: {main_tokens}")
 price_change_defaults = {
     tkn: 0 for tkn in main_tokens
 }
-# price_change_defaults.update({
-#     'ETH': -75,
-#     'DOT': 75,
-# })
+price_change_defaults.update({
+    'ETH': -50,
+})
 # determine start prices for all tokens
 start_price = {
     tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list
