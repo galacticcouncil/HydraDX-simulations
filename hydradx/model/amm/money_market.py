@@ -98,6 +98,7 @@ class MoneyMarket(Exchange):
             asset.name: asset.price
             for asset in assets
         }
+        self.initial_prices = copy.copy(self.prices)
         self.assets = {asset.name: asset for asset in assets}
 
         self.cdps: list[CDP] = [] if cdps is None else cdps
@@ -159,6 +160,12 @@ class MoneyMarket(Exchange):
             return self.prices[tkn]
         else:
             return self.prices[tkn] / self.prices[numeraire]
+
+    def initial_price(self, tkn: str, numeraire: str = None):
+        if numeraire is None:
+            return self.initial_prices[tkn]
+        else:
+            return self.initial_prices[tkn] / self.initial_prices[numeraire]
 
     def get_cdps(self, collateral_tkn: str = None, debt_tkn: str = None):
         return [cdp for cdp in self.cdps if (
