@@ -65,7 +65,7 @@ def load_omnipool_router() -> tuple[OmnipoolRouter, str]:
         quit()
 
     # toss out any existing toxic CDPs
-    load_mm.cdps = [cdp for cdp in load_mm.cdps if cdp.health_factor >= 1]
+    load_mm.cdps = [cdp for cdp in load_mm.cdps if not load_mm.is_liquidatable(cdp)]
     load_mm.borrowed = {tkn: sum([cdp.debt[tkn] for cdp in load_mm.cdps if tkn in cdp.debt]) for tkn in load_mm.borrowed}
 
     try:
@@ -87,8 +87,6 @@ def update_prices(state: GlobalState):
             elif isinstance(pool, MoneyMarket):
                 pool.assets[price_tkn].price = price_paths[price_tkn][state.time_step - 1]
                 pool.prices[price_tkn] = price_paths[price_tkn][state.time_step - 1]
-                # if tkn == 'USDT':
-                #     pool.assets[tkn].price = prices[tkn][state.time_step - 1] * 1.01  # fudging this because I can't get the stableswap pool shares
             elif isinstance(pool, OmnipoolState):
                 # execute trades to move price towards target
                 target_price = price_paths[price_tkn][state.time_step - 1] * pool.lrna_price('USD')
@@ -240,8 +238,8 @@ price_change_defaults.update({
 })
 # determine start prices for all tokens
 start_price = {
-    tkn: omnipool.usd_price(tkn) if tkn in omnipool.asset_list
-    else mm_sim.price(tkn) if tkn in mm.asset_list
+    tkn: mm_sim.price(tkn) if tkn in mm.asset_list
+    else omnipool.usd_price(tkn) if tkn in omnipool.asset_list
     else (
         omnipool.usd_price(equivalency_map[tkn]) if equivalency_map[tkn] in omnipool.asset_list
         else mm_sim.price(equivalency_map[tkn]) if equivalency_map[tkn] in mm_sim.asset_list else 0
