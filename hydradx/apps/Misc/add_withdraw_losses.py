@@ -4,12 +4,14 @@ import sys, os
 import streamlit as st
 import copy
 import pytest
+import numpy as np
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 sys.path.append(project_root)
 
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.agents import Agent
+from hydradx.model.plot_utils import color_gradient
 
 st.markdown("""
     <style>
@@ -66,6 +68,19 @@ def remove_readd(pool: OmnipoolState, agent: Agent):
         tkn_add='HDX',
         quantity=agent.get_holdings('HDX')
     )
+
+
+def linear_increasing_sequence(start_value, end_value, sequence_length):
+    weights = list(range(1, sequence_length))
+    total_weight = sum(weights)
+    scale = (end_value - start_value) / total_weight
+
+    seq = [start_value]
+    acc = start_value
+    for w in weights:
+        acc += w * scale
+        seq.append(acc)
+    return seq
 
 
 def scenario_1():
@@ -333,4 +348,69 @@ def scenario_2():
         ax2.legend(loc="upper center")
         st.pyplot(fig2)
 
-scenario_2()
+
+def scenario_3():
+
+    with st.sidebar:
+        low_price = st.number_input('low price:', min_value=0.01, max_value=1.0, value=0.98)
+        high_price = st.number_input('high price:', min_value=1.0, max_value=100.0, value=1.02)
+        max_lp_holdings = st.number_input('max lp holdings %:', min_value=10, max_value=99, value=50)
+    steps = 50
+    buys = linear_increasing_sequence(start_value=1, end_value=low_price, sequence_length=steps // 2)[:1:-1]
+    sells = linear_increasing_sequence(start_value=1, end_value=high_price, sequence_length=steps // 2)[1:]
+    prices = buys + [1] + sells
+    loss_trend = {}
+
+    initial_omnipool = OmnipoolState(
+        tokens={"HDX": {'liquidity': 1_000_000, 'LRNA': 1_000_000},
+                "USDT": {'liquidity': 1_000_000, 'LRNA': 1_000_000},
+                "DOT": {'liquidity': 1_000_000, 'LRNA': 1_000_000}
+        },
+        asset_fee=0.25,
+        lrna_fee=0.25,
+        withdrawal_fee=False
+    )
+    trade_agent = Agent(enforce_holdings=False)
+    lp_percent_array = [0.01 * i for i in range(1, max_lp_holdings + 1)]
+    for lp_percent in lp_percent_array:
+        loss_trend[lp_percent] = []
+        for price in prices:
+            omnipool = initial_omnipool.copy()
+            lp_agent = Agent(holdings={"HDX": omnipool.liquidity['HDX'] * lp_percent})
+            omnipool.liquidity['HDX'] *= (1 - lp_percent)
+            omnipool.lrna['HDX'] *= (1 - lp_percent)
+            omnipool.add_liquidity(
+                agent=lp_agent,
+                tkn_add='HDX',
+                quantity=lp_agent.holdings['HDX']
+            )
+            assert omnipool.lrna['HDX'] == pytest.approx(1_000_000, rel=1e-12)
+            assert omnipool.liquidity['HDX'] == pytest.approx(1_000_000, rel=1e-12)
+            initial_value = omnipool.cash_out(lp_agent, denomination='LRNA')
+            omnipool.trade_to_price(agent=trade_agent, tkn='HDX', target_price=price)
+            remove_readd(omnipool, lp_agent)
+            omnipool.trade_to_price(agent=trade_agent, tkn='HDX', target_price=1)
+            remove_readd(omnipool, lp_agent)
+            omnipool.trade_to_price(agent=trade_agent, tkn='HDX', target_price=1)
+            # remove_readd(omnipool, lp_agent)
+            if omnipool.lrna_price('HDX') != pytest.approx(1, rel=1e-12):
+                raise ValueError(f"hdx price == {omnipool.lrna_price('HDX')}, not 1")
+            final_value = omnipool.cash_out(lp_agent, denomination='LRNA')
+            loss = (initial_value - final_value) / lp_agent.initial_holdings['HDX']
+            loss_trend[lp_percent].append(loss)
+
+    fig, ax = plt.subplots(figsize=(16, 7))
+    colors = color_gradient(length = len(lp_percent_array), color1=(255, 0, 198), color2=(0, 0, 192))
+    for i, lp_percent in enumerate(lp_percent_array):
+        ax.plot(
+            prices, loss_trend[lp_percent],
+            label=f"LP pct: {round(lp_percent * 100, 1)}%" if lp_percent in [0.01, 0.25, 0.5, 0.75, 0.99] else None,
+            color=colors[i]
+        )
+    ax.set_xlabel('price change')
+    ax.set_ylabel('LP loss as a percent of deposit')
+    ax.legend()
+    st.pyplot(fig)
+    
+    
+scenario_3()
