@@ -4,10 +4,13 @@ from mpmath import mpf, mp
 from datetime import timedelta
 from typing import Literal
 
+from hydradx.apps.gigadot_modeling.liquidity import tkn_buy
 from hydradx.model.amm.agents import Agent
 from hydradx.model.amm.omnipool_amm import OmnipoolState
 from hydradx.model.amm.omnipool_router import OmnipoolRouter, Trade
 from hydradx.model.amm.stableswap_amm import StableSwapPoolState
+from hydradx.model.amm.money_market import MoneyMarket, MoneyMarketAsset
+from hydradx.model.amm.fixed_price import FixedPriceExchange
 from hydradx.tests.strategies_omnipool import fee_strategy
 
 settings.register_profile("long", deadline=timedelta(milliseconds=500), print_blob=True)
@@ -970,6 +973,90 @@ def test_price_route():
                 raise ValueError(
                     f"Agent holdings {agent.get_holdings(tkn)} for token {tkn} are not zero after trade {route} in direction {direction}"
                 )
+
+
+def test_sell_spot_intermediate():
+    omnipool = OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': mpf(1000001910), 'LRNA': mpf(100009000)},
+            "USDT": {'liquidity': mpf(1003000), 'LRNA': mpf(1000060)},
+            "DOT": {'liquidity': mpf(10000000), 'LRNA': mpf(102060000)},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=0.0025,
+        lrna_fee=0.0005
+    )
+    stablepool1 = StableSwapPoolState(
+        tokens={"stable1": mpf(123000000), "stable2": mpf(132000000)},
+        amplification=1002,
+        trade_fee=0.0100,
+        unique_id="stablepool1",
+        precision=1e-18,
+        spot_price_precision=1e-18,
+        peg=1.111
+    )
+    binance = FixedPriceExchange(
+        tokens={"stablepool1": mpf(1), "DOT": mpf(10.2)},
+        unique_id="binance",
+        fee=0.0005
+    )
+    router = OmnipoolRouter([omnipool, stablepool1, binance])
+    agent = Agent(enforce_holdings=False)
+    tkn_sell = "stable1"
+    tkn_buy = "HDX"
+    assert router.find_best_route(
+        tkn_buy=tkn_buy, tkn_sell=tkn_sell, direction='buy'
+    )[1].exchange == "binance"
+    trade_size = mpf(1) / 100000
+    expected_price = router.sell_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+    router.swap(agent, tkn_sell=tkn_sell, tkn_buy=tkn_buy, sell_quantity=trade_size)
+    actual_price = agent.get_holdings(tkn_buy) / -agent.get_holdings(tkn_sell)
+    if actual_price != pytest.approx(expected_price, rel=1e-12):
+        raise ValueError(f"Actual price {actual_price} does not match expected price {expected_price}")
+    if agent.get_holdings(tkn_sell) != -trade_size:
+        raise ValueError(f"Agent holdings {agent.get_holdings(tkn_buy)} do not match expected buy quantity {trade_size}")
+
+
+def test_buy_spot_intermediate():
+    omnipool= OmnipoolState(
+        tokens={
+            "HDX": {'liquidity': mpf(100019010), 'LRNA': mpf(10009000)},
+            "USDT": {'liquidity': mpf(1003000), 'LRNA': mpf(1000060)},
+            "DOT": {'liquidity': mpf(10000000), 'LRNA': mpf(102060000)},
+        },
+        preferred_stablecoin="USDT",
+        asset_fee=0.0025,
+        lrna_fee=0.0005
+    )
+    stablepool1 = StableSwapPoolState(
+        tokens={"stable1": mpf(123000000), "stable2": mpf(132000000)},
+        amplification=1002,
+        trade_fee=0.0101,
+        unique_id="stablepool1",
+        precision=1e-15,
+        spot_price_precision=1e-15,
+        peg=1.111,
+    )
+    binance = FixedPriceExchange(
+        tokens={"stablepool1": mpf(1), "DOT": mpf(10.2)},
+        unique_id="binance",
+        fee=0.0005
+    )
+    router = OmnipoolRouter([omnipool, stablepool1, binance])
+    agent = Agent(enforce_holdings=False)
+    tkn_sell = "stable1"
+    tkn_buy = "HDX"
+    assert router.find_best_route(
+        tkn_buy=tkn_buy, tkn_sell=tkn_sell, direction='buy'
+    )[1].exchange == "binance"
+    trade_size = mpf(1) / 100000
+    expected_price = router.buy_spot(tkn_sell=tkn_sell, tkn_buy=tkn_buy)
+    router.swap(agent, tkn_sell=tkn_sell, tkn_buy=tkn_buy, buy_quantity=trade_size)
+    actual_price = -agent.get_holdings(tkn_sell) / agent.get_holdings(tkn_buy)
+    if actual_price != pytest.approx(expected_price, rel=1e-12):
+        raise ValueError(f"Actual price {actual_price} does not match expected price {expected_price}")
+    if agent.get_holdings(tkn_buy) != trade_size:
+        raise ValueError(f"Agent holdings {agent.get_holdings(tkn_buy)} do not match expected buy quantity {trade_size}")
 
 
 def test_calculate_swap():
