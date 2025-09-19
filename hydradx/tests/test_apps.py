@@ -180,7 +180,8 @@ def test_arb_oracle_comp():
 def test_eth_params():
     os.chdir(find_test_directory())
     os.chdir('../apps/money_market')
-    from hydradx.apps.money_market import eth_params
+    from hydradx.apps.money_market.eth_params import run_app
+    run_app()
 
 
 def test_add_withdraw():
