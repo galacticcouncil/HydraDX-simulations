@@ -57,7 +57,11 @@ def display_ss(ss_liquidity, prices, title):
 
 
 
-def get_distribution(number_list, weights, resolution, minimum, maximum, smoothing=3.0):
+def get_distribution(number_list, weights, resolution, minimum=None, maximum=None, smoothing=3.0):
+    if minimum is None:
+        minimum = min(number_list)
+    if maximum is None:
+        maximum = max(number_list)
     bins = np.linspace(minimum, maximum, resolution)  # sample points (x)
     dist = np.zeros_like(bins, dtype=float)
 
