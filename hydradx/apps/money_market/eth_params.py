@@ -106,6 +106,7 @@ initial_cdps = [cdp.copy() for cdp in initial_mm.cdps]
 initial_cdps = sorted(initial_cdps, key=lambda cdp: initial_mm.value_assets(cdp.collateral))[::-1]
 initial_mm.cdps = initial_cdps
 initial_router.exchanges['money_market'] = initial_mm
+initial_router.asset_list = list(set(initial_router.asset_list) | set(initial_mm.asset_list))
 initial_stableswaps = [exchange for exchange in initial_router.exchanges.values() if isinstance(exchange, StableSwapPoolState)]
 if 'money_market' not in st.session_state:
     st.session_state['money_market'] = initial_mm.copy()
@@ -117,6 +118,8 @@ equivalency_map = {
     'aETH': 'ETH',
     'aDOT': 'DOT',
     '2-Pool-GDOT': 'DOT',
+    'Bifrost Voucher DOT': 'DOT',
+    'vDOT': 'DOT',
     'WETH': 'ETH',
     '2-Pool-GETH': 'ETH',
     '2-Pool-WETH': 'ETH',
@@ -159,7 +162,7 @@ start_price = {
         else initial_mm.price(equivalency_map[tkn]) if equivalency_map[tkn] in initial_mm.asset_list else 0
     ) if tkn in equivalency_map
     else 0
-    for tkn in sorted(set(initial_router.asset_list).union(set(equivalency_map.values())), key=lambda x: x in initial_mm.asset_list)
+    for tkn in sorted(set(initial_router.asset_list) | set(equivalency_map.values()), key=lambda x: x in initial_mm.asset_list)
 }
 for tkn in start_price:
     if start_price[tkn] == 0:
@@ -177,19 +180,18 @@ for exchange in initial_stableswaps:
             if tkn not in priced_tokens:
                 start_price[tkn] = exchange.price(tkn, start_price[priced_tokens[0]]) * start_price[priced_tokens[0]]
 
-st.session_state["time_steps"] = 10
+st.session_state.setdefault("time_steps", 10)
 st.session_state.setdefault("add_collateral", {})
 st.session_state.setdefault("add_debt", {})
-st.session_state["price_change"] = {
+st.session_state.setdefault("price_change", {
     tkn: price_change_defaults[tkn] for tkn in price_change_defaults if price_change_defaults[tkn] != 0
-}
-st.session_state["debt_totals"] = {
+})
+st.session_state.setdefault("debt_totals", {
     tkn: sum([cdp.debt[tkn] for cdp in initial_mm.cdps if tkn in cdp.debt]) for tkn in initial_mm.borrowed
-}
-st.session_state["collateral_totals"] = {
+})
+st.session_state.setdefault("collateral_totals", {
     tkn: sum([cdp.collateral[tkn] for cdp in initial_mm.cdps if tkn in cdp.collateral]) for tkn in initial_mm.asset_list
-}
-print(st.session_state["debt_totals"])
+})
 st.session_state["run_simulation"] = False
 st.session_state.setdefault("money_market", initial_mm.copy())
 
@@ -215,8 +217,8 @@ with st.sidebar:
                 min_value: float,
                 max_value: float,
                 on_change: Callable,
-                expanded: bool = True,
-                as_percentage: bool = False
+                expanded: bool = False,
+                number_format: str = ''
         ):
             def set_delete_flag(asset, flag):
                 st.session_state.__setitem__(flag, asset)
@@ -257,9 +259,13 @@ with st.sidebar:
                     with name_col:
                         st.write(asset)
                     with amt_col:
-                        if as_percentage:
+                        if number_format == "%":
                             st.write(f"{"+" if val > 0 else ""}{val:,.0f}%")
+                        elif number_format == "$":
+                            st.write(f"${val:,.0f}")
                         else:
+                            if number_format != '':
+                                print(f"WARNING: unrecognized number format in change_param_form() ({number_format})")
                             st.write(f"{val:,.0f}")
                     with del_col:
                         st.button(
@@ -269,9 +275,26 @@ with st.sidebar:
                         )
 
         def show_asset_config(asset: MoneyMarketAsset, title: str=None):
+            name = asset.name
+            title = title or name
+
+            def on_price_change():
+                """
+                Update all CDPs with collateral or debt in this asset to reflect new price
+                (without changing their health factor)
+                """
+                mm = st.session_state["money_market"]
+                old_price = mm.assets[name].price
+                mm.assets[name].price = st.session_state[f"price_input_{name}"]
+                mm.prices[name] = mm.assets[name].price
+                new_price = mm.assets[name].price
+                for cdp in mm.cdps:
+                    if name in cdp.collateral:
+                        cdp.collateral[name] *= new_price / old_price
+                    if name in cdp.debt:
+                        cdp.debt[name] *= new_price / old_price
+
             with st.container():
-                name = asset.name
-                title = title or name
                 st.markdown(
                     f"""
                     <div style="
@@ -293,7 +316,9 @@ with st.sidebar:
                         min_value=0.0000001,
                         max_value=1_000_000.0,
                         format=f"%.{min(6, 6-math.floor(math.log10(asset.price)))}f",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
+                        key=f"price_input_{name}",
+                        on_change=on_price_change
                     )
                 label_col, input_col = st.columns([3, 2], vertical_alignment="center")
                 with label_col:
@@ -317,6 +342,38 @@ with st.sidebar:
                         value=asset.liquidation_bonus,
                         label_visibility="collapsed"
                     )
+                label_col, input_col = st.columns([3, 2], vertical_alignment="center")
+                with label_col:
+                    st.write("E-mode label:")
+                with input_col:
+                    asset.emode_label = st.text_input(
+                        label=f"e-mode label ({name})",
+                        value=asset.emode_label,
+                        label_visibility="collapsed"
+                    )
+                if asset.emode_label:
+                    label_col, input_col = st.columns([3, 2], vertical_alignment="center")
+                    with label_col:
+                        st.write("E-mode liquidation threshold:")
+                    with input_col:
+                        asset.emode_liquidation_threshold = st.number_input(
+                            label=f"e-mode liquidation threshold ({name})",
+                            min_value=0.5,
+                            max_value=0.99,
+                            value=asset.emode_liquidation_threshold,
+                            label_visibility="collapsed"
+                        )
+                    label_col, input_col = st.columns([3, 2], vertical_alignment="center")
+                    with label_col:
+                        st.write("E-mode liquidation bonus:")
+                    with input_col:
+                        asset.emode_liquidation_bonus = st.number_input(
+                            label=f"e-mode liquidation bonus ({name})",
+                            min_value=0.01,
+                            max_value=0.2,
+                            value=asset.emode_liquidation_bonus,
+                            label_visibility="collapsed"
+                        )
 
         def money_market_config_section():
             title = "Money Market Parameters"
@@ -344,8 +401,10 @@ with st.sidebar:
             if new_assets != {}:
                 mm.asset_list += list(new_assets.keys())
                 mm.assets.update(new_assets)
-                print(f"Added new assets to money market: {list(new_assets.keys())}")
-                st.session_state["new_assets"] = st.session_state.get("new_assets", set()) | set(new_assets.keys())
+                mm.prices.update({tkn: new_assets[tkn].price for tkn in new_assets})
+                st.session_state["new_assets"] = st.session_state.get("new_assets", set())
+                st.session_state["new_assets"] |= set(new_assets.keys())
+                distribute_cdps()
                 st.rerun()
 
         def sum_debt():
@@ -355,7 +414,7 @@ with st.sidebar:
                 + st.session_state.get("add_debt", {}).get(tkn, 0)
                 for tkn in list(set(mm.borrowed.keys()).union(set(st.session_state.get("add_debt", {}).keys())))
             }
-            print(st.session_state.debt_totals)
+            # print(st.session_state.debt_totals)
 
         def sum_collateral():
             update_money_market_assets()
@@ -364,12 +423,38 @@ with st.sidebar:
                 + st.session_state.get("add_collateral", {}).get(tkn, 0)
                 for tkn in list(set(mm.asset_list).union(set(st.session_state.get("add_collateral", {}).keys())))
             }
-            print("new collateral:", st.session_state.get("add_collateral", {}))
-            print(st.session_state.collateral_totals)
+            # print("new collateral:", st.session_state.get("add_collateral", {}))
+            # print(st.session_state.collateral_totals)
+
+        def distribute_cdps():
+            # adjust debt levels to maintain same overall ratio of debt to collateral
+            extra_collateral = st.session_state.get("add_collateral", {})
+            extra_debt = st.session_state.get("add_debt", {})
+            health_factors = [cdp.health_factor for cdp in initial_mm.cdps]
+            num_cdps = 20
+            bins, weights = get_distribution(
+                health_factors,
+                weights=[initial_mm.value_assets(cdp.collateral) for cdp in initial_mm.cdps],
+                resolution=num_cdps,
+                smoothing=3.0,
+            )
+            avg_weight = sum(weights) / len(weights) if sum(weights) > 0 else 0
+            avg_collateral = {tkn: extra_collateral[tkn] / num_cdps for tkn in extra_collateral}
+            avg_debt = {tkn: extra_debt[tkn] / num_cdps for tkn in extra_debt}
+            new_cdps = [
+                CDP(
+                    collateral={tkn: avg_collateral[tkn] * weights[i] / avg_weight for tkn in extra_collateral},
+                    debt={tkn: avg_debt[tkn] * weights[i] / avg_weight for tkn in extra_debt}
+                )
+                for i in range(len(bins))
+            ]
+            mm.cdps = [cdp.copy() for cdp in initial_cdps]
+            for cdp in new_cdps:
+                mm.add_cdp(cdp)
 
         change_param_form(
             key="price_change",
-            as_percentage=True,
+            number_format="%",
             default_token="HDX",
             default_value=-20,
             min_value=-99,
@@ -379,16 +464,7 @@ with st.sidebar:
             expanded=True
         )
 
-        # prompt to enter params for newly added assets
-        for asset in st.session_state.get("new_assets", []):
-            with st.container():
-                show_asset_config(mm.assets[asset], title=f"New asset: {asset}")
-                with st.columns([1, 3, 1])[1]:
-                    remove_p = st.button("Ok", use_container_width=True)
-                if remove_p:
-                    st.session_state.money_market.prices[asset] = mm.assets[asset].price
-                    st.session_state.new_assets.remove(asset)
-                    st.rerun()
+        asset_config_container = st.empty()
 
         change_param_form(
             key="add_collateral",
@@ -398,7 +474,7 @@ with st.sidebar:
             min_value=0,
             max_value=1_000_000_000,
             on_change=sum_collateral,
-            expanded=False
+            number_format="$"
         )
         change_param_form(
             key="add_debt",
@@ -408,15 +484,26 @@ with st.sidebar:
             min_value=0,
             max_value=1_000_000_000,
             on_change=sum_debt,
-            expanded=False
+            number_format="$"
         )
         money_market_config_section()
+
+        # prompt to enter params for newly added assets
+        with asset_config_container:
+            for asset in st.session_state.get("new_assets", set()):
+                with st.container():
+                    show_asset_config(mm.assets[asset], title=f"Configure asset: {asset}")
+                    with st.columns([1, 3, 1])[1]:
+                        if st.button("Ok", use_container_width=True, key=f"{asset}_ok_button"):
+                            st.session_state.money_market.prices[asset] = mm.assets[asset].price
+                            st.session_state.new_assets.remove(asset)
+                            st.rerun()
 
     sidebar_builder()
 
 def run_app():
     price_factor = {
-        tkn: st.session_state["price_change"].get(tkn, 0) for tkn in main_tokens
+        tkn: st.session_state.price_change.get(tkn, 0) for tkn in main_tokens
     }
     # update price change defaults for equivalent tokens
     price_factor.update({
@@ -426,7 +513,7 @@ def run_app():
     # trade_agent = Agent(enforce_holdings=False)
     def update_prices(state: GlobalState):
         for price_tkn in price_paths:
-            relevant_pools = [pool for pool in state.pools.values() if price_tkn in pool.asset_list]
+            relevant_pools = [pool for pool in state.pools['router'].exchanges.values() if price_tkn in pool.asset_list]
             for pool in relevant_pools:
                 if isinstance(pool, FixedPriceExchange):
                     pool.prices[price_tkn] = price_paths[price_tkn][state.time_step - 1]
@@ -478,20 +565,44 @@ def run_app():
     omnipool = copy.deepcopy(initial_omnipool)
     stableswaps = [exchange.copy() for exchange in initial_stableswaps]
     router = initial_router.copy()
-    # reset money market CDPS to initial state
-    mm.cdps = [cdp.copy() for cdp in initial_mm.cdps]
-    # add collateral and debt to money market
+
+    # TODO: add collateral and debt to money market
+    extra_collateral = st.session_state.get("add_collateral", {})
+    extra_debt = st.session_state.get("add_debt", {})
+    num_positions = 20
+    avg_ratio = mm.value_assets(extra_collateral) / mm.value_assets(extra_debt) if extra_debt != {} else float('inf')
+    distribution = get_distribution(
+        [cdp.health_factor for cdp in mm.cdps if mm.value_assets(cdp.debt) > 0 and not mm.is_liquidatable(cdp)],
+        weights=[mm.value_assets(cdp.collateral) for cdp in mm.cdps],
+        minimum=1,
+        maximum=2,
+        resolution=num_positions,
+        smoothing=3
+    )
+    for i in range(num_positions):
+        cdp = CDP(
+            collateral={},
+            debt={}
+        )
+        for tkn in extra_collateral:
+            cdp.collateral[tkn] = extra_collateral[tkn] / num_positions
+        for tkn in extra_debt:
+            cdp.debt[tkn] = extra_debt[tkn] / num_positions
+        if mm.is_liquidatable(cdp):
+            one_line_markdown(f"⚠️ **Warning:** Added CDP {cdp.id} is immediately liquidatable and will be liquidated at the start of the simulation.")
+        mm.cdps.append(cdp)
+
     router.exchanges = {pool.unique_id: pool for pool in [omnipool, mm, *stableswaps]}
 
     initial_state = GlobalState(
-        pools=[router, omnipool, mm, *stableswaps],
+        pools=[router],
         agents={
             'liquidator': Agent(enforce_holdings=False, trade_strategy=liquidate_cdps('router')),
             'trader': Agent(
                 enforce_holdings=False,
                 trade_strategy=schedule_swaps(
                     swaps=swap_schedule,
-                    pool_id='omnipool'
+                    pool_id='router'
                 )
             ),
             # 'arbitrageur': Agent(
@@ -507,18 +618,25 @@ def run_app():
         external_market=start_price
     )
 
-    st.header("Running simulation...")
     with st.spinner(f"Running {time_steps} simulation steps..."):
         sim_start = time.time()
         events = run(initial_state, time_steps=time_steps, silent=True)
 
         sim_time = time.time() - sim_start
         st.sidebar.info(f"Simulation completed in {sim_time:.2f} seconds")
+    st.header("Simulation Results")
+
+    for event in events:
+        # add the individual exchange pools to the pools dict for easy access
+        event.pools = {pool.unique_id: pool for pool in [event.pools['router'], *event.pools['router'].exchanges.values()]}
 
     final_mm = events[-1].pools['money_market']
     for cdp in final_mm.cdps:
         cdp.health_factor = final_mm.get_health_factor(cdp)
 
+    router.find_routes('aDOT', 'USD', direction='buy')
+    router.find_routes('aDOT', 'USD', direction='sell')
+    events[-1].pools['router'].price('DOT', 'USD')
     with st.expander(f"Prices over {time_steps} steps"):
         for tkn in sorted(start_price, key=lambda x: equivalency_map[x] if x in equivalency_map else x):
             fig, ax = plt.subplots(figsize=(16, 6))
@@ -529,8 +647,9 @@ def run_app():
                 if tkn in event.pools['omnipool'].asset_list
                 else event.pools['money_market'].price(tkn)
                 if tkn in event.pools['money_market'].asset_list
-                else event.pools['router'].price(tkn, 'USD')
-                for event in events
+                else event.pools['router'].price(tkn, 'USD') if tkn in event.pools['router'].asset_list
+                else price_paths[tkn][i]
+                for i, event in enumerate(events)
             ]
             if max(tkn_price_path) == 0:
                 continue
@@ -717,17 +836,17 @@ with col2:
         st.session_state.run_simulation = True
 
 
-@st.fragment
 def plot_health_factor_distribution(money_market: MoneyMarket):
     with st.expander("Initial CDP Health Factor Distribution"):
         cdps = money_market.cdps
         resolution = st.session_state.get("resolution", 500)
         smoothing = st.session_state.get("smoothing", 3.0)
+        health_factors = [cdp.health_factor for cdp in cdps]
         bins, dist = get_distribution(
-            [cdp.health_factor for cdp in cdps],
+            health_factors,
             [money_market.value_assets(cdp.collateral) for cdp in cdps],
             resolution=resolution,
-            minimum=1,
+            minimum=min(min(health_factors), 1),
             maximum=2,
             smoothing=smoothing
         )
