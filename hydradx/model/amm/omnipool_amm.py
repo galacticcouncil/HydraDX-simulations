@@ -115,26 +115,27 @@ class OmnipoolState(Exchange):
             self.min_withdrawal_fee = min_withdrawal_fee
 
         self.oracles = {}
+        self.asset_list = ['LRNA']
 
-        for token, pool in tokens.items():
-            assert pool['liquidity'], f'token {token} missing required parameter: liquidity'
-            if 'LRNA' in pool:
-                lrna = pool['LRNA']
-            elif 'LRNA_price' in pool:
-                lrna = pool['liquidity'] * pool['LRNA_price']
+        for token, values in tokens.items():
+            assert values['liquidity'], f'token {token} missing required parameter: liquidity'
+            if 'LRNA' in values:
+                lrna = values['LRNA']
+            elif 'LRNA_price' in values:
+                lrna = values['liquidity'] * values['LRNA_price']
             else:
                 raise ValueError("token {name} missing required parameter: ('LRNA' or 'LRNA_price)")
             self.add_token(
                 token,
-                liquidity=pool['liquidity'],
+                liquidity=values['liquidity'],
                 lrna=lrna,
-                shares=pool['shares'] if 'shares' in pool else pool['liquidity'],
+                shares=values['shares'] if 'shares' in values else values['liquidity'],
                 protocol_shares=(
-                    pool['protocol_shares'] if 'protocol_shares' in pool else (
-                        pool['shares'] if 'shares' in pool else pool['liquidity']
+                    values['protocol_shares'] if 'protocol_shares' in values else (
+                        values['shares'] if 'shares' in values else values['liquidity']
                     )
                 ),
-                weight_cap=pool['weight_cap'] if 'weight_cap' in pool else 1
+                weight_cap=values['weight_cap'] if 'weight_cap' in values else 1
             )
 
         if oracles is None or 'price' not in oracles:
@@ -183,7 +184,7 @@ class OmnipoolState(Exchange):
                 if fee_type == 'lrna' else
                 (self.oracles[raise_oracle].volume_out[tkn]
                 - self.oracles[raise_oracle].volume_in[tkn])
-                for tkn in self.asset_list
+                for tkn in self.liquidity
             }
         if isinstance(value, DynamicFee):
             return_val = DynamicFee(
@@ -191,9 +192,9 @@ class OmnipoolState(Exchange):
                 decay=value.decay,
                 minimum=value.minimum,
                 maximum=value.maximum,
-                current={tkn: value.current[tkn] if tkn in value.current else value.minimum for tkn in self.asset_list},
-                liquidity={tkn: value.liquidity_at_last_update[tkn] if tkn in value.liquidity_at_last_update else self.liquidity[tkn] for tkn in self.asset_list},
-                net_volume={tkn: value.volume_at_last_update[tkn] for tkn in self.asset_list} if value.volume_at_last_update else get_last_volume(),
+                current={tkn: value.current[tkn] if tkn in value.current else value.minimum for tkn in self.liquidity},
+                liquidity={tkn: value.liquidity_at_last_update[tkn] if tkn in value.liquidity_at_last_update else self.liquidity[tkn] for tkn in self.liquidity},
+                net_volume={tkn: value.volume_at_last_update[tkn] for tkn in self.liquidity} if value.volume_at_last_update else get_last_volume(),
                 last_updated=value.last_updated
             )
             return return_val
@@ -203,7 +204,7 @@ class OmnipoolState(Exchange):
                     (self.last_lrna_fee[tkn] if tkn in self.last_lrna_fee else self._lrna_fee.minimum)
                     if fee_type == 'lrna' else
                     (self.last_fee[tkn] if tkn in self.last_fee else self._asset_fee.minimum)
-                ) for tkn in self.asset_list}
+                ) for tkn in self.liquidity}
             return DynamicFee(
                 current=current,
                 minimum=min(current.values()),
@@ -612,11 +613,11 @@ class OmnipoolState(Exchange):
             return_val = self
 
         # update oracle
-        if tkn_buy in self.asset_list:
+        if tkn_buy in self.liquidity:
             buy_quantity = old_buy_liquidity - self.liquidity[tkn_buy]
             self.current_block.volume_out[tkn_buy] += buy_quantity
             self.current_block.price[tkn_buy] = self.lrna[tkn_buy] / self.liquidity[tkn_buy]
-        if tkn_sell in self.asset_list:
+        if tkn_sell in self.liquidity:
             sell_quantity = self.liquidity[tkn_sell] - old_sell_liquidity
             self.current_block.volume_in[tkn_sell] += sell_quantity
             self.current_block.price[tkn_sell] = self.lrna[tkn_sell] / self.liquidity[tkn_sell]
