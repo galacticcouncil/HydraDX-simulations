@@ -151,6 +151,16 @@ class MoneyMarket(Exchange):
         self.asset_list.append(new_asset.name)
         self.assets[new_asset.name] = new_asset
 
+    def add_cdp(self, cdp: CDP):
+        if not cdp.liquidation_threshold:
+            cdp.liquidation_threshold = self.cdp_liquidation_threshold(cdp)
+        if cdp.health_factor is None:
+            cdp.health_factor = self.get_health_factor(cdp)
+        self.cdps.append(cdp)
+        for tkn in cdp.debt:
+            self.borrowed[tkn] += cdp.debt[tkn]
+        return self
+
     def fail_transaction(self, fail: str):
         self.fail = fail
         return self
